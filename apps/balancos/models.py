@@ -38,6 +38,10 @@ FORMATO_SHA256 = RegexValidator(
 class BalancoMensal(models.Model):
     """Balanço de um mês de um condomínio, em uma versão.
 
+    O registro representa o balanço já confirmado pela gestão: o resultado da
+    leitura é apresentado, a gestão confirma a importação e só então o mês
+    passa a valer. Não existe etapa formal de revisão.
+
     O mesmo mês pode ter mais de uma versão. Quando a administradora envia um
     documento corrigido, cria-se uma nova versão que substitui a anterior — e a
     anterior permanece, marcada como substituída. Nada é sobrescrito em
@@ -72,7 +76,7 @@ class BalancoMensal(models.Model):
         "situação",
         max_length=20,
         choices=StatusBalanco.choices,
-        default=StatusBalanco.EM_REVISAO,
+        default=StatusBalanco.VALIDADO,
     )
     status_processamento = models.CharField(
         "processamento",
@@ -125,10 +129,11 @@ class BalancoMensal(models.Model):
                 fields=["condominio", "competencia", "versao"],
                 name="balanco_unico_por_competencia_e_versao",
             ),
-            # Uma competência tem uma única versão em vigor. As anteriores
-            # continuam guardadas, marcadas como substituídas — por isso a
-            # unicidade vale apenas fora desse estado. É assim que se sabe
-            # qual versão é a atual, sem precisar de campo redundante.
+            # Uma competência tem uma única versão em vigor: validada ou
+            # publicada. As versões anteriores continuam guardadas, marcadas
+            # como substituídas — por isso a unicidade vale apenas fora desse
+            # estado. É assim que se sabe qual versão é a atual, sem precisar
+            # de campo redundante.
             models.UniqueConstraint(
                 fields=["condominio", "competencia"],
                 condition=~Q(status=StatusBalanco.SUBSTITUIDO),
@@ -172,8 +177,6 @@ class BalancoMensal(models.Model):
                 )
             if not self.validado_por_id:
                 erros["validado_por"] = "Um balanço validado registra quem validou."
-        elif self.status == StatusBalanco.EM_REVISAO and self.validado_em:
-            erros["validado_em"] = "Um balanço em revisão ainda não foi validado."
 
         if erros:
             raise ValidationError(erros)

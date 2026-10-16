@@ -14,6 +14,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import PROTECT, SET_NULL
 from django.db.models.deletion import ProtectedError
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.balancos.constants import (
     LayoutBalanco,
@@ -38,15 +39,28 @@ def criar_pessoa(email="gestao@exemplo.com.br", nome="Usuário Gestão"):
     )
 
 
-def criar_balanco(condominio, criado_por, competencia=AGOSTO, **extra):
-    """Cria um balanço sem acionar as validações de domínio."""
+def novo_balanco(condominio, criado_por, competencia=AGOSTO, **extra):
+    """Monta um balanço em memória, pronto para a validação de domínio.
+
+    O balanço existe a partir da confirmação da gestão, então por padrão ele já
+    nasce validado, com quem confirmou e quando.
+    """
     dados = {
         "condominio": condominio,
         "criado_por": criado_por,
         "competencia": competencia,
+        "validado_por": criado_por,
+        "validado_em": timezone.now(),
     }
     dados.update(extra)
-    return BalancoMensal.objects.create(**dados)
+    return BalancoMensal(**dados)
+
+
+def criar_balanco(condominio, criado_por, competencia=AGOSTO, **extra):
+    """Grava um balanço, sem acionar as validações de domínio."""
+    balanco = novo_balanco(condominio, criado_por, competencia, **extra)
+    balanco.save()
+    return balanco
 
 
 class BaseBalancoTests(TestCase):
@@ -64,13 +78,20 @@ class BalancoMensalTests(BaseBalancoTests):
     def test_cria_balanco_valido(self):
         balanco = criar_balanco(self.condominio_a, self.gestao)
         self.assertIsInstance(balanco.pk, uuid.UUID)
-        self.assertEqual(balanco.status, StatusBalanco.EM_REVISAO)
+        self.assertEqual(balanco.status, StatusBalanco.VALIDADO)
         self.assertEqual(balanco.status_processamento, ProcessamentoBalanco.PENDENTE)
         self.assertEqual(balanco.layout_detectado, LayoutBalanco.DESCONHECIDO)
         self.assertEqual(balanco.versao, 1)
         self.assertIsNotNone(balanco.criado_em)
         self.assertIsNotNone(balanco.atualizado_em)
         balanco.full_clean()
+
+    def test_balanco_nasce_confirmado(self):
+        """A gestão confirma a importação antes de o mês valer."""
+        balanco = criar_balanco(self.condominio_a, self.gestao)
+        self.assertEqual(balanco.status, StatusBalanco.VALIDADO)
+        self.assertEqual(balanco.validado_por, self.gestao)
+        self.assertIsNotNone(balanco.validado_em)
 
     def test_competencia_armazenada_como_primeiro_dia_do_mes(self):
         """A competência é o mês, não um dia financeiro específico."""
@@ -80,9 +101,9 @@ class BalancoMensalTests(BaseBalancoTests):
         self.assertEqual(balanco.competencia.day, 1)
 
     def test_rejeita_competencia_fora_do_primeiro_dia(self):
-        balanco = BalancoMensal(
-            condominio=self.condominio_a,
-            criado_por=self.gestao,
+        balanco = novo_balanco(
+            self.condominio_a,
+            self.gestao,
             competencia=datetime.date(2026, 8, 17),
         )
         with self.assertRaises(ValidationError) as erro:
@@ -106,11 +127,8 @@ class BalancoMensalTests(BaseBalancoTests):
     def test_rejeita_versao_zero_ou_negativa(self):
         for invalida in (0, -1):
             with self.subTest(versao=invalida):
-                balanco = BalancoMensal(
-                    condominio=self.condominio_a,
-                    criado_por=self.gestao,
-                    competencia=AGOSTO,
-                    versao=invalida,
+                balanco = novo_balanco(
+                    self.condominio_a, self.gestao, versao=invalida
                 )
                 with self.assertRaises(ValidationError) as erro:
                     balanco.full_clean()
@@ -147,12 +165,8 @@ class BalancoMensalTests(BaseBalancoTests):
         versao_1.status = StatusBalanco.SUBSTITUIDO
         versao_1.save(update_fields=["status"])
 
-        versao_2 = BalancoMensal(
-            condominio=self.condominio_a,
-            criado_por=self.gestao,
-            competencia=AGOSTO,
-            versao=2,
-            substitui=versao_1,
+        versao_2 = novo_balanco(
+            self.condominio_a, self.gestao, versao=2, substitui=versao_1
         )
         versao_2.full_clean()
         self.assertEqual(versao_2.substitui, versao_1)
@@ -162,12 +176,8 @@ class BalancoMensalTests(BaseBalancoTests):
         versao_1.status = StatusBalanco.SUBSTITUIDO
         versao_1.save(update_fields=["status"])
 
-        nova = BalancoMensal(
-            condominio=self.condominio_a,
-            criado_por=self.gestao,
-            competencia=AGOSTO,
-            versao=1,
-            substitui=versao_1,
+        nova = novo_balanco(
+            self.condominio_a, self.gestao, versao=1, substitui=versao_1
         )
         with self.assertRaises(ValidationError) as erro:
             nova.full_clean()
@@ -175,12 +185,8 @@ class BalancoMensalTests(BaseBalancoTests):
 
     def test_impede_substituir_balanco_de_outro_condominio(self):
         de_b = criar_balanco(self.condominio_b, self.gestao, versao=1)
-        de_a = BalancoMensal(
-            condominio=self.condominio_a,
-            criado_por=self.gestao,
-            competencia=AGOSTO,
-            versao=2,
-            substitui=de_b,
+        de_a = novo_balanco(
+            self.condominio_a, self.gestao, versao=2, substitui=de_b
         )
         with self.assertRaises(ValidationError) as erro:
             de_a.full_clean()
@@ -188,9 +194,9 @@ class BalancoMensalTests(BaseBalancoTests):
 
     def test_impede_substituir_competencia_diferente(self):
         de_agosto = criar_balanco(self.condominio_a, self.gestao, competencia=AGOSTO)
-        de_setembro = BalancoMensal(
-            condominio=self.condominio_a,
-            criado_por=self.gestao,
+        de_setembro = novo_balanco(
+            self.condominio_a,
+            self.gestao,
             competencia=SETEMBRO,
             versao=2,
             substitui=de_agosto,
@@ -229,7 +235,7 @@ class EstadosTests(BaseBalancoTests):
     def test_estados_funcionais_validos(self):
         self.assertEqual(
             set(StatusBalanco.values),
-            {"em_revisao", "validado", "publicado", "substituido"},
+            {"validado", "publicado", "substituido"},
         )
 
     def test_estados_de_processamento_validos(self):
@@ -263,26 +269,92 @@ class EstadosTests(BaseBalancoTests):
         self.assertEqual(balanco.layout_detectado, LayoutBalanco.DESCONHECIDO)
 
     def test_validado_exige_quem_e_quando(self):
-        balanco = criar_balanco(self.condominio_a, self.gestao)
-        balanco.status = StatusBalanco.VALIDADO
+        balanco = BalancoMensal(
+            condominio=self.condominio_a,
+            criado_por=self.gestao,
+            competencia=AGOSTO,
+        )
         with self.assertRaises(ValidationError) as erro:
             balanco.full_clean()
         self.assertIn("validado_em", erro.exception.error_dict)
         self.assertIn("validado_por", erro.exception.error_dict)
 
     def test_validado_aceito_com_quem_e_quando(self):
-        balanco = criar_balanco(self.condominio_a, self.gestao)
-        balanco.status = StatusBalanco.VALIDADO
-        balanco.validado_por = self.gestao
-        balanco.validado_em = balanco.criado_em
+        balanco = novo_balanco(self.condominio_a, self.gestao)
         balanco.full_clean()
 
-    def test_em_revisao_nao_pode_ter_validacao(self):
+    def test_um_validado_por_competencia(self):
+        criar_balanco(self.condominio_a, self.gestao)
+        self.assertEqual(
+            BalancoMensal.objects.filter(
+                status=StatusBalanco.VALIDADO, competencia=AGOSTO
+            ).count(),
+            1,
+        )
+
+    def test_um_publicado_por_competencia(self):
+        criar_balanco(self.condominio_a, self.gestao, status=StatusBalanco.PUBLICADO)
+        self.assertEqual(
+            BalancoMensal.objects.filter(
+                status=StatusBalanco.PUBLICADO, competencia=AGOSTO
+            ).count(),
+            1,
+        )
+
+    def test_nao_permite_duas_versoes_vigentes(self):
+        """Validado e publicado disputam a mesma vaga: só uma fica em vigor."""
+        criar_balanco(self.condominio_a, self.gestao, versao=1)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                criar_balanco(
+                    self.condominio_a,
+                    self.gestao,
+                    versao=2,
+                    status=StatusBalanco.PUBLICADO,
+                )
+
+    def test_substituido_e_validado_na_mesma_competencia(self):
+        anterior = criar_balanco(self.condominio_a, self.gestao, versao=1)
+        anterior.status = StatusBalanco.SUBSTITUIDO
+        anterior.save(update_fields=["status"])
+
+        vigente = criar_balanco(
+            self.condominio_a, self.gestao, versao=2, substitui=anterior
+        )
+
+        self.assertEqual(vigente.status, StatusBalanco.VALIDADO)
+        self.assertEqual(
+            BalancoMensal.objects.filter(competencia=AGOSTO).count(), 2
+        )
+
+    def test_substituido_e_publicado_na_mesma_competencia(self):
+        anterior = criar_balanco(self.condominio_a, self.gestao, versao=1)
+        anterior.status = StatusBalanco.SUBSTITUIDO
+        anterior.save(update_fields=["status"])
+
+        vigente = criar_balanco(
+            self.condominio_a,
+            self.gestao,
+            versao=2,
+            status=StatusBalanco.PUBLICADO,
+            substitui=anterior,
+        )
+
+        self.assertEqual(vigente.status, StatusBalanco.PUBLICADO)
+        self.assertEqual(
+            BalancoMensal.objects.filter(competencia=AGOSTO).count(), 2
+        )
+
+    def test_estados_tecnicos_independentes_dos_funcionais(self):
+        """Ler o arquivo não aprova o mês, e aprovar não depende da leitura."""
         balanco = criar_balanco(self.condominio_a, self.gestao)
-        balanco.validado_em = balanco.criado_em
-        with self.assertRaises(ValidationError) as erro:
-            balanco.full_clean()
-        self.assertIn("validado_em", erro.exception.error_dict)
+        balanco.status_processamento = ProcessamentoBalanco.ERRO
+        balanco.save(update_fields=["status_processamento"])
+        balanco.refresh_from_db()
+
+        self.assertEqual(balanco.status_processamento, ProcessamentoBalanco.ERRO)
+        self.assertEqual(balanco.status, StatusBalanco.VALIDADO)
+        balanco.full_clean()
 
 
 class DadosTests(BaseBalancoTests):

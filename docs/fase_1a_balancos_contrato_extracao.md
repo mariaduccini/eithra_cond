@@ -82,7 +82,7 @@ Carrega o tipo (operacional vs beneficiário) apenas como rótulo de extração.
 ### 3.9 `Inconsistencia`
 
 Tipo + severidade + descrição humana + referência ao ponto (lançamento/bloco) +
-`Provenance`. É a base da revisão por exceção.
+`Provenance`. É a base da conferência por exceção.
 
 ### 3.10 `BalanceteExtraido` (raiz da extração)
 
@@ -97,11 +97,11 @@ Confiança é **interna**. Nunca é exibida como score ao usuário; vira frase h
 
 | Nível | Significado | Consequência |
 | --- | --- | --- |
-| `ALTA` | Campo lido com clareza e coerente | Segue sem revisão |
+| `ALTA` | Campo lido com clareza e coerente | Segue sem exigir conferência |
 | `MEDIA` | Lido, mas ambíguo ou parcialmente inferido | Vira pendência leve |
 | `BAIXA` | Duplo sentido, ilegível ou ausente | Vira exceção obrigatória |
 
-## 5. Tipos de inconsistência (base da revisão por exceção)
+## 5. Tipos de inconsistência (base da conferência por exceção)
 
 - divergência matemática (total ≠ somatório);
 - total de despesas ≠ soma dos lançamentos;

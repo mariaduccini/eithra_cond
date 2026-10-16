@@ -37,48 +37,54 @@ Regra dura: **inferência nunca é salva silenciosamente como fato confirmado.**
 
 ## 3. Estados do balanço
 
-Proposta: **separar estado funcional de estado técnico de processamento**, em vez de
-um único enum com 9 valores.
+> **Revisado na Fase 1B.** A etapa funcional `EM_REVISAO` foi removida por
+> decisão de produto: a V3 inicial não possui workflow formal de revisão. O
+> resultado da leitura é apresentado à gestão e a gestão **confirma a
+> importação**; não havendo confirmação, nada é gravado. Ver
+> `fase_1b_balancos_implementacao.md` §4 e `v3_decisoes_arquiteturais.md` (C2).
 
-### 3.1 Estado funcional (o que a gestão vê)
+Proposta: **separar situação funcional de estado técnico de processamento**, em
+vez de um único enum com 9 valores.
+
+### 3.1 Situação funcional (o que a gestão vê)
 
 ```
-IMPORTADO  →  EM_REVISAO  →  VALIDADO  →  PUBLICADO
-                    ↓            │
-                  ERRO           └→  SUBSTITUIDO  (quando chega versão corrigida)
+confirmação da gestão  →  VALIDADO  →  PUBLICADO
+                              │            │
+                              └────────────┴→  SUBSTITUIDO
+                                               (chegou versão corrigida)
 ```
 
-| Estado | Significado para a gestão |
+| Situação | Significado para a gestão |
 | --- | --- |
-| `IMPORTADO` | Documento recebido e preservado; ainda não interpretado. |
-| `EM_REVISAO` | Interpretado; existem pontos que pedem olhar humano. |
-| `VALIDADO` | Confirmado por pessoa; é a versão oficial da competência. |
+| `VALIDADO` | Confirmado por pessoa; é a versão vigente da competência. |
 | `PUBLICADO` | Resumo aprovado e disponibilizado aos moradores. |
-| `SUBSTITUIDO` | Deixou de ser oficial porque chegou uma versão corrigida. |
-| `ERRO` | Não foi possível interpretar (documento ilegível, formato não suportado). |
+| `SUBSTITUIDO` | Deixou de ser vigente porque chegou uma versão corrigida. |
 
 ### 3.2 Estado técnico de processamento (interno, não exibido como rótulo técnico)
 
 ```
 PENDENTE  →  PROCESSANDO  →  CONCLUIDO
                      ↓
-                   FALHOU
+                    ERRO
 ```
 
 Isso evita "excesso de status" e separa o que é linguagem humana do que é
 mecânica interna. A interface traduz o estado técnico em frase simples
 (ex.: "Interpretando o documento…", "Não foi possível ler este documento.").
+Falha de leitura não muda a situação do mês nem substitui a confirmação humana.
 
 ## 4. Versionamento e substituição
 
 Cenário canônico:
 
 ```
-Agosto importado (v1)  →  validado
+Agosto confirmado (v1)  →  validado
 Administradora envia PDF corrigido
-  →  novo registro v2, ligado à v1 (substitui = v1)
-  →  v1 passa a SUBSTITUIDO (preservada, nunca sobrescrita)
-  →  v2 nasce em IMPORTADO
+  →  documento processado e apresentado sem invalidar a v1
+  →  confirmação da substituição (transação atômica):
+     v1 passa a SUBSTITUIDO (preservada, nunca sobrescrita)
+     v2 nasce VALIDADO, ligada à v1 (substitui = v1)
 ```
 
 Preserva-se sempre:

@@ -5,12 +5,11 @@ from django.db import models
 class StatusBalanco(models.TextChoices):
     """Situação funcional do balanço: o que a gestão vê e decide.
 
-    Não há estado de rascunho nem de erro aqui: um balanço só existe depois de
-    importado, e falha de leitura é assunto de processamento, não da situação
-    financeira do mês.
+    Não há estado de rascunho, de revisão nem de erro aqui: o balanço passa a
+    existir quando a gestão confirma a importação, e falha de leitura é assunto
+    de processamento, não da situação financeira do mês.
     """
 
-    EM_REVISAO = "em_revisao", "Em revisão"
     VALIDADO = "validado", "Validado"
     PUBLICADO = "publicado", "Publicado aos moradores"
     SUBSTITUIDO = "substituido", "Substituído por versão corrigida"

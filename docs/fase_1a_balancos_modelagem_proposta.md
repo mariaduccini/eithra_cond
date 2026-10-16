@@ -43,8 +43,8 @@ Representa um mês de um condomínio em uma versão.
 | `versao` | inteiro | Começa em 1; incrementa na substituição. |
 | `substitui` | FK para si | Versão anterior, quando houver. |
 | `motivo_substituicao` | texto | Quando aplicável. |
-| `estado_funcional` | escolha | `IMPORTADO`, `EM_REVISAO`, `VALIDADO`, `PUBLICADO`, `SUBSTITUIDO`, `ERRO`. |
-| `estado_processamento` | escolha | `PENDENTE`, `PROCESSANDO`, `CONCLUIDO`, `FALHOU` (interno). |
+| `situacao_funcional` | escolha | `VALIDADO`, `PUBLICADO`, `SUBSTITUIDO`. Revisado na Fase 1B: sem `EM_REVISAO`, pois não há workflow formal de revisão. |
+| `estado_processamento` | escolha | `PENDENTE`, `PROCESSANDO`, `CONCLUIDO`, `ERRO` (interno). |
 | `formato_documento` | escolha | `ATUAL_CANONICO`, `LEGADO`. |
 | `documento` | FK | Documento original (ver 3.2). |
 | `dados_extraidos` | JSON tipado | Saída da extração (com provenance e confidence). |

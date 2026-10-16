@@ -3,6 +3,10 @@
 > Registro do que foi efetivamente implementado nesta fase: models mínimos,
 > migration, constraints, validações e testes. Nenhum upload, storage, parser,
 > OCR, IA, tela ou publicação foi implementado.
+>
+> Ajuste de escopo aplicado durante a fase: **não existe etapa funcional de
+> revisão**. A situação `EM_REVISAO` foi removida em vez de substituída por
+> outro estado, e o ciclo ficou reduzido a confirmação, validação e publicação.
 
 ## 1. Escopo entregue
 
@@ -29,7 +33,7 @@ obra ou orçamento.
 | `competencia` | DateField | **Sempre o primeiro dia do mês.** |
 | `versao` | PositiveIntegerField (default 1) | Versão do mês. |
 | `substitui` | self-FK PROTECT, opcional | Versão anterior do mesmo mês. |
-| `status` | CharField(choices `StatusBalanco`) | Situação funcional. |
+| `status` | CharField(choices `StatusBalanco`, default `validado`) | Situação funcional. |
 | `status_processamento` | CharField(choices `ProcessamentoBalanco`) | Estado técnico. |
 | `layout_detectado` | CharField(choices `LayoutBalanco`) | Origem do arquivo. |
 | `schema_versao` | PositiveIntegerField (default 1) | Contrato do JSON. |
@@ -39,8 +43,8 @@ obra ou orçamento.
 | `resumo` | JSONField (dict) | Somente agregados úteis. |
 | `criado_por` | FK `AUTH_USER_MODEL` PROTECT | Autor da entrada. |
 | `criado_em` / `atualizado_em` | DateTimeField | Automáticos. |
-| `validado_por` | FK `AUTH_USER_MODEL` SET_NULL, opcional | Quem validou. |
-| `validado_em` | DateTimeField, opcional | Quando validou. |
+| `validado_por` | FK `AUTH_USER_MODEL` SET_NULL, opcional | Quem confirmou. |
+| `validado_em` | DateTimeField, opcional | Quando confirmou. |
 
 Ordenação padrão: `-competencia`, `-versao`.
 
@@ -76,27 +80,41 @@ arquivo no filesystem local.
 - `User` 1 — N `BalancoMensal` (criação) e 1 — N (validação, opcional).
 - `User` 1 — N `DocumentoBalanco` (envio).
 
-## 4. Estado funcional × Estado técnico
+## 4. Ciclo funcional e estado técnico
 
-Separados de propósito: um diz o que o balanço **é** para a gestão; o outro diz
-onde está o **processamento** do arquivo.
+**Não existe workflow formal de revisão nesta fase.** O balanço não passa por
+fila, pendência, aprovação em etapas, revisor ou tela de revisão. O ciclo
+aprovado é:
 
-**Funcional** (`StatusBalanco`):
+```
+PDF → processamento → resultado apresentado à gestão
+    → confirmação da importação → VALIDADO → publicação opcional → PUBLICADO
+```
 
-- `em_revisao` — Em revisão (padrão)
-- `validado` — Validado
+Por isso o registro `BalancoMensal` representa o balanço **já confirmado**: ele
+passa a existir quando a gestão confirma a importação, com quem confirmou e
+quando.
+
+**Situação funcional** (`StatusBalanco`) — o que o mês é para a gestão:
+
+- `validado` — Validado (padrão)
 - `publicado` — Publicado aos moradores
 - `substituido` — Substituído por versão corrigida
 
-**Técnico** (`ProcessamentoBalanco`):
+Não há estado de rascunho nem etapa intermediária de revisão: a fase anterior à
+confirmação é assunto de processamento, não de situação financeira. `VALIDADO` ≠
+`PUBLICADO`: validar não publica.
+
+**Estado técnico** (`ProcessamentoBalanco`) — onde está a leitura do arquivo:
 
 - `pendente` — Pendente (padrão)
 - `processando` — Processando
 - `concluido` — Concluído
 - `erro` — Erro
 
-Não existe estado `RASCUNHO`: `EM_REVISAO` já cobre a fase anterior à validação.
-Estados técnicos não contaminam o estado funcional.
+Estados técnicos não contaminam a situação funcional: um arquivo com erro de
+leitura não muda a situação do mês, e um mês validado não depende de a leitura
+ter terminado.
 
 `LayoutBalanco`: `desconhecido` (padrão), `atual_canonico`, `legado`. É
 informação de entrada, não define a estrutura do model e não gera models
@@ -113,23 +131,30 @@ Garantia em duas camadas:
 - `CheckConstraint` `balanco_competencia_no_primeiro_dia` (`competencia__day=1`)
   impede a persistência mesmo quando `clean()` é ignorado.
 
-## 6. Versionamento e versão canônica
+## 6. Versionamento e versão vigente
 
 O mesmo mês pode ter várias versões. Ao corrigir, cria-se uma nova versão que
 substitui a anterior; a anterior permanece, marcada como `substituido`. Nada é
 sobrescrito.
 
-A versão **em vigor** é derivada, sem campo redundante:
+A versão **vigente** é derivada, sem campo redundante:
 
 - `balanco_unico_por_competencia_e_versao` — impede duplicar a mesma versão;
 - `balanco_em_vigor_unico_por_competencia` — `UniqueConstraint` **condicional**
-  (`condition=~Q(status=SUBSTITUIDO)`): no máximo um balanço em vigor por
+  (`condition=~Q(status=SUBSTITUIDO)`): no máximo um balanço vigente por
   (condomínio, competência).
 
-Assim, "qual versão é a atual" é sempre `status != substituido`, e é impossível
-existirem duas versões atuais ao mesmo tempo. A decisão de §8 do spec
-("evitar campo redundante se isso puder ser derivado com segurança") foi
-atendida sem criar `eh_atual`.
+`VALIDADO` e `PUBLICADO` são versão vigente; `SUBSTITUIDO` não é. Assim, "qual
+versão é a atual" é sempre `status != substituido`, e é impossível existirem
+duas versões vigentes ao mesmo tempo. A decisão de §8 do spec ("evitar campo
+redundante se isso puder ser derivado com segurança") foi atendida sem criar
+`eh_atual`.
+
+A substituição é **atômica** e acontece na confirmação: o documento corrigido é
+processado e apresentado sem invalidar o balanço anterior; somente ao confirmar
+a substituição, a versão anterior vira `substituido` e a nova entra como
+`validado`. Enquanto não há upload nem importação, não existe service de
+substituição — apenas a modelagem que a torna possível.
 
 `_erros_de_substituicao()` em `clean()` recusa:
 
@@ -183,8 +208,7 @@ Todas em `clean()` / `validators` / `constraints` — nenhuma lógica pesada em
 - competência no primeiro dia do mês;
 - versão ≥ 1;
 - coerência da substituição (§6);
-- `validado_em` e `validado_por` obrigatórios em `validado`/`publicado`;
-- `validado_em` proibido em `em_revisao`.
+- `validado_em` e `validado_por` obrigatórios em `validado`/`publicado`.
 
 **`DocumentoBalanco`**
 
@@ -288,19 +312,27 @@ dado real.
 
 Cobertura das 24 exigências da §32 do spec: criação válida, competência
 normalizada, competência inválida (domínio e banco), versão inicial, versão
-inválida, versões 1 e 2 coexistindo, duplicidade de versão, versão em vigor
-única, substituição no mesmo condomínio, outro condomínio, outra competência,
-auto-substituição, estados funcionais, estados de processamento, três layouts,
+inválida, versões 1 e 2 coexistindo, duplicidade de versão, versão vigente única,
+substituição no mesmo condomínio, outro condomínio, outra competência,
+auto-substituição, situações funcionais, estados de processamento, três layouts,
 `schema_versao`, separação extraído/validado, documento vinculado, hash
 persistido e formato do hash, unicidade do hash por balanço, unicidade do hash
 em balanços distintos, storage sem URL pública, isolamento por condomínio, FK
 com o modelo de pessoa do projeto, e preservação histórica (`PROTECT`/`SET_NULL`
 e bloqueio de remoção do condomínio).
 
+Cobertura do ciclo simplificado: um `validado` por competência, um `publicado`
+por competência, impossibilidade de duas versões vigentes simultâneas
+(`validado` + `publicado`), `substituido` + `validado` na mesma competência,
+`substituido` + `publicado` na mesma competência, histórico preservado, e
+estados técnicos independentes das situações funcionais.
+
 ## 16. Decisões adiadas (resumo)
 
 | Item | Situação | Motivo |
 | --- | --- | --- |
+| Workflow de revisão do balanço | Não criado | Decisão de produto: não há etapa formal de revisão. A gestão confirma a importação antes de torná-la válida. |
+| Service de substituição | Adiado | Sem upload/importação nesta fase; apenas a modelagem preparada. |
 | `EventoBalanco` | Adiado | Sem produtor de evento nesta fase. |
 | Upload e Supabase Storage | Adiado | Fora do escopo da 1B. |
 | Parser / OCR / Detector de layout | Adiado | Fora do escopo da 1B. |

@@ -23,7 +23,6 @@ Balanços (lista)
  │    ├─ Inconsistências
  │    ├─ Documento original
  │    └─ Histórico
- ├─ Revisar pendências          (página/modal, por exceção)
  ├─ Preparar resumo p/ moradores (página)
  └─ Publicar                    (confirmação)
 ```
@@ -37,7 +36,6 @@ fornecedores.
 | --- | --- |
 | **Balanços (lista)** | Todas as competências do condomínio, com situação e pendências |
 | **Detalhe do balanço** | Um balanço, com abas de leitura |
-| **Revisar pendências** | Fila de exceções, uma de cada vez |
 | **Preparar resumo para moradores** | Edição do texto aprovado e escolha do que publicar |
 | **Histórico** | Versões anteriores e eventos do balanço |
 
@@ -48,8 +46,8 @@ Competência | Receitas | Despesas | Saldo | Situação | Pendências | Ações
 ```
 
 - linha **clicável** (sem botão "Visualizar");
-- situação em **badge discreto**, com linguagem humana (ex.: "Em revisão",
-  "Validado", "Substituído");
+- situação em **badge discreto**, com linguagem humana (ex.: "Validado",
+  "Publicado aos moradores", "Substituído");
 - filtros **compactos** (competência, situação);
 - ações: 1–2 → ícones sem borda; 3+ → menu de três pontos.
 
@@ -80,10 +78,13 @@ nunca ícone.
 
 ## 6. Estados (linguagem humana)
 
-| Estado técnico | Frase na tela |
+> **Revisado na Fase 1B.** Não existe estado nem tela de revisão: a gestão
+> confirma a importação antes de o mês valer. Ver
+> `fase_1b_balancos_implementacao.md` §4.
+
+| Situação / estado técnico | Frase na tela |
 | --- | --- |
-| `IMPORTADO` + `PROCESSANDO` | "Interpretando o documento…" |
-| `EM_REVISAO` | "Em revisão — N pontos para conferir" |
+| `PENDENTE` + `PROCESSANDO` | "Interpretando o documento…" |
 | `VALIDADO` | "Validado" |
 | `PUBLICADO` | "Publicado aos moradores" |
 | `SUBSTITUIDO` | "Substituído por versão corrigida" |
@@ -91,13 +92,18 @@ nunca ícone.
 
 Nunca exibir JSON, payload, ID interno, nome de model, score ou detalhe de sistema.
 
-## 7. Revisão por exceção (experiência)
+## 7. Confirmação da importação (experiência)
 
-- a fila mostra **apenas** o que precisa de decisão;
-- cada item: o que é, por que apareceu, o que fazer;
-- se tudo consistir: **"Importação pronta para validação."** (sem digitação
+> **Revisado na Fase 1B.** Não há fila nem tela de revisão: o resultado da
+> leitura é apresentado uma vez e a gestão confirma a importação. Ver
+> `fase_1b_balancos_implementacao.md` §4.
+
+- a tela de confirmação mostra o resultado da leitura e destaca **apenas** o que
+  é excepcional;
+- cada exceção: o que é, por que apareceu, o que fazer;
+- se tudo consistir: **"Importação pronta para confirmação."** (sem digitação
   obrigatória);
-- a gestão valida com um gesto; corrigir é exceção, não regra.
+- a gestão confirma com um gesto; corrigir é exceção, não regra.
 
 ## 8. Detalhe do balanço — abas
 
@@ -128,9 +134,9 @@ Embora a gestão use desktop, o fluxo precisa ser utilizável no celular:
 grid desktop  →  cards compactos mobile
 ```
 
-- importação e revisão continuam operáveis em telas pequenas;
+- importação e confirmação continuam operáveis em telas pequenas;
 - **não** reproduzir tabelas largas; viram lista de cards;
-- foco em uma pendência por tela na revisão;
+- foco em uma exceção por vez na confirmação da importação;
 - coluna centralizada em telas maiores (~680–760 px) quando fizer sentido.
 
 ## 11. Conformidade visual

@@ -22,13 +22,18 @@ e comparação. Promoção a relacional individual somente quando houver necessi
 comprovada (operação/fornecedor/reconciliação). Justificativa completa em
 `fase_1a_balancos_modelagem_proposta.md` §4.
 
-### D4 — Separar estado funcional de estado técnico — PENDENTE
-Funcional: `IMPORTADO`, `EM_REVISAO`, `VALIDADO`, `PUBLICADO`, `SUBSTITUIDO`,
-`ERRO`. Técnico: `PENDENTE`, `PROCESSANDO`, `CONCLUIDO`, `FALHOU`.
+### D4 — Separar situação funcional de estado técnico — REVISADA na Fase 1B
+Situação funcional: `VALIDADO`, `PUBLICADO`, `SUBSTITUIDO`. Estado técnico:
+`PENDENTE`, `PROCESSANDO`, `CONCLUIDO`, `ERRO`.
+A etapa `EM_REVISAO` foi **removida** por decisão de produto: a V3 inicial não
+possui workflow formal de revisão. A gestão confirma a importação antes de
+torná-la válida. Ver `v3_decisoes_arquiteturais.md` (C2, C3).
 
-### D5 — Competência estruturada + unicidade condicional — PENDENTE
-Competência como `ano` + `mês` (não string solta). No máximo um balanço
-`VALIDADO`/`PUBLICADO` por (condomínio, competência). Versionamento por `versao`.
+### D5 — Competência estruturada + unicidade condicional — APROVADA na Fase 1B
+Competência como `DateField` no primeiro dia do mês (não string solta). No
+máximo uma versão **vigente** — `VALIDADO` ou `PUBLICADO` — por (condomínio,
+competência). Versionamento por `versao`. Ver `v3_decisoes_arquiteturais.md` (C1,
+C4).
 
 ### D6 — Versionar, nunca sobrescrever — APROVADA
 Substituição cria nova versão (`substitui` → anterior); a anterior vira
@@ -78,7 +83,7 @@ e o pacote `core/services/importador_financeiro/` (`dtos.py`, `detector_layout.p
 | --- | --- |
 | Pipeline em etapas pequenas com DTOs **imutáveis** (`dtos.py`: `Provenance`, `BalanceteExtraido`, `LancamentoDespesaExtraido`, `Inconsistencia`) | Já materializa a separação extraído × validado que o spec exige, com baixo acoplamento |
 | `Provenance` como objeto próprio | Atende diretamente à seção 7 |
-| `Inconsistencia` como base da revisão por exceção (`conciliacao.verificar_*`) | Atende à seção 17 sem exigir varredura humana |
+| `Inconsistencia` como base da conferência por exceção (`conciliacao.verificar_*`) | Atende à seção 17 sem exigir varredura humana |
 | `FornecedorCandidato` **não persistente** (`TipoFornecedorCandidato`, `matching_fornecedor`) | Exatamente o que a seção 14 pede |
 | `projecao_morador` + `garantir_privacidade` | Já separa a saída pública por projeção (seção 18) |
 | `preview` com contagem de pendências e destaques | Atende à seção 17 |
@@ -92,7 +97,7 @@ e o pacote `core/services/importador_financeiro/` (`dtos.py`, `detector_layout.p
 | Achado na V2 | Adaptação necessária | Motivo |
 | --- | --- | --- |
 | `competencia` como `CharField "MM/AAAA"` + regex | Competência **estruturada** (ano + mês) | Evitar mês/ano em string solta (seção 9) |
-| `StatusBalancoMensalChoices` com 9 estados | Separar **funcional** (6) e **técnico** (4) | Evitar excesso de status (seção 10) |
+| `StatusBalancoMensalChoices` com 9 estados | Separar **funcional** (3) e **técnico** (4) | Evitar excesso de status (seção 10) |
 | `BalancoMensal.condominio` com `on_delete=CASCADE` | Preservar histórico (`PROTECT`/`SET_NULL`) | Regra de preservação histórica |
 | `arquivo_pdf = FileField` + `pdf_publico` booleano | Storage externo privado + chave + signed URL + classificação explícita | Seção 8 e privacidade |
 | Ausência de unicidade por competência | Constraint **condicional** (VALIDADO/PUBLICADO) | Seção 9 e 24 |
@@ -170,18 +175,20 @@ e o pacote `core/services/importador_financeiro/` (`dtos.py`, `detector_layout.p
     receitas/despesas, saldo, principais categorias, principais realizações,
     resumo aprovado, comparação simples.
 
-15. **Como será revisão por exceção?**
-    Fila de pendências priorizando divergências matemáticas, categoria ambígua,
-    fornecedor não identificado, valor duvidoso, lançamento incompleto,
-    duplicidade, conflito e baixa confiança. Consistente → "pronto para validação".
+15. **Como será a conferência por exceção?** — REVISADA na Fase 1B
+    Não há fila nem tela de revisão. Na confirmação da importação, o sistema
+    destaca apenas o que é excepcional: divergências matemáticas, categoria
+    ambígua, fornecedor não identificado, valor duvidoso, lançamento incompleto,
+    duplicidade, conflito e baixa confiança. Consistente → "pronto para
+    confirmação".
 
 16. **Qual fluxo de telas futuro?**
-    Balanços (lista) → Detalhe (abas) → Revisar pendências → Preparar resumo →
-    Publicar. Ver `fase_1a_balancos_ux.md`.
+    Balanços (lista) → Detalhe (abas) → confirmação da importação → Preparar
+    resumo → Publicar. Ver `fase_1a_balancos_ux.md`.
 
 17. **Quais componentes seriam páginas?**
-    Lista de balanços; detalhe do balanço; revisar pendências; preparar resumo para
-    moradores; histórico.
+    Lista de balanços; detalhe do balanço; preparar resumo para moradores;
+    histórico.
 
 18. **Quais seriam modais?**
     Importar balanço; resolver pendência; substituir versão; confirmar publicação;

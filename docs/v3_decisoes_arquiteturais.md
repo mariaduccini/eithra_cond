@@ -75,24 +75,34 @@ Sem `balanco_service.py` gigante; sem micro-serviços artificiais.
 Nunca string livre como `"08/2026"`. Garantida por `clean()` e pela constraint
 `balanco_competencia_no_primeiro_dia`.
 
-### C2 — Estado funcional separado do estado técnico — APROVADA
-`StatusBalanco` (funcional) e `ProcessamentoBalanco` (técnico) são campos
-distintos. `ERRO` nunca é estado funcional.
+### C2 — Sem workflow formal de revisão de balanço — APROVADA
+A V3 inicial não possui etapa de revisão. O ciclo é: o resultado da leitura é
+apresentado à gestão, a gestão **confirma a importação** e só então o mês passa
+a valer (`VALIDADO`); a publicação é opcional (`PUBLICADO`). Não há fila,
+pendência, aprovação em etapas, revisor, estado de revisão nem tela de revisão.
+Se surgir necessidade real, entra como nova decisão de produto.
 
-### C3 — Versão em vigor derivada, sem campo redundante — APROVADA
+### C3 — Situação funcional separada do estado técnico — APROVADA
+`StatusBalanco` (`validado`, `publicado`, `substituido`) e
+`ProcessamentoBalanco` (`pendente`, `processando`, `concluido`, `erro`) são
+campos distintos. `ERRO` nunca é situação funcional, e nenhum estado técnico
+substitui a confirmação humana.
+
+### C4 — Versão vigente derivada, sem campo redundante — APROVADA
+`VALIDADO` e `PUBLICADO` são versão vigente; `SUBSTITUIDO` não é.
 `UniqueConstraint` condicional (`~Q(status=SUBSTITUIDO)`) garante uma única
-versão em vigor por (condomínio, competência). Não se cria `eh_atual`.
+versão vigente por (condomínio, competência). Não se cria `eh_atual`.
 
-### C4 — Unicidade do `sha256` por balanço, não global — APROVADA
+### C5 — Unicidade do `sha256` por balanço, não global — APROVADA
 O mesmo arquivo pode existir legitimamente em contextos distintos. O índice
 `documento_sha256_idx` apenas apoia a descoberta de repetição.
 
-### C5 — `EventoBalanco` adiado — APROVADA
+### C6 — `EventoBalanco` adiado — APROVADA
 Não há produtor de evento nesta fase. Preferiu-se adiar a criar entidade
 genérica prematura. Os marcos atuais são cobertos por
 `criado_por`/`criado_em`, `validado_por`/`validado_em` e pela cadeia `substitui`.
 
-### C6 — `DocumentoBalanco` sem versionamento próprio — APROVADA
+### C7 — `DocumentoBalanco` sem versionamento próprio — APROVADA
 O versionamento de `BalancoMensal` já resolve o ciclo de vida: uma versão
 corrigida é um novo balanço, com os seus próprios documentos. `DocumentoBalanco`
 não tem versão própria nem `substitui`.
