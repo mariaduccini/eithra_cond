@@ -8,8 +8,20 @@ com um contrato pequeno — enviar, remover, gerar acesso temporário — e o
 provedor concreto fica atrás dele. Trocar de provedor no futuro não deve exigir
 mexer no domínio.
 
+Duas decisões de operação estão fixadas aqui:
+
+* **Tempo limite.** Toda conversa com o provedor passa por um único ponto, onde
+  o tempo máximo é aplicado. Não existe chamada sem limite.
+* **Sem repetição automática.** Não há retry genérico: repetir um envio sem
+  garantia de idempotência poderia criar um segundo objeto do mesmo arquivo, e
+  isso é pior do que falhar. A única repetição admitida é do caso já conhecido
+  como idempotente — o provedor dizer que o objeto existe, quando então o envio
+  é refeito substituindo. Qualquer outra falha é reportada de forma explícita.
+
 A credencial do provedor é usada somente aqui, no backend: não é registrada em
-log, não é gravada em banco e nunca chega ao navegador.
+log, não é gravada em banco e nunca chega ao navegador. As mensagens de erro
+falam do que aconteceu, nunca de cabeçalho, token, URL assinada ou corpo de
+resposta do provedor.
 """
 from __future__ import annotations
 
@@ -92,7 +104,22 @@ class SupabaseStorageProvider(StorageProvider):
         return cabecalhos
 
     @staticmethod
-    def _erro_de_rede(mensagem: str, erro: Exception) -> ErroDeStorage:
+    def _abrir(requisicao: urllib.request.Request):
+        """Abre a conversa com o provedor.
+
+        Existe para que o tempo limite não dependa de quem escreve a chamada:
+        ele é aplicado em um único lugar, e não existe conversa sem limite.
+        """
+        return urllib.request.urlopen(requisicao, timeout=TEMPO_LIMITE_SEGUNDOS)
+
+    @staticmethod
+    def _falha(mensagem: str) -> ErroDeStorage:
+        """Falha controlada, com a mensagem que a gestão lê.
+
+        O motivo original fica encadeado na exceção (``from``), para quem estiver
+        depurando, e não dentro da mensagem: é assim que cabeçalho, token ou
+        corpo do provedor ficam de fora do que é mostrado e registrado.
+        """
         return ErroDeStorage(mensagem)
 
     def _enviar_com(self, *, metodo: str, key: str, conteudo: bytes, content_type: str, extra: dict | None = None) -> None:
@@ -103,16 +130,14 @@ class SupabaseStorageProvider(StorageProvider):
             headers=self._cabecalhos(content_type=content_type, extra=extra),
         )
         try:
-            with urllib.request.urlopen(requisicao, timeout=TEMPO_LIMITE_SEGUNDOS):
+            with self._abrir(requisicao):
                 return
         except urllib.error.HTTPError as erro:
-            raise self._erro_de_rede(
-                "Não foi possível guardar o arquivo no armazenamento.", erro
+            raise self._falha(
+                "Não foi possível guardar o arquivo no armazenamento."
             ) from erro
         except (urllib.error.URLError, TimeoutError, OSError) as erro:
-            raise self._erro_de_rede(
-                "Não foi possível falar com o armazenamento.", erro
-            ) from erro
+            raise self._falha("Não foi possível falar com o armazenamento.") from erro
 
     # -- Contrato -----------------------------------------------------------
     def enviar(self, *, key: str, conteudo: bytes, content_type: str) -> None:
@@ -145,18 +170,16 @@ class SupabaseStorageProvider(StorageProvider):
             headers=self._cabecalhos(),
         )
         try:
-            with urllib.request.urlopen(requisicao, timeout=TEMPO_LIMITE_SEGUNDOS):
+            with self._abrir(requisicao):
                 return
         except urllib.error.HTTPError as erro:
             if erro.code == 404:
                 return
-            raise self._erro_de_rede(
-                "Não foi possível remover o arquivo do armazenamento.", erro
+            raise self._falha(
+                "Não foi possível remover o arquivo do armazenamento."
             ) from erro
         except (urllib.error.URLError, TimeoutError, OSError) as erro:
-            raise self._erro_de_rede(
-                "Não foi possível falar com o armazenamento.", erro
-            ) from erro
+            raise self._falha("Não foi possível falar com o armazenamento.") from erro
 
     def url_assinada(self, *, key: str, validade_segundos: int) -> str:
         seguro = urllib.parse.quote(key, safe="/")
@@ -167,16 +190,14 @@ class SupabaseStorageProvider(StorageProvider):
             headers=self._cabecalhos(content_type="application/json"),
         )
         try:
-            with urllib.request.urlopen(requisicao, timeout=TEMPO_LIMITE_SEGUNDOS) as resposta:
+            with self._abrir(requisicao) as resposta:
                 corpo = json.loads(resposta.read() or b"{}")
         except urllib.error.HTTPError as erro:
-            raise self._erro_de_rede(
-                "Não foi possível gerar o acesso temporário ao arquivo.", erro
+            raise self._falha(
+                "Não foi possível gerar o acesso temporário ao arquivo."
             ) from erro
         except (urllib.error.URLError, TimeoutError, OSError) as erro:
-            raise self._erro_de_rede(
-                "Não foi possível falar com o armazenamento.", erro
-            ) from erro
+            raise self._falha("Não foi possível falar com o armazenamento.") from erro
         except json.JSONDecodeError as erro:
             raise ErroDeStorage(
                 "O armazenamento respondeu de forma inesperada."

@@ -224,6 +224,96 @@ class UploadTests(BaseTelasTests):
         )
 
 
+class MenuContextualTests(BaseTelasTests):
+    """O item administrativo aparece só para quem pode usá-lo.
+
+    Isto é navegação, não segurança: o item existe para não oferecer um caminho
+    que terminaria em 404. Quem protege a tela continua sendo a view.
+    """
+
+    def _menu(self, usuario):
+        """Devolve os rótulos do menu como a pessoa os vê."""
+        self.client.force_login(usuario)
+        resposta = self.client.get(reverse("core:home"))
+        return [item["label"] for item in resposta.context["navigation"]]
+
+    def test_aparece_para_sindica(self):
+        self.assertIn("Balanços", self._menu(self.sindica))
+
+    def test_aparece_para_administracao(self):
+        self.assertIn("Balanços", self._menu(self.admin))
+
+    def test_nao_aparece_para_morador(self):
+        self.assertNotIn("Balanços", self._menu(self.morador))
+
+    def test_nao_aparece_para_porteiro(self):
+        self.assertNotIn("Balanços", self._menu(self.porteiro))
+
+    def test_nao_aparece_para_operacional(self):
+        self.assertNotIn("Balanços", self._menu(self.operacional))
+
+    def test_nao_aparece_para_supervisora(self):
+        self.assertNotIn("Balanços", self._menu(self.supervisora))
+
+    def test_nao_aparece_sem_vinculo(self):
+        self.assertNotIn("Balanços", self._menu(self.sem_vinculo))
+
+    def test_nao_aparece_com_vinculo_inativo(self):
+        criar_vinculo(self.morador, self.condominio_b, Papel.ADMIN, ativo=False)
+        self.assertNotIn("Balanços", self._menu(self.morador))
+
+    def test_nunca_aparece_em_condominio_sem_papel_autorizado(self):
+        """O papel conta no condomínio em que é exercido."""
+        so_morador = criar_pessoa("so-morador@exemplo.com.br", "Só Morador")
+        criar_vinculo(so_morador, self.condominio_b, Papel.MORADOR)
+        self.assertNotIn("Balanços", self._menu(so_morador))
+
+    def test_painel_continua_visivel_para_todos(self):
+        """O menu contextual não esvazia a navegação de ninguém."""
+        self.assertEqual(self._menu(self.morador), ["Painel"])
+        self.assertIn("Painel", self._menu(self.sindica))
+
+    def test_menu_pergunta_ao_dominio(self):
+        """Não existe lista de papéis paralela: a regra é a mesma do backend."""
+        from apps.balancos import permissoes
+
+        self.assertTrue(permissoes.pode_importar_em_algum_condominio(self.sindica))
+        self.assertTrue(permissoes.pode_importar_em_algum_condominio(self.admin))
+        self.assertFalse(permissoes.pode_importar_em_algum_condominio(self.morador))
+        self.assertFalse(permissoes.pode_importar_em_algum_condominio(self.porteiro))
+        self.assertFalse(permissoes.pode_importar_em_algum_condominio(self.operacional))
+        self.assertFalse(permissoes.pode_importar_em_algum_condominio(self.supervisora))
+        self.assertFalse(permissoes.pode_importar_em_algum_condominio(self.sem_vinculo))
+
+    def test_esconder_o_menu_nao_desprotege_a_tela(self):
+        """Sem o item, a rota continua negando quem não pode."""
+        with patch("apps.core.context_processors.NAVIGATION", []):
+            self.client.force_login(self.morador)
+            resposta = self.client.get(reverse("balancos:importacoes"))
+            self.assertEqual(resposta.status_code, 404)
+
+    def test_esconder_o_menu_nao_impede_quem_pode(self):
+        """Sem o item, quem tem autorização continua entrando pela rota."""
+        with patch("apps.core.context_processors.NAVIGATION", []):
+            self.client.force_login(self.sindica)
+            resposta = self.client.get(reverse("balancos:importacoes"))
+            self.assertEqual(resposta.status_code, 200)
+
+    def test_rota_administrativa_nao_e_do_morador(self):
+        """A rota é administrativa: o morador não a alcança por endereço direto."""
+        self.client.force_login(self.morador)
+        self.assertEqual(
+            self.client.get(reverse("balancos:importacoes")).status_code, 404
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("balancos:importar"),
+                {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+            ).status_code,
+            404,
+        )
+
+
 class ListagemTests(BaseTelasTests):
     """A listagem é de apoio: mostra o que chegou, e só do que é da pessoa."""
 

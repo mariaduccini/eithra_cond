@@ -19,9 +19,10 @@
 - `apps/balancos/permissoes.py` — quais papéis importam balanço.
 - `apps/balancos/forms.py`, `views.py`, `urls.py` — tela de entrada.
 - `templates/pages/balancos/importacoes.html` — tela Sneat + Bootstrap 5.
-- Item de menu **Balanços**.
+- Item de menu **Balanços**, contextual por papel.
 - Settings e `.env.example`.
-- Testes: 97 casos novos (147 em `apps.balancos`; 194 na suíte completa).
+- Testes: 97 casos novos na 1C, mais os de fechamento operacional (1C.1);
+  176 em `apps.balancos` + `apps.core`.
 - Nenhuma alteração em `BalancoMensal`, `DocumentoBalanco`, `User`,
   `Condominio`, `AcessoUsuarioCondominio`, na autorização centralizada, no
   PostgreSQL, no Sneat ou na identidade visual.
@@ -111,13 +112,35 @@ O PDF nunca fica no filesystem da aplicação e nunca é servido por URL públic
   obrigatórias faltarem, o envio é recusado informando **exatamente** quais
   variáveis faltam. Não há queda silenciosa para disco local.
 
-### 5.1 Bucket e ambientes
+### 5.1 Tempo limite e repetição
+
+- **Tempo limite**: toda conversa com o provedor passa por um único ponto
+  (`_abrir`), onde o limite de 30 s é aplicado. Não existe chamada sem limite —
+  a garantia é estrutural, não depende de quem escreve a chamada.
+- **Sem repetição automática**: não há retry genérico. Repetir um envio sem
+  garantia de idempotência poderia criar um segundo objeto do mesmo arquivo, o
+  que é pior do que falhar. A única repetição admitida é a do caso sabidamente
+  idempotente — o provedor informar que o objeto já existe, quando o envio é
+  refeito substituindo. Qualquer outra falha é reportada.
+- **Falhas tratadas**: tempo esgotado, conexão recusada, 4xx, 5xx e resposta
+  ilegível viram `ErroDeStorage` com mensagem para a gestão. Quando ausente é
+  tolerado: o `404` na remoção significa que o objeto já não existe.
+- **Nada de segredo na mensagem**: o motivo original fica encadeado na exceção
+  (para depuração) e não dentro do texto. Cabeçalho `Authorization`, `service
+  role key`, `DATABASE_URL`, URL assinada completa e corpo de resposta do
+  provedor não entram na mensagem nem em registro permanente.
+- **Sem registro de segredo**: não existe `logging` no domínio de balanços. O
+  que a pessoa vê é o estado da importação (`ERRO` com texto humano), não o
+  log do provedor.
+
+### 5.2 Bucket e ambientes
 
 Buckets separados por ambiente; nunca o mesmo bucket em DEV e PROD. Sugestão:
 `eithra-v3-balancos-dev`. DEV e PROD diferem pelo valor de
 `BALANCOS_STORAGE_BUCKET` e pelas credenciais, que ficam apenas no ambiente.
+O bucket é **privado**: não se torna público para facilitar teste.
 
-### 5.2 Object key
+### 5.3 Object key
 
 ```
 balancos/<condominio_uuid>/<importacao_uuid>/documento.pdf
@@ -182,7 +205,23 @@ O limite é configurável porque balanços reais podem ter muitas páginas — 5
 - Com mais de um condomínio elegível, a pessoa escolhe explicitamente. Com
   exatamente um, o campo continua sendo validado, mas não é pedido de novo.
   Não existe `.first()` nem suposição de condomínio único.
-- O menu **não** é controle de acesso.
+
+### 9.1 Navegação contextual
+
+O item **Balanços** é um módulo administrativo: aparece apenas para ADMIN e
+SINDICA. Quem não tem esse papel não vê o item — e, se chegar ao endereço por
+conta própria, continua recebendo 404.
+
+Isso é resolvido em um único lugar, `apps/core/context_processors.py`: cada item
+do menu pode declarar `visivel_para`, e a resposta vem de
+`pode_importar_em_algum_condominio` — a **mesma** função que a view usa. Não há
+lista de papéis paralela na navegação, nem `{% if user... %}` espalhado pelos
+templates.
+
+O menu **não** é controle de acesso. Ele existe para não oferecer um caminho que
+terminaria em 404; a autorização continua na view, testada com e sem o menu
+presente. A experiência do morador para balanços publicados é de outra fase e
+não foi criada aqui: esta rota é administrativa e não é dele.
 
 ## 10. Consistência entre banco e storage
 
@@ -223,7 +262,7 @@ foi usado. Fluxo executado: `makemigrations` → `migrate --plan` → `migrate`.
 
 ## 13. Testes
 
-97 casos novos, distribuídos em:
+97 casos novos na 1C, distribuídos em:
 
 - `tests/test_importacao_models.py` — registro, valores iniciais,
   recusa de URL persistida, desfechos exclusivos, repetição permitida;
@@ -231,13 +270,29 @@ foi usado. Fluxo executado: `makemigrations` → `migrate --plan` → `migrate`.
   chave sem dado sensível, duplicidade, falha de storage, acesso temporário,
   descarte;
 - `tests/test_storage.py` — contrato HTTP do provedor (envio, conflito,
-  remoção, acesso assinado) e escolha do provedor com falha explícita;
+  remoção, acesso assinado), tempo limite em toda chamada, falhas de rede e
+  ausência de credencial na mensagem, e escolha do provedor com falha explícita;
 - `tests/test_importacao_views.py` — entrada, papéis autorizados e não
   autorizados, isolamento entre condomínios, listagem, acesso ao arquivo,
-  descarte e ausência de segredo na resposta.
+  descarte, ausência de segredo na resposta e a navegação contextual.
+
+Fechamento operacional (1C.1) acrescentou regressão para: Balanços
+administrativo ausente para MORADOR, PORTEIRO, OPERACIONAL e SUPERVISORA;
+presente para ADMIN e SINDICA; ausente sem vínculo e com vínculo inativo;
+visibilidade decidida pelo domínio e não por lista paralela; proteção da rota
+inalterada com ou sem menu; tempo limite em envio, reenvio, remoção e acesso
+temporário; e mensagem de erro sem credencial.
 
 Todo o tráfego de storage nos testes passa por um provedor de mentira
 (`tests/apoio.py`). Nenhum teste unitário conversa com o Supabase real.
+
+## 13.1 Teste de falha
+
+O cenário de falha do provedor é exercitado com provedor de mentira programado
+para recusar o envio — sem tocar no bucket nem na configuração real. Verifica
+que a resposta não é de sucesso, que a importação fica em `ERRO` com texto
+humano, que nenhuma credencial aparece na resposta e que nenhum `BalancoMensal`
+é criado.
 
 ## 14. Teste integrado DEV
 
@@ -247,6 +302,19 @@ inventada e nenhum bucket público foi criado para contornar a falta. A validaç
 manual contra o bucket DEV real (envio, objeto no bucket, bucket privado,
 metadados persistidos, acesso público negado e acesso assinado funcionando)
 deve ser feita quando as três variáveis existirem.
+
+Checklist a executar quando o ambiente estiver completo:
+
+| Verificação | Como |
+| --- | --- |
+| Upload real | Enviar um PDF sintético pela tela, autenticado como ADMIN ou SINDICA. |
+| Objeto no bucket | Confirmar o objeto na chave `balancos/<condomínio>/<importação>/documento.pdf`. |
+| Bucket privado | Confirmar que o bucket não é público. |
+| Acesso anônimo negado | Buscar o objeto sem credencial e esperar recusa. |
+| Metadata no banco | Confirmar `sha256`, `tamanho_bytes`, `storage_key` e `status`. |
+| Importação coerente | `layout_detectado` desconhecido, `resultado_extraido` vazio. |
+| Nenhum balanço criado | `BalancoMensal.objects.count()` inalterado. |
+| Acesso temporário | Abrir pela tela e confirmar que funciona na validade e não é persistido. |
 
 ## 15. Retenção futura
 

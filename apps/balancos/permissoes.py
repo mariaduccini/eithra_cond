@@ -47,3 +47,14 @@ def pode_importar_balanco(usuario, condominio) -> bool:
         return False
 
     return condominios_para_importar(usuario).filter(pk=condominio.pk).exists()
+
+
+def pode_importar_em_algum_condominio(usuario) -> bool:
+    """Diz se a pessoa tem, agora, algum condomínio em que pode importar.
+
+    É a mesma pergunta que a tela responde, com a mesma regra — quem pergunta
+    é o menu, mas a resposta continua sendo do domínio. Assim não existem duas
+    listas de papéis, uma para a navegação e outra para o backend, que possam
+    divergir com o tempo.
+    """
+    return condominios_para_importar(usuario).exists()

@@ -12,6 +12,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings
 
 from apps.balancos.storage import (
+    TEMPO_LIMITE_SEGUNDOS,
     ErroDeStorage,
     SupabaseStorageProvider,
     obter_provider,
@@ -94,6 +95,84 @@ class EnvioTests(TestCase):
         urlopen.side_effect = conflito(500)
         with self.assertRaises(ErroDeStorage):
             self.provider.enviar(key="k/documento.pdf", conteudo=b"%PDF-", content_type="application/pdf")
+
+
+class TempoLimiteTests(TestCase):
+    """Nenhuma conversa com o provedor fica sem tempo máximo de espera."""
+
+    def setUp(self):
+        self.provider = criar_provider()
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_envio_tem_tempo_limite(self, urlopen):
+        urlopen.return_value = RespostaFalsa()
+        self.provider.enviar(
+            key="k/documento.pdf", conteudo=b"%PDF-", content_type="application/pdf"
+        )
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], TEMPO_LIMITE_SEGUNDOS)
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_reenvio_substituindo_tambem_tem_tempo_limite(self, urlopen):
+        urlopen.side_effect = [conflito(409), RespostaFalsa()]
+        self.provider.enviar(
+            key="k/documento.pdf", conteudo=b"%PDF-", content_type="application/pdf"
+        )
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], TEMPO_LIMITE_SEGUNDOS)
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_remocao_tem_tempo_limite(self, urlopen):
+        urlopen.return_value = RespostaFalsa()
+        self.provider.remover(key="k/documento.pdf")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], TEMPO_LIMITE_SEGUNDOS)
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_acesso_temporario_tem_tempo_limite(self, urlopen):
+        urlopen.return_value = RespostaFalsa(
+            json.dumps({"signedURL": "/object/sign/b/d.pdf"}).encode()
+        )
+        self.provider.url_assinada(key="k/documento.pdf", validade_segundos=60)
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], TEMPO_LIMITE_SEGUNDOS)
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_tempo_esgotado_vira_erro_de_storage_sem_vazar_a_chave(self, urlopen):
+        """Esperar demais é falha explícita, e a resposta continua limpa."""
+        urlopen.side_effect = TimeoutError("tempo esgotado")
+        with self.assertRaises(ErroDeStorage) as capturado:
+            self.provider.enviar(
+                key="k/documento.pdf", conteudo=b"%PDF-", content_type="application/pdf"
+            )
+        self.assertNotIn(CHAVE, str(capturado.exception))
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_conexao_recusada_vira_erro_de_storage(self, urlopen):
+        urlopen.side_effect = ConnectionRefusedError("conexão recusada")
+        with self.assertRaises(ErroDeStorage):
+            self.provider.remover(key="k/documento.pdf")
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_resposta_ilegivel_e_reportada_sem_o_corpo_do_provedor(self, urlopen):
+        """O que o provedor devolveu não é repassado: só o fato de não servir."""
+        urlopen.return_value = RespostaFalsa(b"nao e json")
+        with self.assertRaises(ErroDeStorage) as capturado:
+            self.provider.url_assinada(key="k/documento.pdf", validade_segundos=60)
+        self.assertNotIn("nao e json", str(capturado.exception))
+
+    @patch("apps.balancos.storage.urllib.request.urlopen")
+    def test_mensagem_de_erro_nunca_carrega_credencial_nem_cabecalho(self, urlopen):
+        for falha in (conflito(500), urllib.error.URLError("sem rede"), TimeoutError()):
+            with self.subTest(falha=type(falha).__name__):
+                urlopen.side_effect = falha
+                with self.assertRaises(ErroDeStorage) as capturado:
+                    self.provider.enviar(
+                        key="k/documento.pdf",
+                        conteudo=b"%PDF-",
+                        content_type="application/pdf",
+                    )
+                mensagem = str(capturado.exception)
+                self.assertNotIn(CHAVE, mensagem)
+                self.assertNotIn("Bearer", mensagem)
+                self.assertNotIn("Authorization", mensagem)
+                self.assertNotIn("apikey", mensagem)
 
 
 class RemocaoTests(TestCase):

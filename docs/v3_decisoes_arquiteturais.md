@@ -159,10 +159,28 @@ remoção do objeto é *best-effort*: o descarte não fica refém do storage.
 Nenhum endereço fixo: cada visita autorizada gera um acesso temporário
 (`BALANCOS_URL_ACESSO_SEGUNDOS`, 60 s por padrão). Nada é persistido.
 
+### D11 — Navegação contextual decidida pelo domínio — APROVADA
+O item administrativo de Balanços só é oferecido a quem pode usá-lo (ADMIN e
+SINDICA). A visibilidade não é uma segunda lista de papéis: o menu chama
+`pode_importar_em_algum_condominio`, a mesma regra que a view aplica. A decisão
+fica em `apps/core/context_processors.py`, em um item com `visivel_para` — nada
+de condição de papel espalhada pelos templates. Esconder o item é conveniência
+de navegação e **não** substitui a autorização: a rota continua respondendo 404
+a quem não pode, e continua respondendo 200 a quem pode, com ou sem menu.
+
+### D12 — Sem repetição automática de chamadas ao storage — APROVADA
+Não há retry genérico. Repetir um envio sem garantia de idempotência poderia
+criar um segundo objeto do mesmo arquivo — pior do que falhar. A única
+repetição admitida é a do caso sabidamente idempotente: o provedor informar que
+o objeto já existe, quando o envio é refeito substituindo. Qualquer outra falha
+é reportada de forma explícita. Toda conversa com o provedor passa por um único
+ponto, onde o tempo limite é aplicado — não existe chamada sem limite.
+
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 
 - Arquitetura de persistência dos lançamentos (relacional × JSON × híbrido).
 - Categorias publicáveis por padrão.
+- Experiência do morador para balanços publicados (não criar nesta fase).
 
 Referência: `docs/fase_1a_balancos_decisoes.md`,
 `docs/fase_1b_balancos_implementacao.md` e
