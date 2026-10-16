@@ -10,8 +10,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.balancos.constants import LayoutBalanco, StatusImportacao
+from apps.balancos.extrator_atual import extrair_balanco_atual
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
 from apps.balancos.tests.apoio import HASH_PDF, StorageDeMentira, criar_pessoa, criar_vinculo, pdf
+from apps.balancos.tests.test_extracao_atual import pdf_do_modelo_atual
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
@@ -443,4 +445,91 @@ class SegredoTests(BaseTelasTests):
             {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
             follow=True,
         )
+        self.assertNotContains(resposta, SEGREDO)
+
+
+class DetalheTests(BaseTelasTests):
+    """A tela de detalhe mostra o que foi lido — e só para quem pode conferir."""
+
+    def _importacao_lida(self, condominio=None, criado_por=None):
+        """Grava uma importação do modelo atual já com os dados financeiros lidos."""
+        importacao = self.importacao_em(
+            condominio or self.condominio_a, criado_por=criado_por
+        )
+        importacao.layout_detectado = LayoutBalanco.ATUAL_CANONICO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+        extrair_balanco_atual(importacao, conteudo=pdf_do_modelo_atual())
+        importacao.refresh_from_db()
+        return importacao
+
+    def _abrir(self, importacao, usuario):
+        self.client.force_login(usuario)
+        return self.client.get(reverse("balancos:detalhe", args=[importacao.pk]))
+
+    def test_exige_entrada(self):
+        importacao = self._importacao_lida()
+        resposta = self.client.get(reverse("balancos:detalhe", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+
+    def test_mostra_o_que_foi_lido(self):
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Dados lidos")
+        self.assertContains(resposta, "Agosto/2026")
+        self.assertContains(resposta, "R$ 50.000,00")
+        self.assertContains(resposta, "R$ 16.650,00")
+        self.assertContains(resposta, "Manutencao do Elevador LTDA")
+
+    def test_nao_cria_balanco_mensal(self):
+        importacao = self._importacao_lida()
+        self._abrir(importacao, self.sindica)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_nao_oferece_confirmacao_ainda(self):
+        """Confirmar é etapa futura: a tela não promete um botão que não existe."""
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao, self.sindica)
+        self.assertNotContains(resposta, "Confirmar")
+
+    def test_importacao_de_outro_condominio_e_negada(self):
+        importacao = self._importacao_lida(self.condominio_b, criado_por=self.admin)
+        resposta = self._abrir(importacao, self.sindica)
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_morador_nao_alcanca_o_detalhe(self):
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao, self.morador)
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_inexistente_e_negada(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:detalhe", args=[uuid.uuid4()]))
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_formato_nao_reconhecido_mostra_o_motivo_sem_dados(self):
+        importacao = self.importacao_em(self.condominio_a)
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "não foi possível reconhecer")
+        self.assertNotContains(resposta, "Dados lidos")
+
+    def test_formato_legado_aponta_para_a_leitura_futura(self):
+        importacao = self.importacao_em(self.condominio_a)
+        importacao.layout_detectado = LayoutBalanco.LEGADO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(
+            resposta,
+            "Este formato será processado pela leitura de documentos legados.",
+        )
+
+    @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)
+    def test_credencial_nao_aparece_no_detalhe(self):
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao, self.sindica)
         self.assertNotContains(resposta, SEGREDO)

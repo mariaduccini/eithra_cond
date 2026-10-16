@@ -1,0 +1,276 @@
+{% extends "layouts/app.html" %}
+
+{# O que o Eithra entendeu do balanço, para a gestão conferir.
+
+   A tela não oficializa nada: mostra os dados lidos e os pontos que merecem
+   atenção. Não há botão de confirmação — confirmar o balanço é etapa futura.
+   O arquivo continua a um toque, por acesso temporário. #}
+
+{% block title %}{{ importacao.nome_original }} · Balanços · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'balancos:importacoes' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Balanços
+      </a>
+      <h1 class="h4 mb-1">{{ importacao.nome_original }}</h1>
+      <p class="text-body-secondary mb-0">
+        {{ importacao.condominio.nome }}{% if competencia %} · {{ competencia }}{% endif %}
+      </p>
+    </div>
+
+    {% if importacao.storage_key %}
+      <a class="btn btn-label-secondary" href="{% url 'balancos:arquivo' importacao.pk %}">
+        <i class="bx bx-file me-1" aria-hidden="true"></i> Ver o arquivo
+      </a>
+    {% endif %}
+  </div>
+
+  {% if lido %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <h2 class="h5 mb-1">
+          Dados lidos{% if resumo.pontos %} · {{ resumo.pontos }} ponto{{ resumo.pontos|pluralize }} precisa{{ resumo.pontos|pluralize:",m" }} de atenção{% endif %}
+        </h2>
+        <p class="text-body-secondary mb-4">
+          {% if competencia %}Competência de {{ competencia }}.{% endif %}
+          {{ resumo.receitas }} receita{{ resumo.receitas|pluralize }} e {{ resumo.despesas }} despesa{{ resumo.despesas|pluralize }} identificadas.
+        </p>
+
+        <div class="row g-3">
+          <div class="col-6 col-lg-3">
+            <div class="text-body-secondary small">Receitas</div>
+            <div class="h6 mb-0">{{ totais.receitas|default:"—" }}</div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="text-body-secondary small">Despesas</div>
+            <div class="h6 mb-0">{{ totais.despesas|default:"—" }}</div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="text-body-secondary small">Saldo anterior</div>
+            <div class="h6 mb-0">{{ totais.saldo_anterior|default:"—" }}</div>
+          </div>
+          <div class="col-6 col-lg-3">
+            <div class="text-body-secondary small">Saldo final</div>
+            <div class="h6 mb-0">{{ totais.saldo_final|default:"—" }}</div>
+          </div>
+        </div>
+
+        {% if despesas %}
+          <hr class="my-4">
+          <div class="row g-3">
+            <div class="col-6 col-lg-4">
+              <div class="text-body-secondary small">Despesas recorrentes</div>
+              <div class="h6 mb-0">{{ resumo.recorrente|default:"—" }}</div>
+            </div>
+            <div class="col-6 col-lg-4">
+              <div class="text-body-secondary small">Despesas extraordinárias</div>
+              <div class="h6 mb-0">{{ resumo.extraordinaria|default:"—" }}</div>
+            </div>
+            {% if tem_a_confirmar %}
+              <div class="col-6 col-lg-4">
+                <div class="text-body-secondary small">A confirmar</div>
+                <div class="h6 mb-0">{{ resumo.a_confirmar|default:"—" }}</div>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if resumo.principais %}
+            <div class="mt-4">
+              <div class="text-body-secondary small mb-2">Principais categorias</div>
+              <div class="d-flex flex-wrap gap-2">
+                {% for categoria in resumo.principais %}
+                  <span class="badge bg-label-primary">{{ categoria }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if despesas %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Despesas</h2>
+        </div>
+
+        <div class="table-responsive d-none d-md-block">
+          <table class="table align-middle mb-0">
+            <caption class="visually-hidden">Despesas lidas do balanço</caption>
+            <thead>
+              <tr>
+                <th scope="col">Data</th>
+                <th scope="col">Descrição</th>
+                <th scope="col">Categoria</th>
+                <th scope="col">Natureza</th>
+                <th scope="col" class="text-end">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for despesa in despesas %}
+                <tr>
+                  <td class="text-nowrap text-body-secondary">{{ despesa.data|default:"—" }}</td>
+                  <td>
+                    <div>{{ despesa.descricao }}</div>
+                    {% if despesa.fornecedor %}
+                      <div class="text-body-secondary small">{{ despesa.fornecedor }}</div>
+                    {% endif %}
+                    {% if despesa.documento or despesa.parcela %}
+                      <div class="text-body-secondary small">
+                        {% if despesa.documento %}Documento {{ despesa.documento }}{% endif %}
+                        {% if despesa.documento and despesa.parcela %} · {% endif %}
+                        {% if despesa.parcela %}Parcela {{ despesa.parcela }}{% endif %}
+                      </div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div>{{ despesa.categoria }}</div>
+                    {% if despesa.categoria_original and despesa.categoria_original != despesa.categoria %}
+                      <div class="text-body-secondary small">{{ despesa.categoria_original }}</div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
+                  </td>
+                  <td class="text-end text-nowrap fw-medium">{{ despesa.valor }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card-body d-md-none">
+          {% for despesa in despesas %}
+            <div class="{% if not forloop.last %}border-bottom pb-3 mb-3{% endif %}">
+              <div class="d-flex justify-content-between align-items-baseline gap-3">
+                <span class="text-body-secondary small">{{ despesa.data|default:"—" }}</span>
+                <span class="fw-medium">{{ despesa.valor }}</span>
+              </div>
+              <div class="mt-1">{{ despesa.descricao }}</div>
+              {% if despesa.fornecedor %}
+                <div class="text-body-secondary small">{{ despesa.fornecedor }}</div>
+              {% endif %}
+              <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
+                <span class="text-body-secondary small">{{ despesa.categoria }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if categorias %}
+        <div class="card mb-4">
+          <div class="card-header">
+            <h2 class="h6 mb-0">Despesas por categoria</h2>
+          </div>
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <caption class="visually-hidden">Total de despesas por categoria</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Categoria</th>
+                  <th scope="col" class="text-end">Recorrente</th>
+                  <th scope="col" class="text-end">Extra</th>
+                  {% if tem_a_confirmar %}
+                    <th scope="col" class="text-end">A confirmar</th>
+                  {% endif %}
+                  <th scope="col" class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for categoria in categorias %}
+                  <tr>
+                    <td>
+                      {{ categoria.nome }}
+                      {% if categoria.quantidade %}
+                        <span class="text-body-secondary small">({{ categoria.quantidade }})</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">{{ categoria.recorrente }}</td>
+                    <td class="text-end text-nowrap">{{ categoria.extraordinaria }}</td>
+                    {% if tem_a_confirmar %}
+                      <td class="text-end text-nowrap">{{ categoria.a_confirmar }}</td>
+                    {% endif %}
+                    <td class="text-end text-nowrap fw-medium">{{ categoria.total }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+    {% endif %}
+
+    {% if receitas %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Receitas</h2>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <caption class="visually-hidden">Receitas lidas do balanço</caption>
+            <thead>
+              <tr>
+                <th scope="col">Data</th>
+                <th scope="col">Descrição</th>
+                <th scope="col">Origem</th>
+                <th scope="col" class="text-end">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for receita in receitas %}
+                <tr>
+                  <td class="text-nowrap text-body-secondary">{{ receita.data|default:"—" }}</td>
+                  <td>{{ receita.descricao }}</td>
+                  <td class="text-body-secondary">{{ receita.origem|default:"—" }}</td>
+                  <td class="text-end text-nowrap fw-medium">{{ receita.valor }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if saldos %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Saldos por conta</h2>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for saldo in saldos %}
+            <li class="list-group-item d-flex justify-content-between align-items-center gap-3">
+              <span>{{ saldo.identificacao }}</span>
+              <span class="fw-medium">{{ saldo.valor }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    {% if pendencias %}
+      <div class="card">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Pontos de atenção</h2>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for pendencia in pendencias %}
+            <li class="list-group-item">
+              <span class="badge bg-label-{{ pendencia.tom }} mb-2">{{ pendencia.titulo }}</span>
+              <p class="mb-0">{{ pendencia.mensagem }}</p>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="card">
+      {% include "components/state.html" with state_icon="bx-info-circle" state_title="Leitura não disponível" state_message=motivo_recusa state_tone=motivo_tom %}
+    </div>
+  {% endif %}
+{% endblock %}

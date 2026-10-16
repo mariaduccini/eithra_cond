@@ -218,6 +218,83 @@ PDF parcial é classificado quando a abertura traz evidência estrutural
 suficiente; sem ela, o resultado permanece `DESCONHECIDO`. Não entram OCR nem
 IA, `resultado_extraido` continua `{}` e nenhum `BalancoMensal` é criado.
 
+## Fase 1E — Extração financeira do modelo atual
+
+### E1 — Contrato de leitura versionado — APROVADA
+O resultado da extração é o contrato tipado `BalancoExtraidoV1`
+(`SCHEMA_VERSAO = 1`), com dataclasses imutáveis, e não um dicionário solto. O
+contrato é independente do layout visual de qualquer administradora. Quando o
+formato dos dados mudar de forma incompatível, a versão muda e o resultado
+antigo continua legível pelo seu próprio contrato.
+
+### E2 — Extração reaproveita o PDF já recebido — APROVADA
+A leitura roda sobre o mesmo arquivo privado do recebimento, reaproveitando o
+caminho de download já homologado na Fase 1D. Quando quem chama já tem o
+conteúdo em mãos (o caminho do upload tem), ele é passado e evita um segundo
+acesso ao storage. Não há segunda implementação do acesso ao PDF.
+
+### E3 — A categoria original nunca é substituída — APROVADA
+O agrupamento do documento é preservado ao lado da categoria do Eithra
+(`categoria_original` + `categoria_eithra`). Considera-se primeiro o que a
+administradora já classificou; sem ele, a descrição decide. Sem evidência
+textual, a resposta é `NAO_CLASSIFICADO` ("A classificar"), que é uma resposta
+legítima e não um erro. A comparação exige palavra inteira: a classificação
+errada é pior do que a ausência de classificação.
+
+### E4 — Natureza é comportamento, não valor — APROVADA
+`RECORRENTE_FIXA`, `RECORRENTE_VARIAVEL`, `EXTRAORDINARIA` e `NAO_DETERMINADA`
+(na tela: "Recorrente", "Recorrente variável", "Extra", "A confirmar").
+Recorrência não se confunde com variação do valor: uma conta de energia é
+recorrente e varia; a troca de uma peça é extraordinária mesmo repetida. Quem é
+recorrente é a despesa, não quem a presta. Sinais contraditórios resultam em
+`NAO_DETERMINADA` — a dúvida honesta vale mais que a certeza inventada.
+
+### E5 — Conferência por exceção, com tolerância de arredondamento — APROVADA
+A validação financeira é determinística e opera sobre o contrato já montado, sem
+relê o PDF. Só se aponta o que se pode afirmar: quando o documento não declara um
+total, ou a estrutura contábil não descreve a equação simples (várias contas,
+fundos), **nada é apontado** — silêncio é resultado válido. Diferenças são
+toleradas até `TOLERANCIA = 0.05`, porque cada linha já foi arredondada ao
+centavo; transformar resíduo de arredondamento em aviso treinaria a gestão a
+ignorar os avisos.
+
+### E6 — Dinheiro é texto decimal, nunca `float` — APROVADA
+Valores viajam como `Decimal` convertido em texto e chegam ao JSON como string.
+Um centavo perdido em arredondamento binário apareceria depois como divergência
+de total e a conferência perderia sentido.
+
+### E7 — Ausência é ausência — APROVADA
+Campo que o documento não traz fica `None`. Não se estima, não se completa por
+suposição e não se converte inferência em fato. Quando a leitura encontra algo
+duvidoso, ela cria um ponto de atenção em vez de inventar uma certeza.
+
+### E8 — Extensão sem migration — APROVADA
+O resultado é gravado nos campos já existentes de `ImportacaoBalanco`
+(`resultado_extraido`, `inconsistencias`, `schema_versao`). Nenhuma migration é
+criada nesta fase. As evidências técnicas continuam fora do banco (ver D14).
+
+### E9 — Inadimplência apenas em agregado — APROVADA
+O contrato carrega inadimplência do mês somente em total (valor, percentual,
+quantidade). Nenhum dado por unidade entra no contrato — é o total do condomínio
+que a gestão acompanha aqui.
+
+### E10 — Nenhum `BalancoMensal` nasce na leitura — APROVADA
+A importação continua sendo o objeto transitório. A leitura não confirma, não
+publica e não cria o mês: o mês só passa a valer com a confirmação da gestão, em
+fase futura.
+
+### E11 — Sem ação de confirmação nesta fase — APROVADA
+A tela de detalhe apresenta o que foi lido e os pontos de atenção, mas **não**
+oferece botão de confirmação. Não se cria CTA falso para uma ação que ainda não
+existe.
+
+### E12 — Linguagem humana na tela, nada de termo técnico — APROVADA
+Nenhum código, `score`, nome de campo ou detalhe de sistema é exibido. Os estados
+aparecem como "Recorrente", "Extra", "A confirmar", "A classificar"; o bloco
+principal é "Dados lidos" ("Dados lidos · N pontos precisam de atenção"). O
+formato legado explica o que vai acontecer: "Este formato será processado pela
+leitura de documentos legados."
+
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 
 - Arquitetura de persistência dos lançamentos (relacional × JSON × híbrido).
@@ -225,5 +302,7 @@ IA, `resultado_extraido` continua `{}` e nenhum `BalancoMensal` é criado.
 - Experiência do morador para balanços publicados (não criar nesta fase).
 
 Referência: `docs/fase_1a_balancos_decisoes.md`,
-`docs/fase_1b_balancos_implementacao.md` e
-`docs/fase_1c_entrada_balanco.md`.
+`docs/fase_1b_balancos_implementacao.md`,
+`docs/fase_1c_entrada_balanco.md`,
+`docs/fase_1d_detector_layout_balanco.md` e
+`docs/fase_1e_extracao_balanco_atual.md`.

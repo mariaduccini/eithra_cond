@@ -27,8 +27,9 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import DatabaseError
 from django.utils import timezone
 
-from apps.balancos.constants import StatusImportacao
+from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
+from apps.balancos.extrator_atual import ErroDeExtracao, extrair_balanco_atual
 from apps.balancos.models import ImportacaoBalanco
 from apps.balancos.storage import ErroDeStorage, obter_provider
 
@@ -189,8 +190,8 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
     """Recebe o PDF, guarda o arquivo e cria o registro transitório.
 
     Nenhum ``BalancoMensal`` nasce aqui. O que fica registrado é a tentativa,
-    com o hash do arquivo, a referência do objeto e o layout detectado quando a
-    leitura do PDF consegue classificá-lo.
+    com o hash do arquivo, a referência do objeto e — quando o documento é do
+    modelo atual — os dados financeiros lidos da camada textual do PDF.
     """
     validar_arquivo(arquivo)
     conteudo = ler_conteudo(arquivo)
@@ -243,6 +244,18 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
         except ErroDeStorage:
             pass
         raise
+
+    if importacao.layout_detectado == LayoutBalanco.ATUAL_CANONICO:
+        # O documento é do modelo atual: os dados financeiros são lidos agora,
+        # enquanto o arquivo já está em mãos — sem um segundo acesso ao storage.
+        # Legado e desconhecido seguem sem leitura: o motivo fica para a gestão.
+        try:
+            extrair_balanco_atual(importacao, conteudo=conteudo, provider=provider)
+        except ErroDeExtracao:
+            # A leitura falhou e já registrou o motivo na importação. O arquivo
+            # continua no bucket: a tentativa pode ser refeita sem novo envio.
+            importacao.refresh_from_db()
+            return ResultadoDoRecebimento(importacao=importacao)
 
     return ResultadoDoRecebimento(importacao=importacao)
 

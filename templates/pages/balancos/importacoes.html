@@ -34,7 +34,9 @@
           <tbody>
             {% for importacao in importacoes %}
               <tr>
-                <th scope="row" class="fw-normal text-break">{{ importacao.nome_original }}</th>
+                <th scope="row" class="fw-normal text-break">
+                  <a href="{% url 'balancos:detalhe' importacao.pk %}">{{ importacao.nome_original }}</a>
+                </th>
                 <td>{{ importacao.condominio.nome }}</td>
                 <td>{{ importacao.criado_em|date:"d/m/Y H:i" }}</td>
                 <td>
