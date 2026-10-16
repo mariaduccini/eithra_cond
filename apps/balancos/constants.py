@@ -1,0 +1,43 @@
+"""Constantes do domínio de balanços mensais."""
+from django.db import models
+
+
+class StatusBalanco(models.TextChoices):
+    """Situação funcional do balanço: o que a gestão vê e decide.
+
+    Não há estado de rascunho nem de erro aqui: um balanço só existe depois de
+    importado, e falha de leitura é assunto de processamento, não da situação
+    financeira do mês.
+    """
+
+    EM_REVISAO = "em_revisao", "Em revisão"
+    VALIDADO = "validado", "Validado"
+    PUBLICADO = "publicado", "Publicado aos moradores"
+    SUBSTITUIDO = "substituido", "Substituído por versão corrigida"
+
+
+class ProcessamentoBalanco(models.TextChoices):
+    """Estado técnico da leitura do documento.
+
+    É separado da situação funcional de propósito: a gestão não precisa saber
+    que um arquivo está sendo lido, mas o sistema precisa saber se já pode
+    mostrar o resultado.
+    """
+
+    PENDENTE = "pendente", "Pendente"
+    PROCESSANDO = "processando", "Processando"
+    CONCLUIDO = "concluido", "Concluído"
+    ERRO = "erro", "Erro"
+
+
+class LayoutBalanco(models.TextChoices):
+    """Formato do documento recebido.
+
+    Registra o que veio, sem definir a estrutura dos dados: existe um único
+    balanço, lido por caminhos diferentes. O formato legado pode exigir OCR e
+    ter menos detalhamento — o modelo interno é o mesmo.
+    """
+
+    DESCONHECIDO = "desconhecido", "Desconhecido"
+    ATUAL_CANONICO = "atual_canonico", "Atual canônico"
+    LEGADO = "legado", "Legado"
