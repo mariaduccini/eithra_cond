@@ -1,0 +1,7 @@
+{% extends "layouts/public.html" %}
+
+{% block title %}Acesso não permitido · Eithra{% endblock %}
+
+{% block public_content %}
+  {% include "components/state.html" with state_role="alert" state_tone="warning" state_icon="bx-lock-alt" state_title="Você não tem acesso a esta área" state_message="Se precisar deste conteúdo, fale com a administração do condomínio." state_action_view="core:home" state_action_label="Ir para o início" %}
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "layouts/public.html" %}
+
+{% block title %}Entrar · Eithra{% endblock %}
+
+{% block public_content %}
+  <h4 class="mb-1">Entrar</h4>
+  <p class="mb-6">Use o e-mail e a senha do seu acesso ao condomínio.</p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}" />{% endif %}
+
+    {% for error in form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">{{ error }}</div>
+    {% endfor %}
+
+    <div class="mb-6">
+      <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+      {{ form.username }}
+      {% for error in form.username.errors %}
+        <div class="text-danger small mt-1">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="mb-6">
+      <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+      {{ form.password }}
+      {% for error in form.password.errors %}
+        <div class="text-danger small mt-1">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <button class="btn btn-primary d-grid w-100" type="submit">Entrar</button>
+  </form>
+{% endblock %}

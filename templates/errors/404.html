@@ -1,0 +1,7 @@
+{% extends "layouts/public.html" %}
+
+{% block title %}Página não encontrada · Eithra{% endblock %}
+
+{% block public_content %}
+  {% include "components/state.html" with state_role="alert" state_tone="info" state_icon="bx-file-blank" state_title="Não encontramos esta página" state_message="O endereço pode estar incorreto ou o conteúdo pode ter sido movido." state_action_view="core:home" state_action_label="Ir para o início" %}
+{% endblock %}

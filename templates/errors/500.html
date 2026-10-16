@@ -1,0 +1,7 @@
+{% extends "layouts/public.html" %}
+
+{% block title %}Algo deu errado · Eithra{% endblock %}
+
+{% block public_content %}
+  {% include "components/state.html" with state_role="alert" state_tone="danger" state_icon="bx-error-circle" state_title="Algo deu errado do nosso lado" state_message="O problema foi registrado. Tente novamente em instantes." state_action_view="core:home" state_action_label="Ir para o início" %}
+{% endblock %}

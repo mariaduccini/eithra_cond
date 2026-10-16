@@ -1,0 +1,37 @@
+# Ambiente e segredos
+# Nenhuma variação de arquivo de ambiente é versionada, exceto o modelo
+# .env.example, que existe justamente para documentar as variáveis.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+*.log
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Referências temporárias de template (não fazem parte do produto)
+.vendor_ref/

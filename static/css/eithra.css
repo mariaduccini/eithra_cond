@@ -1,0 +1,185 @@
+/* ==========================================================================
+   Eithra · camada de marca sobre o Sneat + Bootstrap 5
+   --------------------------------------------------------------------------
+   O Sneat define estrutura, grid, componentes, formulários, modais e
+   comportamento. Aqui entra apenas a identidade do Eithra: tipografia, cor
+   principal e os ajustes mínimos de layout que o tema não entrega sozinho.
+   ========================================================================== */
+
+/* Tipografia ------------------------------------------------------------- */
+/* Public Sans servida pelo próprio projeto: sem dependência de CDN externo. */
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../vendor/fonts/public-sans-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../vendor/fonts/public-sans-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../vendor/fonts/public-sans-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Public Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../vendor/fonts/public-sans-700.woff2") format("woff2");
+}
+
+/* Identidade ------------------------------------------------------------- */
+:root {
+  --eithra-primary: #153f46;
+  --eithra-primary-dark: #0e2e33;
+  --eithra-primary-rgb: 21, 63, 70;
+
+  /* A marca entra nos tokens que o Bootstrap já usa. Nada de sistema paralelo:
+     CTA primário, item ativo do menu, links, foco e destaques de navegação
+     passam a herdar a cor do Eithra automaticamente. */
+  --bs-primary: var(--eithra-primary);
+  --bs-primary-rgb: var(--eithra-primary-rgb);
+  --bs-primary-text-emphasis: var(--eithra-primary-dark);
+  --bs-primary-bg-subtle: #e7eff0;
+  --bs-primary-border-subtle: #c9dcde;
+
+  --bs-link-color: var(--eithra-primary);
+  --bs-link-color-rgb: var(--eithra-primary-rgb);
+  --bs-link-hover-color: var(--eithra-primary-dark);
+  --bs-link-hover-color-rgb: 14, 46, 51;
+}
+
+/* Botões e barra de progresso trazem a cor primária fixada no tema.
+   Reapontamos para os tokens do Eithra sem reescrever o componente. */
+.btn-primary {
+  --bs-btn-bg: var(--eithra-primary);
+  --bs-btn-border-color: var(--eithra-primary);
+  --bs-btn-hover-bg: var(--eithra-primary-dark);
+  --bs-btn-hover-border-color: var(--eithra-primary-dark);
+  --bs-btn-active-bg: var(--eithra-primary-dark);
+  --bs-btn-active-border-color: var(--eithra-primary-dark);
+  --bs-btn-disabled-bg: var(--eithra-primary);
+  --bs-btn-disabled-border-color: var(--eithra-primary);
+  --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--eithra-primary);
+  --bs-btn-border-color: var(--eithra-primary);
+  --bs-btn-hover-bg: var(--eithra-primary);
+  --bs-btn-hover-border-color: var(--eithra-primary);
+  --bs-btn-active-bg: var(--eithra-primary);
+  --bs-btn-active-border-color: var(--eithra-primary);
+  --bs-btn-disabled-color: var(--eithra-primary);
+  --bs-btn-disabled-border-color: var(--eithra-primary);
+  --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
+}
+
+.progress {
+  --bs-progress-bar-bg: var(--eithra-primary);
+}
+
+/* Marca na sidebar e nas telas públicas ---------------------------------- */
+.eithra-brand-logo img {
+  display: block;
+}
+
+/* Altura do cabeçalho do menu. O tema só define isso no CSS de demonstração,
+   que não é usado aqui. */
+.menu .app-brand {
+  block-size: 64px;
+  margin-block-start: 12px;
+}
+
+/* Estados de tela ------------------------------------------------------- */
+/* Componente único (templates/components/state.html) para vazio, carregando,
+   erro, sem permissão, sucesso ou dado parcial. O estado nunca depende só da
+   cor: ícone e texto sempre dizem o que está acontecendo. */
+.eithra-state {
+  padding-block: 2.5rem;
+  padding-inline: 1rem;
+}
+
+.eithra-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 3rem;
+  block-size: 3rem;
+  margin-block-end: 1rem;
+  border-radius: 50%;
+  background-color: var(--bs-secondary-bg-subtle);
+  color: var(--bs-secondary-color);
+  font-size: 1.5rem;
+}
+
+.eithra-state-message {
+  max-inline-size: 32rem;
+  margin-inline: auto;
+}
+
+.eithra-state-danger .eithra-state-icon {
+  background-color: var(--bs-danger-bg-subtle);
+  color: var(--bs-danger-text-emphasis);
+}
+
+.eithra-state-warning .eithra-state-icon {
+  background-color: var(--bs-warning-bg-subtle);
+  color: var(--bs-warning-text-emphasis);
+}
+
+.eithra-state-success .eithra-state-icon {
+  background-color: var(--bs-success-bg-subtle);
+  color: var(--bs-success-text-emphasis);
+}
+
+.eithra-state-info .eithra-state-icon {
+  background-color: var(--bs-info-bg-subtle);
+  color: var(--bs-info-text-emphasis);
+}
+
+@keyframes eithra-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.eithra-spin {
+  display: inline-block;
+  animation: eithra-spin 1s linear infinite;
+}
+
+/* Acessibilidade básica -------------------------------------------------- */
+/* Foco sempre visível, mesmo para quem navega por teclado. */
+a:focus-visible,
+button:focus-visible,
+.btn:focus-visible,
+.form-control:focus-visible,
+.dropdown-item:focus-visible {
+  outline: 2px solid var(--eithra-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eithra-spin {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

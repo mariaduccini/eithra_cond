@@ -1,0 +1,13 @@
+{% if messages %}
+  {% for message in messages %}
+    <div
+      class="alert {% if message.tags == 'error' %}alert-danger{% else %}alert-{{ message.tags|default:'info' }}{% endif %} alert-dismissible d-flex align-items-start"
+      role="alert">
+      <i
+        class="icon-base bx {% if message.tags == 'success' %}bx-check-circle{% elif message.tags == 'error' %}bx-error-circle{% elif message.tags == 'warning' %}bx-error-circle{% else %}bx-info-circle{% endif %} icon-md me-2 flex-shrink-0"
+        aria-hidden="true"></i>
+      <div class="flex-grow-1">{{ message }}</div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar aviso"></button>
+    </div>
+  {% endfor %}
+{% endif %}

@@ -1,0 +1,28 @@
+{% comment %}
+Bloco único para estados de tela, evitando variações soltas pelo sistema.
+
+Uso:
+  {% include "components/state.html" with state_icon="bx-info-circle" state_title="Nada por aqui ainda" state_message="..." %}
+
+Variáveis opcionais: state_icon, state_message, state_role, state_tone,
+state_busy, state_action_view, state_action_label.
+
+state_tone: "danger", "warning", "success" ou "info". Sem valor, o bloco
+fica neutro. O estado nunca depende só da cor: o ícone e o texto dizem o
+que está acontecendo.
+{% endcomment %}
+<div
+  class="eithra-state text-center{% if state_tone %} eithra-state-{{ state_tone }}{% endif %}"
+  role="{{ state_role|default:'status' }}"
+  {% if state_busy %}aria-busy="true"{% endif %}>
+  <span class="eithra-state-icon" aria-hidden="true">
+    <i class="bx {{ state_icon|default:'bx-info-circle' }}{% if state_busy %} eithra-spin{% endif %}"></i>
+  </span>
+  <p class="eithra-state-title h5 mb-1">{{ state_title }}</p>
+  {% if state_message %}
+    <p class="eithra-state-message text-body-secondary mb-0">{{ state_message }}</p>
+  {% endif %}
+  {% if state_action_view %}
+    <a class="btn btn-primary mt-4" href="{% url state_action_view %}">{{ state_action_label }}</a>
+  {% endif %}
+</div>
