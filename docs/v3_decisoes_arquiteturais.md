@@ -107,11 +107,63 @@ O versionamento de `BalancoMensal` já resolve o ciclo de vida: uma versão
 corrigida é um novo balanço, com os seus próprios documentos. `DocumentoBalanco`
 não tem versão própria nem `substitui`.
 
+## Fase 1C — Entrada segura do balanço
+
+### D1 — `ImportacaoBalanco` é entidade transitória, separada do balanço — APROVADA
+Upload de arquivo, processamento e resultado preliminar **não** são
+`BalancoMensal`. O que nasce no recebimento é uma tentativa de importação; o mês
+só passa a valer com a confirmação da gestão, em fase futura. Nenhum balanço é
+criado no upload.
+
+### D2 — Storage privado por contrato, adaptador Supabase sem SDK — APROVADA
+O domínio fala com `StorageProvider` (`enviar`, `remover`, `url_assinada`) e o
+provedor concreto fica atrás dele: trocar de provedor não exige mexer no
+domínio. O adaptador Supabase usa **HTTP puro** (biblioteca padrão), sem SDK.
+Persistem-se apenas `provider`, `bucket` e `object_key`; URL pública, signed URL,
+token e service role **nunca** são gravados (recusado por `clean()`).
+
+### D3 — Bucket privado por ambiente — APROVADA
+DEV e PROD usam buckets separados, nunca o mesmo. Falta de configuração provoca
+erro explícito nomeando as variáveis ausentes; não existe queda silenciosa para
+filesystem local.
+
+### D4 — Object key apenas com identificadores — APROVADA
+`balancos/<condominio_uuid>/<importacao_uuid>/documento.pdf`. Sem nome de
+arquivo, nome de condomínio em texto, competência não confirmada ou dado
+pessoal no caminho do objeto.
+
+### D5 — Duplicidade por `condominio` + `sha256` — APROVADA
+Sem constraint global de hash. O mesmo arquivo pode existir legitimamente em
+condomínios distintos. Importações descartadas e com falha de recebimento não
+contam como repetição.
+
+### D6 — Limite de upload configurável — APROVADA
+`BALANCOS_MAX_UPLOAD_BYTES`, 50 MB por padrão. Folgado para balanços reais com
+muitas páginas e suficiente para limitar abuso.
+
+### D7 — Papéis que importam balanço: ADMIN e SINDICA — APROVADA
+Supervisão, operação, portaria e morador não importam. A regra vive em
+`apps/balancos/permissoes.py`; a decisão de acesso ao condomínio continua
+centralizada em `apps/condominios/acesso.py`. O menu não é controle de acesso.
+
+### D8 — Consistência por gravação antes do envio, com compensação — APROVADA
+Não existe transação ACID entre banco e storage externo. O registro é gravado
+antes do envio; falha de envio resulta em `ERRO` (nunca falso sucesso); falha de
+gravação após o envio dispara remoção compensatória do objeto.
+
+### D9 — Descarte preserva a memória e libera o arquivo — APROVADA
+Descartar marca `DESCARTADO` com `descartado_em` em vez de apagar o registro. A
+remoção do objeto é *best-effort*: o descarte não fica refém do storage.
+
+### D10 — Acesso ao arquivo por signed URL curta, sob demanda — APROVADA
+Nenhum endereço fixo: cada visita autorizada gera um acesso temporário
+(`BALANCOS_URL_ACESSO_SEGUNDOS`, 60 s por padrão). Nada é persistido.
+
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 
 - Arquitetura de persistência dos lançamentos (relacional × JSON × híbrido).
-- Provedor de storage externo privado.
 - Categorias publicáveis por padrão.
 
-Referência: `docs/fase_1a_balancos_decisoes.md` e
-`docs/fase_1b_balancos_implementacao.md`.
+Referência: `docs/fase_1a_balancos_decisoes.md`,
+`docs/fase_1b_balancos_implementacao.md` e
+`docs/fase_1c_entrada_balanco.md`.

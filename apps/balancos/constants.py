@@ -29,6 +29,27 @@ class ProcessamentoBalanco(models.TextChoices):
     ERRO = "erro", "Erro"
 
 
+class StatusImportacao(models.TextChoices):
+    """Situação de uma tentativa de importação ainda não confirmada.
+
+    A importação é transitória: representa um arquivo recebido, que ainda não
+    virou balanço. Só a confirmação da gestão — em fase futura — cria o
+    ``BalancoMensal``. Por isso este ciclo é diferente do ciclo funcional do
+    balanço: aqui se acompanha o recebimento, não a situação financeira do mês.
+
+    Hoje o fluxo termina em ``RECEBIDO`` ou ``PRONTO``, porque ainda não existe
+    leitura do conteúdo. ``PROCESSANDO`` e ``ERRO`` descrevem a leitura futura;
+    ``CONFIRMADO`` e ``DESCARTADO`` são o desfecho da importação.
+    """
+
+    RECEBIDO = "recebido", "Recebido"
+    PROCESSANDO = "processando", "Processando"
+    PRONTO = "pronto", "Pronto para a próxima etapa"
+    ERRO = "erro", "Não foi possível receber"
+    CONFIRMADO = "confirmado", "Confirmado"
+    DESCARTADO = "descartado", "Descartado"
+
+
 class LayoutBalanco(models.TextChoices):
     """Formato do documento recebido.
 

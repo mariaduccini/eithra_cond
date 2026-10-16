@@ -1,0 +1,336 @@
+"""Testes das telas de entrada do balanço.
+
+O que se verifica aqui é a fronteira: quem entra, quem não entra, o que a
+listagem mostra e o que nunca aparece numa resposta.
+"""
+import uuid
+from unittest.mock import patch
+
+from django.test import TestCase, override_settings
+from django.urls import reverse
+
+from apps.balancos.constants import StatusImportacao
+from apps.balancos.models import BalancoMensal, ImportacaoBalanco
+from apps.balancos.tests.apoio import HASH_PDF, StorageDeMentira, criar_pessoa, criar_vinculo, pdf
+from apps.condominios.constants import Papel
+from apps.condominios.models import Condominio
+
+SEGREDO = "segredo-que-nao-pode-aparecer-na-tela"
+
+
+class BaseTelasTests(TestCase):
+    """Cenário com dois condomínios e uma pessoa autorizada em cada."""
+
+    def setUp(self):
+        self.condominio_a = Condominio.objects.create(nome="Condomínio A")
+        self.condominio_b = Condominio.objects.create(nome="Condomínio B")
+
+        self.sindica = criar_pessoa("sindica@exemplo.com.br", "Síndica Teste")
+        criar_vinculo(self.sindica, self.condominio_a, Papel.SINDICA)
+
+        self.admin = criar_pessoa("admin@exemplo.com.br", "Administração Teste")
+        criar_vinculo(self.admin, self.condominio_a, Papel.ADMIN)
+
+        self.morador = criar_pessoa("morador@exemplo.com.br", "Morador Teste")
+        criar_vinculo(self.morador, self.condominio_a, Papel.MORADOR)
+
+        self.porteiro = criar_pessoa("porteiro@exemplo.com.br", "Porteiro Teste")
+        criar_vinculo(self.porteiro, self.condominio_a, Papel.PORTEIRO)
+
+        self.operacional = criar_pessoa("operacional@exemplo.com.br", "Operação Teste")
+        criar_vinculo(self.operacional, self.condominio_a, Papel.OPERACIONAL)
+
+        self.supervisora = criar_pessoa("supervisora@exemplo.com.br", "Supervisão Teste")
+        criar_vinculo(self.supervisora, self.condominio_a, Papel.SUPERVISORA)
+
+        self.sem_vinculo = criar_pessoa("estranho@exemplo.com.br", "Sem Vínculo")
+
+        self.provider = StorageDeMentira()
+        self.obter_provider = patch(
+            "apps.balancos.services.obter_provider", return_value=self.provider
+        )
+        self.obter_provider.start()
+        self.addCleanup(self.obter_provider.stop)
+
+    def importacao_em(self, condominio, criado_por=None):
+        """Grava uma importação direto no banco, sem passar pelo upload."""
+        return ImportacaoBalanco.objects.create(
+            condominio=condominio,
+            criado_por=criado_por or self.sindica,
+            nome_original="balanco-do-mes.pdf",
+            mime_type="application/pdf",
+            tamanho_bytes=64,
+            sha256=HASH_PDF,
+            storage_provider="mentira",
+            storage_bucket="bucket-de-teste",
+            storage_key=f"balancos/{condominio.pk}/{uuid.uuid4()}/documento.pdf",
+            status=StatusImportacao.PRONTO,
+        )
+
+
+class EntradaTests(BaseTelasTests):
+    """A tela de importações exige entrada."""
+
+    def test_listagem_exige_entrada(self):
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertRedirects(
+            resposta,
+            f"{reverse('accounts:login')}?next={reverse('balancos:importacoes')}",
+        )
+
+    def test_upload_exige_entrada(self):
+        resposta = self.client.post(reverse("balancos:importar"), {"arquivo": pdf()})
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+
+
+class AutorizacaoTests(BaseTelasTests):
+    """Importar balanço é de quem responde pelo documento."""
+
+    def _pode_abrir(self, usuario):
+        self.client.force_login(usuario)
+        return self.client.get(reverse("balancos:importacoes"))
+
+    def test_sem_vinculo_nao_entra(self):
+        self.assertEqual(self._pode_abrir(self.sem_vinculo).status_code, 404)
+
+    def test_morador_nao_entra(self):
+        self.assertEqual(self._pode_abrir(self.morador).status_code, 404)
+
+    def test_porteiro_nao_entra(self):
+        self.assertEqual(self._pode_abrir(self.porteiro).status_code, 404)
+
+    def test_operacional_nao_entra(self):
+        self.assertEqual(self._pode_abrir(self.operacional).status_code, 404)
+
+    def test_supervisora_nao_entra_sem_decisao_explicita(self):
+        self.assertEqual(self._pode_abrir(self.supervisora).status_code, 404)
+
+    def test_sindica_entra(self):
+        self.assertEqual(self._pode_abrir(self.sindica).status_code, 200)
+
+    def test_administracao_entra(self):
+        self.assertEqual(self._pode_abrir(self.admin).status_code, 200)
+
+    def test_vinculo_inativo_nao_autoriza(self):
+        criar_vinculo(self.morador, self.condominio_b, Papel.SINDICA, ativo=False)
+        self.assertEqual(self._pode_abrir(self.morador).status_code, 404)
+
+    def test_morador_nao_importa_mesmo_enviando_o_formulario(self):
+        self.client.force_login(self.morador)
+        self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+        )
+        self.assertEqual(ImportacaoBalanco.objects.count(), 0)
+
+
+class UploadTests(BaseTelasTests):
+    """O caminho de entrada do arquivo."""
+
+    def test_sindica_recebe_o_arquivo(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+            follow=True,
+        )
+        self.assertRedirects(resposta, reverse("balancos:importacoes"))
+        self.assertContains(resposta, "Arquivo recebido.")
+
+        importacao = ImportacaoBalanco.objects.get()
+        self.assertEqual(importacao.condominio, self.condominio_a)
+        self.assertEqual(importacao.status, StatusImportacao.PRONTO)
+        self.assertEqual(importacao.layout_detectado, "desconhecido")
+        self.assertEqual(importacao.resultado_extraido, {})
+        self.assertEqual(importacao.inconsistencias, [])
+
+    def test_upload_nao_cria_balanco_mensal(self):
+        self.client.force_login(self.sindica)
+        self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+        )
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_endereco_de_upload_nao_aceita_visita_direta(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importar"))
+        self.assertRedirects(resposta, reverse("balancos:importacoes"))
+
+    def test_arquivo_invalido_volta_para_a_tela_sem_registrar(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf(conteudo=b"nao sou pdf")},
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(ImportacaoBalanco.objects.count(), 0)
+
+    def test_condominio_de_outro_vinculo_e_recusado(self):
+        """O condomínio vem do vínculo da pessoa, não do navegador."""
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_b.pk), "arquivo": pdf()},
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(ImportacaoBalanco.objects.count(), 0)
+
+    def test_condominio_ausente_e_recusado(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"), {"arquivo": pdf()}
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(ImportacaoBalanco.objects.count(), 0)
+
+    def test_repeticao_avisa_sem_duplicar(self):
+        """O mesmo conteúdo, enviado de novo, é sinalizado e não duplica."""
+        self.client.force_login(self.sindica)
+        primeiro = {
+            "condominio": str(self.condominio_a.pk),
+            "arquivo": pdf(nome="primeiro-envio.pdf"),
+        }
+        segundo = {
+            "condominio": str(self.condominio_a.pk),
+            "arquivo": pdf(nome="segundo-envio.pdf"),
+        }
+        self.client.post(reverse("balancos:importar"), primeiro)
+        resposta = self.client.post(reverse("balancos:importar"), segundo, follow=True)
+
+        self.assertContains(resposta, "já havia sido recebido")
+        self.assertEqual(ImportacaoBalanco.objects.count(), 1)
+
+    def test_falha_de_storage_avisa_sem_fingir_sucesso(self):
+        self.provider.falhar_ao_enviar = True
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+            follow=True,
+        )
+        self.assertNotContains(resposta, "Arquivo recebido.")
+        self.assertContains(resposta, "Não foi possível receber o arquivo.")
+
+    def test_formulario_pede_o_condominio_quando_ha_mais_de_um(self):
+        criar_vinculo(self.sindica, self.condominio_b, Papel.SINDICA)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        formulario = resposta.context["formulario_importacao"]
+        self.assertEqual(
+            list(formulario.fields["condominio"].queryset),
+            [self.condominio_a, self.condominio_b],
+        )
+
+
+class ListagemTests(BaseTelasTests):
+    """A listagem é de apoio: mostra o que chegou, e só do que é da pessoa."""
+
+    def test_mostra_o_arquivo_recebido(self):
+        self.importacao_em(self.condominio_a)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertContains(resposta, "balanco-do-mes.pdf")
+        self.assertContains(resposta, self.condominio_a.nome)
+
+    def test_nao_mostra_arquivo_de_condominio_sem_vinculo(self):
+        self.importacao_em(self.condominio_b, criado_por=self.admin)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertEqual(list(resposta.context["importacoes"]), [])
+
+    def test_tela_vazia_explica_o_proposito(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertContains(resposta, "Nenhum arquivo recebido ainda")
+
+    def test_nao_mistura_importacao_com_balanco_validado(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertEqual(resposta.context["importacoes"].model, ImportacaoBalanco)
+
+
+class ArquivoTests(BaseTelasTests):
+    """Ver o arquivo passa por um acesso curto, sempre autorizado."""
+
+    def test_acesso_ao_arquivo_autorizado_redireciona_para_endereco_temporario(self):
+        importacao = self.importacao_em(self.condominio_a)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:arquivo", args=[importacao.pk]))
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(importacao.storage_key, resposta["Location"])
+        self.assertEqual(self.provider.assinaturas[0][0], importacao.storage_key)
+
+    def test_acesso_ao_arquivo_de_outro_condominio_e_negado(self):
+        importacao = self.importacao_em(self.condominio_b, criado_por=self.admin)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:arquivo", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_acesso_ao_arquivo_inexistente_e_negado(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:arquivo", args=[uuid.uuid4()]))
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_acesso_ao_arquivo_exige_entrada(self):
+        importacao = self.importacao_em(self.condominio_a)
+        resposta = self.client.get(reverse("balancos:arquivo", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+
+
+class DescarteTests(BaseTelasTests):
+    """Descartar é uma recusa explícita, com memória."""
+
+    def test_descarte_marca_a_importacao(self):
+        importacao = self.importacao_em(self.condominio_a)
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:descartar", args=[importacao.pk]), follow=True
+        )
+
+        self.assertContains(resposta, "Importação descartada.")
+        importacao.refresh_from_db()
+        self.assertEqual(importacao.status, StatusImportacao.DESCARTADO)
+        self.assertIsNotNone(importacao.descartado_em)
+        self.assertTrue(ImportacaoBalanco.objects.filter(pk=importacao.pk).exists())
+
+    def test_descarte_de_outro_condominio_e_negado(self):
+        importacao = self.importacao_em(self.condominio_b, criado_por=self.admin)
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(reverse("balancos:descartar", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_descarte_exige_post(self):
+        importacao = self.importacao_em(self.condominio_a)
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:descartar", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 405)
+
+    def test_descarte_exige_entrada(self):
+        importacao = self.importacao_em(self.condominio_a)
+        resposta = self.client.post(reverse("balancos:descartar", args=[importacao.pk]))
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+
+
+class SegredoTests(BaseTelasTests):
+    """A credencial do storage fica só no backend."""
+
+    @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)
+    def test_credencial_nao_aparece_na_tela(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+        self.assertNotContains(resposta, SEGREDO)
+
+    @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)
+    def test_credencial_nao_aparece_na_resposta_do_upload(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:importar"),
+            {"condominio": str(self.condominio_a.pk), "arquivo": pdf()},
+            follow=True,
+        )
+        self.assertNotContains(resposta, SEGREDO)

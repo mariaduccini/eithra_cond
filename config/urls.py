@@ -7,6 +7,7 @@ from config import views
 urlpatterns = [
     path("", include("apps.core.urls")),
     path("conta/", include("apps.accounts.urls")),
+    path("balancos/", include("apps.balancos.urls")),
     path("admin/", admin.site.urls),
 ]
 

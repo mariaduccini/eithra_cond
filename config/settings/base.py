@@ -140,6 +140,28 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
+# Arquivos de balanço (storage externo privado)
+# ---------------------------------------------------------------------------
+# O PDF de um balanço nunca fica no sistema de arquivos da aplicação — em
+# produção, o disco é efêmero. O arquivo vive em um bucket privado, e o banco
+# guarda apenas a referência do objeto.
+#
+# As credenciais vêm do ambiente e são usadas somente no backend. Se o provedor
+# estiver configurado e as variáveis obrigatórias faltarem, o envio é recusado:
+# não existe queda silenciosa para disco local (ver apps/balancos/storage.py).
+BALANCOS_STORAGE_PROVIDER = env("BALANCOS_STORAGE_PROVIDER", default="supabase")
+BALANCOS_STORAGE_BUCKET = env("BALANCOS_STORAGE_BUCKET", default="")
+# 50 MB. Um balanço real pode ter muitas páginas e vir com anexos; o limite
+# existe para recusar cedo um arquivo absurdo, não para apertar o uso.
+BALANCOS_MAX_UPLOAD_BYTES = env.int("BALANCOS_MAX_UPLOAD_BYTES", default=50 * 1024 * 1024)
+# Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
+# para abrir o documento, não para deixar um endereço circulando.
+BALANCOS_URL_ACESSO_SEGUNDOS = env.int("BALANCOS_URL_ACESSO_SEGUNDOS", default=60)
+
+SUPABASE_URL = env("SUPABASE_URL", default="")
+SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
+
+# ---------------------------------------------------------------------------
 # Fluxos de autenticação
 # ---------------------------------------------------------------------------
 LOGIN_URL = "accounts:login"

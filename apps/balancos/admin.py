@@ -7,7 +7,7 @@ financeiro.
 """
 from django.contrib import admin
 
-from apps.balancos.models import BalancoMensal, DocumentoBalanco
+from apps.balancos.models import BalancoMensal, DocumentoBalanco, ImportacaoBalanco
 
 
 @admin.register(BalancoMensal)
@@ -41,4 +41,25 @@ class DocumentoBalancoAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         """O documento original é a fonte de verdade; não se apaga pela tela."""
+        return False
+
+
+@admin.register(ImportacaoBalanco)
+class ImportacaoBalancoAdmin(admin.ModelAdmin):
+    list_display = (
+        "nome_original",
+        "condominio",
+        "status",
+        "tamanho_bytes",
+        "criado_por",
+        "criado_em",
+    )
+    list_filter = ("status", "layout_detectado", "storage_provider")
+    search_fields = ("nome_original", "sha256", "condominio__nome")
+    autocomplete_fields = ("condominio", "criado_por")
+    readonly_fields = ("id", "criado_em", "atualizado_em", "sha256", "storage_key")
+    ordering = ("-criado_em",)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        """A tentativa de importação é histórico técnico: descarta-se, não se apaga."""
         return False

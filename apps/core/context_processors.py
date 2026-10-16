@@ -6,6 +6,7 @@ verdade no sistema: nada de item que leve a uma página que ainda não existe.
 
 NAVIGATION = [
     {"label": "Painel", "view_name": "core:home", "icon": "bx-home-smile"},
+    {"label": "Balanços", "view_name": "balancos:importacoes", "icon": "bx-wallet"},
 ]
 
 

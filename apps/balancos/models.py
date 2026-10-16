@@ -24,6 +24,7 @@ from apps.balancos.constants import (
     LayoutBalanco,
     ProcessamentoBalanco,
     StatusBalanco,
+    StatusImportacao,
 )
 from apps.condominios.models import Condominio
 
@@ -33,6 +34,27 @@ FORMATO_SHA256 = RegexValidator(
     regex=r"^[0-9a-f]{64}$",
     message="Informe o hash SHA-256 em hexadecimal minúsculo (64 caracteres).",
 )
+
+# Campos que guardam a referência do objeto no storage externo privado.
+CAMPOS_DE_REFERENCIA_DE_STORAGE = ("storage_provider", "storage_bucket", "storage_key")
+
+
+def erros_de_referencia_de_storage(instancia) -> dict:
+    """Recusa URL pública ou assinada guardada no lugar da referência.
+
+    O que se persiste é provider, bucket e chave do objeto. URL pública ou
+    assinada é gerada sob demanda e nunca fica gravada: guardá-la seria expor
+    o arquivo, e ela ainda expiraria, deixando o registro inválido.
+    """
+    erros: dict[str, str] = {}
+    for campo in CAMPOS_DE_REFERENCIA_DE_STORAGE:
+        valor = (getattr(instancia, campo) or "").strip().lower()
+        if valor.startswith(("http://", "https://")):
+            erros[campo] = (
+                "Guarde apenas a referência do objeto. URL pública ou "
+                "assinada é gerada sob demanda, nunca persistida."
+            )
+    return erros
 
 
 class BalancoMensal(models.Model):
@@ -283,13 +305,7 @@ class DocumentoBalanco(models.Model):
         super().clean()
         erros: dict[str, str] = {}
 
-        for campo in ("storage_provider", "storage_bucket", "storage_key"):
-            valor = (getattr(self, campo) or "").strip().lower()
-            if valor.startswith(("http://", "https://")):
-                erros[campo] = (
-                    "Guarde apenas a referência do objeto. URL pública ou "
-                    "assinada é gerada sob demanda, nunca persistida."
-                )
+        erros.update(erros_de_referencia_de_storage(self))
 
         if self.tamanho_bytes is not None and self.tamanho_bytes < 0:
             erros["tamanho_bytes"] = "O tamanho do arquivo não pode ser negativo."
@@ -299,3 +315,163 @@ class DocumentoBalanco(models.Model):
 
     def __str__(self) -> str:
         return self.nome_original or str(self.pk)
+
+
+# Tom visual de cada estado na listagem. O texto é que informa o que aconteceu;
+# a cor apenas ajuda a ler a lista de longe.
+TOM_POR_STATUS_DE_IMPORTACAO = {
+    StatusImportacao.RECEBIDO: "info",
+    StatusImportacao.PROCESSANDO: "info",
+    StatusImportacao.PRONTO: "primary",
+    StatusImportacao.ERRO: "danger",
+    StatusImportacao.CONFIRMADO: "success",
+    StatusImportacao.DESCARTADO: "secondary",
+}
+
+
+class ImportacaoBalanco(models.Model):
+    """Tentativa de importação de um balanço, ainda não confirmada.
+
+    Este registro representa um arquivo recebido — não um balanço. Enquanto
+    existe só aqui, nada do mês mudou: nenhum valor passa a valer, nenhuma
+    competência é criada. O ``BalancoMensal`` só nasce quando a gestão confirma
+    a importação, o que acontece em fase futura.
+
+    É por isso que upload, processamento e resultado preliminar não são
+    balanço. Confundir os dois faria o sistema aceitar como oficial um arquivo
+    que ninguém conferiu.
+
+    A importação é transitória: pode expirar ou ser descartada. Quando
+    descartada, o registro permanece, com a data do descarte, para não apagar
+    histórico técnico em silêncio.
+
+    O arquivo vive em storage externo privado. Aqui ficam apenas a referência
+    do objeto e os metadados que ajudam a reconhecê-lo — nunca URL pública,
+    URL assinada, token ou segredo.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.PROTECT,
+        related_name="importacoes_balanco",
+        verbose_name="condomínio",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="importacoes_balanco_criadas",
+        verbose_name="recebido por",
+    )
+    criado_em = models.DateTimeField("recebido em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("atualizado em", auto_now=True)
+
+    status = models.CharField(
+        "situação da importação",
+        max_length=20,
+        choices=StatusImportacao.choices,
+        default=StatusImportacao.RECEBIDO,
+    )
+
+    # Identificação do arquivo, como ele chegou.
+    nome_original = models.CharField("nome do arquivo", max_length=255)
+    mime_type = models.CharField(
+        "tipo do arquivo", max_length=120, blank=True, default=""
+    )
+    tamanho_bytes = models.PositiveBigIntegerField("tamanho", default=0)
+    sha256 = models.CharField(
+        "hash do arquivo",
+        max_length=64,
+        validators=[FORMATO_SHA256],
+        help_text="Reconhece o mesmo arquivo para o mesmo condomínio.",
+    )
+
+    # Referência do objeto no storage privado. Nunca a URL em si.
+    storage_provider = models.CharField(
+        "provedor", max_length=50, blank=True, default=""
+    )
+    storage_bucket = models.CharField(
+        "local de armazenamento", max_length=150, blank=True, default=""
+    )
+    storage_key = models.CharField(
+        "referência do objeto", max_length=500, blank=True, default=""
+    )
+
+    # Preparação para a leitura futura. Nada é preenchido por antecipação:
+    # layout desconhecido, resultado vazio, sem inconsistências.
+    schema_versao = models.PositiveIntegerField("versão do schema", default=1)
+    layout_detectado = models.CharField(
+        "layout detectado",
+        max_length=20,
+        choices=LayoutBalanco.choices,
+        default=LayoutBalanco.DESCONHECIDO,
+    )
+    resultado_extraido = models.JSONField("resultado da leitura", default=dict, blank=True)
+    inconsistencias = models.JSONField("inconsistências", default=list, blank=True)
+
+    # Texto humano e curto sobre a falha de recebimento. Nunca guarda segredo,
+    # URL assinada ou resposta bruta do provedor.
+    erro_processamento = models.TextField("erro no recebimento", blank=True, default="")
+
+    expira_em = models.DateTimeField("expira em", null=True, blank=True)
+    confirmado_em = models.DateTimeField("confirmado em", null=True, blank=True)
+    descartado_em = models.DateTimeField("descartado em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "importação de balanço"
+        verbose_name_plural = "importações de balanço"
+        ordering = ["-criado_em"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(tamanho_bytes__gte=0),
+                name="importacao_tamanho_nao_negativo",
+            ),
+            # O descarte e a confirmação são exclusivos: uma importação não tem
+            # os dois desfechos ao mesmo tempo.
+            models.CheckConstraint(
+                condition=~Q(confirmado_em__isnull=False, descartado_em__isnull=False),
+                name="importacao_um_unico_desfecho",
+            ),
+        ]
+        indexes = [
+            # Apoio à detecção de duplicidade por condomínio e arquivo. Não há
+            # unicidade: o mesmo PDF pode voltar legitimamente, e a decisão de
+            # tratar como repetição é da gestão, não do banco.
+            models.Index(
+                fields=["condominio", "sha256"],
+                name="importacao_condominio_sha_idx",
+            ),
+            models.Index(
+                fields=["condominio", "status"],
+                name="importacao_cond_status_idx",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        erros: dict[str, str] = {}
+
+        erros.update(erros_de_referencia_de_storage(self))
+
+        if self.tamanho_bytes is not None and self.tamanho_bytes < 0:
+            erros["tamanho_bytes"] = "O tamanho do arquivo não pode ser negativo."
+
+        if self.confirmado_em and self.descartado_em:
+            erros["descartado_em"] = (
+                "Uma importação não é confirmada e descartada ao mesmo tempo."
+            )
+
+        if erros:
+            raise ValidationError(erros)
+
+    @property
+    def descartada(self) -> bool:
+        return self.status == StatusImportacao.DESCARTADO
+
+    @property
+    def tom_do_estado(self) -> str:
+        """Tom visual do estado, para a listagem. Nunca a única informação."""
+        return TOM_POR_STATUS_DE_IMPORTACAO.get(self.status, "secondary")
+
+    def __str__(self) -> str:
+        return f"{self.nome_original} · {self.get_status_display()}"

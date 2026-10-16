@@ -47,10 +47,12 @@ class HomeTests(TestCase):
         self.assertContains(response, "Nada precisa da sua atenção agora")
 
     def test_menu_traz_apenas_itens_reais(self):
+        """Todo item aponta para uma tela que existe de verdade."""
         self.client.force_login(self.user)
         response = self.client.get(reverse("core:home"))
         self.assertContains(response, reverse("core:home"))
-        self.assertEqual(len(response.context["navigation"]), 1)
+        self.assertContains(response, reverse("balancos:importacoes"))
+        self.assertEqual(len(response.context["navigation"]), 2)
 
     def test_menu_da_conta_identifica_a_pessoa_sem_papel_global(self):
         """O papel é do vínculo; o menu da conta mostra identidade, não papel."""
