@@ -176,6 +176,48 @@ o objeto já existe, quando o envio é refeito substituindo. Qualquer outra falh
 é reportada de forma explícita. Toda conversa com o provedor passa por um único
 ponto, onde o tempo limite é aplicado — não existe chamada sem limite.
 
+### D13 — Detecção de layout determinística com `pypdf` — APROVADA
+A Fase 1D identifica o formato do PDF sem OCR e sem IA. O detector usa
+`pypdf`, lê apenas a camada textual do documento e decide por regras
+determinísticas baseadas em marcadores estruturais, densidade textual e sinais
+visuais simples. `resultado_extraido` e `inconsistencias` permanecem vazios.
+
+### D14 — Evidências técnicas retornam do serviço, não do banco — APROVADA
+As evidências de detecção (marcadores encontrados, páginas analisadas,
+proporção de texto, caracteres extraídos) são retornadas pelo serviço para
+auditoria e testes, mas não são persistidas em campo novo. Isso preserva a
+preferência da fase por zero migration e evita poluir o registro transitório
+com diagnóstico técnico.
+
+### D15 — Amostragem distribuída de páginas para conter custo — APROVADA
+A identificação de layout não lê o documento inteiro por padrão. O detector
+inspeciona até `BALANCOS_DETECTOR_MAX_PAGINAS` páginas, distribuídas ao longo
+do PDF. O objetivo é reconhecer o formato com custo local previsível, sem
+varrer centenas de páginas quando uma amostra já basta.
+
+### D16 — A abertura do documento entra sempre na amostra — APROVADA
+Substitui parcialmente D15. A abertura do balanço concentra o índice e o
+resumo, que são os sinais mais fortes do formato atual. Um balanço real de 175
+páginas foi classificado como desconhecido porque a amostra uniforme saltava da
+página 1 para a 13 e deixava justamente essas páginas de fora. Agora as
+primeiras `BALANCOS_DETECTOR_PAGINAS_INICIAIS` páginas entram inteiras e o
+orçamento restante é distribuído até o fim do arquivo. Não há score novo, nem
+mudança de limiar: apenas a escolha das páginas lidas.
+
+### D17 — A quantidade de páginas não classifica o layout — APROVADA
+Substitui parcialmente D15 e D16 e remove o espalhamento residual da amostra. O
+número de páginas não é característica de layout: um mesmo modelo pode vir
+curto, longo, parcialmente digitalizado ou com muitos comprovantes anexados, e o
+balancete pode ocupar só parte do PDF. Por isso: (a) o total de páginas tem peso
+zero em qualquer critério; (b) a amostragem passa a ser exclusivamente a abertura
+estrutural — as primeiras `BALANCOS_DETECTOR_MAX_PAGINAS` páginas —, deixando
+anexos e comprovantes fora do julgamento; (c) a densidade textual é medida por
+página com texto, e não por total de caracteres, para não depender do tamanho do
+arquivo. A variável `BALANCOS_DETECTOR_PAGINAS_INICIAIS` deixa de existir. Um
+PDF parcial é classificado quando a abertura traz evidência estrutural
+suficiente; sem ela, o resultado permanece `DESCONHECIDO`. Não entram OCR nem
+IA, `resultado_extraido` continua `{}` e nenhum `BalancoMensal` é criado.
+
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 
 - Arquitetura de persistência dos lançamentos (relacional × JSON × híbrido).

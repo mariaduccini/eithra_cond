@@ -9,13 +9,24 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.balancos.constants import StatusImportacao
+from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
 from apps.balancos.tests.apoio import HASH_PDF, StorageDeMentira, criar_pessoa, criar_vinculo, pdf
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
 SEGREDO = "segredo-que-nao-pode-aparecer-na-tela"
+
+
+def detectar_layout_de_mentira(importacao, *, provider=None):
+    """Fecha a importação como pronta para os testes de tela."""
+    importacao.layout_detectado = LayoutBalanco.DESCONHECIDO
+    importacao.status = StatusImportacao.PRONTO
+    importacao.erro_processamento = ""
+    importacao.save(
+        update_fields=["layout_detectado", "status", "erro_processamento", "atualizado_em"]
+    )
+    return None
 
 
 class BaseTelasTests(TestCase):
@@ -51,6 +62,12 @@ class BaseTelasTests(TestCase):
         )
         self.obter_provider.start()
         self.addCleanup(self.obter_provider.stop)
+        self.detectar_layout = patch(
+            "apps.balancos.services.detectar_layout_balanco",
+            side_effect=detectar_layout_de_mentira,
+        )
+        self.detectar_layout.start()
+        self.addCleanup(self.detectar_layout.stop)
 
     def importacao_em(self, condominio, criado_por=None):
         """Grava uma importação direto no banco, sem passar pelo upload."""
@@ -211,7 +228,10 @@ class UploadTests(BaseTelasTests):
             follow=True,
         )
         self.assertNotContains(resposta, "Arquivo recebido.")
-        self.assertContains(resposta, "Não foi possível receber o arquivo.")
+        self.assertContains(
+            resposta,
+            "Não foi possível processar o arquivo automaticamente.",
+        )
 
     def test_formulario_pede_o_condominio_quando_ha_mais_de_um(self):
         criar_vinculo(self.sindica, self.condominio_b, Papel.SINDICA)

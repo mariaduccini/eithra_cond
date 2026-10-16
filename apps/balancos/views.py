@@ -72,8 +72,8 @@ def importar(request):
     elif resultado.importacao.status == StatusImportacao.ERRO:
         messages.error(
             request,
-            "Não foi possível receber o arquivo. A tentativa ficou registrada; "
-            "tente enviar de novo.",
+            "Não foi possível processar o arquivo automaticamente. A tentativa "
+            "ficou registrada; tente enviar de novo.",
         )
     else:
         messages.success(request, "Arquivo recebido.")

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
-from apps.balancos.constants import StatusImportacao
+from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
 from apps.balancos.services import (
     ErroDeValidacaoDeArquivo,
@@ -29,6 +29,17 @@ from apps.balancos.tests.apoio import (
     pdf,
 )
 from apps.condominios.models import Condominio
+
+
+def detectar_layout_de_mentira(importacao, *, provider=None):
+    """Fecha a importação como pronta, sem exercitar o detector real aqui."""
+    importacao.layout_detectado = LayoutBalanco.DESCONHECIDO
+    importacao.status = StatusImportacao.PRONTO
+    importacao.erro_processamento = ""
+    importacao.save(
+        update_fields=["layout_detectado", "status", "erro_processamento", "atualizado_em"]
+    )
+    return None
 
 
 class ValidacaoDeArquivoTests(TestCase):
@@ -101,6 +112,12 @@ class RecebimentoTests(TestCase):
         )
         self.obter_provider.start()
         self.addCleanup(self.obter_provider.stop)
+        self.detectar_layout = patch(
+            "apps.balancos.services.detectar_layout_balanco",
+            side_effect=detectar_layout_de_mentira,
+        )
+        self.detectar_layout.start()
+        self.addCleanup(self.detectar_layout.stop)
 
     def receber(self, condominio=None, arquivo=None):
         return receber_importacao(
@@ -222,6 +239,12 @@ class AcessoTemporarioTests(TestCase):
         )
         self.obter_provider.start()
         self.addCleanup(self.obter_provider.stop)
+        self.detectar_layout = patch(
+            "apps.balancos.services.detectar_layout_balanco",
+            side_effect=detectar_layout_de_mentira,
+        )
+        self.detectar_layout.start()
+        self.addCleanup(self.detectar_layout.stop)
         self.importacao = receber_importacao(
             condominio=self.condominio, usuario=self.usuario, arquivo=pdf()
         ).importacao
@@ -257,6 +280,12 @@ class DescarteTests(TestCase):
         )
         self.obter_provider.start()
         self.addCleanup(self.obter_provider.stop)
+        self.detectar_layout = patch(
+            "apps.balancos.services.detectar_layout_balanco",
+            side_effect=detectar_layout_de_mentira,
+        )
+        self.detectar_layout.start()
+        self.addCleanup(self.detectar_layout.stop)
         self.importacao = receber_importacao(
             condominio=self.condominio, usuario=self.usuario, arquivo=pdf()
         ).importacao

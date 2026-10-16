@@ -157,6 +157,12 @@ BALANCOS_MAX_UPLOAD_BYTES = env.int("BALANCOS_MAX_UPLOAD_BYTES", default=50 * 10
 # Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
 # para abrir o documento, não para deixar um endereço circulando.
 BALANCOS_URL_ACESSO_SEGUNDOS = env.int("BALANCOS_URL_ACESSO_SEGUNDOS", default=60)
+# Leitura economica para detectar o formato: le apenas a abertura estrutural do
+# documento (indice, resumo e primeiras secoes financeiras) e para cedo. Nao ha
+# motivo para varrer centenas de paginas — nem para espalhar a amostra pelo
+# arquivo — so para distinguir o layout; anexos e comprovantes nao definem o
+# formato.
+BALANCOS_DETECTOR_MAX_PAGINAS = env.int("BALANCOS_DETECTOR_MAX_PAGINAS", default=15)
 
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")

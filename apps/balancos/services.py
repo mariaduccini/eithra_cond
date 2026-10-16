@@ -28,6 +28,7 @@ from django.db import DatabaseError
 from django.utils import timezone
 
 from apps.balancos.constants import StatusImportacao
+from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
 from apps.balancos.models import ImportacaoBalanco
 from apps.balancos.storage import ErroDeStorage, obter_provider
 
@@ -188,8 +189,8 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
     """Recebe o PDF, guarda o arquivo e cria o registro transitório.
 
     Nenhum ``BalancoMensal`` nasce aqui. O que fica registrado é a tentativa,
-    com o hash do arquivo e a referência do objeto, disponível para a próxima
-    etapa do caminho.
+    com o hash do arquivo, a referência do objeto e o layout detectado quando a
+    leitura do PDF consegue classificá-lo.
     """
     validar_arquivo(arquivo)
     conteudo = ler_conteudo(arquivo)
@@ -230,8 +231,10 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
         return ResultadoDoRecebimento(importacao=importacao)
 
     try:
-        importacao.status = StatusImportacao.PRONTO
-        importacao.save(update_fields=["status", "atualizado_em"])
+        detectar_layout_balanco(importacao, provider=provider)
+    except (ErroDeStorage, ErroDeDeteccaoDeLayout):
+        importacao.refresh_from_db()
+        return ResultadoDoRecebimento(importacao=importacao)
     except DatabaseError:
         # O arquivo já está no bucket e o registro não pôde ser atualizado:
         # desfaz o envio para não deixar objeto sem dono.

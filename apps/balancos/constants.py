@@ -37,8 +37,9 @@ class StatusImportacao(models.TextChoices):
     ``BalancoMensal``. Por isso este ciclo é diferente do ciclo funcional do
     balanço: aqui se acompanha o recebimento, não a situação financeira do mês.
 
-    Hoje o fluxo termina em ``RECEBIDO`` ou ``PRONTO``, porque ainda não existe
-    leitura do conteúdo. ``PROCESSANDO`` e ``ERRO`` descrevem a leitura futura;
+    Agora o fluxo passa por ``PROCESSANDO`` para identificar o layout do PDF e
+    termina em ``PRONTO`` quando o formato foi classificado, ainda sem extrair
+    informação financeira nenhuma. ``ERRO`` descreve falha técnica; e
     ``CONFIRMADO`` e ``DESCARTADO`` são o desfecho da importação.
     """
 

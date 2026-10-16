@@ -397,8 +397,8 @@ class ImportacaoBalanco(models.Model):
         "referência do objeto", max_length=500, blank=True, default=""
     )
 
-    # Preparação para a leitura futura. Nada é preenchido por antecipação:
-    # layout desconhecido, resultado vazio, sem inconsistências.
+    # O layout já pode ser detectado na entrada. Mesmo assim, não se antecipa
+    # leitura financeira: resultado continua vazio e sem inconsistências.
     schema_versao = models.PositiveIntegerField("versão do schema", default=1)
     layout_detectado = models.CharField(
         "layout detectado",
