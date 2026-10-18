@@ -1,12 +1,5 @@
 {% extends "layouts/app.html" %}
 
-{# O balanço confirmado do mês, para a gestão acompanhar.
-
-   Aqui não há pipeline, etapa, score nem referência de armazenamento: o
-   documento já virou mês. O que aparece é o que a administração declarou, o que
-   a leitura detalhou e o quanto ficou sem detalhe associado — dito, nunca
-   escondido. #}
-
 {% block title %}Balanço {{ competencia }} · Eithra{% endblock %}
 
 {% block content %}
@@ -14,214 +7,302 @@
     <div>
       <a
         href="{% url 'balancos:importacoes' %}"
-        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-2">
         <i class="bx bx-chevron-left" aria-hidden="true"></i> Balanços
       </a>
-      <h1 class="h4 mb-1">
-        Balanço de {{ competencia|default:"—" }}
-        <span class="badge bg-label-success align-middle">Confirmado</span>
-      </h1>
-      <p class="text-body-secondary mb-0">{{ balanco.condominio.nome }}</p>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <h1 class="h4 mb-0">Balanço · {{ competencia|default:"—" }}</h1>
+        <span class="badge bg-label-success">Confirmado</span>
+      </div>
+      <p class="text-body-secondary mb-0">{{ subtitulo }}</p>
+    </div>
+
+    {% if tem_documento_original %}
+      <a
+        href="{% url 'balancos:balanco_arquivo' balanco.pk %}"
+        class="btn btn-label-secondary">
+        <i class="bx bx-file me-1" aria-hidden="true"></i> Ver PDF original
+      </a>
+    {% endif %}
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="row g-4">
+        <div class="col-md-4">
+          <div class="text-body-secondary small mb-1">Receitas</div>
+          <div class="h4 mb-0">{{ totais.receitas|default:"—" }}</div>
+        </div>
+        <div class="col-md-4">
+          <div class="text-body-secondary small mb-1">Despesas</div>
+          <div class="h4 mb-0">{{ totais.despesas|default:"—" }}</div>
+        </div>
+        <div class="col-md-4">
+          <div class="text-body-secondary small mb-1">{{ totais.saldo_rotulo }}</div>
+          <div class="h4 mb-0">{{ totais.saldo_final|default:"—" }}</div>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="card mb-4">
     <div class="card-body">
-      <h2 class="h5 mb-4">Resumo do mês</h2>
-
-      <div class="row g-3">
+      <div class="row g-4">
         <div class="col-6 col-lg-3">
-          <div class="text-body-secondary small">Receitas</div>
-          <div class="h6 mb-0">{{ totais.receitas|default:"—" }}</div>
+          <div class="text-body-secondary small mb-1">Recorrentes</div>
+          <div class="h6 mb-0">{{ resumo.recorrente|default:"—" }}</div>
         </div>
         <div class="col-6 col-lg-3">
-          <div class="text-body-secondary small">Despesas</div>
-          <div class="h6 mb-0">{{ totais.despesas|default:"—" }}</div>
+          <div class="text-body-secondary small mb-1">Extras</div>
+          <div class="h6 mb-0">{{ resumo.extraordinaria|default:"—" }}</div>
         </div>
         <div class="col-6 col-lg-3">
-          <div class="text-body-secondary small">Saldo</div>
-          <div class="h6 mb-0">{{ totais.saldo_final|default:"—" }}</div>
+          <div class="text-body-secondary small mb-1">A confirmar</div>
+          <div class="h6 mb-0">{{ resumo.a_confirmar|default:"—" }}</div>
         </div>
-        {% if totais.saldo_anterior %}
-          <div class="col-6 col-lg-3">
-            <div class="text-body-secondary small">Saldo anterior</div>
-            <div class="h6 mb-0">{{ totais.saldo_anterior }}</div>
-          </div>
-        {% endif %}
+        <div class="col-6 col-lg-3">
+          <div class="text-body-secondary small mb-1">Não associado</div>
+          <div class="h6 mb-0">{{ detalhamento.valor_nao_associado|default:"—" }}</div>
+        </div>
       </div>
 
-      {% if detalhamento.percentual %}
+      {% if texto_detalhamento %}
         <hr class="my-4">
-        <p class="text-body-secondary mb-3">
-          Detalhamento identificado em {{ detalhamento.percentual }} das despesas.
+        <p class="text-body-secondary mb-0">
+          {{ texto_detalhamento }}{% if detalhamento.tem_residual %}. {{ detalhamento.valor_nao_associado }} ainda não associados.{% endif %}
         </p>
-      {% endif %}
-
-      {% if grupos %}
-        <div class="row g-3">
-          <div class="col-6 col-lg-3">
-            <div class="text-body-secondary small">Recorrente</div>
-            <div class="h6 mb-0">{{ resumo.recorrente|default:"—" }}</div>
-          </div>
-          <div class="col-6 col-lg-3">
-            <div class="text-body-secondary small">Extra</div>
-            <div class="h6 mb-0">{{ resumo.extraordinaria|default:"—" }}</div>
-          </div>
-          {% if tem_a_confirmar %}
-            <div class="col-6 col-lg-3">
-              <div class="text-body-secondary small">A confirmar</div>
-              <div class="h6 mb-0">{{ resumo.a_confirmar|default:"—" }}</div>
-            </div>
-          {% endif %}
-          {% if detalhamento.tem_residual %}
-            <div class="col-6 col-lg-3">
-              <div class="text-body-secondary small">Não associado</div>
-              <div class="h6 mb-0">{{ detalhamento.valor_nao_associado }}</div>
-            </div>
-          {% endif %}
-        </div>
       {% endif %}
     </div>
   </div>
 
-  {% if grupos %}
-    {% comment %}
-      As despesas aparecem pelo agrupamento do próprio documento: cada categoria
-      mostra o que o documento declarou, o que foi identificado e a diferença
-      entre os dois. Os lançamentos ficam guardados atrás da seta, para a tela
-      não abrir densa.
-    {% endcomment %}
+  {% if destaques %}
+    <div class="row g-3 mb-4">
+      {% for destaque in destaques %}
+        <div class="col-lg-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="text-body-secondary small mb-1">{{ destaque.titulo }}</div>
+              <div class="h6 mb-1">{{ destaque.valor }}</div>
+              <p class="text-body-secondary small mb-0">{{ destaque.rotulo }}</p>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if detalhamento.tem_residual %}
+    <div class="card mb-4 border border-secondary-subtle">
+      <div class="card-body">
+        <h2 class="h6 mb-2">Detalhamento incompleto</h2>
+        <p class="text-body-secondary mb-0">
+          {{ detalhamento.valor_nao_associado }} das despesas ainda não foram associados automaticamente aos lançamentos.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if categorias %}
     <div class="card mb-4">
-      <div class="card-header">
-        <h2 class="h6 mb-1">Despesas por categoria</h2>
+      <div class="card-header border-0 pb-0">
+        <h2 class="h5 mb-1">Despesas por categoria</h2>
         <p class="text-body-secondary small mb-0">
-          O que o documento declara em cada categoria e o que a leitura encontrou.
+          O que mais consumiu recursos no mês, com abertura dos lançamentos só quando fizer sentido.
         </p>
       </div>
 
-      <ul class="list-group list-group-flush">
-        {% for grupo in grupos %}
-          <li class="list-group-item">
-            <div class="d-flex align-items-start gap-2">
+      <div class="card-body pt-3">
+        <div class="table-responsive d-none d-lg-block">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th>Recorrente</th>
+                <th>Extra</th>
+                <th>A confirmar</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for categoria in categorias %}
+                <tr>
+                  <td>
+                    <button
+                      class="btn btn-sm btn-text-secondary px-0 d-inline-flex align-items-center gap-2 text-start"
+                      type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#categoria-desktop-{{ forloop.counter }}"
+                      aria-expanded="false"
+                      aria-controls="categoria-desktop-{{ forloop.counter }}">
+                      <i class="bx bx-chevron-down" aria-hidden="true"></i>
+                      <span class="fw-medium">{{ categoria.nome }}</span>
+                    </button>
+                  </td>
+                  <td>{{ categoria.recorrente }}</td>
+                  <td>{{ categoria.extra }}</td>
+                  <td>{{ categoria.a_confirmar }}</td>
+                  <td class="text-end fw-medium">{{ categoria.total }}</td>
+                </tr>
+                <tr class="collapse" id="categoria-desktop-{{ forloop.counter }}">
+                  <td colspan="5" class="bg-body-tertiary">
+                    {% for lancamento in categoria.lancamentos %}
+                      <div class="{% if not forloop.first %}border-top mt-3 pt-3{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                          <div>
+                            <div class="fw-medium">{{ lancamento.descricao }}</div>
+                            <div class="text-body-secondary small">
+                              {{ lancamento.natureza }}{% if lancamento.data %} · {{ lancamento.data }}{% endif %}
+                            </div>
+                          </div>
+                          <div class="text-nowrap fw-medium">{{ lancamento.valor }}</div>
+                        </div>
+                      </div>
+                    {% empty %}
+                      <p class="text-body-secondary small mb-0">Nenhum lançamento identificado nesta categoria.</p>
+                    {% endfor %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-lg-none">
+          {% for categoria in categorias %}
+            <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
               <button
-                class="btn btn-icon btn-text-secondary rounded-pill flex-shrink-0"
+                class="btn btn-text-secondary px-0 w-100 text-start"
                 type="button"
                 data-bs-toggle="collapse"
-                data-bs-target="#despesas-categoria-{{ forloop.counter }}"
+                data-bs-target="#categoria-mobile-{{ forloop.counter }}"
                 aria-expanded="false"
-                aria-controls="despesas-categoria-{{ forloop.counter }}"
-                title="Ver lançamentos"
-                aria-label="Ver lançamentos de {{ grupo.nome }}">
-                <i class="bx bx-chevron-down" aria-hidden="true"></i>
+                aria-controls="categoria-mobile-{{ forloop.counter }}">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <div class="fw-medium">{{ categoria.nome }}</div>
+                    <div class="text-body-secondary small">
+                      {{ categoria.recorrente }} · {{ categoria.extra }} · {{ categoria.a_confirmar }}
+                    </div>
+                  </div>
+                  <div class="text-nowrap fw-medium">{{ categoria.total }}</div>
+                </div>
               </button>
 
-              <div class="flex-grow-1">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <span class="fw-medium">{{ grupo.nome }}</span>
-                  <span class="badge bg-label-{{ grupo.tom_conferencia }}">{{ grupo.conferencia }}</span>
-                </div>
-
-                <div class="row g-2 mt-1">
-                  <div class="col-6 col-lg-3">
-                    <div class="text-body-secondary small">Total do documento</div>
-                    <div class="small">{{ grupo.total_declarado|default:"—" }}</div>
-                  </div>
-                  <div class="col-6 col-lg-3">
-                    <div class="text-body-secondary small">Identificado</div>
-                    <div class="small">{{ grupo.identificado }}</div>
-                  </div>
-                  <div class="col-6 col-lg-3">
-                    <div class="text-body-secondary small">Recorrente</div>
-                    <div class="small">{{ grupo.recorrente }}</div>
-                  </div>
-                  <div class="col-6 col-lg-3">
-                    <div class="text-body-secondary small">Extra</div>
-                    <div class="small">{{ grupo.extraordinaria }}</div>
-                  </div>
-                  {% if tem_a_confirmar %}
-                    <div class="col-6 col-lg-3">
-                      <div class="text-body-secondary small">A confirmar</div>
-                      <div class="small">{{ grupo.a_confirmar }}</div>
+              <div class="collapse mt-2" id="categoria-mobile-{{ forloop.counter }}">
+                {% for lancamento in categoria.lancamentos %}
+                  <div class="border rounded p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                      <div>
+                        <div class="fw-medium">{{ lancamento.descricao }}</div>
+                        <div class="text-body-secondary small">
+                          {{ lancamento.natureza }}{% if lancamento.data %} · {{ lancamento.data }}{% endif %}
+                        </div>
+                      </div>
+                      <div class="text-nowrap fw-medium">{{ lancamento.valor }}</div>
                     </div>
-                  {% endif %}
-                </div>
-
-                {% if grupo.diferenca %}
-                  <p class="small mb-0 mt-2">{{ grupo.diferenca }}</p>
-                {% endif %}
-
-                <div class="collapse" id="despesas-categoria-{{ forloop.counter }}">
-                  <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mt-3">
-                    <span class="text-body-secondary small">
-                      {{ grupo.quantidade }} lançamento{{ grupo.quantidade|pluralize }} identificado{{ grupo.quantidade|pluralize }}
-                    </span>
-                    <span class="text-body-secondary small">{{ grupo.categoria }}</span>
                   </div>
-
-                  {% for despesa in grupo.lancamentos %}
-                    <div class="border-top pt-2 mt-2">
-                      <div class="d-flex justify-content-between align-items-baseline gap-3">
-                        <span>{{ despesa.descricao }}</span>
-                        <span class="fw-medium text-nowrap">{{ despesa.valor }}</span>
-                      </div>
-                      <div class="text-body-secondary small">
-                        {{ despesa.data|default:"—" }}{% if despesa.fornecedor %} · {{ despesa.fornecedor }}{% endif %}{% if despesa.documento %} · Documento {{ despesa.documento }}{% endif %}
-                      </div>
-                      <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-                        <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
-                        <span class="text-body-secondary small">{{ despesa.categoria }}</span>
-                      </div>
-                    </div>
-                  {% empty %}
-                    <p class="text-body-secondary small mb-0 mt-2">
-                      Nenhum lançamento foi identificado nesta categoria.
-                    </p>
-                  {% endfor %}
-                </div>
+                {% empty %}
+                  <p class="text-body-secondary small mb-0">Nenhum lançamento identificado nesta categoria.</p>
+                {% endfor %}
               </div>
             </div>
-          </li>
-        {% endfor %}
-      </ul>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if grupos_em_atencao %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h2 class="h6 mb-1">Pontos que precisam de atenção</h2>
+            <p class="text-body-secondary small mb-0">{{ texto_grupos_em_atencao }}</p>
+          </div>
+          <button
+            class="btn btn-label-secondary btn-sm"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#grupos-em-atencao"
+            aria-expanded="false"
+            aria-controls="grupos-em-atencao">
+            Ver detalhes
+          </button>
+        </div>
+
+        <div class="collapse mt-3" id="grupos-em-atencao">
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Categoria</th>
+                  <th>Declarado</th>
+                  <th>Identificado</th>
+                  <th class="text-end">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for grupo in grupos_em_atencao %}
+                  <tr>
+                    <td>{{ grupo.categoria }}</td>
+                    <td>{{ grupo.declarado|default:"—" }}</td>
+                    <td>{{ grupo.identificado|default:"—" }}</td>
+                    <td class="text-end">{{ grupo.diferenca }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   {% endif %}
 
   {% if saldos %}
     <div class="card mb-4">
-      <div class="card-header">
-        <h2 class="h6 mb-0">Saldos por conta</h2>
+      <div class="card-header border-0 pb-0">
+        <h2 class="h5 mb-1">Saldos</h2>
+        <p class="text-body-secondary small mb-0">Saldos por conta ou fundo, sem expor dados bancários desnecessários.</p>
       </div>
-      <ul class="list-group list-group-flush">
-        {% for saldo in saldos %}
-          <li class="list-group-item d-flex justify-content-between align-items-center gap-3">
-            <span>{{ saldo.identificacao }}</span>
-            <span class="fw-medium">{{ saldo.valor }}</span>
-          </li>
-        {% endfor %}
-      </ul>
+      <div class="card-body pt-3">
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Conta/Fundo</th>
+                <th>Saldo anterior</th>
+                <th class="text-end">Saldo atual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for saldo in saldos %}
+                <tr>
+                  <td>{{ saldo.identificacao }}</td>
+                  <td>{{ saldo.saldo_anterior|default:"—" }}</td>
+                  <td class="text-end">{{ saldo.saldo_atual|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   {% endif %}
 
   {% if pendencias %}
     <div class="card mb-4">
-      <div class="card-header">
-        <h2 class="h6 mb-0">Pontos de atenção</h2>
+      <div class="card-header border-0 pb-0">
+        <h2 class="h5 mb-0">Pontos de atenção</h2>
       </div>
-      <ul class="list-group list-group-flush">
+      <div class="card-body pt-3">
         {% for pendencia in pendencias %}
-          <li class="list-group-item">
-            <span class="badge bg-label-{{ pendencia.tom }} mb-2">{{ pendencia.titulo }}</span>
-            <p class="mb-0">{{ pendencia.mensagem }}</p>
-          </li>
+          <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
+            <div class="fw-medium mb-1">{{ pendencia.titulo }}</div>
+            <p class="text-body-secondary mb-0">{{ pendencia.mensagem }}</p>
+          </div>
         {% endfor %}
-      </ul>
+      </div>
     </div>
-  {% endif %}
-
-  {% if nome_do_arquivo %}
-    <p class="text-body-secondary small mb-0">
-      Documento de origem: {{ nome_do_arquivo }}
-      {% if confirmado_em %}· confirmado em {{ confirmado_em|date:"d/m/Y" }}{% endif %}
-    </p>
   {% endif %}
 {% endblock %}

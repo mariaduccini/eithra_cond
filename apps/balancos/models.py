@@ -473,5 +473,41 @@ class ImportacaoBalanco(models.Model):
         """Tom visual do estado, para a listagem. Nunca a única informação."""
         return TOM_POR_STATUS_DE_IMPORTACAO.get(self.status, "secondary")
 
+    def _situacao_e_tom(self) -> tuple[str, str]:
+        """O que aconteceu com a importação, dito a quem está lendo a lista.
+
+        O estado técnico responde "em que passo o arquivo está"; a gestão
+        precisa saber outra coisa: se já existe leitura para conferir, se ainda
+        não há o que ler, ou se o mês já passou a valer. Por isso a frase vem do
+        que a importação tem — não só do passo em que ela parou.
+        """
+        if self.confirmado_em:
+            return "Balanço confirmado", "success"
+        if self.descartada:
+            return self.get_status_display(), "secondary"
+        if self.status in (StatusImportacao.RECEBIDO, StatusImportacao.PROCESSANDO):
+            return self.get_status_display(), self.tom_do_estado
+        if self.status == StatusImportacao.ERRO:
+            return self.get_status_display(), "danger"
+        if (
+            self.status == StatusImportacao.PRONTO
+            and self.layout_detectado == LayoutBalanco.ATUAL_CANONICO
+            and self.resultado_extraido
+        ):
+            return "Aguardando confirmação", "primary"
+        if self.resultado_extraido:
+            return self.get_status_display(), self.tom_do_estado
+        return "Dados ainda não lidos", "secondary"
+
+    @property
+    def situacao_para_a_gestao(self) -> str:
+        """A situação da importação em linguagem de gestão, não de pipeline."""
+        return self._situacao_e_tom()[0]
+
+    @property
+    def tom_da_situacao(self) -> str:
+        """Tom visual da situação. O texto é que informa; a cor só ajuda."""
+        return self._situacao_e_tom()[1]
+
     def __str__(self) -> str:
         return f"{self.nome_original} · {self.get_status_display()}"

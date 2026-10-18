@@ -12,6 +12,7 @@ A autorização é decidida no backend, sempre a partir do vínculo ativo da pes
 com o condomínio. Quem não pode importar não é avisado de que o registro
 existe: a resposta é 404.
 """
+import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -151,6 +152,16 @@ def balanco(request, pk):
 
 
 @login_required
+def arquivo_do_balanco(request, pk):
+    """Abre o PDF original do balanço confirmado, com acesso curto."""
+    instancia = _balanco_autorizado(request, pk)
+    original = _documento_original(instancia)
+    if original is None or not original.storage_key:
+        raise Http404("O documento original deste balanço não está disponível.")
+    return redirect(gerar_acesso_temporario(original))
+
+
+@login_required
 def acessar_arquivo(request, pk):
     """Abre o arquivo por um acesso curto, gerado na hora.
 
@@ -212,8 +223,15 @@ def _render(request, *, condominios, formulario=None, status=200):
         .select_related("condominio")
         .order_by("-criado_em")[:LIMITE_DA_LISTA]
     )
+    confirmados = (
+        BalancoMensal.objects.filter(condominio__in=condominios)
+        .select_related("condominio")
+        .exclude(status=StatusBalanco.SUBSTITUIDO)
+        .order_by("-competencia", "-versao")[:LIMITE_DA_LISTA]
+    )
     _ligar_balancos_confirmados(recebidas)
     contexto = {
+        "balancos_confirmados": [_balanco_da_lista(item) for item in confirmados],
         "importacoes": recebidas,
         "formulario_importacao": formulario or ImportacaoBalancoForm(condominios=condominios),
         "limite_de_upload": formatar_tamanho(limite_de_upload()),
@@ -364,33 +382,66 @@ def _contexto_do_balanco(balanco) -> dict:
     """
     validado = de_dicionario_validado(balanco.dados_validados)
     lido = de_dicionario(validado.leitura)
-    lancamentos = _lancamentos_por_grupo(lido.despesas)
-    original = balanco.documentos.first()
+    categorias = _categorias_para_tela(lido)
+    grupos_em_atencao = _grupos_em_atencao_para_tela(lido.grupos)
+    saldos = [_saldo_para_tela(item) for item in lido.saldos]
+    detalhamento = _detalhamento_para_tela(lido)
+    resumo = _resumo_para_tela(lido.resumo)
+    original = _documento_original(balanco)
+    saldo_rotulo, saldo_valor = _saldo_principal_para_tela(
+        validado.saldo_final, saldos=saldos
+    )
 
     return {
         "balanco": balanco,
         "competencia": _competencia_por_extenso(validado.competencia),
-        "grupos": [
-            _grupo_para_tela(item, lancamentos.get(item.nome or "", []))
-            for item in lido.grupos
-        ],
-        "saldos": [_saldo_para_tela(item) for item in lido.saldos],
-        "tem_a_confirmar": any(
-            texto_para_decimal(item.nao_determinada) for item in lido.grupos
-        ),
-        "resumo": _resumo_para_tela(lido.resumo),
+        "subtitulo": f"{balanco.condominio.nome} / {_competencia_por_extenso(validado.competencia)}",
+        "categorias": categorias,
+        "saldos": saldos,
+        "grupos_em_atencao": grupos_em_atencao,
+        "resumo": resumo,
         "totais": {
             "receitas": _moeda(validado.receitas_total),
             "despesas": _moeda(validado.despesas_total),
             "saldo_anterior": _moeda(validado.saldo_anterior),
-            "saldo_final": _moeda(validado.saldo_final),
+            "saldo_final": saldo_valor,
+            "saldo_rotulo": saldo_rotulo,
         },
-        "detalhamento": _detalhamento_para_tela(lido),
+        "detalhamento": detalhamento,
+        "texto_detalhamento": _texto_do_detalhamento(detalhamento),
+        "destaques": _destaques_para_tela(
+            categorias=categorias,
+            resumo=resumo,
+            detalhamento=detalhamento,
+        ),
+        "texto_grupos_em_atencao": _texto_grupos_em_atencao(grupos_em_atencao),
         "nome_do_arquivo": original.nome_original if original else "",
+        "tem_documento_original": bool(original),
         "pendencias": [
             _pendencia_para_tela(item) for item in (balanco.inconsistencias or [])
         ],
         "confirmado_em": balanco.validado_em,
+    }
+
+
+def _documento_original(balanco):
+    """O PDF original ativo do balanço, quando existir."""
+    return (
+        balanco.documentos.filter(ativo=True).order_by("-enviado_em").first()
+        or balanco.documentos.order_by("-enviado_em").first()
+    )
+
+
+def _balanco_da_lista(balanco) -> dict:
+    """Resumo curto do balanço confirmado para a tela principal."""
+    resumo = balanco.resumo or {}
+    return {
+        "pk": balanco.pk,
+        "condominio": balanco.condominio.nome,
+        "competencia": _competencia_por_extenso(balanco.competencia.isoformat()),
+        "receitas": _moeda(resumo.get("receitas_total")),
+        "despesas": _moeda(resumo.get("despesas_total")),
+        "status": "Confirmado",
     }
 
 
@@ -491,19 +542,74 @@ def _lancamentos_por_grupo(despesas) -> dict[str, list[dict]]:
     return por_grupo
 
 
+def _lancamentos_por_categoria(despesas) -> dict[str, list[dict]]:
+    """Lançamentos por categoria do Eithra, na ordem em que vieram do documento."""
+    por_categoria: dict[str, list[dict]] = {}
+    for despesa in despesas:
+        por_categoria.setdefault(despesa.categoria_eithra, []).append(
+            _despesa_para_tela(despesa)
+        )
+    return por_categoria
+
+
 def _despesa_para_tela(item) -> dict:
     return {
         "data": _dia(item.data),
         "descricao": item.descricao_original,
         "categoria": rotulo_da_categoria(item.categoria_eithra),
-        "categoria_original": item.categoria_original or "",
         "natureza": rotulo_da_natureza(item.natureza),
         "natureza_tom": TOM_POR_NATUREZA.get(item.natureza, "secondary"),
         "valor": _moeda(item.valor),
         "fornecedor": item.fornecedor_candidato or "",
         "documento": item.documento or "",
         "parcela": item.parcela or "",
+        "grupo": item.categoria_original or "",
     }
+
+
+def _categorias_para_tela(balanco) -> list[dict]:
+    """Categorias agregadas do mês, ordenadas pelo total que mais pesou."""
+    lancamentos = _lancamentos_por_categoria(balanco.despesas)
+    categorias = [
+        _categoria_para_tela(item, lancamentos.get(item.categoria, []))
+        for item in balanco.categorias
+        if (texto_para_decimal(item.total) or Decimal("0.00")) > Decimal("0.00")
+    ]
+    return sorted(categorias, key=lambda item: item["total_decimal"], reverse=True)
+
+
+def _categoria_para_tela(categoria, lancamentos: list[dict]) -> dict:
+    total = texto_para_decimal(categoria.total) or Decimal("0.00")
+    return {
+        "slug": re.sub(r"[^a-z0-9]+", "-", categoria.categoria.lower()).strip("-"),
+        "nome": rotulo_da_categoria(categoria.categoria),
+        "recorrente": _moeda(categoria.recorrente),
+        "extra": _moeda(categoria.extraordinaria),
+        "a_confirmar": _moeda(categoria.nao_determinada),
+        "total": _moeda(categoria.total),
+        "total_decimal": total,
+        "lancamentos": lancamentos,
+    }
+
+
+def _grupos_em_atencao_para_tela(grupos) -> list[dict]:
+    """Só os grupos que ainda têm diferença relevante a explicar."""
+    grupos_em_atencao = []
+    for grupo in grupos:
+        if grupo.status != StatusConferencia.FALTA_IDENTIFICAR:
+            continue
+        diferenca = texto_para_decimal(grupo.diferenca) if grupo.diferenca else None
+        if diferenca is None or abs(diferenca) <= TOLERANCIA:
+            continue
+        grupos_em_atencao.append(
+            {
+                "categoria": grupo.nome or "Despesas sem agrupamento",
+                "declarado": _moeda(grupo.total_declarado),
+                "identificado": _moeda(grupo.soma_extraida),
+                "diferenca": _moeda(decimal_para_texto(abs(diferenca))),
+            }
+        )
+    return grupos_em_atencao
 
 
 def _grupo_para_tela(grupo, lancamentos: list[dict]) -> dict:
@@ -551,7 +657,72 @@ def _rotulo_da_conferencia(status: str) -> str:
 
 
 def _saldo_para_tela(item) -> dict:
-    return {"identificacao": item.identificacao, "valor": _moeda(item.valor)}
+    return {
+        "identificacao": _identificacao_de_saldo(item.identificacao),
+        "valor": _moeda(item.valor),
+        "saldo_anterior": _moeda(item.saldo_anterior),
+        "saldo_atual": _moeda(item.saldo_final or item.valor),
+    }
+
+
+def _saldo_principal_para_tela(saldo_final: str | None, *, saldos: list[dict]) -> tuple[str, str]:
+    """Escolhe o que cabe na faixa principal sem inventar consolidação."""
+    saldo = _moeda(saldo_final)
+    if saldo:
+        return ("Saldo", saldo)
+    if len(saldos) == 1 and saldos[0]["saldo_atual"]:
+        return ("Saldo", saldos[0]["saldo_atual"])
+    return ("Saldos", "Saldos por conta")
+
+
+def _texto_do_detalhamento(detalhamento: dict) -> str | None:
+    if not detalhamento.get("percentual"):
+        return None
+    return f"Detalhamento identificado: {detalhamento['percentual']}"
+
+
+def _destaques_para_tela(*, categorias: list[dict], resumo: dict, detalhamento: dict) -> list[dict]:
+    """No máximo três destaques, só quando trazem contexto útil."""
+    destaques = []
+    if categorias:
+        maior = categorias[0]
+        destaques.append(
+            {
+                "titulo": "Maior categoria",
+                "rotulo": maior["nome"],
+                "valor": maior["total"],
+            }
+        )
+
+    extra = resumo.get("extraordinaria")
+    if extra and extra != "R$ 0,00":
+        destaques.append(
+            {
+                "titulo": "Despesas extras",
+                "rotulo": "Gastos fora da rotina do mês",
+                "valor": extra,
+            }
+        )
+
+    if detalhamento.get("tem_residual"):
+        destaques.append(
+            {
+                "titulo": "Não associado",
+                "rotulo": "Parte das despesas ainda sem lançamento associado",
+                "valor": detalhamento["valor_nao_associado"],
+            }
+        )
+
+    return destaques[:3]
+
+
+def _texto_grupos_em_atencao(grupos_em_atencao: list[dict]) -> str | None:
+    quantidade = len(grupos_em_atencao)
+    if not quantidade:
+        return None
+    if quantidade == 1:
+        return "1 grupo precisa de atenção."
+    return f"{quantidade} grupos precisam de atenção."
 
 
 def _resumo_para_tela(resumo) -> dict:
@@ -565,6 +736,13 @@ def _resumo_para_tela(resumo) -> dict:
         "com_diferenca": resumo.grupos_com_diferenca,
         "principais": [rotulo_da_categoria(item) for item in resumo.principais_categorias],
     }
+
+
+def _identificacao_de_saldo(texto: str) -> str:
+    """Preserva o rótulo útil do saldo sem expor número de conta desnecessário."""
+    limpo = re.sub(r"\b\d[\d.\-]{3,}\b", "", texto or "")
+    limpo = re.sub(r"\s{2,}", " ", limpo).strip(" -/")
+    return limpo or "Conta/Fundo"
 
 
 def _pendencia_para_tela(pendencia: dict) -> dict:

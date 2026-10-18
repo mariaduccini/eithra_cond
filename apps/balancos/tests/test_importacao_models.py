@@ -135,6 +135,60 @@ class ImportacaoBalancoTests(BaseImportacaoTests):
             self.criar(status=StatusImportacao.DESCARTADO).tom_do_estado, "secondary"
         )
 
+    def test_situacao_da_lista_fala_de_leitura_e_de_desfecho(self):
+        """A lista não repete o passo técnico: diz se há o que conferir.
+
+        O mesmo estado ``pronto`` aparece com duas frases diferentes, porque a
+        gestão precisa saber se existe leitura para abrir — e não em que etapa
+        do processamento o arquivo parou.
+        """
+        from django.utils import timezone
+
+        self.assertEqual(
+            self.criar(status=StatusImportacao.PRONTO).situacao_para_a_gestao,
+            "Dados ainda não lidos",
+        )
+        self.assertEqual(
+            self.criar(
+                status=StatusImportacao.PRONTO,
+                layout_detectado=LayoutBalanco.ATUAL_CANONICO,
+            ).situacao_para_a_gestao,
+            "Dados ainda não lidos",
+        )
+        self.assertEqual(
+            self.criar(
+                status=StatusImportacao.PRONTO,
+                layout_detectado=LayoutBalanco.ATUAL_CANONICO,
+                resultado_extraido={"competencia": "2026-08-01"},
+            ).situacao_para_a_gestao,
+            "Aguardando confirmação",
+        )
+        self.assertEqual(
+            self.criar(status=StatusImportacao.ERRO).situacao_para_a_gestao,
+            "Não foi possível receber",
+        )
+        self.assertEqual(
+            self.criar(status=StatusImportacao.DESCARTADO).situacao_para_a_gestao,
+            "Descartado",
+        )
+        self.assertEqual(
+            self.criar(confirmado_em=timezone.now()).situacao_para_a_gestao,
+            "Balanço confirmado",
+        )
+
+    def test_tom_da_situacao_separa_o_que_espera_do_que_falhou(self):
+        self.assertEqual(
+            self.criar(
+                status=StatusImportacao.PRONTO,
+                layout_detectado=LayoutBalanco.ATUAL_CANONICO,
+                resultado_extraido={"competencia": "2026-08-01"},
+            ).tom_da_situacao,
+            "primary",
+        )
+        self.assertEqual(
+            self.criar(status=StatusImportacao.PRONTO).tom_da_situacao, "secondary"
+        )
+
     def test_descartada_reconhece_o_descarte(self):
         importacao = self.criar(status=StatusImportacao.DESCARTADO)
         self.assertTrue(importacao.descartada)

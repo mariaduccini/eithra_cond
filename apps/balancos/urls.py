@@ -13,4 +13,5 @@ urlpatterns = [
     path("<uuid:pk>/descartar/", views.descartar, name="descartar"),
     path("<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),
     path("mes/<uuid:pk>/", views.balanco, name="balanco"),
+    path("mes/<uuid:pk>/arquivo/", views.arquivo_do_balanco, name="balanco_arquivo"),
 ]
