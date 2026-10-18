@@ -4,6 +4,7 @@ O que se verifica aqui é a fronteira: quem entra, quem não entra, o que a
 listagem mostra, o que nunca aparece numa resposta — e, no fim, a confirmação:
 o único momento em que o mês passa a valer.
 """
+import hashlib
 import re
 import uuid
 from datetime import date
@@ -12,19 +13,31 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.balancos.constants import LayoutBalanco, StatusBalanco, StatusImportacao
+from apps.balancos import correcoes, evidencias
+from apps.balancos.categorias import CategoriaEithra
+from apps.balancos.constants import (
+    LayoutBalanco,
+    StatusBalanco,
+    StatusImportacao,
+    TipoVinculoEvidencia,
+)
 from apps.balancos.contratos import SCHEMA_VALIDADO, SCHEMA_VERSAO, de_dicionario_validado
 from apps.balancos.extrator_atual import extrair_balanco_atual
-from apps.balancos.models import BalancoMensal, ImportacaoBalanco
-from apps.balancos.services import ErroDeConfirmacao
+from apps.balancos.models import BalancoMensal, EvidenciaVisualBalanco, ImportacaoBalanco
+from apps.balancos.services import ErroDeConfirmacao, confirmar_importacao
 from apps.balancos.tests.apoio import (
     CONTEUDO_PDF,
+    CONTEUDO_PNG,
     HASH_PDF,
     StorageDeMentira,
     criar_pessoa,
     criar_vinculo,
+    foto,
     gerar_pdf_textual,
+    jpg,
     pdf,
+    png,
+    webp,
 )
 from apps.balancos.tests.test_extracao_atual import (
     pdf_com_grupo_sem_lancamento,
@@ -100,6 +113,45 @@ def pdf_com_grupo_a_conferir() -> bytes:
                 "Elevadores",
                 "TOTAL DA CONTA ELEVADORES 5.800,00",
                 "Total de Despesas 5.800,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_grupos_confirmavel() -> bytes:
+    """Balanço confirmável com dois agrupamentos declarados.
+
+    Um agrupamento fecha com o subtotal do documento; o outro não. Serve para
+    exercitar a correção de agrupamento com o mês já valendo pelos totais
+    oficiais — a mesma estrutura de ``pdf_com_grupos_reconciliados``, com os
+    blocos de competência e receitas que a confirmação exige.
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Condominio Exemplo",
+                "Demonstrativo de Contas",
+                "Competencia: Agosto/2026",
+            ]
+        ),
+        "\n".join(
+            [
+                "Receitas Detalhadas",
+                "Taxa Condominial 50.000,00",
+                "Total de Receitas 50.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Manutencao",
+                "Troca de bomba do recalque 2.500,00",
+                "Reparo de portao 500,00",
+                "TOTAL DA CONTA MANUTENCAO 3.000,00",
+                "Administracao",
+                "Honorarios contabeis 1.200,00",
+                "TOTAL DA CONTA ADMINISTRACAO 2.000,00",
+                "Total de Despesas 5.000,00",
             ]
         ),
     )
@@ -1295,3 +1347,980 @@ class BalancoConfirmadoTests(BaseConfirmacaoTests):
 
         self.assertContains(resposta, 'class="table-responsive d-none d-lg-block"', html=False)
         self.assertContains(resposta, 'class="d-lg-none"', html=False)
+
+
+class BaseCorrecaoTests(BaseConfirmacaoTests):
+    """Apoio à correção manual: o mês confirmado e os lançamentos como valem.
+
+    Nenhum teste mora aqui — só o que os testes de correção repetem. O mês é
+    confirmado na primeira chamada, e cada teste escolhe o documento de que
+    precisa sem esbarrar no balanço do outro.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._mes_confirmado = None
+
+    def _mes(self, documento=None):
+        """O balanço confirmado deste teste, criado na primeira chamada."""
+        if self._mes_confirmado is None:
+            importacao = self._importacao_lida(documento)
+            self._confirmar(importacao)
+            self._mes_confirmado = self._balanco()
+        return self._mes_confirmado
+
+    def _validado(self, balanco=None):
+        balanco = balanco or self._mes()
+        balanco.refresh_from_db()
+        return de_dicionario_validado(balanco.dados_validados)
+
+    def _leitura(self, balanco=None):
+        return self._validado(balanco).leitura or {}
+
+    def _revisoes(self, balanco=None):
+        return correcoes.revisoes(self._leitura(balanco))
+
+    def _lancamento(self, trecho, balanco=None):
+        """O lançamento válido cuja descrição contém o trecho dado."""
+        for item in correcoes.despesas_efetivas(self._leitura(balanco)):
+            if trecho in item["descricao"]:
+                return item
+        raise AssertionError(f"Nenhum lançamento com {trecho!r} neste balanço.")
+
+    def _total_da_categoria(self, codigo, balanco=None):
+        for item in self._leitura(balanco).get("categorias") or []:
+            if item.get("categoria") == codigo:
+                return item.get("total")
+        return None
+
+    def _grupo(self, nome, balanco=None):
+        for item in self._leitura(balanco).get("grupos") or []:
+            if item.get("nome") == nome:
+                return item
+        return None
+
+    def _correcao_de(self, lancamento, **mudancas):
+        """O que a tela enviaria: o lançamento como está, com o que foi decidido."""
+        dados = {
+            "lancamento_id": lancamento["id"],
+            "descricao": lancamento["descricao"],
+            "valor": lancamento["valor"],
+            "categoria": lancamento["categoria_eithra"],
+            "natureza": lancamento["natureza"],
+            "grupo": lancamento["grupo"] or "",
+            "justificativa": "Conferido contra o documento.",
+        }
+        dados.update(mudancas)
+        return dados
+
+    def _post_correcao(self, lancamento, usuario=None, **mudancas):
+        balanco = self._mes()
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            self._correcao_de(lancamento, **mudancas),
+            follow=True,
+        )
+
+    def _post_nao_despesa(self, lancamento, usuario=None, justificativa=None):
+        balanco = self._mes()
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:marcar_nao_despesa", args=[balanco.pk]),
+            {
+                "lancamento_id": lancamento["id"],
+                "justificativa": (
+                    justificativa
+                    if justificativa is not None
+                    else "Não é despesa do mês."
+                ),
+            },
+            follow=True,
+        )
+
+    def _post_manual(self, usuario=None, **campos):
+        balanco = self._mes()
+        dados = {
+            "descricao": "Taxa de lixo extraordinária",
+            "valor": "500,00",
+            "categoria": "outros",
+            "natureza": "extraordinaria",
+            "grupo": "",
+            "justificativa": "Cobrança avulsa do mês.",
+        }
+        dados.update(campos)
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:adicionar_lancamento", args=[balanco.pk]),
+            dados,
+            follow=True,
+        )
+
+
+class CorrecaoManualTests(BaseCorrecaoTests):
+    """Corrigir o detalhamento do mês: quem pode, o que muda e o que fica.
+
+    A máquina leu o documento; a gestão responde por ele. O que se verifica aqui
+    é que corrigir muda o estado validado e o histórico — e não toca no que foi
+    lido nem nos totais oficiais do documento.
+    """
+
+    def test_admin_corrige_o_lancamento(self):
+        lancamento = self._lancamento("Energia Eletrica")
+        antes = self._validado()
+
+        resposta = self._post_correcao(lancamento, usuario=self.admin, valor="2.450,00")
+
+        self.assertContains(resposta, "Correção registrada.")
+        depois = self._validado()
+        self.assertNotEqual(depois.leitura, antes.leitura)
+        self.assertEqual(self._total_da_categoria("energia"), "2450.00")
+
+    def test_sindica_corrige_o_lancamento(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        resposta = self._post_correcao(lancamento, usuario=self.sindica, valor="2.450,00")
+
+        self.assertContains(resposta, "Correção registrada.")
+        self.assertEqual(self._total_da_categoria("energia"), "2450.00")
+
+    def test_supervisora_nao_edita(self):
+        """A supervisão acompanha o mês; responder por ele é de quem o importa."""
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        antes = self._validado()
+
+        self.client.force_login(self.supervisora)
+        resposta = self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            self._correcao_de(lancamento, valor="2.450,00"),
+        )
+
+        self.assertEqual(resposta.status_code, 403)
+        self.assertEqual(self._validado().leitura, antes.leitura)
+        self.assertEqual(self._revisoes(), [])
+
+    def test_demais_papeis_nao_editam(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+
+        for pessoa in (self.morador, self.porteiro, self.operacional, self.sem_vinculo):
+            with self.subTest(pessoa=pessoa.email):
+                self.client.force_login(pessoa)
+                resposta = self.client.post(
+                    reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+                    self._correcao_de(lancamento, valor="2.450,00"),
+                )
+                self.assertEqual(resposta.status_code, 404)
+
+        self.assertEqual(self._revisoes(), [])
+
+    def test_outro_condominio_e_negado(self):
+        """Quem responde por outro condomínio não alcança este mês."""
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        outro = criar_pessoa("admin-b@exemplo.com.br", "Administração B")
+        criar_vinculo(outro, self.condominio_b, Papel.ADMIN)
+
+        self.client.force_login(outro)
+        resposta = self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            self._correcao_de(lancamento, valor="2.450,00"),
+        )
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(self._revisoes(), [])
+
+    def test_justificativa_e_obrigatoria(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        antes = self._validado()
+
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            self._correcao_de(lancamento, valor="2.450,00", justificativa="   "),
+            follow=True,
+        )
+
+        self.assertContains(resposta, "A correção precisa de uma justificativa.")
+        self.assertEqual(self._validado().leitura, antes.leitura)
+        self.assertEqual(self._revisoes(), [])
+
+    def test_dados_extraidos_nao_mudam(self):
+        """O que a máquina leu continua intocado depois de qualquer ajuste."""
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        extraidos = balanco.dados_extraidos
+
+        self._post_correcao(lancamento, valor="2.450,00")
+        self._post_manual()
+
+        balanco.refresh_from_db()
+        self.assertEqual(balanco.dados_extraidos, extraidos)
+        self.assertEqual(balanco.dados_extraidos["despesas"][1]["valor"], "3450.00")
+
+    def test_dados_validados_mudam(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        antes = balanco.dados_validados
+
+        self._post_correcao(lancamento, valor="2.450,00")
+
+        balanco.refresh_from_db()
+        self.assertNotEqual(balanco.dados_validados, antes)
+        self.assertEqual(balanco.dados_validados["leitura"]["despesas"][1]["correcao"], {"valor": "2450.00"})
+
+    def test_a_revisao_fica_no_historico(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._post_correcao(lancamento, valor="2.450,00")
+
+        revisoes = self._revisoes()
+        self.assertEqual(len(revisoes), 1)
+        self.assertEqual(revisoes[0]["tipo"], "correcao")
+        self.assertEqual(revisoes[0]["lancamento_id"], lancamento["id"])
+        self.assertEqual(revisoes[0]["justificativa"], "Conferido contra o documento.")
+        self.assertEqual(revisoes[0]["autor"], "Síndica Teste")
+        self.assertEqual(
+            revisoes[0]["mudancas"],
+            [{"campo": "valor", "antes": "3450.00", "depois": "2450.00"}],
+        )
+
+    def test_a_segunda_revisao_preserva_a_primeira(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._post_correcao(lancamento, valor="2.450,00")
+        self._post_correcao(
+            self._lancamento("Energia Eletrica"), descricao="Energia Elétrica revisada"
+        )
+
+        revisoes = self._revisoes()
+        self.assertEqual(len(revisoes), 2)
+        self.assertEqual(revisoes[0]["mudancas"][0]["campo"], "valor")
+        self.assertEqual(revisoes[1]["mudancas"][0]["campo"], "descricao")
+
+    def test_alterar_o_valor_recalcula(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._post_correcao(lancamento, valor="2.450,00")
+
+        self.assertEqual(self._total_da_categoria("energia"), "2450.00")
+        self.assertEqual(self._validado().total_detalhado_identificado, "15650.00")
+
+    def test_alterar_a_categoria_recalcula(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._post_correcao(lancamento, categoria="manutencao")
+
+        self.assertEqual(self._total_da_categoria("manutencao"), "3450.00")
+        self.assertIsNone(self._total_da_categoria("energia"))
+
+    def test_alterar_a_natureza_recalcula(self):
+        lancamento = self._lancamento("Energia Eletrica")
+        self.assertEqual(self._leitura()["resumo"]["recorrente_total"], "15450.00")
+        self.assertEqual(self._leitura()["resumo"]["extraordinaria_total"], "0.00")
+
+        self._post_correcao(lancamento, natureza="extraordinaria")
+
+        resumo = self._leitura()["resumo"]
+        self.assertEqual(resumo["recorrente_total"], "12000.00")
+        self.assertEqual(resumo["extraordinaria_total"], "3450.00")
+        self.assertEqual(resumo["nao_determinada_total"], "1200.00")
+
+    def test_alterar_o_grupo_recalcula(self):
+        balanco = self._mes(pdf_com_grupos_confirmavel())
+        self.assertEqual(self._grupo("Manutencao", balanco)["soma_extraida"], "3000.00")
+
+        portao = self._lancamento("Reparo de portao", balanco)
+        self.client.force_login(self.sindica)
+        self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            self._correcao_de(portao, grupo="Administracao"),
+            follow=True,
+        )
+
+        self.assertEqual(self._grupo("Manutencao", balanco)["soma_extraida"], "2500.00")
+        self.assertEqual(self._grupo("Administracao", balanco)["soma_extraida"], "1700.00")
+
+    def test_nao_despesa_sai_da_soma(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        self.assertEqual(self._validado().total_detalhado_identificado, "16650.00")
+
+        resposta = self._post_nao_despesa(lancamento)
+
+        self.assertContains(resposta, "Lançamento marcado como não sendo despesa.")
+        self.assertEqual(self._validado().total_detalhado_identificado, "13200.00")
+        guardado = [
+            item
+            for item in correcoes.despesas_efetivas(
+                self._leitura(), incluir_ignoradas=True
+            )
+            if item["id"] == lancamento["id"]
+        ]
+        self.assertTrue(guardado and guardado[0]["excluida"])
+        self.assertEqual(self._revisoes()[0]["tipo"], "nao_despesa")
+
+    def test_lancamento_manual_entra_na_soma(self):
+        balanco = self._mes()
+        self.assertEqual(self._validado().total_detalhado_identificado, "16650.00")
+
+        resposta = self._post_manual(valor="500,00")
+
+        self.assertContains(resposta, "Lançamento adicionado.")
+        self.assertEqual(self._validado().total_detalhado_identificado, "17150.00")
+        manuais = [
+            item
+            for item in correcoes.despesas_efetivas(self._leitura())
+            if item["manual"]
+        ]
+        self.assertEqual(len(manuais), 1)
+        self.assertEqual(manuais[0]["valor"], "500.00")
+        self.assertEqual(manuais[0]["descricao"], "Taxa de lixo extraordinária")
+        self.assertEqual(self._revisoes()[0]["tipo"], "inclusao")
+
+    def test_o_total_oficial_nao_muda(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._post_correcao(lancamento, valor="2.450,00")
+        self._post_nao_despesa(self._lancamento("Folha de Pagamento"))
+        self._post_manual(valor="500,00")
+
+        validado = self._validado()
+        self.assertEqual(validado.despesas_total, "16650.00")
+        self.assertEqual(validado.total_declarado_despesas, "16650.00")
+        self.assertEqual(validado.receitas_total, "50000.00")
+        self.assertEqual(self._leitura()["despesas_total"], "16650.00")
+        self.assertEqual(balanco.resumo["despesas_total"], "16650.00")
+
+    def test_o_residual_recalcula(self):
+        balanco = self._mes()
+        lancamento = self._lancamento("Energia Eletrica")
+        self.assertEqual(self._validado().valor_nao_associado, "0.00")
+
+        self._post_correcao(lancamento, valor="2.450,00")
+
+        self.assertEqual(self._validado().valor_nao_associado, "1000.00")
+        self.assertEqual(self._validado().percentual_detalhamento, "93.99")
+        self.assertEqual(balanco.resumo["valor_nao_associado"], "1000.00")
+
+    def test_erro_nao_deixa_rastro(self):
+        """Uma correção que o domínio recusa não deixa nada pela metade."""
+        balanco = self._mes()
+        antes = balanco.dados_validados
+
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:corrigir_lancamento", args=[balanco.pk]),
+            {
+                "lancamento_id": "nao-existe",
+                "descricao": "Lançamento inventado",
+                "valor": "10,00",
+                "categoria": "outros",
+                "natureza": "nao_determinada",
+                "grupo": "",
+                "justificativa": "Teste de rollback.",
+            },
+            follow=True,
+        )
+
+        self.assertContains(resposta, "O lançamento não foi encontrado neste balanço.")
+        balanco.refresh_from_db()
+        self.assertEqual(balanco.dados_validados, antes)
+        self.assertEqual(self._revisoes(), [])
+
+    def test_versao_desatualizada_e_recusada(self):
+        """Corrigir sobre um estado que já mudou seria pior do que pedir recarga."""
+        balanco = self._mes()
+        # O estado de partida é lido à parte: listar os lançamentos para escolher
+        # um lhes dá identidade, e isso não pode contaminar o "antes" comparado.
+        antes = BalancoMensal.objects.get(pk=balanco.pk).dados_validados
+        lancamento = self._lancamento("Energia Eletrica")
+
+        resposta = self._post_correcao(
+            lancamento, valor="2.450,00", versao="2020-01-01T00:00:00+00:00"
+        )
+
+        self.assertContains(resposta, "Recarregue a página")
+        balanco.refresh_from_db()
+        self.assertEqual(balanco.dados_validados, antes)
+        self.assertEqual(self._revisoes(), [])
+
+
+class CorrecaoManualNaTelaTests(BaseCorrecaoTests):
+    """O que a tela do mês mostra sobre o ajuste — e o que ela não mostra."""
+
+    def _tela(self, balanco, usuario=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.get(reverse("balancos:balanco", args=[balanco.pk]))
+
+    def test_a_tela_oferece_corrigir_e_adicionar(self):
+        resposta = self._tela(self._mes())
+
+        self.assertContains(resposta, "Adicionar lançamento")
+        self.assertContains(resposta, 'data-bs-target="#ajustar-lancamento"', html=False)
+        self.assertContains(resposta, 'title="Corrigir"', html=False)
+        self.assertContains(resposta, "Justificativa")
+        self.assertContains(resposta, "Não é despesa")
+
+    def test_supervisora_le_o_mes_sem_acao_de_correcao(self):
+        balanco = self._mes()
+
+        resposta = self._tela(balanco, usuario=self.supervisora)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertNotContains(resposta, 'id="ajustar-lancamento"', html=False)
+        self.assertNotContains(resposta, "Adicionar lançamento")
+
+    def test_indicadores_de_ajuste_e_de_inclusao(self):
+        lancamento = self._lancamento("Energia Eletrica")
+        self._post_correcao(lancamento, valor="2.450,00")
+        self._post_manual()
+
+        resposta = self._tela(self._mes())
+
+        self.assertContains(resposta, "Ajustado manualmente")
+        self.assertContains(resposta, "lido R$ 3.450,00")
+        self.assertContains(resposta, "Adicionado manualmente")
+
+    def test_o_historico_aparece_na_expansao_com_o_antes_e_o_depois(self):
+        lancamento = self._lancamento("Energia Eletrica")
+        self._post_correcao(lancamento, valor="2.450,00")
+        self._post_manual()
+
+        resposta = self._tela(self._mes())
+
+        self.assertContains(resposta, "Ajustes (2)")
+        self.assertContains(resposta, "Ajustes feitos à mão")
+        self.assertContains(resposta, "Lançamento ajustado")
+        self.assertContains(resposta, "Lançamento adicionado")
+        self.assertContains(resposta, "Valor:")
+        self.assertContains(resposta, "R$ 3.450,00")
+        self.assertContains(resposta, "R$ 2.450,00")
+        self.assertContains(resposta, "Conferido contra o documento.")
+        self.assertContains(resposta, "Cobrança avulsa do mês.")
+        self.assertContains(resposta, "Síndica Teste")
+
+    def test_o_historico_nao_expoe_detalhe_de_sistema(self):
+        lancamento = self._lancamento("Energia Eletrica")
+        self._post_correcao(lancamento, valor="2.450,00")
+
+        resposta = self._tela(self._mes())
+
+        self.assertNotContains(resposta, "schema_versao")
+        self.assertNotContains(resposta, "provenance")
+        self.assertNotContains(resposta, "confianca")
+        # No histórico, o lançamento aparece pelo que ele é — nunca pelo
+        # identificador interno que o liga à linha corrigida.
+        historico = resposta.content.decode().rsplit('id="ajustes-do-balanco"', 1)[1]
+        self.assertNotIn(lancamento["id"], historico)
+
+    def test_quem_nao_corrige_nao_ve_os_modais(self):
+        balanco = self._mes()
+
+        resposta = self._tela(balanco, usuario=self.supervisora)
+
+        self.assertNotContains(resposta, 'id="adicionar-lancamento"', html=False)
+        self.assertNotContains(resposta, 'id="form-corrigir"', html=False)
+
+
+# -- Evidências visuais ---------------------------------------------------------
+
+
+class BaseEvidenciaTests(BaseCorrecaoTests):
+    """Apoio às evidências visuais: o mês confirmado, fotos e um bucket só delas.
+
+    As fotos ficam sob observação separada do documento: o storage do balanço é
+    um, o das imagens é outro. É assim que se prova que a imagem entra no bucket
+    privado e que o acesso a ela é pedido na hora — e nunca guardado.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.fotos = StorageDeMentira(bucket="bucket-de-fotos")
+        self.provider_das_fotos = patch(
+            "apps.balancos.evidencias.obter_provider", return_value=self.fotos
+        )
+        self.provider_das_fotos.start()
+        self.addCleanup(self.provider_das_fotos.stop)
+
+        self.sindica_b = criar_pessoa("sindica-b@exemplo.com.br", "Síndica do B")
+        criar_vinculo(self.sindica_b, self.condominio_b, Papel.SINDICA)
+
+    # -- o mês ----------------------------------------------------------------
+
+    def _mes_do_b(self):
+        """Um mês confirmado no outro condomínio, para provar o isolamento."""
+        importacao = self._importacao_lida(condominio=self.condominio_b)
+        return confirmar_importacao(importacao, usuario=self.sindica_b)
+
+    # -- envio ----------------------------------------------------------------
+
+    def _enviar(
+        self,
+        balanco,
+        *,
+        usuario=None,
+        imagem=None,
+        tipo_vinculo=None,
+        referencia=None,
+        legenda="",
+        exibir_aos_moradores=None,
+    ):
+        """Envia uma foto para um mês, como a tela faria."""
+        dados = {
+            "tipo_vinculo": tipo_vinculo or TipoVinculoEvidencia.LANCAMENTO,
+            "referencia": (
+                self._lancamento("Energia Eletrica", balanco)["id"]
+                if referencia is None
+                else referencia
+            ),
+            "legenda": legenda,
+            "imagem": png() if imagem is None else imagem,
+        }
+        if exibir_aos_moradores is not None:
+            dados["exibir_aos_moradores"] = "on" if exibir_aos_moradores else ""
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:evidencia_adicionar", args=[balanco.pk]),
+            dados,
+            follow=True,
+        )
+
+    def _anexar(self, usuario=None, **campos):
+        """Anexa uma foto ao mês deste teste, como a tela faria."""
+        return self._enviar(self._mes(), usuario=usuario, **campos)
+
+    def _foto_anexada(self, **campos):
+        """Anexa e devolve a evidência gravada."""
+        self._anexar(**campos)
+        return self._unica()
+
+    def _editar(self, evidencia, usuario=None, **campos):
+        dados = {"legenda": "", "exibir_aos_moradores": ""}
+        dados.update(campos)
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:evidencia_editar", args=[self._mes().pk, evidencia.pk]),
+            dados,
+            follow=True,
+        )
+
+    def _remover(self, evidencia, usuario=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:evidencia_remover", args=[self._mes().pk, evidencia.pk]),
+            follow=True,
+        )
+
+    # -- leitura --------------------------------------------------------------
+
+    def _evidencias(self):
+        return EvidenciaVisualBalanco.objects.order_by("criado_em")
+
+    def _unica(self):
+        return self._evidencias().get()
+
+    def _abrir(self, usuario=None, balanco=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.get(
+            reverse("balancos:balanco", args=[(balanco or self._mes()).pk])
+        )
+
+
+class EvidenciaVisualTests(BaseEvidenciaTests):
+    """A foto que explica o mês: quem anexa, o que é conferido e o que fica.
+
+    A evidência é complementar: ela ilustra o número, não o substitui. O que se
+    verifica aqui é que a foto entra no bucket privado, presa a um contexto que
+    existe de verdade, sem tocar no detalhamento do balanço.
+    """
+
+    def test_administracao_anexa_a_foto(self):
+        resposta = self._anexar(usuario=self.admin, legenda="  Troca do portão  ")
+
+        self.assertContains(resposta, "Foto anexada.")
+        evidencia = self._unica()
+        self.assertEqual(evidencia.criado_por, self.admin)
+        self.assertEqual(evidencia.legenda, "Troca do portão")
+        self.assertEqual(evidencia.mime_type, "image/png")
+        self.assertTrue(evidencia.ativo)
+        self.assertIsNone(evidencia.removido_em)
+
+    def test_sindica_anexa_a_foto(self):
+        resposta = self._anexar(usuario=self.sindica)
+
+        self.assertContains(resposta, "Foto anexada.")
+        self.assertEqual(self._evidencias().count(), 1)
+
+    def test_supervisora_le_o_mes_mas_nao_anexa(self):
+        resposta = self._anexar(usuario=self.supervisora)
+
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(self._evidencias().exists())
+
+    def test_operacao_portaria_e_morador_nao_sao_avisados_do_mes(self):
+        for pessoa in (self.operacional, self.porteiro, self.morador):
+            with self.subTest(pessoa=pessoa.full_name):
+                self.assertEqual(self._anexar(usuario=pessoa).status_code, 404)
+
+        self.assertFalse(self._evidencias().exists())
+
+    def test_pessoa_de_outro_condominio_nao_anexa(self):
+        resposta = self._anexar(usuario=self.sindica_b)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertFalse(self._evidencias().exists())
+
+    def test_balanco_de_outro_condominio_e_negado(self):
+        balanco_b = self._mes_do_b()
+
+        resposta = self._enviar(balanco_b, usuario=self.sindica, referencia="qualquer")
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertFalse(
+            EvidenciaVisualBalanco.objects.filter(balanco=balanco_b).exists()
+        )
+
+    def test_arquivo_que_nao_e_imagem_e_recusado(self):
+        resposta = self._anexar(
+            imagem=foto("comprovante.pdf", CONTEUDO_PDF, "application/pdf")
+        )
+
+        self.assertContains(resposta, "não é uma imagem aceita")
+        self.assertFalse(self._evidencias().exists())
+
+    def test_tipo_declarado_diferente_do_arquivo_e_recusado(self):
+        resposta = self._anexar(
+            imagem=foto("foto.png", CONTEUDO_PNG, "application/pdf")
+        )
+
+        self.assertContains(resposta, "não corresponde a uma imagem aceita")
+        self.assertFalse(self._evidencias().exists())
+
+    @override_settings(BALANCOS_MAX_FOTO_BYTES=200)
+    def test_foto_acima_do_limite_e_recusada(self):
+        resposta = self._anexar(imagem=foto("foto.png", CONTEUDO_PNG + b"\x00" * 500, "image/png"))
+
+        self.assertContains(resposta, "passa do limite de")
+        self.assertFalse(self._evidencias().exists())
+
+    def test_a_foto_fica_presa_ao_lancamento(self):
+        lancamento = self._lancamento("Energia Eletrica")
+
+        self._anexar(referencia=lancamento["id"])
+
+        evidencia = self._unica()
+        self.assertEqual(evidencia.tipo_vinculo, TipoVinculoEvidencia.LANCAMENTO)
+        self.assertEqual(evidencia.referencia, lancamento["id"])
+
+    def test_a_foto_fica_presa_a_categoria(self):
+        self._anexar(
+            tipo_vinculo=TipoVinculoEvidencia.CATEGORIA,
+            referencia=CategoriaEithra.OBRAS_MELHORIAS,
+        )
+
+        evidencia = self._unica()
+        self.assertEqual(evidencia.tipo_vinculo, TipoVinculoEvidencia.CATEGORIA)
+        self.assertEqual(evidencia.referencia, "obras_melhorias")
+
+    def test_a_foto_do_destaque_nao_tem_referencia(self):
+        self._anexar(tipo_vinculo=TipoVinculoEvidencia.DESTAQUE, referencia="")
+
+        evidencia = self._unica()
+        self.assertEqual(evidencia.tipo_vinculo, TipoVinculoEvidencia.DESTAQUE)
+        self.assertEqual(evidencia.referencia, "")
+
+    def test_jpeg_png_e_webp_entram(self):
+        self._anexar(imagem=jpg(), legenda="Antes")
+        self._anexar(
+            imagem=webp(),
+            tipo_vinculo=TipoVinculoEvidencia.CATEGORIA,
+            referencia=CategoriaEithra.OBRAS_MELHORIAS,
+            legenda="Depois",
+        )
+        self._anexar(
+            imagem=png(),
+            tipo_vinculo=TipoVinculoEvidencia.DESTAQUE,
+            referencia="",
+        )
+
+        self.assertEqual(
+            set(self._evidencias().values_list("mime_type", flat=True)),
+            {"image/jpeg", "image/webp", "image/png"},
+        )
+
+    def test_lancamento_de_fora_do_mes_e_recusado(self):
+        resposta = self._anexar(referencia="lancamento-inventado")
+
+        self.assertContains(resposta, "não faz parte do balanço")
+        self.assertFalse(self._evidencias().exists())
+
+    def test_categoria_de_fora_do_catalogo_e_recusada(self):
+        resposta = self._anexar(
+            tipo_vinculo=TipoVinculoEvidencia.CATEGORIA,
+            referencia="categoria-inventada",
+        )
+
+        self.assertContains(resposta, "não faz parte do balanço")
+        self.assertFalse(self._evidencias().exists())
+
+    def test_vinculo_fora_dos_tres_tipos_e_recusado(self):
+        self._anexar(tipo_vinculo="solto")
+
+        self.assertFalse(self._evidencias().exists())
+
+    def test_a_foto_vai_para_o_bucket_privado(self):
+        balanco = self._mes()
+
+        self._anexar()
+
+        evidencia = self._unica()
+        self.assertEqual(evidencia.storage_provider, "mentira")
+        self.assertEqual(evidencia.storage_bucket, "bucket-de-fotos")
+        self.assertEqual(
+            evidencia.storage_key,
+            f"balancos/{self.condominio_a.pk}/{balanco.pk}/evidencias/"
+            f"{evidencia.pk}.png",
+        )
+        self.assertIn(evidencia.storage_key, self.fotos.objetos)
+        self.assertNotIn("http", evidencia.storage_key)
+
+    def test_o_hash_da_foto_e_guardado(self):
+        self._anexar(imagem=png())
+
+        self.assertEqual(
+            self._unica().sha256, hashlib.sha256(CONTEUDO_PNG).hexdigest()
+        )
+
+    def test_o_acesso_a_foto_e_gerado_na_hora(self):
+        balanco = self._mes()
+        evidencia = self._foto_anexada()
+
+        # Anexar não gera acesso nenhum: o endereço só nasce quando alguém olha.
+        self.assertEqual(self.fotos.assinaturas, [])
+
+        resposta = self.client.get(
+            reverse("balancos:evidencia_imagem", args=[balanco.pk, evidencia.pk])
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(evidencia.storage_key, resposta["Location"])
+        self.assertEqual(
+            [chave for chave, _ in self.fotos.assinaturas], [evidencia.storage_key]
+        )
+
+        # Nada de URL assinada vira registro: o balanço guarda a referência do
+        # objeto, e não um endereço que expira.
+        balanco.refresh_from_db()
+        self.assertNotIn("validade=", str(balanco.dados_validados))
+        self.assertNotIn("http", evidencia.storage_key)
+
+    def test_anexar_nao_muda_o_detalhamento_do_mes(self):
+        balanco = self._mes()
+        # O estado de partida é lido à parte: listar lançamentos para escolher um
+        # lhes dá identidade, e isso não pode contaminar o "antes" comparado.
+        antes = BalancoMensal.objects.get(pk=balanco.pk).dados_validados
+
+        self._anexar()
+
+        balanco.refresh_from_db()
+        self.assertEqual(balanco.dados_validados, antes)
+
+    def test_cada_vinculo_aceita_ate_tres_fotos(self):
+        for numero in range(evidencias.LIMITE_DE_FOTOS_POR_VINCULO):
+            self.assertContains(
+                self._anexar(imagem=png(marca=f"-{numero}")), "Foto anexada."
+            )
+
+        resposta = self._anexar(imagem=png(marca="-quarta"))
+
+        self.assertContains(resposta, "Cada vínculo aceita até 3 fotos")
+        self.assertEqual(self._evidencias().count(), 3)
+
+    def test_o_destaque_do_mes_aceita_uma_foto_so(self):
+        self._anexar(tipo_vinculo=TipoVinculoEvidencia.DESTAQUE, referencia="")
+
+        resposta = self._anexar(
+            tipo_vinculo=TipoVinculoEvidencia.DESTAQUE,
+            referencia="",
+            imagem=png(marca="-outra"),
+        )
+
+        self.assertContains(resposta, "O destaque do mês já tem uma foto")
+        self.assertEqual(self._evidencias().count(), 1)
+
+    def test_a_legenda_curta_e_salva(self):
+        self._anexar(legenda="Substituição do equipamento da área comum.")
+
+        self.assertEqual(
+            self._unica().legenda, "Substituição do equipamento da área comum."
+        )
+
+    def test_legenda_longa_demais_e_recusada(self):
+        self._anexar(legenda="x" * (evidencias.LIMITE_DA_LEGENDA + 1))
+
+        self.assertFalse(self._evidencias().exists())
+
+    def test_por_padrao_a_foto_nao_vai_aos_moradores(self):
+        self._anexar()
+
+        self.assertFalse(self._unica().exibir_aos_moradores)
+
+    def test_quem_responde_marca_a_foto_para_os_moradores(self):
+        self._anexar(exibir_aos_moradores=True)
+
+        self.assertTrue(self._unica().exibir_aos_moradores)
+
+    def test_supervisora_nao_decide_exibir_aos_moradores(self):
+        resposta = self._anexar(usuario=self.supervisora, exibir_aos_moradores=True)
+
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(self._evidencias().exists())
+
+    def test_supervisora_nao_muda_a_decisao_de_exibir(self):
+        evidencia = self._foto_anexada()
+
+        resposta = self._editar(
+            evidencia, usuario=self.supervisora, exibir_aos_moradores="on"
+        )
+
+        self.assertEqual(resposta.status_code, 403)
+        evidencia.refresh_from_db()
+        self.assertFalse(evidencia.exibir_aos_moradores)
+
+    def test_editar_muda_a_legenda_e_a_decisao(self):
+        evidencia = self._foto_anexada(legenda="Antes")
+
+        resposta = self._editar(evidencia, legenda="Depois", exibir_aos_moradores="on")
+
+        self.assertContains(resposta, "Foto atualizada.")
+        evidencia.refresh_from_db()
+        self.assertEqual(evidencia.legenda, "Depois")
+        self.assertTrue(evidencia.exibir_aos_moradores)
+        # A imagem continua a mesma: trocar foto é anexar outra e remover esta.
+        self.assertEqual(len(self.fotos.objetos), 1)
+
+    def test_remover_tira_a_foto_do_mes_sem_apagar_o_registro(self):
+        evidencia = self._foto_anexada()
+        chave = evidencia.storage_key
+
+        resposta = self._remover(evidencia)
+
+        self.assertContains(resposta, "Foto removida.")
+        evidencia.refresh_from_db()
+        self.assertFalse(evidencia.ativo)
+        self.assertIsNotNone(evidencia.removido_em)
+        self.assertEqual(self.fotos.removidos, [chave])
+        self.assertNotIn(chave, self.fotos.objetos)
+
+    def test_remover_exige_quem_responde_pelo_balanco(self):
+        evidencia = self._foto_anexada()
+
+        resposta = self._remover(evidencia, usuario=self.supervisora)
+
+        self.assertEqual(resposta.status_code, 403)
+        evidencia.refresh_from_db()
+        self.assertTrue(evidencia.ativo)
+
+    def test_remover_duas_vezes_nao_encontra_a_foto(self):
+        evidencia = self._foto_anexada()
+        self._remover(evidencia)
+
+        resposta = self._remover(evidencia)
+
+        self.assertContains(resposta, "Esta foto já não está no balanço.")
+
+    def test_a_mesma_foto_nao_entra_duas_vezes_no_mesmo_vinculo(self):
+        self._anexar(imagem=png())
+
+        resposta = self._anexar(imagem=png())
+
+        self.assertContains(resposta, "Esta foto já está anexada aqui.")
+        self.assertEqual(self._evidencias().count(), 1)
+
+    def test_a_mesma_foto_pode_explicar_dois_contextos(self):
+        self._anexar(imagem=png())
+        self._anexar(
+            imagem=png(),
+            tipo_vinculo=TipoVinculoEvidencia.CATEGORIA,
+            referencia=CategoriaEithra.OBRAS_MELHORIAS,
+        )
+
+        self.assertEqual(self._evidencias().count(), 2)
+
+
+class EvidenciaVisualNaTelaTests(BaseEvidenciaTests):
+    """O que a tela do mês mostra sobre as fotos — e o que ela não mostra."""
+
+    def test_a_tela_oferece_anexar_foto(self):
+        resposta = self._abrir()
+
+        self.assertContains(resposta, 'id="adicionar-evidencia"', html=False)
+        self.assertContains(resposta, "Adicionar foto")
+        self.assertContains(resposta, "Destaque do mês")
+        self.assertContains(
+            resposta, "Confirme que a imagem não contém dados pessoais"
+        )
+
+    def test_a_foto_do_lancamento_aparece_como_miniatura(self):
+        balanco = self._mes()
+        evidencia = self._foto_anexada(legenda="Troca da bomba")
+
+        resposta = self._abrir()
+
+        self.assertContains(resposta, "eithra-thumb")
+        self.assertContains(
+            resposta,
+            reverse("balancos:evidencia_imagem", args=[balanco.pk, evidencia.pk]),
+        )
+        self.assertContains(resposta, "Troca da bomba")
+
+    def test_a_miniatura_nao_expoe_o_endereco_do_objeto(self):
+        evidencia = self._foto_anexada()
+
+        resposta = self._abrir()
+
+        self.assertNotContains(resposta, evidencia.storage_key)
+        self.assertNotContains(resposta, "validade=")
+
+    def test_supervisora_ve_a_foto_sem_poder_mexer_nela(self):
+        self._foto_anexada()
+
+        resposta = self._abrir(usuario=self.supervisora)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "eithra-thumb")
+        self.assertNotContains(resposta, 'id="adicionar-evidencia"', html=False)
+        self.assertNotContains(resposta, "data-evidencia-editar-url")
+
+    def test_morador_continua_sem_acesso_ao_mes(self):
+        self._foto_anexada()
+
+        self.assertEqual(self._abrir(usuario=self.morador).status_code, 404)
+
+    def test_a_foto_do_destaque_aparece_com_a_decisao_tomada(self):
+        self._foto_anexada(
+            tipo_vinculo=TipoVinculoEvidencia.DESTAQUE,
+            referencia="",
+            legenda="Pintura da fachada",
+            exibir_aos_moradores=True,
+        )
+
+        resposta = self._abrir()
+
+        self.assertContains(resposta, "Destaque do mês")
+        self.assertContains(resposta, "Pintura da fachada")
+        self.assertContains(resposta, "Elegível para os moradores")
+
+    def test_a_foto_removida_sai_da_tela(self):
+        evidencia = self._foto_anexada()
+        self._remover(evidencia)
+
+        resposta = self._abrir()
+
+        self.assertNotContains(resposta, "eithra-thumb")
+        self.assertNotContains(resposta, 'id="ver-evidencia"', html=False)
+

@@ -1,0 +1,24 @@
+{% comment %}
+Miniatura de uma foto do balanço.
+
+Ela é a mesma em qualquer lugar da tela: abre a janela que mostra a imagem — e,
+para quem responde pelo mês, permite ajustar a legenda, decidir a exibição aos
+moradores ou remover a foto. Nenhum endereço do bucket aparece aqui: o que se usa
+é a rota do próprio Eithra, que confere o vínculo e gera um acesso curto na hora.
+
+Espera no contexto: ``evidencia`` e ``pode_gerenciar_evidencias``.
+{% endcomment %}
+<button
+  type="button"
+  class="eithra-thumb"
+  data-bs-toggle="modal"
+  data-bs-target="#ver-evidencia"
+  data-evidencia-url="{{ evidencia.url }}"
+  data-evidencia-legenda="{{ evidencia.legenda }}"
+  data-evidencia-exibir="{% if evidencia.exibir_aos_moradores %}1{% else %}0{% endif %}"
+  {% if pode_gerenciar_evidencias %}data-evidencia-editar-url="{{ evidencia.editar_url }}" data-evidencia-remover-url="{{ evidencia.remover_url }}"{% endif %}
+  title="{% if evidencia.legenda %}{{ evidencia.legenda }}{% else %}Ver foto{% endif %}">
+  <img
+    src="{{ evidencia.url }}"
+    alt="{% if evidencia.legenda %}{{ evidencia.legenda }}{% else %}Foto anexada ao balanço{% endif %}">
+</button>

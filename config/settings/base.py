@@ -157,6 +157,11 @@ BALANCOS_MAX_UPLOAD_BYTES = env.int("BALANCOS_MAX_UPLOAD_BYTES", default=50 * 10
 # Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
 # para abrir o documento, não para deixar um endereço circulando.
 BALANCOS_URL_ACESSO_SEGUNDOS = env.int("BALANCOS_URL_ACESSO_SEGUNDOS", default=60)
+# 10 MB por foto de evidência. É uma imagem para explicar uma despesa, não um
+# arquivo de trabalho: um limite menor que o do PDF recusa cedo a foto errada.
+BALANCOS_MAX_FOTO_BYTES = env.int(
+    "BALANCOS_MAX_FOTO_BYTES", default=10 * 1024 * 1024
+)
 # Leitura economica para detectar o formato: le apenas a abertura estrutural do
 # documento (indice, resumo e primeiras secoes financeiras) e para cedo. Nao ha
 # motivo para varrer centenas de paginas — nem para espalhar a amostra pelo

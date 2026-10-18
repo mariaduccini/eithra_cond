@@ -1,0 +1,30 @@
+{% comment %}
+Fotos de um contexto do balanço, com a ação de anexar quando ainda cabe outra.
+
+O mesmo trecho serve ao lançamento e à categoria: muda só o vínculo que a foto
+recebe. Sem galeria, sem feed, sem card próprio — miniatura pequena, ao lado do
+que ela explica.
+
+Espera no contexto: ``evidencias``, ``tipo_vinculo``, ``referencia``,
+``contexto``, ``pode_gerenciar_evidencias`` e ``limite_de_fotos``.
+{% endcomment %}
+<div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+  {% for evidencia in evidencias %}
+    {% include "pages/balancos/_miniatura_evidencia.html" %}
+  {% endfor %}
+
+  {% if pode_gerenciar_evidencias and evidencias|length < limite_de_fotos %}
+    <button
+      type="button"
+      class="btn btn-sm btn-icon btn-text-secondary rounded-pill"
+      data-bs-toggle="modal"
+      data-bs-target="#adicionar-evidencia"
+      data-tipo-vinculo="{{ tipo_vinculo }}"
+      data-referencia="{{ referencia }}"
+      data-vinculo="{{ contexto }}"
+      title="Adicionar foto"
+      aria-label="Adicionar foto">
+      <i class="bx bx-image-add" aria-hidden="true"></i>
+    </button>
+  {% endif %}
+</div>

@@ -158,6 +158,38 @@
   animation: eithra-spin 1s linear infinite;
 }
 
+/* Evidências visuais ----------------------------------------------------- */
+/* A foto é apoio do número: aparece pequena, no lugar do que ela explica.
+   Sem galeria, sem feed, sem card próprio. */
+.eithra-thumb {
+  display: inline-flex;
+  padding: 0;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+  background: none;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.eithra-thumb img {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  object-fit: cover;
+}
+
+.eithra-thumb:hover {
+  border-color: var(--eithra-primary);
+}
+
+.eithra-evidencia-imagem {
+  display: block;
+  inline-size: 100%;
+  max-block-size: 60vh;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  background-color: var(--bs-secondary-bg-subtle);
+}
+
 /* Acessibilidade básica -------------------------------------------------- */
 /* Foco sempre visível, mesmo para quem navega por teclado. */
 a:focus-visible,

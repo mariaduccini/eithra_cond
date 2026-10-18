@@ -13,32 +13,56 @@ com o condomínio. Quem não pode importar não é avisado de que o registro
 existe: a resposta é 404.
 """
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.balancos import correcoes, evidencias
 from apps.balancos.categorias import rotulo as rotulo_da_categoria
-from apps.balancos.constants import LayoutBalanco, StatusBalanco, StatusImportacao
+from apps.balancos.constants import (
+    LayoutBalanco,
+    StatusBalanco,
+    StatusImportacao,
+    TipoVinculoEvidencia,
+)
 from apps.balancos.contratos import (
     StatusConferencia,
     TipoInconsistencia,
     de_dicionario,
     de_dicionario_validado,
 )
-from apps.balancos.forms import ImportacaoBalancoForm
-from apps.balancos.models import BalancoMensal, ImportacaoBalanco
+from apps.balancos.correcoes import ErroDeCorrecao
+from apps.balancos.evidencias import ErroDeEvidencia
+from apps.balancos.forms import (
+    CorrecaoDeLancamentoForm,
+    EdicaoDeEvidenciaForm,
+    EvidenciaVisualForm,
+    ImportacaoBalancoForm,
+    LancamentoManualForm,
+    MarcarNaoDespesaForm,
+)
+from apps.balancos.models import BalancoMensal, EvidenciaVisualBalanco, ImportacaoBalanco
 from apps.balancos.natureza_despesa import NaturezaDespesa
 from apps.balancos.natureza_despesa import rotulo as rotulo_da_natureza
 from apps.balancos.normalizadores import decimal_para_texto, texto_para_decimal
-from apps.balancos.permissoes import condominios_para_importar
+from apps.balancos.permissoes import (
+    condominios_para_importar,
+    condominios_para_ler,
+    pode_corrigir_balanco,
+    pode_gerenciar_evidencias,
+)
 from apps.balancos.services import (
     ErroDeConfirmacao,
     confirmar_importacao,
+    corrigir_balanco,
     descartar_importacao,
     formatar_tamanho,
     gerar_acesso_temporario,
@@ -142,13 +166,156 @@ def confirmar(request, pk):
 
 @login_required
 def balanco(request, pk):
-    """O balanço confirmado do mês, como gestão — não como pipeline."""
+    """O balanço confirmado do mês, como gestão — não como pipeline.
+
+    Ler o mês confirmado é mais amplo do que importá-lo: a supervisão acompanha
+    sem responder por ele. Corrigir continua sendo de quem responde — por isso a
+    pergunta é feita aqui, uma vez, e a tela só mostra o que o backend aceitaria.
+    """
     instancia = _balanco_autorizado(request, pk)
     return render(
         request,
         "pages/balancos/balanco_detalhe.html",
-        _contexto_do_balanco(instancia),
+        _contexto_do_balanco(
+            instancia,
+            pode_corrigir=pode_corrigir_balanco(request.user, instancia.condominio),
+            pode_gerenciar_evidencias=pode_gerenciar_evidencias(
+                request.user, instancia.condominio
+            ),
+        ),
     )
+
+
+@login_required
+@require_POST
+def corrigir_lancamento(request, pk):
+    """Corrige um lançamento do detalhamento, guardando quem decidiu e por quê."""
+    instancia = _balanco_para_corrigir(request, pk)
+    formulario = CorrecaoDeLancamentoForm(request.POST, grupos=_grupos_do_balanco(instancia))
+    if not formulario.is_valid():
+        return _voltar_ao_balanco(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    return _executar_correcao(
+        request,
+        instancia,
+        acao="corrigir",
+        campos=_campos_do_lancamento(dados),
+        lancamento_id=dados["lancamento_id"],
+        justificativa=dados["justificativa"],
+        versao=dados["versao"],
+    )
+
+
+@login_required
+@require_POST
+def marcar_nao_despesa(request, pk):
+    """Tira um lançamento das despesas — sem apagar o que o Eithra leu."""
+    instancia = _balanco_para_corrigir(request, pk)
+    formulario = MarcarNaoDespesaForm(request.POST)
+    if not formulario.is_valid():
+        return _voltar_ao_balanco(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    return _executar_correcao(
+        request,
+        instancia,
+        acao="nao_despesa",
+        lancamento_id=dados["lancamento_id"],
+        justificativa=dados["justificativa"],
+        versao=dados["versao"],
+    )
+
+
+@login_required
+@require_POST
+def adicionar_lancamento(request, pk):
+    """Acrescenta ao detalhamento um lançamento que o documento não trouxe."""
+    instancia = _balanco_para_corrigir(request, pk)
+    formulario = LancamentoManualForm(request.POST, grupos=_grupos_do_balanco(instancia))
+    if not formulario.is_valid():
+        return _voltar_ao_balanco(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    return _executar_correcao(
+        request,
+        instancia,
+        acao="adicionar",
+        campos=_campos_do_lancamento(dados),
+        justificativa=dados["justificativa"],
+        versao=dados["versao"],
+    )
+
+
+@login_required
+@require_POST
+def adicionar_evidencia(request, pk):
+    """Anexa uma foto a um lançamento, a uma categoria ou ao destaque do mês.
+
+    A foto é complementar: ela explica o número, não o substitui. Quem decide
+    se ela entra é o domínio — e o vínculo que veio da tela é conferido contra o
+    balanço antes de qualquer coisa ser guardada.
+    """
+    instancia = _balanco_para_gerenciar_evidencias(request, pk)
+    formulario = EvidenciaVisualForm(request.POST, request.FILES)
+    if not formulario.is_valid():
+        return _voltar_ao_balanco(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    return _executar_evidencia(
+        request,
+        instancia,
+        acao="adicionar",
+        tipo_vinculo=dados["tipo_vinculo"],
+        referencia=dados["referencia"],
+        arquivo=dados["imagem"],
+        legenda=dados["legenda"],
+        exibir_aos_moradores=dados["exibir_aos_moradores"],
+    )
+
+
+@login_required
+@require_POST
+def editar_evidencia(request, pk, evidencia_id):
+    """Muda a legenda ou a decisão de exibir. A imagem continua a mesma.
+
+    Trocar a foto não é edição: a gestão anexa outra e remove a anterior.
+    """
+    instancia = _balanco_para_gerenciar_evidencias(request, pk)
+    formulario = EdicaoDeEvidenciaForm(request.POST)
+    if not formulario.is_valid():
+        return _voltar_ao_balanco(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    return _executar_evidencia(
+        request,
+        instancia,
+        acao="editar",
+        evidencia_id=evidencia_id,
+        legenda=dados["legenda"],
+        exibir_aos_moradores=dados["exibir_aos_moradores"],
+    )
+
+
+@login_required
+@require_POST
+def remover_evidencia(request, pk, evidencia_id):
+    """Tira a foto do mês sem apagar o registro de que ela existiu."""
+    instancia = _balanco_para_gerenciar_evidencias(request, pk)
+    return _executar_evidencia(
+        request, instancia, acao="remover", evidencia_id=evidencia_id
+    )
+
+
+@login_required
+def imagem_da_evidencia(request, pk, evidencia_id):
+    """Abre a foto por um acesso curto, gerado na hora.
+
+    O vínculo com o balanço é conferido antes: quem não lê o mês não descobre
+    que a foto existe, e o endereço do objeto nunca vira link fixo.
+    """
+    instancia = _balanco_autorizado(request, pk)
+    evidencia = get_object_or_404(
+        EvidenciaVisualBalanco, pk=evidencia_id, balanco=instancia, ativo=True
+    )
+    if not evidencia.storage_key:
+        raise Http404("A foto desta evidência não está disponível.")
+    return redirect(evidencias.acesso_temporario(evidencia))
 
 
 @login_required
@@ -206,14 +373,144 @@ def _importacao_autorizada(request, pk):
 
 
 def _balanco_autorizado(request, pk):
-    """Resolve o balanço dentro dos condomínios autorizados, ou 404."""
-    condominios = _condominios_autorizados(request)
+    """Resolve o balanço dentro dos condomínios que esta pessoa pode ler, ou 404.
+
+    Ler o mês confirmado alcança mais papéis do que importá-lo, e o conjunto de
+    condomínios vem do domínio — nunca do endereço nem do que a tela mostrou.
+    """
+    condominios = condominios_para_ler(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum condomínio disponível para consultar balanço.")
     return get_object_or_404(
         BalancoMensal.objects.select_related("condominio").filter(
             condominio__in=condominios
         ),
         pk=pk,
     )
+
+
+def _balanco_para_corrigir(request, pk):
+    """Resolve o balanço e exige, no backend, o direito de corrigir.
+
+    Quem não pode ler o mês não descobre que ele existe: a resposta é 404. Quem
+    lê e não responde por ele é recusado com 403 — a existência do balanço já é
+    legítima para essa pessoa, a decisão sobre ele não é. Esconder a ação na
+    tela não substitui esta checagem.
+    """
+    instancia = _balanco_autorizado(request, pk)
+    if not pode_corrigir_balanco(request.user, instancia.condominio):
+        raise PermissionDenied("Esta pessoa não responde por este balanço.")
+    return instancia
+
+
+def _balanco_para_gerenciar_evidencias(request, pk):
+    """Resolve o balanço e exige, no backend, o direito de mexer nas fotos.
+
+    Mesma distinção da correção: quem não lê o mês recebe 404 — não descobre que
+    ele existe; quem lê e não responde por ele recebe 403 — a existência já é
+    legítima, a decisão sobre as fotos não é. A supervisão vê as imagens nesta
+    tela, mas não as acrescenta nem decide exibi-las.
+    """
+    instancia = _balanco_autorizado(request, pk)
+    if not pode_gerenciar_evidencias(request.user, instancia.condominio):
+        raise PermissionDenied("Esta pessoa não responde pelas fotos deste balanço.")
+    return instancia
+
+
+# -- Correção do detalhamento ---------------------------------------------------
+#
+# Corrigir é uma decisão, não uma edição de tela: a view traduz o formulário para
+# o que o domínio entende, o domínio decide e grava em uma transação, e o erro do
+# domínio volta para a gestão como frase. Nenhuma regra de negócio mora aqui.
+
+AVISO_DA_CORRECAO = {
+    "corrigir": "Correção registrada.",
+    "nao_despesa": "Lançamento marcado como não sendo despesa.",
+    "adicionar": "Lançamento adicionado.",
+}
+
+
+def _leitura_do_balanco(balanco) -> dict:
+    """O estado validado do mês, como está gravado agora."""
+    return de_dicionario_validado(balanco.dados_validados).leitura or {}
+
+
+def _grupos_do_balanco(balanco) -> list[str]:
+    """Os agrupamentos que o próprio documento declarou, para os campos de escolha."""
+    return correcoes.grupos_para_opcoes(_leitura_do_balanco(balanco))
+
+
+def _campos_do_lancamento(dados: dict) -> dict:
+    """Traduz o formulário para os campos que a correção entende.
+
+    A categoria vem do catálogo do Eithra e o valor sai daqui como texto decimal:
+    dinheiro não atravessa o contrato como número de ponto flutuante.
+    """
+    return {
+        "descricao": dados["descricao"],
+        "valor": decimal_para_texto(dados["valor"]),
+        "categoria_eithra": dados["categoria"],
+        "natureza": dados["natureza"],
+        "grupo": dados["grupo"] or "",
+    }
+
+
+def _primeiro_erro(formulario) -> str:
+    """A primeira coisa que impediu a correção, em uma frase para a gestão."""
+    for erros in formulario.errors.values():
+        if erros:
+            return str(erros[0])
+    return "Não foi possível entender a correção."
+
+
+def _voltar_ao_balanco(request, instancia, aviso: str):
+    """Recusa a correção sem mudar nada e volta para o mês, dizendo por quê."""
+    messages.error(request, aviso)
+    return redirect("balancos:balanco", pk=instancia.pk)
+
+
+def _executar_correcao(request, instancia, *, acao: str, **decisao):
+    """Aplica a decisão em uma transação e volta para o mês.
+
+    Ou tudo acontece — a decisão, o histórico e o recálculo —, ou nada fica: o
+    domínio é quem garante isso. Aqui só se decide o que dizer à gestão.
+    """
+    try:
+        corrigir_balanco(instancia, acao=acao, usuario=request.user, **decisao)
+    except ErroDeCorrecao as erro:
+        return _voltar_ao_balanco(request, instancia, str(erro))
+
+    messages.success(request, AVISO_DA_CORRECAO[acao])
+    return redirect("balancos:balanco", pk=instancia.pk)
+
+
+# -- Evidências visuais ---------------------------------------------------------
+#
+# A foto não altera o detalhamento do mês: ela explica o que já está lá. Por
+# isso anexar, editar ou remover não mexe em valor nenhum — e o erro do domínio
+# volta para a gestão como frase, do mesmo jeito que na correção.
+
+AVISO_DA_EVIDENCIA = {
+    "adicionar": "Foto anexada.",
+    "editar": "Foto atualizada.",
+    "remover": "Foto removida.",
+}
+
+
+def _executar_evidencia(request, instancia, *, acao: str, **decisao):
+    """Aplica a decisão sobre a foto em uma transação e volta para o mês."""
+    try:
+        if acao == "adicionar":
+            evidencias.anexar_evidencia(instancia, usuario=request.user, **decisao)
+        elif acao == "editar":
+            evidencias.editar_evidencia(instancia, **decisao)
+        else:
+            evidencias.remover_evidencia(instancia, **decisao)
+    except ErroDeEvidencia as erro:
+        return _voltar_ao_balanco(request, instancia, str(erro))
+
+    messages.success(request, AVISO_DA_EVIDENCIA[acao])
+    return redirect("balancos:balanco", pk=instancia.pk)
 
 
 def _render(request, *, condominios, formulario=None, status=200):
@@ -372,17 +669,31 @@ def _contexto_do_detalhe(importacao):
     }
 
 
-def _contexto_do_balanco(balanco) -> dict:
+def _contexto_do_balanco(
+    balanco, *, pode_corrigir: bool = False, pode_gerenciar_evidencias: bool = False
+) -> dict:
     """Traduz o balanço confirmado para a tela de gestão.
 
     O documento já virou mês: aqui não há pipeline, não há etapa, não há
     detalhe técnico. O que aparece é o que a administração declarou, o que a
-    leitura detalhou e o quanto ficou sem detalhe associado — o resto continua
-    guardado, mas não é assunto desta tela.
+    leitura detalhou — já com as decisões da gestão por cima — e o quanto ficou
+    sem detalhe associado. O resto continua guardado, mas não é assunto desta
+    tela.
+
+    As fotos entram como apoio do número: cada lançamento, categoria e o
+    destaque do mês trazem as suas, e o que não tem foto simplesmente não
+    mostra nada. A imagem não substitui valor, documento nem justificativa.
     """
     validado = de_dicionario_validado(balanco.dados_validados)
-    lido = de_dicionario(validado.leitura)
-    categorias = _categorias_para_tela(lido)
+    leitura = validado.leitura or {}
+    lido = de_dicionario(leitura)
+    lancamentos = _lancamentos_por_categoria(leitura)
+    categorias = _categorias_para_tela(lido, lancamentos)
+    evidencias_por_vinculo = _evidencias_ativas(balanco)
+    _distribuir_evidencias(categorias, evidencias_por_vinculo)
+    destaques_da_evidencia = evidencias_por_vinculo.get(
+        (TipoVinculoEvidencia.DESTAQUE, ""), []
+    )
     grupos_em_atencao = _grupos_em_atencao_para_tela(lido.grupos)
     saldos = [_saldo_para_tela(item) for item in lido.saldos]
     detalhamento = _detalhamento_para_tela(lido)
@@ -391,6 +702,16 @@ def _contexto_do_balanco(balanco) -> dict:
     saldo_rotulo, saldo_valor = _saldo_principal_para_tela(
         validado.saldo_final, saldos=saldos
     )
+    revisoes = _revisoes_para_tela(leitura)
+    # A versão do mês viaja no formulário: corrigir sobre um estado que já mudou
+    # seria pior do que pedir para recarregar.
+    versao = balanco.atualizado_em.isoformat() if balanco.atualizado_em else ""
+    grupos = correcoes.grupos_para_opcoes(leitura)
+    ignorados = [
+        _lancamento_para_tela(item)
+        for item in correcoes.despesas_efetivas(leitura, incluir_ignoradas=True)
+        if item["excluida"]
+    ]
 
     return {
         "balanco": balanco,
@@ -409,11 +730,7 @@ def _contexto_do_balanco(balanco) -> dict:
         },
         "detalhamento": detalhamento,
         "texto_detalhamento": _texto_do_detalhamento(detalhamento),
-        "destaques": _destaques_para_tela(
-            categorias=categorias,
-            resumo=resumo,
-            detalhamento=detalhamento,
-        ),
+        "destaques": _destaques_para_tela(categorias=categorias, resumo=resumo),
         "texto_grupos_em_atencao": _texto_grupos_em_atencao(grupos_em_atencao),
         "nome_do_arquivo": original.nome_original if original else "",
         "tem_documento_original": bool(original),
@@ -421,6 +738,21 @@ def _contexto_do_balanco(balanco) -> dict:
             _pendencia_para_tela(item) for item in (balanco.inconsistencias or [])
         ],
         "confirmado_em": balanco.validado_em,
+        "pode_corrigir": pode_corrigir,
+        "pode_gerenciar_evidencias": pode_gerenciar_evidencias,
+        "evidencia_destaque": destaques_da_evidencia[0] if destaques_da_evidencia else None,
+        "tem_evidencias": bool(evidencias_por_vinculo),
+        "form_evidencia": EvidenciaVisualForm(auto_id="evidencia-%s"),
+        "limite_de_fotos": evidencias.LIMITE_DE_FOTOS_POR_VINCULO,
+        "limite_da_foto": formatar_tamanho(evidencias.limite_da_foto()),
+        "ignorados": ignorados,
+        "revisoes": revisoes,
+        "form_correcao": CorrecaoDeLancamentoForm(
+            auto_id="corrigir-%s", grupos=grupos, initial={"versao": versao}
+        ),
+        "form_adicionar": LancamentoManualForm(
+            auto_id="adicionar-%s", grupos=grupos, initial={"versao": versao}
+        ),
     }
 
 
@@ -430,6 +762,64 @@ def _documento_original(balanco):
         balanco.documentos.filter(ativo=True).order_by("-enviado_em").first()
         or balanco.documentos.order_by("-enviado_em").first()
     )
+
+
+# -- Evidências: o que a tela mostra --------------------------------------------
+#
+# A foto é apoio do número. Ela aparece pequena, ao lado do que explica, e nunca
+# vira card próprio nem galeria. O endereço que a tela usa é o da própria tela,
+# que gera um acesso curto na hora — o objeto do bucket nunca vira link fixo.
+
+
+def _evidencias_ativas(balanco) -> dict[tuple[str, str], list[dict]]:
+    """As fotos ativas do mês, agrupadas pelo vínculo a que pertencem.
+
+    Uma consulta só para o mês inteiro: a tela mostra cada foto no lugar certo
+    sem perguntar ao banco por lançamento.
+    """
+    por_vinculo: dict[tuple[str, str], list[dict]] = {}
+    evidencias_ativas = EvidenciaVisualBalanco.objects.filter(
+        balanco=balanco, ativo=True
+    ).order_by("criado_em")
+    for evidencia in evidencias_ativas:
+        por_vinculo.setdefault(
+            (evidencia.tipo_vinculo, evidencia.referencia), []
+        ).append(_evidencia_para_tela(balanco, evidencia))
+    return por_vinculo
+
+
+def _evidencia_para_tela(balanco, evidencia) -> dict:
+    """Uma foto pronta para a tela: legenda, decisão de exibir e endereços.
+
+    Nenhum endereço de storage aparece aqui: o que a tela usa é a rota do
+    próprio Eithra, que confere o vínculo e gera o acesso curto na hora.
+    """
+    return {
+        "id": str(evidencia.pk),
+        "legenda": evidencia.legenda,
+        "exibir_aos_moradores": evidencia.exibir_aos_moradores,
+        "url": reverse(
+            "balancos:evidencia_imagem", args=[balanco.pk, evidencia.pk]
+        ),
+        "editar_url": reverse(
+            "balancos:evidencia_editar", args=[balanco.pk, evidencia.pk]
+        ),
+        "remover_url": reverse(
+            "balancos:evidencia_remover", args=[balanco.pk, evidencia.pk]
+        ),
+    }
+
+
+def _distribuir_evidencias(categorias: list[dict], por_vinculo: dict) -> None:
+    """Põe cada foto ao lado do que ela explica: a categoria e o lançamento."""
+    for categoria in categorias:
+        categoria["evidencias"] = por_vinculo.get(
+            (TipoVinculoEvidencia.CATEGORIA, categoria["codigo"]), []
+        )
+        for lancamento in categoria["lancamentos"]:
+            lancamento["evidencias"] = por_vinculo.get(
+                (TipoVinculoEvidencia.LANCAMENTO, lancamento["id"]), []
+            )
 
 
 def _balanco_da_lista(balanco) -> dict:
@@ -542,14 +932,53 @@ def _lancamentos_por_grupo(despesas) -> dict[str, list[dict]]:
     return por_grupo
 
 
-def _lancamentos_por_categoria(despesas) -> dict[str, list[dict]]:
-    """Lançamentos por categoria do Eithra, na ordem em que vieram do documento."""
+def _lancamentos_por_categoria(leitura: dict) -> dict[str, list[dict]]:
+    """Lançamentos válidos por categoria do Eithra, como eles valem hoje.
+
+    A lista vem do estado validado — o lido com as correções por cima —, e não
+    da leitura original: corrigir precisa mudar o que a tela mostra, e o que a
+    máquina leu continua guardado para quem quiser comparar.
+    """
     por_categoria: dict[str, list[dict]] = {}
-    for despesa in despesas:
-        por_categoria.setdefault(despesa.categoria_eithra, []).append(
-            _despesa_para_tela(despesa)
+    for item in correcoes.despesas_efetivas(leitura):
+        por_categoria.setdefault(item["categoria_eithra"], []).append(
+            _lancamento_para_tela(item)
         )
     return por_categoria
+
+
+def _lancamento_para_tela(item: dict) -> dict:
+    """Um lançamento para a tela: o valor de hoje ao lado do que foi lido.
+
+    O lido viaja junto porque corrigir exige ver o que o Eithra havia entendido;
+    os indicadores dizem, sem badge forte, o que a gestão ajustou à mão.
+    """
+    return {
+        "id": item["id"],
+        "descricao": item["descricao"],
+        "descricao_lida": item["lido"]["descricao"],
+        "valor": _moeda(item["valor"]),
+        "valor_editavel": _numero_para_editar(item["valor"]),
+        "valor_lido": _moeda(item["lido"]["valor"]),
+        "categoria": rotulo_da_categoria(item["categoria_eithra"]),
+        "categoria_codigo": item["categoria_eithra"],
+        "natureza": rotulo_da_natureza(item["natureza"]),
+        "natureza_codigo": item["natureza"],
+        "natureza_tom": TOM_POR_NATUREZA.get(item["natureza"], "secondary"),
+        "grupo": item["grupo"] or "",
+        "data": _dia(item["data"]),
+        "ajustado": item["ajustado"],
+        "manual": item["manual"],
+        "evidencias": [],
+    }
+
+
+def _numero_para_editar(valor: str | None) -> str:
+    """O valor como a gestão o digita: ``1.234,56``, sem cifrão e sem código."""
+    formatado = _moeda(valor)
+    if not formatado:
+        return ""
+    return formatado.removeprefix("R$ ")
 
 
 def _despesa_para_tela(item) -> dict:
@@ -567,9 +996,8 @@ def _despesa_para_tela(item) -> dict:
     }
 
 
-def _categorias_para_tela(balanco) -> list[dict]:
+def _categorias_para_tela(balanco, lancamentos: dict[str, list[dict]]) -> list[dict]:
     """Categorias agregadas do mês, ordenadas pelo total que mais pesou."""
-    lancamentos = _lancamentos_por_categoria(balanco.despesas)
     categorias = [
         _categoria_para_tela(item, lancamentos.get(item.categoria, []))
         for item in balanco.categorias
@@ -581,6 +1009,9 @@ def _categorias_para_tela(balanco) -> list[dict]:
 def _categoria_para_tela(categoria, lancamentos: list[dict]) -> dict:
     total = texto_para_decimal(categoria.total) or Decimal("0.00")
     return {
+        # O código é a identidade da categoria no balanço: é ele que a foto usa
+        # como referência, e não o rótulo que a tela mostra.
+        "codigo": categoria.categoria,
         "slug": re.sub(r"[^a-z0-9]+", "-", categoria.categoria.lower()).strip("-"),
         "nome": rotulo_da_categoria(categoria.categoria),
         "recorrente": _moeda(categoria.recorrente),
@@ -589,6 +1020,7 @@ def _categoria_para_tela(categoria, lancamentos: list[dict]) -> dict:
         "total": _moeda(categoria.total),
         "total_decimal": total,
         "lancamentos": lancamentos,
+        "evidencias": [],
     }
 
 
@@ -681,8 +1113,13 @@ def _texto_do_detalhamento(detalhamento: dict) -> str | None:
     return f"Detalhamento identificado: {detalhamento['percentual']}"
 
 
-def _destaques_para_tela(*, categorias: list[dict], resumo: dict, detalhamento: dict) -> list[dict]:
-    """No máximo três destaques, só quando trazem contexto útil."""
+def _destaques_para_tela(*, categorias: list[dict], resumo: dict) -> list[dict]:
+    """No máximo dois destaques, só quando trazem contexto útil.
+
+    O residual não está aqui de propósito: ele já aparece no card de
+    detalhamento e no bloco de completude. Repetir o mesmo número em três
+    lugares não informa mais — só aumenta a densidade da tela.
+    """
     destaques = []
     if categorias:
         maior = categorias[0]
@@ -704,16 +1141,82 @@ def _destaques_para_tela(*, categorias: list[dict], resumo: dict, detalhamento: 
             }
         )
 
-    if detalhamento.get("tem_residual"):
-        destaques.append(
-            {
-                "titulo": "Não associado",
-                "rotulo": "Parte das despesas ainda sem lançamento associado",
-                "valor": detalhamento["valor_nao_associado"],
-            }
-        )
+    return destaques[:2]
 
-    return destaques[:3]
+
+# -- Histórico de ajustes -------------------------------------------------------
+#
+# O histórico é a memória de quem decidiu: quando, o que mudou, de que valor
+# para qual e por quê. O que se mostra é a decisão em linguagem humana — nunca o
+# que ficou guardado, nem o identificador interno do lançamento.
+
+ACOES_DA_REVISAO = {
+    "correcao": "Lançamento ajustado",
+    "nao_despesa": "Marcado como não despesa",
+    "inclusao": "Lançamento adicionado",
+}
+
+ROTULO_DO_CAMPO = {
+    "descricao": "Descrição",
+    "valor": "Valor",
+    "categoria_eithra": "Categoria",
+    "natureza": "Natureza",
+    "grupo": "Grupo",
+}
+
+
+def _revisoes_para_tela(leitura: dict) -> list[dict]:
+    """O histórico de ajustes, do mais recente ao mais antigo, como a gestão o lê."""
+    return [
+        {
+            "quando": _momento_por_extenso(revisao.get("quando")),
+            "acao": ACOES_DA_REVISAO.get(revisao.get("tipo"), "Ajuste"),
+            "lancamento": revisao.get("lancamento") or "",
+            "mudancas": [
+                _mudanca_para_tela(item) for item in revisao.get("mudancas") or []
+            ],
+            "justificativa": revisao.get("justificativa") or "",
+            "autor": revisao.get("autor") or "",
+        }
+        for revisao in reversed(correcoes.revisoes(leitura))
+    ]
+
+
+def _mudanca_para_tela(mudanca: dict) -> dict:
+    """Um campo alterado, com o antes e o depois já escritos para leitura."""
+    campo = mudanca.get("campo") or ""
+    return {
+        "campo": ROTULO_DO_CAMPO.get(campo, "Campo"),
+        "antes": _valor_da_mudanca(campo, mudanca.get("antes")),
+        "depois": _valor_da_mudanca(campo, mudanca.get("depois")),
+    }
+
+
+def _valor_da_mudanca(campo: str, valor) -> str:
+    """Escreve o valor de um campo alterado do jeito que ele aparece na tela."""
+    if valor is None or valor == "":
+        return "—"
+    texto = str(valor)
+    if campo == "valor":
+        return _moeda(texto) or texto
+    if campo == "categoria_eithra":
+        return rotulo_da_categoria(texto)
+    if campo == "natureza":
+        return rotulo_da_natureza(texto)
+    return texto
+
+
+def _momento_por_extenso(iso: str | None) -> str:
+    """Quando o ajuste aconteceu, na hora de quem lê."""
+    if not iso:
+        return ""
+    try:
+        momento = datetime.fromisoformat(str(iso))
+    except ValueError:
+        return ""
+    if timezone.is_aware(momento):
+        momento = timezone.localtime(momento)
+    return momento.strftime("%d/%m/%Y às %H:%M")
 
 
 def _texto_grupos_em_atencao(grupos_em_atencao: list[dict]) -> str | None:

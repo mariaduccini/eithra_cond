@@ -14,4 +14,41 @@ urlpatterns = [
     path("<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),
     path("mes/<uuid:pk>/", views.balanco, name="balanco"),
     path("mes/<uuid:pk>/arquivo/", views.arquivo_do_balanco, name="balanco_arquivo"),
+    path(
+        "mes/<uuid:pk>/corrigir/",
+        views.corrigir_lancamento,
+        name="corrigir_lancamento",
+    ),
+    path(
+        "mes/<uuid:pk>/nao-despesa/",
+        views.marcar_nao_despesa,
+        name="marcar_nao_despesa",
+    ),
+    path(
+        "mes/<uuid:pk>/adicionar/",
+        views.adicionar_lancamento,
+        name="adicionar_lancamento",
+    ),
+    # Evidências visuais: a foto entra, é ajustada, sai — e é aberta por um
+    # acesso curto, gerado na hora. Nada disso é REST: são decisões da gestão.
+    path(
+        "mes/<uuid:pk>/evidencia/adicionar/",
+        views.adicionar_evidencia,
+        name="evidencia_adicionar",
+    ),
+    path(
+        "mes/<uuid:pk>/evidencia/<uuid:evidencia_id>/editar/",
+        views.editar_evidencia,
+        name="evidencia_editar",
+    ),
+    path(
+        "mes/<uuid:pk>/evidencia/<uuid:evidencia_id>/remover/",
+        views.remover_evidencia,
+        name="evidencia_remover",
+    ),
+    path(
+        "mes/<uuid:pk>/evidencia/<uuid:evidencia_id>/imagem/",
+        views.imagem_da_evidencia,
+        name="evidencia_imagem",
+    ),
 ]

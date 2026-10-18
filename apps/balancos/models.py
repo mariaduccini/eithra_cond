@@ -25,6 +25,7 @@ from apps.balancos.constants import (
     ProcessamentoBalanco,
     StatusBalanco,
     StatusImportacao,
+    TipoVinculoEvidencia,
 )
 from apps.condominios.models import Condominio
 
@@ -34,6 +35,11 @@ FORMATO_SHA256 = RegexValidator(
     regex=r"^[0-9a-f]{64}$",
     message="Informe o hash SHA-256 em hexadecimal minúsculo (64 caracteres).",
 )
+
+# Tipos de imagem aceitos numa evidência visual. A lista é do domínio e vive
+# aqui porque é o modelo que recusa o que não é imagem — a borda usa a mesma
+# lista, para não existirem duas respostas para a mesma pergunta.
+MIMES_DE_EVIDENCIA = ("image/jpeg", "image/png", "image/webp")
 
 # Campos que guardam a referência do objeto no storage externo privado.
 CAMPOS_DE_REFERENCIA_DE_STORAGE = ("storage_provider", "storage_bucket", "storage_key")
@@ -315,6 +321,146 @@ class DocumentoBalanco(models.Model):
 
     def __str__(self) -> str:
         return self.nome_original or str(self.pk)
+
+
+class EvidenciaVisualBalanco(models.Model):
+    """Uma foto que explica algo do mês, presa a um contexto do balanço.
+
+    A evidência é complementar e nunca substitui lançamento, documento, nota
+    fiscal ou justificativa: ela existe para mostrar, não para provar. Por isso
+    o vínculo é obrigatório — uma foto solta não explica despesa nenhuma — e por
+    isso a legenda é curta: é uma frase sobre a imagem, não um relatório.
+
+    O arquivo vive no mesmo bucket privado dos documentos, e aqui fica apenas a
+    referência do objeto. Nunca se guarda URL pública nem assinada: o acesso é
+    gerado sob demanda, como no documento original.
+
+    ``exibir_aos_moradores`` não publica nada. Ele apenas marca que a gestão
+    assume a imagem como elegível para uma transparência futura — a publicação
+    para o morador será uma fase própria, com decisão própria.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    balanco = models.ForeignKey(
+        BalancoMensal,
+        on_delete=models.PROTECT,
+        related_name="evidencias",
+        verbose_name="balanço",
+    )
+    tipo_vinculo = models.CharField(
+        "vínculo",
+        max_length=20,
+        choices=TipoVinculoEvidencia.choices,
+    )
+    referencia = models.CharField(
+        "referência do vínculo",
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=(
+            "Identificador do lançamento, código da categoria, ou vazio no "
+            "destaque do mês."
+        ),
+    )
+
+    # Referência do objeto no storage privado. Nunca a URL em si.
+    storage_provider = models.CharField("provedor", max_length=50, blank=True, default="")
+    storage_bucket = models.CharField(
+        "local de armazenamento", max_length=150, blank=True, default=""
+    )
+    storage_key = models.CharField("referência do objeto", max_length=500)
+    mime_type = models.CharField("tipo da imagem", max_length=120)
+    tamanho_bytes = models.PositiveBigIntegerField("tamanho", default=0)
+    sha256 = models.CharField(
+        "hash do arquivo",
+        max_length=64,
+        validators=[FORMATO_SHA256],
+        help_text="Reconhece a mesma imagem repetida no mesmo vínculo.",
+    )
+
+    legenda = models.CharField("legenda", max_length=200, blank=True, default="")
+    exibir_aos_moradores = models.BooleanField(
+        "elegível para os moradores", default=False
+    )
+
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="evidencias_balanco_criadas",
+        verbose_name="criado por",
+    )
+    criado_em = models.DateTimeField("criado em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("atualizado em", auto_now=True)
+
+    # Remover uma evidência é desativá-la, não apagá-la: o registro permanece
+    # para que o histórico do mês não perca a explicação que já existiu.
+    ativo = models.BooleanField("ativo", default=True)
+    removido_em = models.DateTimeField("removido em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "evidência visual de balanço"
+        verbose_name_plural = "evidências visuais de balanço"
+        ordering = ["criado_em"]
+        constraints = [
+            # A mesma imagem não entra duas vezes no mesmo vínculo. A unicidade
+            # vale apenas entre as ativas: uma evidência removida não impede
+            # que a gestão anexe de novo a mesma foto e mude de ideia.
+            models.UniqueConstraint(
+                fields=["balanco", "tipo_vinculo", "referencia", "sha256"],
+                condition=Q(ativo=True),
+                name="evidencia_unica_por_vinculo_e_hash",
+            ),
+            models.CheckConstraint(
+                condition=Q(tamanho_bytes__gte=0),
+                name="evidencia_tamanho_nao_negativo",
+            ),
+            # Só imagem entra aqui. PDF, vídeo e executável são recusados no
+            # banco, e não apenas na validação da borda.
+            models.CheckConstraint(
+                condition=Q(mime_type__in=MIMES_DE_EVIDENCIA),
+                name="evidencia_mime_permitido",
+            ),
+            # Uma evidência inativa é uma evidência removida: sem a data, não
+            # se saberia quando ela saiu do mês.
+            models.CheckConstraint(
+                condition=~Q(ativo=False, removido_em__isnull=True),
+                name="evidencia_removida_registra_quando",
+            ),
+        ]
+        indexes = [
+            # Apoio à listagem de um vínculo — e à contagem do limite de fotos.
+            models.Index(
+                fields=["balanco", "tipo_vinculo", "referencia"],
+                name="evidencia_vinculo_idx",
+            ),
+            # Apoio à futura consulta de transparência: só ativas e elegíveis.
+            models.Index(
+                fields=["balanco", "ativo", "exibir_aos_moradores"],
+                name="evidencia_visivel_idx",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        erros: dict[str, str] = {}
+
+        erros.update(erros_de_referencia_de_storage(self))
+
+        if self.tamanho_bytes is not None and self.tamanho_bytes < 0:
+            erros["tamanho_bytes"] = "O tamanho da imagem não pode ser negativo."
+
+        if self.tipo_vinculo == TipoVinculoEvidencia.DESTAQUE and self.referencia:
+            erros["referencia"] = (
+                "O destaque do mês não é um lançamento: não há referência a guardar."
+            )
+        if self.tipo_vinculo != TipoVinculoEvidencia.DESTAQUE and not self.referencia:
+            erros["referencia"] = "Escolha a que esta foto está ligada."
+
+        if erros:
+            raise ValidationError(erros)
+
+    def __str__(self) -> str:
+        return self.legenda or f"Evidência {self.get_tipo_vinculo_display()} · {self.pk}"
 
 
 # Tom visual de cada estado na listagem. O texto é que informa o que aconteceu;

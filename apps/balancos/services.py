@@ -24,8 +24,8 @@ Já a confirmação é uma transação só, e é o único ponto do sistema onde 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
@@ -33,6 +33,7 @@ from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from apps.balancos import correcoes
 from apps.balancos.constants import (
     LayoutBalanco,
     ProcessamentoBalanco,
@@ -46,10 +47,12 @@ from apps.balancos.contratos import (
     ErroDeContrato,
     TipoInconsistencia,
     de_dicionario,
+    de_dicionario_validado,
     para_dicionario_validado,
     validar_dicionario,
     validar_dicionario_validado,
 )
+from apps.balancos.correcoes import ErroDeCorrecao
 from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
 from apps.balancos.extrator_atual import ErroDeExtracao, extrair_balanco_atual
 from apps.balancos.models import BalancoMensal, DocumentoBalanco, ImportacaoBalanco
@@ -618,3 +621,132 @@ def _resumo_do_balanco(lido, validado: BalancoValidadoV1, inconsistencias) -> di
         "grupos_com_diferenca": lido.resumo.grupos_com_diferenca,
         "pontos_de_atencao": len(inconsistencias or []),
     }
+
+
+# -- Correção manual rastreável -------------------------------------------------
+#
+# Corrigir não é reescrever o documento. O que a máquina leu continua guardado em
+# ``dados_extraidos``; a decisão humana entra em ``dados_validados`` e no
+# histórico, e nada mais. Os totais oficiais do documento — receitas, despesas e
+# saldo — não são tocados: o que muda é o detalhamento, e o resíduo passa a
+# refletir a decisão, em vez de escondê-la.
+#
+# A concorrência tem proteção simples e explícita: a linha é bloqueada durante a
+# transação e a versão que a tela enviou é conferida contra a última gravação.
+# Não há lock distribuído nem campo de versão novo: se a tela estiver velha, a
+# correção é recusada e pede-se para recarregar.
+
+
+def corrigir_balanco(
+    balanco,
+    *,
+    acao: str,
+    usuario,
+    campos: dict | None = None,
+    lancamento_id: str | None = None,
+    justificativa: str = "",
+    versao: str | None = None,
+) -> BalancoMensal:
+    """Aplica uma correção ao detalhamento do balanço confirmado, em uma transação.
+
+    Ou tudo acontece — a decisão, o histórico, o recálculo e a gravação —, ou
+    nada fica. O que a máquina leu continua intocado; o que muda é o estado
+    validado e a memória de quem decidiu.
+    """
+    with transaction.atomic():
+        bloqueado = (
+            BalancoMensal.objects.select_for_update()
+            .select_related("condominio")
+            .get(pk=balanco.pk)
+        )
+        _recusar_se_nao_corrigivel(bloqueado)
+        _conferir_versao(bloqueado, versao)
+
+        validado = de_dicionario_validado(bloqueado.dados_validados)
+        leitura = validado.leitura or {}
+
+        if acao == "corrigir":
+            correcoes.aplicar_correcao(
+                leitura,
+                lancamento_id=lancamento_id,
+                campos=campos or {},
+                justificativa=justificativa,
+                usuario=usuario,
+            )
+        elif acao == "nao_despesa":
+            correcoes.marcar_como_nao_despesa(
+                leitura,
+                lancamento_id=lancamento_id,
+                justificativa=justificativa,
+                usuario=usuario,
+            )
+        elif acao == "adicionar":
+            correcoes.adicionar_lancamento(
+                leitura,
+                usuario=usuario,
+                justificativa=justificativa,
+                **(campos or {}),
+            )
+        else:
+            raise ErroDeCorrecao("Não foi possível entender a ação de correção.")
+
+        correcoes.recalcular_agregados(
+            leitura, inconsistencias=bloqueado.inconsistencias or ()
+        )
+        _gravar_leitura_corrigida(bloqueado, validado, leitura)
+
+    return bloqueado
+
+
+def _recusar_se_nao_corrigivel(balanco) -> None:
+    """Só o mês confirmado e em vigor aceita correção."""
+    if balanco.status != StatusBalanco.VALIDADO:
+        raise ErroDeCorrecao(
+            "Só um balanço confirmado e em vigor pode ser corrigido."
+        )
+
+
+def _conferir_versao(balanco, versao) -> None:
+    """Recusa a correção quando a tela está desatualizada.
+
+    A proteção é simples de propósito: compara a versão que a tela enviou com a
+    última gravação. Aplicar uma decisão sobre um estado que já mudou seria pior
+    do que pedir para recarregar.
+    """
+    if not versao:
+        return
+    try:
+        enviada = datetime.fromisoformat(str(versao))
+    except ValueError as erro:
+        raise ErroDeCorrecao(
+            "Não foi possível conferir a versão do balanço. Recarregue a página."
+        ) from erro
+    if enviada != balanco.atualizado_em:
+        raise ErroDeCorrecao(
+            "O balanço foi atualizado por outra pessoa. Recarregue a página e "
+            "tente de novo."
+        )
+
+
+def _gravar_leitura_corrigida(balanco, validado, leitura) -> None:
+    """Grava o detalhamento corrigido, sem tocar nos totais oficiais.
+
+    O resíduo é recalculado com o mesmo critério da confirmação, e o resumo que a
+    listagem usa é atualizado junto. Receitas e despesas oficiais continuam
+    exatamente como o documento as declarou.
+    """
+    detalhamento = medir_detalhamento(de_dicionario(leitura))
+    atualizado = replace(
+        validado,
+        total_declarado_despesas=detalhamento.total_declarado,
+        total_detalhado_identificado=detalhamento.total_identificado,
+        valor_nao_associado=detalhamento.valor_nao_associado,
+        percentual_detalhamento=detalhamento.percentual,
+        leitura=leitura,
+    )
+    dados_validados = para_dicionario_validado(atualizado)
+    validar_dicionario_validado(dados_validados)
+
+    balanco.dados_validados = dados_validados
+    balanco.resumo = correcoes.resumo_do_modelo(leitura, atualizado, balanco.resumo)
+    balanco.save(update_fields=["dados_validados", "resumo", "atualizado_em"])

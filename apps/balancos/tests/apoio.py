@@ -1,10 +1,11 @@
 """Apoio aos testes de entrada do balanço.
 
-Reúne apenas o que os testes repetem: pessoas, vínculos, um PDF genérico e um
-storage de mentira. Nenhum teste unitário fala com o Supabase real, e nenhum
-arquivo de balanço de verdade entra aqui.
+Reúne apenas o que os testes repetem: pessoas, vínculos, um PDF genérico, uma
+foto sintética e um storage de mentira. Nenhum teste unitário fala com o
+Supabase real, e nenhum arquivo de balanço de verdade entra aqui.
 """
 import hashlib
+import zlib
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
@@ -24,6 +25,81 @@ HASH_PDF = hashlib.sha256(CONTEUDO_PDF).hexdigest()
 def pdf(nome=NOME_ARQUIVO, conteudo=CONTEUDO_PDF, content_type="application/pdf"):
     """Monta um arquivo enviado, como o navegador entregaria."""
     return SimpleUploadedFile(nome, conteudo, content_type=content_type)
+
+
+# -- Fotos de evidência ----------------------------------------------------------
+# O domínio confere o começo real do arquivo, e é isso que estas fotos
+# exercitam: um PNG de verdade (assinatura, IHDR e IDAT), um JPEG com cabeçalho
+# legítimo e um contêiner WEBP. Nenhuma foto real entra nos testes.
+
+NOME_FOTO = "evidencia.png"
+
+
+def gerar_png(largura=1, altura=1) -> bytes:
+    """Um PNG mínimo e válido: assinatura, IHDR, IDAT e IEND com CRC correto."""
+    def bloco(tipo: bytes, dados: bytes) -> bytes:
+        return (
+            len(dados).to_bytes(4, "big")
+            + tipo
+            + dados
+            + zlib.crc32(tipo + dados).to_bytes(4, "big")
+        )
+
+    ihdr = bloco(
+        b"IHDR",
+        largura.to_bytes(4, "big")
+        + altura.to_bytes(4, "big")
+        + bytes([8, 2, 0, 0, 0]),  # 8 bits por canal, RGB, sem entrelace
+    )
+    linhas = b"".join(b"\x00" + b"\x7f\xa3\xa8" * largura for _ in range(altura))
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + ihdr
+        + bloco(b"IDAT", zlib.compress(linhas))
+        + bloco(b"IEND", b"")
+    )
+
+
+def gerar_webp() -> bytes:
+    """Um contêiner WEBP mínimo: RIFF com a marca WEBP no lugar certo."""
+    dados = b"\x00" * 12
+    corpo = b"WEBP" + b"VP8 " + len(dados).to_bytes(4, "little") + dados
+    return b"RIFF" + len(corpo).to_bytes(4, "little") + corpo
+
+
+# JPEG sintético: SOI seguido do marcador APP0 com o cabeçalho JFIF, que é
+# exatamente o que o domínio confere. Não há decodificação de imagem aqui.
+CONTEUDO_JPG = (
+    b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    + b"\x00" * 16
+    + b"\xff\xd9"
+)
+CONTEUDO_PNG = gerar_png()
+CONTEUDO_WEBP = gerar_webp()
+
+
+def foto(nome=NOME_FOTO, conteudo=None, content_type="image/png"):
+    """Monta uma foto enviada, como o navegador entregaria.
+
+    ``marca`` em :func:`png` e :func:`jpg` muda o conteúdo — e portanto o hash —
+    sem mexer no começo do arquivo, que é o que o domínio confere.
+    """
+    return SimpleUploadedFile(nome, conteudo or CONTEUDO_PNG, content_type=content_type)
+
+
+def png(nome=NOME_FOTO, marca=""):
+    """Uma foto PNG de teste, com o hash que a marca escolher."""
+    return foto(nome, CONTEUDO_PNG + marca.encode(), "image/png")
+
+
+def jpg(nome="evidencia.jpg", marca=""):
+    """Uma foto JPG de teste."""
+    return foto(nome, CONTEUDO_JPG + marca.encode(), "image/jpeg")
+
+
+def webp(nome="evidencia.webp", marca=""):
+    """Uma foto WEBP de teste."""
+    return foto(nome, CONTEUDO_WEBP + marca.encode(), "image/webp")
 
 
 def criar_pessoa(email, nome="Pessoa de Teste"):

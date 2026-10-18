@@ -17,13 +17,33 @@
       <p class="text-body-secondary mb-0">{{ subtitulo }}</p>
     </div>
 
-    {% if tem_documento_original %}
-      <a
-        href="{% url 'balancos:balanco_arquivo' balanco.pk %}"
-        class="btn btn-label-secondary">
-        <i class="bx bx-file me-1" aria-hidden="true"></i> Ver PDF original
-      </a>
-    {% endif %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if revisoes %}
+        <button
+          class="btn btn-label-secondary"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#ajustes-do-balanco">
+          <i class="bx bx-history me-1" aria-hidden="true"></i> Ajustes ({{ revisoes|length }})
+        </button>
+      {% endif %}
+      {% if pode_corrigir %}
+        <button
+          class="btn btn-label-secondary"
+          type="button"
+          data-bs-toggle="modal"
+          data-bs-target="#adicionar-lancamento">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Adicionar lançamento
+        </button>
+      {% endif %}
+      {% if tem_documento_original %}
+        <a
+          href="{% url 'balancos:balanco_arquivo' balanco.pk %}"
+          class="btn btn-label-secondary">
+          <i class="bx bx-file me-1" aria-hidden="true"></i> Ver PDF original
+        </a>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card mb-4">
@@ -78,7 +98,7 @@
   {% if destaques %}
     <div class="row g-3 mb-4">
       {% for destaque in destaques %}
-        <div class="col-lg-4">
+        <div class="col-lg-6">
           <div class="card h-100">
             <div class="card-body">
               <div class="text-body-secondary small mb-1">{{ destaque.titulo }}</div>
@@ -88,6 +108,47 @@
           </div>
         </div>
       {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if pode_gerenciar_evidencias or evidencia_destaque %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+          <div>
+            <h2 class="h6 mb-1">Destaque do mês</h2>
+            <p class="text-body-secondary small mb-0">
+              Uma foto e uma frase sobre o que marcou o mês.
+            </p>
+          </div>
+          {% if pode_gerenciar_evidencias and not evidencia_destaque %}
+            <button
+              class="btn btn-label-secondary btn-sm"
+              type="button"
+              data-bs-toggle="modal"
+              data-bs-target="#adicionar-evidencia"
+              data-tipo-vinculo="destaque"
+              data-referencia=""
+              data-vinculo="Destaque do mês">
+              <i class="bx bx-image-add me-1" aria-hidden="true"></i> Adicionar foto
+            </button>
+          {% endif %}
+        </div>
+
+        {% if evidencia_destaque %}
+          <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+            {% include "pages/balancos/_miniatura_evidencia.html" with evidencia=evidencia_destaque %}
+            <div>
+              {% if evidencia_destaque.legenda %}
+                <p class="mb-1">{{ evidencia_destaque.legenda }}</p>
+              {% endif %}
+              {% if evidencia_destaque.exibir_aos_moradores %}
+                <span class="badge bg-label-info">Elegível para os moradores</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 
@@ -137,6 +198,9 @@
                       <i class="bx bx-chevron-down" aria-hidden="true"></i>
                       <span class="fw-medium">{{ categoria.nome }}</span>
                     </button>
+                    {% if categoria.evidencias or pode_gerenciar_evidencias %}
+                      {% include "pages/balancos/_evidencias.html" with evidencias=categoria.evidencias tipo_vinculo="categoria" referencia=categoria.codigo contexto=categoria.nome %}
+                    {% endif %}
                   </td>
                   <td>{{ categoria.recorrente }}</td>
                   <td>{{ categoria.extra }}</td>
@@ -149,12 +213,44 @@
                       <div class="{% if not forloop.first %}border-top mt-3 pt-3{% endif %}">
                         <div class="d-flex justify-content-between align-items-start gap-3">
                           <div>
-                            <div class="fw-medium">{{ lancamento.descricao }}</div>
+                            <div class="fw-medium">
+                              {{ lancamento.descricao }}
+                              {% if lancamento.manual %}
+                                <span class="badge bg-label-info ms-1">Adicionado manualmente</span>
+                              {% elif lancamento.ajustado %}
+                                <span class="badge bg-label-warning ms-1">Ajustado manualmente</span>
+                              {% endif %}
+                            </div>
                             <div class="text-body-secondary small">
                               {{ lancamento.natureza }}{% if lancamento.data %} · {{ lancamento.data }}{% endif %}
+                              {% if lancamento.ajustado and lancamento.valor_lido and lancamento.valor_lido != lancamento.valor %}
+                                · lido {{ lancamento.valor_lido }}
+                              {% endif %}
                             </div>
+                            {% if lancamento.evidencias or pode_gerenciar_evidencias %}
+                              {% include "pages/balancos/_evidencias.html" with evidencias=lancamento.evidencias tipo_vinculo="lancamento" referencia=lancamento.id contexto=lancamento.descricao %}
+                            {% endif %}
                           </div>
-                          <div class="text-nowrap fw-medium">{{ lancamento.valor }}</div>
+                          <div class="d-flex align-items-center gap-2">
+                            <span class="text-nowrap fw-medium">{{ lancamento.valor }}</span>
+                            {% if pode_corrigir %}
+                              <button
+                                type="button"
+                                class="btn btn-sm btn-icon btn-text-secondary rounded-pill"
+                                data-bs-toggle="modal"
+                                data-bs-target="#ajustar-lancamento"
+                                data-lancamento-id="{{ lancamento.id }}"
+                                data-descricao="{{ lancamento.descricao }}"
+                                data-valor="{{ lancamento.valor_editavel }}"
+                                data-categoria="{{ lancamento.categoria_codigo }}"
+                                data-natureza="{{ lancamento.natureza_codigo }}"
+                                data-grupo="{{ lancamento.grupo }}"
+                                title="Corrigir"
+                                aria-label="Corrigir lançamento">
+                                <i class="bx bx-edit-alt" aria-hidden="true"></i>
+                              </button>
+                            {% endif %}
+                          </div>
                         </div>
                       </div>
                     {% empty %}
@@ -188,17 +284,53 @@
                 </div>
               </button>
 
+              {% if categoria.evidencias or pode_gerenciar_evidencias %}
+                {% include "pages/balancos/_evidencias.html" with evidencias=categoria.evidencias tipo_vinculo="categoria" referencia=categoria.codigo contexto=categoria.nome %}
+              {% endif %}
+
               <div class="collapse mt-2" id="categoria-mobile-{{ forloop.counter }}">
                 {% for lancamento in categoria.lancamentos %}
                   <div class="border rounded p-3 mb-2">
                     <div class="d-flex justify-content-between align-items-start gap-3">
                       <div>
-                        <div class="fw-medium">{{ lancamento.descricao }}</div>
+                        <div class="fw-medium">
+                          {{ lancamento.descricao }}
+                          {% if lancamento.manual %}
+                            <span class="badge bg-label-info ms-1">Adicionado manualmente</span>
+                          {% elif lancamento.ajustado %}
+                            <span class="badge bg-label-warning ms-1">Ajustado manualmente</span>
+                          {% endif %}
+                        </div>
                         <div class="text-body-secondary small">
                           {{ lancamento.natureza }}{% if lancamento.data %} · {{ lancamento.data }}{% endif %}
+                          {% if lancamento.ajustado and lancamento.valor_lido and lancamento.valor_lido != lancamento.valor %}
+                            · lido {{ lancamento.valor_lido }}
+                          {% endif %}
                         </div>
+                        {% if lancamento.evidencias or pode_gerenciar_evidencias %}
+                          {% include "pages/balancos/_evidencias.html" with evidencias=lancamento.evidencias tipo_vinculo="lancamento" referencia=lancamento.id contexto=lancamento.descricao %}
+                        {% endif %}
                       </div>
-                      <div class="text-nowrap fw-medium">{{ lancamento.valor }}</div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="text-nowrap fw-medium">{{ lancamento.valor }}</span>
+                        {% if pode_corrigir %}
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-icon btn-text-secondary rounded-pill"
+                            data-bs-toggle="modal"
+                            data-bs-target="#ajustar-lancamento"
+                            data-lancamento-id="{{ lancamento.id }}"
+                            data-descricao="{{ lancamento.descricao }}"
+                            data-valor="{{ lancamento.valor_editavel }}"
+                            data-categoria="{{ lancamento.categoria_codigo }}"
+                            data-natureza="{{ lancamento.natureza_codigo }}"
+                            data-grupo="{{ lancamento.grupo }}"
+                            title="Corrigir"
+                            aria-label="Corrigir lançamento">
+                            <i class="bx bx-edit-alt" aria-hidden="true"></i>
+                          </button>
+                        {% endif %}
+                      </div>
                     </div>
                   </div>
                 {% empty %}
@@ -305,4 +437,503 @@
       </div>
     </div>
   {% endif %}
+
+  {% if ignorados %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h2 class="h6 mb-1">Fora das despesas</h2>
+            <p class="text-body-secondary small mb-0">
+              Lançamentos que a gestão decidiu não contar como despesa do mês.
+            </p>
+          </div>
+          <button
+            class="btn btn-label-secondary btn-sm"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#fora-das-despesas"
+            aria-expanded="false"
+            aria-controls="fora-das-despesas">
+            Ver lançamentos
+          </button>
+        </div>
+
+        <div class="collapse mt-3" id="fora-das-despesas">
+          {% for lancamento in ignorados %}
+            <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
+              <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="fw-medium">{{ lancamento.descricao }}</div>
+                <div class="text-nowrap text-body-secondary">{{ lancamento.valor }}</div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_corrigir %}
+    <div
+      class="modal fade"
+      id="ajustar-lancamento"
+      tabindex="-1"
+      aria-labelledby="ajustar-lancamento-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            id="form-corrigir"
+            action="{% url 'balancos:corrigir_lancamento' balanco.pk %}">
+            {% csrf_token %}
+            {{ form_correcao.versao }}
+            {{ form_correcao.lancamento_id }}
+
+            <div class="modal-header">
+              <h5 class="modal-title" id="ajustar-lancamento-titulo">Ajustar lançamento</h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_correcao.descricao.id_for_label }}">Descrição</label>
+                {{ form_correcao.descricao }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_correcao.valor.id_for_label }}">Valor</label>
+                {{ form_correcao.valor }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_correcao.categoria.id_for_label }}">Categoria</label>
+                {{ form_correcao.categoria }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_correcao.natureza.id_for_label }}">Natureza</label>
+                {{ form_correcao.natureza }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_correcao.grupo.id_for_label }}">Grupo</label>
+                {{ form_correcao.grupo }}
+              </div>
+              <div>
+                <label class="form-label" for="{{ form_correcao.justificativa.id_for_label }}">Justificativa</label>
+                {{ form_correcao.justificativa }}
+                <div class="form-text">O que mudou e por quê. Fica no histórico do balanço.</div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                class="btn btn-label-danger"
+                formaction="{% url 'balancos:marcar_nao_despesa' balanco.pk %}">
+                Não é despesa
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar ajuste</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="adicionar-lancamento"
+      tabindex="-1"
+      aria-labelledby="adicionar-lancamento-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'balancos:adicionar_lancamento' balanco.pk %}">
+            {% csrf_token %}
+            {{ form_adicionar.versao }}
+
+            <div class="modal-header">
+              <h5 class="modal-title" id="adicionar-lancamento-titulo">Adicionar lançamento</h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <p class="text-body-secondary small mb-3">
+                Para o que o documento não trouxe e precisa constar no mês.
+              </p>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_adicionar.descricao.id_for_label }}">Descrição</label>
+                {{ form_adicionar.descricao }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_adicionar.valor.id_for_label }}">Valor</label>
+                {{ form_adicionar.valor }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_adicionar.categoria.id_for_label }}">Categoria</label>
+                {{ form_adicionar.categoria }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_adicionar.natureza.id_for_label }}">Natureza</label>
+                {{ form_adicionar.natureza }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_adicionar.grupo.id_for_label }}">Grupo</label>
+                {{ form_adicionar.grupo }}
+              </div>
+              <div>
+                <label class="form-label" for="{{ form_adicionar.justificativa.id_for_label }}">Justificativa</label>
+                {{ form_adicionar.justificativa }}
+                <div class="form-text">Por que este lançamento entra no mês.</div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Adicionar lançamento</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if revisoes %}
+    <div
+      class="modal fade"
+      id="ajustes-do-balanco"
+      tabindex="-1"
+      aria-labelledby="ajustes-do-balanco-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="ajustes-do-balanco-titulo">Ajustes feitos à mão</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            {% for revisao in revisoes %}
+              <div class="{% if not forloop.first %}border-top pt-3 mt-3{% endif %}">
+                <div class="d-flex flex-wrap justify-content-between gap-2 mb-1">
+                  <span class="fw-medium">{{ revisao.acao }}</span>
+                  <span class="text-body-secondary small">{{ revisao.quando }}</span>
+                </div>
+                {% if revisao.lancamento %}
+                  <div class="text-body-secondary small mb-1">{{ revisao.lancamento }}</div>
+                {% endif %}
+                {% for mudanca in revisao.mudancas %}
+                  <div class="small">
+                    {{ mudanca.campo }}:
+                    <span class="text-body-secondary">{{ mudanca.antes }}</span>
+                    <i class="bx bx-right-arrow-alt align-middle" aria-hidden="true"></i>
+                    {{ mudanca.depois }}
+                  </div>
+                {% endfor %}
+                <p class="mb-0 mt-1">{{ revisao.justificativa }}</p>
+                {% if revisao.autor %}
+                  <div class="text-body-secondary small">{{ revisao.autor }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_gerenciar_evidencias %}
+    <div
+      class="modal fade"
+      id="adicionar-evidencia"
+      tabindex="-1"
+      aria-labelledby="adicionar-evidencia-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            enctype="multipart/form-data"
+            id="form-anexar-evidencia"
+            action="{% url 'balancos:evidencia_adicionar' balanco.pk %}">
+            {% csrf_token %}
+            {{ form_evidencia.tipo_vinculo }}
+            {{ form_evidencia.referencia }}
+
+            <div class="modal-header">
+              <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar foto</h5>
+              <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <p class="text-body-secondary small mb-3" id="evidencia-vinculo"></p>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_evidencia.imagem.id_for_label }}">Foto</label>
+                {{ form_evidencia.imagem }}
+                <div class="form-text">JPG, PNG ou WEBP, até {{ limite_da_foto }}.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ form_evidencia.legenda.id_for_label }}">Legenda</label>
+                {{ form_evidencia.legenda }}
+              </div>
+              <div class="form-check">
+                {{ form_evidencia.exibir_aos_moradores }}
+                <label
+                  class="form-check-label"
+                  for="{{ form_evidencia.exibir_aos_moradores.id_for_label }}">
+                  Exibir aos moradores
+                </label>
+              </div>
+              <p class="text-body-secondary small mb-0 mt-2 d-none" data-aviso-moradores>
+                Confirme que a imagem não contém dados pessoais ou informações restritas.
+              </p>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar foto</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if tem_evidencias %}
+    <div
+      class="modal fade"
+      id="ver-evidencia"
+      tabindex="-1"
+      aria-labelledby="ver-evidencia-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="ver-evidencia-titulo">Foto</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <img id="evidencia-imagem" class="eithra-evidencia-imagem" src="" alt="">
+
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+              <p class="mb-0" id="evidencia-legenda"></p>
+              <span class="badge bg-label-info d-none" id="evidencia-exibir-selo">
+                Elegível para os moradores
+              </span>
+            </div>
+
+            {% if pode_gerenciar_evidencias %}
+              <form method="post" id="form-editar-evidencia" class="border-top mt-3 pt-3">
+                {% csrf_token %}
+                <div class="mb-3">
+                  <label class="form-label" for="evidencia-legenda-campo">Legenda</label>
+                  <input
+                    type="text"
+                    name="legenda"
+                    id="evidencia-legenda-campo"
+                    class="form-control"
+                    maxlength="200"
+                    autocomplete="off">
+                </div>
+                <div class="form-check">
+                  <input
+                    type="checkbox"
+                    name="exibir_aos_moradores"
+                    id="evidencia-exibir-campo"
+                    class="form-check-input">
+                  <label class="form-check-label" for="evidencia-exibir-campo">
+                    Exibir aos moradores
+                  </label>
+                </div>
+                <p class="text-body-secondary small mb-0 mt-2 d-none" data-aviso-moradores>
+                  Confirme que a imagem não contém dados pessoais ou informações restritas.
+                </p>
+              </form>
+            {% endif %}
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Fechar
+            </button>
+            {% if pode_gerenciar_evidencias %}
+              <button
+                type="submit"
+                form="form-editar-evidencia"
+                class="btn btn-label-danger"
+                id="remover-evidencia">
+                Remover
+              </button>
+              <button type="submit" form="form-editar-evidencia" class="btn btn-primary">
+                Salvar
+              </button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // O ajuste de um lançamento usa um modal só: os campos são preenchidos com
+    // o que a linha já mostra, para não obrigar a gestão a redigitar o valor.
+    (function () {
+      var modal = document.getElementById("ajustar-lancamento");
+      if (!modal) {
+        return;
+      }
+
+      var formulario = document.getElementById("form-corrigir");
+      var grupo = formulario.querySelector('[name="grupo"]');
+
+      function preencher(nome, valor) {
+        var campo = formulario.querySelector('[name="' + nome + '"]');
+        if (campo) {
+          campo.value = valor || "";
+        }
+      }
+
+      modal.addEventListener("show.bs.modal", function (evento) {
+        var gatilho = evento.relatedTarget;
+        if (!gatilho) {
+          return;
+        }
+
+        preencher("lancamento_id", gatilho.dataset.lancamentoId);
+        preencher("descricao", gatilho.dataset.descricao);
+        preencher("valor", gatilho.dataset.valor);
+        preencher("categoria", gatilho.dataset.categoria);
+        preencher("natureza", gatilho.dataset.natureza);
+        preencher("justificativa", "");
+
+        var atual = gatilho.dataset.grupo || "";
+        if (atual) {
+          var existe = Array.prototype.some.call(grupo.options, function (opcao) {
+            return opcao.value === atual;
+          });
+          if (!existe) {
+            grupo.add(new Option(atual, atual));
+          }
+        }
+        grupo.value = atual;
+      });
+    })();
+
+    // A foto é anexada a um contexto: o modal é único e recebe o vínculo do
+    // botão que o abriu. Assim não existe uma janela por lançamento nem uma por
+    // categoria — e o que chega ao backend é o vínculo, não a intenção da tela.
+    (function () {
+      // O aviso de privacidade só aparece quando a gestão decide exibir a foto
+      // aos moradores: é nesse momento que a responsabilidade entra.
+      function prepararAviso(formulario) {
+        var caixa = formulario.querySelector('input[type="checkbox"]');
+        var aviso = formulario.querySelector("[data-aviso-moradores]");
+        if (!caixa || !aviso) {
+          return function () {};
+        }
+
+        function atualizar() {
+          aviso.classList.toggle("d-none", !caixa.checked);
+        }
+
+        caixa.addEventListener("change", atualizar);
+        return atualizar;
+      }
+
+      var modalAnexar = document.getElementById("adicionar-evidencia");
+      if (modalAnexar) {
+        var formAnexar = document.getElementById("form-anexar-evidencia");
+        var atualizarAvisoAnexar = prepararAviso(formAnexar);
+
+        modalAnexar.addEventListener("show.bs.modal", function (evento) {
+          var gatilho = evento.relatedTarget;
+          if (!gatilho) {
+            return;
+          }
+
+          // Cada abertura começa limpa: a foto escolhida antes não pode viajar
+          // junto com o vínculo novo.
+          formAnexar.reset();
+          formAnexar.querySelector('[name="tipo_vinculo"]').value =
+            gatilho.dataset.tipoVinculo || "";
+          formAnexar.querySelector('[name="referencia"]').value =
+            gatilho.dataset.referencia || "";
+
+          var contexto = gatilho.dataset.vinculo || "";
+          document.getElementById("evidencia-vinculo").textContent = contexto
+            ? "Sobre: " + contexto
+            : "";
+          atualizarAvisoAnexar();
+        });
+      }
+
+      var modalVer = document.getElementById("ver-evidencia");
+      if (modalVer) {
+        var imagem = document.getElementById("evidencia-imagem");
+        var legendaLida = document.getElementById("evidencia-legenda");
+        var selo = document.getElementById("evidencia-exibir-selo");
+        var formEditar = document.getElementById("form-editar-evidencia");
+        var botaoRemover = document.getElementById("remover-evidencia");
+        var atualizarAvisoEditar = formEditar
+          ? prepararAviso(formEditar)
+          : function () {};
+
+        modalVer.addEventListener("show.bs.modal", function (evento) {
+          var gatilho = evento.relatedTarget;
+          if (!gatilho) {
+            return;
+          }
+
+          // O acesso à imagem é curto e nasce a cada pedido: sem o parâmetro de
+          // tempo, o navegador reaproveitaria um endereço que já expirou.
+          imagem.src = gatilho.dataset.evidenciaUrl + "?t=" + Date.now();
+          legendaLida.textContent = gatilho.dataset.evidenciaLegenda || "";
+          selo.classList.toggle("d-none", gatilho.dataset.evidenciaExibir !== "1");
+
+          if (formEditar) {
+            formEditar.querySelector('[name="legenda"]').value =
+              gatilho.dataset.evidenciaLegenda || "";
+            formEditar.querySelector('[name="exibir_aos_moradores"]').checked =
+              gatilho.dataset.evidenciaExibir === "1";
+            formEditar.action = gatilho.dataset.evidenciaEditarUrl || "";
+            if (botaoRemover) {
+              botaoRemover.setAttribute(
+                "formaction",
+                gatilho.dataset.evidenciaRemoverUrl || ""
+              );
+            }
+            atualizarAvisoEditar();
+          }
+        });
+      }
+    })();
+  </script>
 {% endblock %}

@@ -62,3 +62,16 @@ class LayoutBalanco(models.TextChoices):
     DESCONHECIDO = "desconhecido", "Desconhecido"
     ATUAL_CANONICO = "atual_canonico", "Atual canônico"
     LEGADO = "legado", "Legado"
+
+
+class TipoVinculoEvidencia(models.TextChoices):
+    """A que uma evidência visual está presa dentro do balanço.
+
+    A foto não existe solta: ela explica algo do mês. Prender o vínculo é o que
+    impede uma imagem de aparecer sem contexto financeiro — e é o que faz a
+    remoção do lançamento levar junto a sua explicação.
+    """
+
+    LANCAMENTO = "lancamento", "Lançamento"
+    CATEGORIA = "categoria", "Categoria do balanço"
+    DESTAQUE = "destaque", "Destaque do mês"
