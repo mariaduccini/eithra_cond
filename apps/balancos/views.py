@@ -2,13 +2,18 @@
 
 A tela existe para uma coisa só: receber o arquivo que a administração enviou e
 mostrar o que já chegou. Nenhum valor é interpretado aqui, nenhum mês passa a
-valer. O que a gestão vê enquanto isso é o estado do recebimento.
+valer enquanto a gestão não confirma. O que a gestão vê antes disso é o estado
+do recebimento e o que o Eithra entendeu do documento.
+
+Depois da confirmação, o mês passa a existir como balanço, e a tela passa a
+mostrá-lo como gestão — não mais como pipeline.
 
 A autorização é decidida no backend, sempre a partir do vínculo ativo da pessoa
 com o condomínio. Quem não pode importar não é avisado de que o registro
 existe: a resposta é 404.
 """
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -17,21 +22,31 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.balancos.categorias import rotulo as rotulo_da_categoria
-from apps.balancos.constants import LayoutBalanco, StatusImportacao
-from apps.balancos.contratos import TipoInconsistencia, de_dicionario
+from apps.balancos.constants import LayoutBalanco, StatusBalanco, StatusImportacao
+from apps.balancos.contratos import (
+    StatusConferencia,
+    TipoInconsistencia,
+    de_dicionario,
+    de_dicionario_validado,
+)
 from apps.balancos.forms import ImportacaoBalancoForm
-from apps.balancos.models import ImportacaoBalanco
+from apps.balancos.models import BalancoMensal, ImportacaoBalanco
 from apps.balancos.natureza_despesa import NaturezaDespesa
 from apps.balancos.natureza_despesa import rotulo as rotulo_da_natureza
-from apps.balancos.normalizadores import texto_para_decimal
+from apps.balancos.normalizadores import decimal_para_texto, texto_para_decimal
 from apps.balancos.permissoes import condominios_para_importar
 from apps.balancos.services import (
+    ErroDeConfirmacao,
+    confirmar_importacao,
     descartar_importacao,
     formatar_tamanho,
     gerar_acesso_temporario,
     limite_de_upload,
+    medir_detalhamento,
+    pode_confirmar,
     receber_importacao,
 )
+from apps.balancos.validacao_financeira import TOLERANCIA
 
 # Quantidade de recebimentos recentes mostrados. A lista é de apoio: o que
 # importa é o que acabou de chegar, não um arquivo morto.
@@ -51,7 +66,7 @@ def importar(request):
     """Recebe o PDF e registra a tentativa de importação.
 
     Nada de ``BalancoMensal`` nasce aqui: o balanço só existe depois que a
-    gestão confirma a importação, em etapa futura.
+    gestão confirma a importação.
     """
     if request.method != "POST":
         return redirect("balancos:importacoes")
@@ -92,15 +107,46 @@ def importar(request):
 def detalhe(request, pk):
     """O que o Eithra entendeu do balanço, para a gestão conferir.
 
-    A tela não oficializa nada: mostra os dados lidos e os pontos que merecem
-    atenção. Confirmar o balanço é etapa futura, então aqui não há botão de
-    confirmação — só o que foi lido e o que ainda falta esclarecer.
+    A tela ainda não oficializa nada: mostra os dados lidos e os pontos que
+    merecem atenção. Confirmar é uma decisão da gestão, e por isso o botão só
+    aparece quando o domínio concorda que esta importação pode virar balanço.
     """
     importacao = _importacao_autorizada(request, pk)
     return render(
         request,
         "pages/balancos/importacao_detalhe.html",
         _contexto_do_detalhe(importacao),
+    )
+
+
+@login_required
+@require_POST
+def confirmar(request, pk):
+    """Confirma a importação: é aqui que o mês passa a valer.
+
+    A decisão é da gestão, mas quem confere continua sendo o domínio: a
+    confirmação acontece em uma transação só, e uma falha em qualquer passo não
+    deixa balanço pela metade. Confirmar de novo não cria um segundo balanço.
+    """
+    importacao = _importacao_autorizada(request, pk)
+    try:
+        balanco = confirmar_importacao(importacao, usuario=request.user)
+    except ErroDeConfirmacao as erro:
+        messages.error(request, str(erro))
+        return redirect("balancos:detalhe", pk=importacao.pk)
+
+    messages.success(request, "Balanço confirmado.")
+    return redirect("balancos:balanco", pk=balanco.pk)
+
+
+@login_required
+def balanco(request, pk):
+    """O balanço confirmado do mês, como gestão — não como pipeline."""
+    instancia = _balanco_autorizado(request, pk)
+    return render(
+        request,
+        "pages/balancos/balanco_detalhe.html",
+        _contexto_do_balanco(instancia),
     )
 
 
@@ -148,6 +194,17 @@ def _importacao_autorizada(request, pk):
     )
 
 
+def _balanco_autorizado(request, pk):
+    """Resolve o balanço dentro dos condomínios autorizados, ou 404."""
+    condominios = _condominios_autorizados(request)
+    return get_object_or_404(
+        BalancoMensal.objects.select_related("condominio").filter(
+            condominio__in=condominios
+        ),
+        pk=pk,
+    )
+
+
 def _render(request, *, condominios, formulario=None, status=200):
     """Monta a tela com o que já foi recebido e o formulário de entrada."""
     recebidas = (
@@ -155,12 +212,49 @@ def _render(request, *, condominios, formulario=None, status=200):
         .select_related("condominio")
         .order_by("-criado_em")[:LIMITE_DA_LISTA]
     )
+    _ligar_balancos_confirmados(recebidas)
     contexto = {
         "importacoes": recebidas,
         "formulario_importacao": formulario or ImportacaoBalancoForm(condominios=condominios),
         "limite_de_upload": formatar_tamanho(limite_de_upload()),
     }
     return render(request, "pages/balancos/importacoes.html", contexto, status=status)
+
+
+def _ligar_balancos_confirmados(importacoes) -> None:
+    """Aponta, em cada importação confirmada, o balanço que nasceu dela.
+
+    O vínculo é a competência: é ela que diz de qual mês o balanço é. A
+    importação continua guardada como memória técnica do recebimento; o balanço
+    é o mês em vigor. A busca é feita de uma vez só, para a lista não virar uma
+    consulta por linha.
+    """
+    competencia_por_importacao = {}
+    for importacao in importacoes:
+        importacao.balanco_confirmado = None
+        if not importacao.confirmado_em:
+            continue
+        competencia = _data_iso((importacao.resultado_extraido or {}).get("competencia"))
+        if competencia is not None:
+            competencia_por_importacao[importacao.pk] = (
+                importacao.condominio_id,
+                competencia,
+            )
+
+    if not competencia_por_importacao:
+        return
+
+    encontrados = {
+        (item.condominio_id, item.competencia): item
+        for item in BalancoMensal.objects.filter(
+            condominio_id__in={par[0] for par in competencia_por_importacao.values()},
+            competencia__in={par[1] for par in competencia_por_importacao.values()},
+        ).exclude(status=StatusBalanco.SUBSTITUIDO)
+    }
+    for importacao in importacoes:
+        encontrado = encontrados.get(competencia_por_importacao.get(importacao.pk))
+        if encontrado is not None:
+            importacao.balanco_confirmado = encontrado
 
 
 # -- Apresentação do que foi lido ----------------------------------------------
@@ -175,6 +269,14 @@ TOM_POR_NATUREZA = {
     NaturezaDespesa.RECORRENTE_VARIAVEL: "info",
     NaturezaDespesa.EXTRAORDINARIA: "warning",
     NaturezaDespesa.NAO_DETERMINADA: "secondary",
+}
+
+# Tom da conferência do agrupamento. O texto já diz o que aconteceu; a cor só
+# separa o que fecha do que ainda precisa de esclarecimento.
+TOM_POR_CONFERENCIA = {
+    StatusConferencia.CONFERE: "success",
+    StatusConferencia.FALTA_IDENTIFICAR: "warning",
+    StatusConferencia.SEM_SUBTOTAL: "secondary",
 }
 
 # Tom do ponto de atenção pelo quanto pesa. O texto diz o que aconteceu; a cor
@@ -203,31 +305,147 @@ NOMES_DO_MES = (
 
 
 def _contexto_do_detalhe(importacao):
-    """Traduz o que está gravado num contexto que a tela mostra sem jargão."""
+    """Traduz o que está gravado num contexto que a tela mostra sem jargão.
+
+    As despesas aparecem pelo agrupamento do próprio documento — o grupo diz o
+    que o documento declarou, o que a leitura encontrou e a diferença entre os
+    dois. Recebimento individual não entra na tela: o total de receitas vem do
+    resumo do documento, e reproduzir centenas de linhas por unidade não serve
+    à gestão.
+    """
     balanco = de_dicionario(importacao.resultado_extraido)
     lido = bool(importacao.resultado_extraido)
+    lancamentos = _lancamentos_por_grupo(balanco.despesas)
+    # Quem decide se esta importação pode virar balanço é o domínio; a tela só
+    # mostra o botão quando ele concorda — e nunca oferece o que o backend
+    # recusaria.
+    confirma, motivo = pode_confirmar(importacao)
 
     return {
         "importacao": importacao,
         "lido": lido,
         "competencia": _competencia_por_extenso(balanco.competencia) if lido else None,
-        "receitas": [_receita_para_tela(item) for item in balanco.receitas],
-        "despesas": [_despesa_para_tela(item) for item in balanco.despesas],
+        "grupos": [
+            _grupo_para_tela(item, lancamentos.get(item.nome or "", []))
+            for item in balanco.grupos
+        ],
         "saldos": [_saldo_para_tela(item) for item in balanco.saldos],
-        "categorias": [_categoria_para_tela(item) for item in balanco.categorias],
         "tem_a_confirmar": any(
-            texto_para_decimal(item.nao_determinada) for item in balanco.categorias
+            texto_para_decimal(item.nao_determinada) for item in balanco.grupos
         ),
         "resumo": _resumo_para_tela(balanco.resumo),
         "totais": {
             "receitas": _moeda(balanco.receitas_total) if lido else None,
             "despesas": _moeda(balanco.despesas_total) if lido else None,
+            "residuo": (
+                _residuo_do_total(balanco.despesas_total, balanco.soma_despesas_extraida)
+                if lido
+                else None
+            ),
             "saldo_anterior": _moeda(balanco.saldo_anterior) if lido else None,
             "saldo_final": _moeda(balanco.saldo_final) if lido else None,
         },
+        "detalhamento": _detalhamento_para_tela(balanco) if lido else None,
+        "pode_confirmar": confirma,
+        "motivo_para_nao_confirmar": motivo,
         "pendencias": [_pendencia_para_tela(item) for item in (importacao.inconsistencias or [])],
         "motivo_recusa": None if lido else _motivo_para_tela(importacao),
         "motivo_tom": "danger" if importacao.status == StatusImportacao.ERRO else "info",
+    }
+
+
+def _contexto_do_balanco(balanco) -> dict:
+    """Traduz o balanço confirmado para a tela de gestão.
+
+    O documento já virou mês: aqui não há pipeline, não há etapa, não há
+    detalhe técnico. O que aparece é o que a administração declarou, o que a
+    leitura detalhou e o quanto ficou sem detalhe associado — o resto continua
+    guardado, mas não é assunto desta tela.
+    """
+    validado = de_dicionario_validado(balanco.dados_validados)
+    lido = de_dicionario(validado.leitura)
+    lancamentos = _lancamentos_por_grupo(lido.despesas)
+    original = balanco.documentos.first()
+
+    return {
+        "balanco": balanco,
+        "competencia": _competencia_por_extenso(validado.competencia),
+        "grupos": [
+            _grupo_para_tela(item, lancamentos.get(item.nome or "", []))
+            for item in lido.grupos
+        ],
+        "saldos": [_saldo_para_tela(item) for item in lido.saldos],
+        "tem_a_confirmar": any(
+            texto_para_decimal(item.nao_determinada) for item in lido.grupos
+        ),
+        "resumo": _resumo_para_tela(lido.resumo),
+        "totais": {
+            "receitas": _moeda(validado.receitas_total),
+            "despesas": _moeda(validado.despesas_total),
+            "saldo_anterior": _moeda(validado.saldo_anterior),
+            "saldo_final": _moeda(validado.saldo_final),
+        },
+        "detalhamento": _detalhamento_para_tela(lido),
+        "nome_do_arquivo": original.nome_original if original else "",
+        "pendencias": [
+            _pendencia_para_tela(item) for item in (balanco.inconsistencias or [])
+        ],
+        "confirmado_em": balanco.validado_em,
+    }
+
+
+def _detalhamento_para_tela(balanco) -> dict:
+    """O quanto do total declarado ficou preso ao detalhe identificado.
+
+    A distância entre o declarado e o identificado é dita, não escondida: é ela
+    que mostra que o balanço vale pelos totais oficiais mesmo quando nem todo
+    lançamento pôde ser associado.
+    """
+    medida = medir_detalhamento(balanco)
+    nao_associado = texto_para_decimal(medida.valor_nao_associado) or Decimal("0.00")
+
+    return {
+        "total_declarado": _moeda(medida.total_declarado),
+        "total_identificado": _moeda(medida.total_identificado),
+        "valor_nao_associado": _moeda(medida.valor_nao_associado),
+        "percentual": _percentual(medida.percentual),
+        "tem_residual": abs(nao_associado) > TOLERANCIA,
+        "mais_do_que_o_declarado": nao_associado < 0,
+    }
+
+
+def _percentual(valor: str | None) -> str | None:
+    """Percentual com uma casa, como a gestão lê: ``91,2%``."""
+    decimal = texto_para_decimal(valor) if valor else None
+    if decimal is None:
+        return None
+    arredondado = decimal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    return f"{arredondado:.1f}".replace(".", ",") + "%"
+
+
+def _residuo_do_total(despesas_total: str | None, soma_extraida: str) -> dict | None:
+    """A distância entre o total declarado e a soma do que foi lido.
+
+    O total do documento e a soma do que foi lido são conceitos distintos: um é
+    o que a administração afirma, o outro é o que a leitura encontrou. Quando a
+    leitura encontra menos, falta identificar; quando encontra mais, o valor
+    veio acima do declarado — e dizer o contrário seria afirmar o inverso do
+    que os números mostram. Resíduo de arredondamento não vira frase.
+    """
+    total = texto_para_decimal(despesas_total)
+    if total is None:
+        return None
+    diferenca = total - (texto_para_decimal(soma_extraida) or Decimal("0.00"))
+    if abs(diferenca) <= TOLERANCIA:
+        return None
+    if diferenca > 0:
+        return {
+            "rotulo": "Não identificado",
+            "valor": _moeda(decimal_para_texto(diferenca)),
+        }
+    return {
+        "rotulo": "Acima do declarado",
+        "valor": _moeda(decimal_para_texto(-diferenca)),
     }
 
 
@@ -263,13 +481,14 @@ def _data_iso(iso: str | None) -> date | None:
         return None
 
 
-def _receita_para_tela(item) -> dict:
-    return {
-        "data": _dia(item.data),
-        "descricao": item.descricao_original,
-        "origem": item.categoria_original or "",
-        "valor": _moeda(item.valor),
-    }
+def _lancamentos_por_grupo(despesas) -> dict[str, list[dict]]:
+    """Lançamentos de cada agrupamento, na ordem em que o documento os traz."""
+    por_grupo: dict[str, list[dict]] = {}
+    for despesa in despesas:
+        por_grupo.setdefault(despesa.categoria_original or "", []).append(
+            _despesa_para_tela(despesa)
+        )
+    return por_grupo
 
 
 def _despesa_para_tela(item) -> dict:
@@ -287,19 +506,52 @@ def _despesa_para_tela(item) -> dict:
     }
 
 
+def _grupo_para_tela(grupo, lancamentos: list[dict]) -> dict:
+    """Traduz um agrupamento: o declarado, o identificado e a diferença.
+
+    O agrupamento sem nome é o que o documento não rotulou — a leitura não
+    inventa um nome para ele, apenas diz que não veio agrupado.
+    """
+    return {
+        "nome": grupo.nome or "Despesas sem agrupamento",
+        "categoria": rotulo_da_categoria(grupo.categoria_eithra),
+        "quantidade": grupo.quantidade,
+        "recorrente": _moeda(grupo.recorrente),
+        "extraordinaria": _moeda(grupo.extraordinaria),
+        "a_confirmar": _moeda(grupo.nao_determinada),
+        "identificado": _moeda(grupo.soma_extraida),
+        "total_declarado": _moeda(grupo.total_declarado) if grupo.total_declarado else "",
+        "conferencia": _rotulo_da_conferencia(grupo.status),
+        "tom_conferencia": TOM_POR_CONFERENCIA.get(grupo.status, "secondary"),
+        "diferenca": _diferenca_para_tela(grupo.diferenca, grupo.status),
+        "lancamentos": lancamentos,
+    }
+
+
+def _diferenca_para_tela(diferenca: str | None, status: str) -> str:
+    """A frase da diferença do agrupamento — ou nada, quando não há o que dizer.
+
+    A diferença nunca é escondida nem arredondada para zero: o que faltou
+    identificar é dito, e o que veio acima do declarado também.
+    """
+    valor = texto_para_decimal(diferenca) if diferenca else None
+    if valor is None or status != StatusConferencia.FALTA_IDENTIFICAR:
+        return ""
+    if valor > 0:
+        return f"Falta identificar {_moeda(decimal_para_texto(valor))}"
+    return f"Identificado {_moeda(decimal_para_texto(-valor))} acima do declarado"
+
+
+def _rotulo_da_conferencia(status: str) -> str:
+    """Nome humano da conferência; um rótulo honesto para o que não se conhece."""
+    try:
+        return StatusConferencia(status).label
+    except ValueError:
+        return "Não conferido"
+
+
 def _saldo_para_tela(item) -> dict:
     return {"identificacao": item.identificacao, "valor": _moeda(item.valor)}
-
-
-def _categoria_para_tela(item) -> dict:
-    return {
-        "nome": rotulo_da_categoria(item.categoria),
-        "recorrente": _moeda(item.recorrente),
-        "extraordinaria": _moeda(item.extraordinaria),
-        "a_confirmar": _moeda(item.nao_determinada),
-        "total": _moeda(item.total),
-        "quantidade": item.quantidade,
-    }
 
 
 def _resumo_para_tela(resumo) -> dict:
@@ -308,8 +560,9 @@ def _resumo_para_tela(resumo) -> dict:
         "extraordinaria": _moeda(resumo.extraordinaria_total),
         "a_confirmar": _moeda(resumo.nao_determinada_total),
         "despesas": resumo.despesas_identificadas,
-        "receitas": resumo.receitas_identificadas,
         "pontos": resumo.pontos_de_atencao,
+        "conferidos": resumo.grupos_conferidos,
+        "com_diferenca": resumo.grupos_com_diferenca,
         "principais": [rotulo_da_categoria(item) for item in resumo.principais_categorias],
     }
 

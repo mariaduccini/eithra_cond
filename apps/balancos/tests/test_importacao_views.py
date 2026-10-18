@@ -1,23 +1,74 @@
 """Testes das telas de entrada do balanço.
 
 O que se verifica aqui é a fronteira: quem entra, quem não entra, o que a
-listagem mostra e o que nunca aparece numa resposta.
+listagem mostra, o que nunca aparece numa resposta — e, no fim, a confirmação:
+o único momento em que o mês passa a valer.
 """
 import uuid
+from datetime import date
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.balancos.constants import LayoutBalanco, StatusImportacao
+from apps.balancos.constants import LayoutBalanco, StatusBalanco, StatusImportacao
+from apps.balancos.contratos import SCHEMA_VALIDADO, SCHEMA_VERSAO, de_dicionario_validado
 from apps.balancos.extrator_atual import extrair_balanco_atual
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
-from apps.balancos.tests.apoio import HASH_PDF, StorageDeMentira, criar_pessoa, criar_vinculo, pdf
-from apps.balancos.tests.test_extracao_atual import pdf_do_modelo_atual
+from apps.balancos.services import ErroDeConfirmacao
+from apps.balancos.tests.apoio import (
+    CONTEUDO_PDF,
+    HASH_PDF,
+    StorageDeMentira,
+    criar_pessoa,
+    criar_vinculo,
+    gerar_pdf_textual,
+    pdf,
+)
+from apps.balancos.tests.test_extracao_atual import (
+    pdf_com_grupo_sem_lancamento,
+    pdf_com_grupos_que_nao_fecham_no_total,
+    pdf_com_grupos_reconciliados,
+    pdf_com_leitura_acima_do_declarado,
+    pdf_do_modelo_atual,
+)
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
 SEGREDO = "segredo-que-nao-pode-aparecer-na-tela"
+
+
+def pdf_com_detalhamento_parcial() -> bytes:
+    """Balanço cujos totais oficiais não fecham com o detalhe que a leitura achou.
+
+    O documento declara R$ 5.000,00 de despesas e a leitura só conseguiu associar
+    R$ 4.200,00. É o caso em que o mês vale pelos totais oficiais, com o residual
+    dito — e não escondido para o balanço "fechar".
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Condominio Exemplo",
+                "Demonstrativo de Contas",
+                "Competencia: Agosto/2026",
+            ]
+        ),
+        "\n".join(
+            [
+                "Receitas Detalhadas",
+                "Taxa Condominial 50.000,00",
+                "Total de Receitas 50.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Manutencao do Elevador LTDA 3.000,00",
+                "Energia Eletrica 1.200,00",
+                "Total de Despesas 5.000,00",
+            ]
+        ),
+    )
 
 
 def detectar_layout_de_mentira(importacao, *, provider=None):
@@ -453,12 +504,16 @@ class DetalheTests(BaseTelasTests):
 
     def _importacao_lida(self, condominio=None, criado_por=None):
         """Grava uma importação do modelo atual já com os dados financeiros lidos."""
+        return self._importacao_do_documento(pdf_do_modelo_atual(), condominio, criado_por)
+
+    def _importacao_do_documento(self, documento, condominio=None, criado_por=None):
+        """Lê um documento específico e devolve a importação gravada."""
         importacao = self.importacao_em(
             condominio or self.condominio_a, criado_por=criado_por
         )
         importacao.layout_detectado = LayoutBalanco.ATUAL_CANONICO
         importacao.save(update_fields=["layout_detectado", "atualizado_em"])
-        extrair_balanco_atual(importacao, conteudo=pdf_do_modelo_atual())
+        extrair_balanco_atual(importacao, conteudo=documento)
         importacao.refresh_from_db()
         return importacao
 
@@ -483,16 +538,93 @@ class DetalheTests(BaseTelasTests):
         self.assertContains(resposta, "R$ 16.650,00")
         self.assertContains(resposta, "Manutencao do Elevador LTDA")
 
+    def test_nao_lista_receitas_individuais(self):
+        """O MVP não reproduz centenas de recebimentos: só o total do documento."""
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "R$ 50.000,00")
+        self.assertNotContains(resposta, "Taxa Condominial")
+        self.assertNotContains(resposta, "Fundo de Reserva")
+
+    def test_conferencia_por_categoria_do_documento(self):
+        """Cada categoria mostra o declarado, o identificado e a diferença."""
+        importacao = self._importacao_do_documento(pdf_com_grupos_reconciliados())
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "Despesas por categoria")
+        self.assertContains(resposta, "Manutencao")
+        self.assertContains(resposta, "Administracao")
+        self.assertContains(resposta, "R$ 3.000,00")
+        self.assertContains(resposta, "R$ 2.000,00")
+        self.assertContains(resposta, "R$ 1.200,00")
+        self.assertContains(resposta, "Confere")
+        self.assertContains(resposta, "Falta identificar R$ 800,00")
+
+    def test_categoria_guarda_os_lancamentos_atras_da_seta(self):
+        """A tela abre enxuta; o lançamento fica a um toque, dentro da categoria."""
+        importacao = self._importacao_do_documento(pdf_com_grupos_reconciliados())
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, 'data-bs-toggle="collapse"')
+        self.assertContains(resposta, "Ver lançamentos")
+        self.assertContains(resposta, "Reparo de portao")
+        self.assertContains(resposta, "Honorarios contabeis")
+
+    def test_categoria_sem_lancamento_diz_o_que_falta_identificar(self):
+        importacao = self._importacao_do_documento(pdf_com_grupo_sem_lancamento())
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "Elevadores")
+        self.assertContains(resposta, "Falta identificar R$ 5.800,00")
+        self.assertContains(resposta, "Nenhum lançamento foi identificado nesta categoria.")
+
+    def test_aponta_quando_as_categorias_nao_fecham_com_o_total_do_documento(self):
+        importacao = self._importacao_do_documento(
+            pdf_com_grupos_que_nao_fecham_no_total()
+        )
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "não confere com o total do documento")
+        self.assertContains(resposta, "R$ 8.500,00")
+
+    def test_diz_o_que_falta_identificar_quando_a_leitura_encontrou_menos(self):
+        importacao = self._importacao_do_documento(pdf_com_grupos_reconciliados())
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "Não identificado")
+        self.assertContains(resposta, "R$ 800,00")
+        self.assertNotContains(resposta, "Acima do declarado")
+
+    def test_nao_diz_o_inverso_quando_a_leitura_encontrou_mais(self):
+        importacao = self._importacao_do_documento(pdf_com_leitura_acima_do_declarado())
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertContains(resposta, "Acima do declarado")
+        self.assertContains(resposta, "R$ 650,00")
+        self.assertNotContains(resposta, "Não identificado")
+
     def test_nao_cria_balanco_mensal(self):
         importacao = self._importacao_lida()
         self._abrir(importacao, self.sindica)
         self.assertEqual(BalancoMensal.objects.count(), 0)
 
-    def test_nao_oferece_confirmacao_ainda(self):
-        """Confirmar é etapa futura: a tela não promete um botão que não existe."""
+    def test_oferece_confirmacao_quando_o_documento_pode_virar_balanco(self):
+        """A leitura reconheceu o mês: a gestão pode confirmar — em etapa própria."""
         importacao = self._importacao_lida()
         resposta = self._abrir(importacao, self.sindica)
-        self.assertNotContains(resposta, "Confirmar")
+
+        self.assertContains(resposta, "Confirmar balanço")
+        self.assertContains(
+            resposta, "Os totais oficiais do documento foram identificados."
+        )
+
+    def test_nao_oferece_confirmacao_sem_leitura(self):
+        """Sem dados lidos não há o que confirmar: a tela diz o que falta."""
+        importacao = self.importacao_em(self.condominio_a)
+        resposta = self._abrir(importacao, self.sindica)
+
+        self.assertNotContains(resposta, "Confirmar balanço")
 
     def test_importacao_de_outro_condominio_e_negada(self):
         importacao = self._importacao_lida(self.condominio_b, criado_por=self.admin)
@@ -532,4 +664,429 @@ class DetalheTests(BaseTelasTests):
     def test_credencial_nao_aparece_no_detalhe(self):
         importacao = self._importacao_lida()
         resposta = self._abrir(importacao, self.sindica)
+        self.assertNotContains(resposta, SEGREDO)
+
+
+class BaseConfirmacaoTests(BaseTelasTests):
+    """Apoio às telas de confirmação: importação lida, confirmação e abertura."""
+
+    def _importacao_lida(self, documento=None, condominio=None, criado_por=None):
+        """Uma importação do modelo atual, já lida e pronta para virar balanço."""
+        importacao = self.importacao_em(
+            condominio or self.condominio_a, criado_por=criado_por
+        )
+        importacao.layout_detectado = LayoutBalanco.ATUAL_CANONICO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+        extrair_balanco_atual(importacao, conteudo=documento or pdf_do_modelo_atual())
+        importacao.refresh_from_db()
+        return importacao
+
+    def _confirmar(self, importacao, usuario=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.post(
+            reverse("balancos:confirmar", args=[importacao.pk]), follow=True
+        )
+
+    def _abrir(self, importacao, usuario=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.get(reverse("balancos:detalhe", args=[importacao.pk]))
+
+    def _balanco(self):
+        return BalancoMensal.objects.get()
+
+
+class ConfirmacaoTests(BaseConfirmacaoTests):
+    """Confirmar é a primeira vez que o mês passa a valer.
+
+    Enquanto ninguém confirma, não existe balanço: a leitura só mostra o que
+    entendeu. Confirmar não exige que todo lançamento tenha sido compreendido —
+    o total oficial continua sendo o do documento, e o que ficou sem detalhe é
+    dito ao lado, não escondido.
+    """
+
+    def test_confirma_cria_o_balanco_do_mes(self):
+        importacao = self._importacao_lida()
+        resposta = self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertRedirects(resposta, reverse("balancos:balanco", args=[balanco.pk]))
+        self.assertEqual(balanco.condominio, self.condominio_a)
+        self.assertEqual(balanco.competencia, date(2026, 8, 1))
+        self.assertEqual(balanco.versao, 1)
+        self.assertEqual(balanco.status, StatusBalanco.VALIDADO)
+        self.assertEqual(balanco.criado_por, self.sindica)
+        self.assertEqual(balanco.validado_por, self.sindica)
+        self.assertIsNotNone(balanco.validado_em)
+
+    def test_confirma_cria_o_documento_do_balanco(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        documento = self._balanco().documentos.get()
+
+        self.assertEqual(documento.nome_original, importacao.nome_original)
+        self.assertEqual(documento.sha256, importacao.sha256)
+        self.assertEqual(documento.mime_type, importacao.mime_type)
+        self.assertEqual(documento.enviado_por, self.sindica)
+
+    def test_o_arquivo_continua_sendo_o_mesmo_objeto_do_storage(self):
+        """Nada é enviado de novo: o balanço aponta para o arquivo já recebido."""
+        importacao = self._importacao_lida()
+        self.provider.objetos[importacao.storage_key] = CONTEUDO_PDF
+
+        self._confirmar(importacao)
+
+        documento = self._balanco().documentos.get()
+        self.assertEqual(documento.storage_key, importacao.storage_key)
+        self.assertEqual(documento.storage_bucket, importacao.storage_bucket)
+        self.assertEqual(
+            self.provider.objetos, {importacao.storage_key: CONTEUDO_PDF}
+        )
+
+    def test_a_importacao_fica_confirmada(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        importacao.refresh_from_db()
+
+        self.assertEqual(importacao.status, StatusImportacao.CONFIRMADO)
+        self.assertIsNotNone(importacao.confirmado_em)
+        self.assertIsNone(importacao.descartado_em)
+        self.assertTrue(ImportacaoBalanco.objects.filter(pk=importacao.pk).exists())
+
+    def test_preserva_o_resultado_da_leitura(self):
+        importacao = self._importacao_lida()
+        lido = importacao.resultado_extraido
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.dados_extraidos, lido)
+        self.assertEqual(balanco.dados_validados["leitura"], lido)
+
+    def test_os_dados_validados_sao_versionados(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.dados_validados["schema_versao"], SCHEMA_VALIDADO)
+        self.assertEqual(
+            balanco.dados_validados["origem_schema_versao"], SCHEMA_VERSAO
+        )
+        validado = de_dicionario_validado(balanco.dados_validados)
+        self.assertEqual(validado.competencia, "2026-08-01")
+        self.assertIsNotNone(validado.confirmado_em)
+
+    def test_preserva_os_pontos_de_atencao_apontados(self):
+        """A confirmação não apaga o que ficou em aberto: ela assume."""
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        self.assertNotEqual(importacao.inconsistencias, [])
+
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.inconsistencias, importacao.inconsistencias)
+        self.assertGreaterEqual(balanco.resumo["pontos_de_atencao"], 1)
+        self.assertTrue(balanco.resumo["confirmado_com_ressalvas"])
+
+    def test_o_total_oficial_nao_e_substituido_pela_soma_lida(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.resumo["despesas_total"], "5000.00")
+        self.assertEqual(balanco.resumo["total_detalhado_identificado"], "4200.00")
+        self.assertEqual(balanco.resumo["receitas_total"], "50000.00")
+
+    def test_o_que_ficou_sem_associacao_e_registrado(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.resumo["valor_nao_associado"], "800.00")
+        self.assertEqual(balanco.dados_validados["valor_nao_associado"], "800.00")
+
+    def test_o_percentual_de_detalhamento_e_calculado(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.resumo["percentual_detalhamento"], "84.00")
+
+    def test_confirma_mesmo_com_detalhamento_incompleto(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "Balanço confirmado.")
+        self.assertEqual(BalancoMensal.objects.count(), 1)
+
+    def test_confirma_sem_residual_nao_marca_ressalva(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.assertEqual(balanco.resumo["valor_nao_associado"], "0.00")
+        self.assertEqual(balanco.resumo["percentual_detalhamento"], "100.00")
+        self.assertFalse(balanco.resumo["confirmado_com_ressalvas"])
+
+    def test_confirmar_de_novo_nao_cria_segundo_balanco(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "Balanço confirmado.")
+        self.assertEqual(BalancoMensal.objects.count(), 1)
+
+    def test_competencia_ja_confirmada_nao_e_sobrescrita(self):
+        primeira = self._importacao_lida()
+        self._confirmar(primeira)
+
+        segunda = self._importacao_lida()
+        resposta = self._confirmar(segunda)
+
+        self.assertContains(
+            resposta, "Já existe balanço confirmado para esta competência."
+        )
+        self.assertEqual(BalancoMensal.objects.count(), 1)
+        segunda.refresh_from_db()
+        self.assertNotEqual(segunda.status, StatusImportacao.CONFIRMADO)
+        self.assertIsNone(segunda.confirmado_em)
+
+    def test_importacao_de_outro_condominio_e_negada(self):
+        importacao = self._importacao_lida(
+            condominio=self.condominio_b, criado_por=self.admin
+        )
+        resposta = self._confirmar(importacao)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_morador_nao_confirma(self):
+        importacao = self._importacao_lida()
+        resposta = self._confirmar(importacao, usuario=self.morador)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_porteiro_nao_confirma(self):
+        importacao = self._importacao_lida()
+        resposta = self._confirmar(importacao, usuario=self.porteiro)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_operacional_nao_confirma(self):
+        importacao = self._importacao_lida()
+        resposta = self._confirmar(importacao, usuario=self.operacional)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_sem_vinculo_nao_confirma(self):
+        importacao = self._importacao_lida()
+        resposta = self._confirmar(importacao, usuario=self.sem_vinculo)
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_confirmacao_exige_entrada(self):
+        importacao = self._importacao_lida()
+        resposta = self.client.post(
+            reverse("balancos:confirmar", args=[importacao.pk])
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_confirmacao_exige_post(self):
+        importacao = self._importacao_lida()
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:confirmar", args=[importacao.pk]))
+
+        self.assertEqual(resposta.status_code, 405)
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_importacao_com_erro_nao_confirma(self):
+        importacao = self._importacao_lida()
+        importacao.status = StatusImportacao.ERRO
+        importacao.save(update_fields=["status", "atualizado_em"])
+
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "A leitura deste documento ainda não terminou.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_importacao_legada_nao_confirma_por_este_fluxo(self):
+        importacao = self._importacao_lida()
+        importacao.layout_detectado = LayoutBalanco.LEGADO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "Este documento ainda não foi lido pelo Eithra.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_importacao_descartada_nao_confirma(self):
+        importacao = self._importacao_lida()
+        from django.utils import timezone
+
+        importacao.status = StatusImportacao.DESCARTADO
+        importacao.descartado_em = timezone.now()
+        importacao.save(update_fields=["status", "descartado_em", "atualizado_em"])
+
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "Uma importação descartada não vira balanço.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_falha_ao_criar_o_documento_desfaz_a_confirmacao(self):
+        """Se qualquer passo falhar, nada fica: nem balanço, nem desfecho."""
+        importacao = self._importacao_lida()
+        falha = patch(
+            "apps.balancos.services._criar_documento",
+            side_effect=ErroDeConfirmacao("O balanço não foi confirmado."),
+        )
+
+        with falha:
+            resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "O balanço não foi confirmado.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+        importacao.refresh_from_db()
+        self.assertEqual(importacao.status, StatusImportacao.PRONTO)
+        self.assertIsNone(importacao.confirmado_em)
+
+    def test_oferece_o_resumo_antes_de_confirmar(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        resposta = self._abrir(importacao)
+
+        self.assertContains(resposta, "Detalhamento das despesas")
+        self.assertContains(resposta, "84,0% identificado")
+        self.assertContains(resposta, "Não associado ao detalhamento")
+        self.assertContains(resposta, "R$ 800,00")
+        self.assertContains(resposta, "Parte do detalhamento ainda não pôde ser associada")
+
+    def test_o_modal_de_confirmacao_nao_pede_preenchimento(self):
+        importacao = self._importacao_lida()
+        resposta = self._abrir(importacao)
+
+        self.assertContains(resposta, 'id="confirmar-balanco"')
+        self.assertContains(
+            resposta, reverse("balancos:confirmar", args=[importacao.pk])
+        )
+        self.assertContains(resposta, "Confirmar o balanço de Agosto/2026?")
+
+    def test_nao_confirma_sem_dados_lidos(self):
+        importacao = self.importacao_em(self.condominio_a)
+        importacao.layout_detectado = LayoutBalanco.ATUAL_CANONICO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+
+        resposta = self._confirmar(importacao)
+
+        self.assertContains(resposta, "A leitura deste documento não produziu dados.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+
+class BalancoConfirmadoTests(BaseConfirmacaoTests):
+    """O mês confirmado, como a gestão o vê: resumo, detalhe e residual."""
+
+    def _confirmar_parcial(self):
+        importacao = self._importacao_lida(pdf_com_detalhamento_parcial())
+        self._confirmar(importacao)
+        return self._balanco()
+
+    def _tela(self, balanco, usuario=None):
+        self.client.force_login(usuario or self.sindica)
+        return self.client.get(reverse("balancos:balanco", args=[balanco.pk]))
+
+    def test_mostra_o_mes_confirmado(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        resposta = self._tela(self._balanco())
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Balanço de Agosto/2026")
+        self.assertContains(resposta, "Confirmado")
+        self.assertContains(resposta, "Resumo do mês")
+        self.assertContains(resposta, "R$ 16.650,00")
+        self.assertContains(resposta, "Despesas por categoria")
+
+    def test_preserva_os_totais_oficiais_e_diz_o_residual(self):
+        balanco = self._confirmar_parcial()
+        resposta = self._tela(balanco)
+
+        self.assertContains(resposta, "R$ 5.000,00")
+        self.assertContains(
+            resposta, "Detalhamento identificado em 84,0% das despesas."
+        )
+        self.assertContains(resposta, "R$ 800,00")
+
+    def test_nao_mostra_detalhe_de_pipeline(self):
+        """A tela é de gestão: nada de score, schema ou referência de storage."""
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        balanco = self._balanco()
+        resposta = self._tela(balanco)
+
+        self.assertNotContains(resposta, balanco.documentos.get().storage_key)
+        self.assertNotContains(resposta, "schema_versao")
+        self.assertNotContains(resposta, "provenance")
+        self.assertNotContains(resposta, "confianca")
+
+    def test_detalhe_do_mes_e_do_condominio_de_quem_olha(self):
+        criar_vinculo(self.admin, self.condominio_b, Papel.ADMIN)
+        importacao = self._importacao_lida(
+            condominio=self.condominio_b, criado_por=self.admin
+        )
+        self._confirmar(importacao, usuario=self.admin)
+        balanco = self._balanco()
+
+        self.assertEqual(self._tela(balanco, usuario=self.sindica).status_code, 404)
+        self.assertEqual(self._tela(balanco, usuario=self.morador).status_code, 404)
+        self.assertEqual(self._tela(balanco, usuario=self.admin).status_code, 200)
+
+    def test_detalhe_do_mes_exige_entrada(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        balanco = self._balanco()
+        self.client.logout()
+
+        resposta = self.client.get(reverse("balancos:balanco", args=[balanco.pk]))
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(reverse("accounts:login"), resposta["Location"])
+
+    def test_mes_inexistente_e_negado(self):
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:balanco", args=[uuid.uuid4()]))
+
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_a_lista_aponta_para_o_balanco_confirmado(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        balanco = self._balanco()
+
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+
+        self.assertContains(resposta, "Balanço confirmado")
+        self.assertContains(resposta, reverse("balancos:balanco", args=[balanco.pk]))
+
+    def test_a_lista_nao_oferece_confirmar_nem_descartar_de_novo(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:importacoes"))
+
+        self.assertNotContains(resposta, "Confirmar balanço")
+        self.assertNotContains(
+            resposta, reverse("balancos:descartar", args=[importacao.pk])
+        )
+
+    @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)
+    def test_credencial_nao_aparece_no_mes_confirmado(self):
+        importacao = self._importacao_lida()
+        self._confirmar(importacao)
+        resposta = self._tela(self._balanco())
+
         self.assertNotContains(resposta, SEGREDO)

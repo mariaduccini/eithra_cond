@@ -2,7 +2,8 @@
 
 Este é o caminho por onde entra um documento. Nada aqui cria balanço: o que
 nasce é uma ``ImportacaoBalanco`` — uma tentativa, ainda não confirmada. Só a
-confirmação da gestão, em fase futura, faz o mês valer.
+confirmação da gestão faz o mês valer, e ela também mora aqui: é este módulo
+que transforma uma importação pronta no ``BalancoMensal`` do mês.
 
 O upload não mora na view nem em ``save()``, e não há signal escondido: a
 sequência é explícita e cada passo tem um nome. Quem chama é que decide o que
@@ -16,22 +17,45 @@ Duas coisas diferentes são guardadas em dois lugares diferentes:
 Não existe transação que cubra os dois. Se o arquivo for enviado e a gravação
 seguinte falhar, o envio é desfeito na medida do possível; se o arquivo não for
 enviado, a tentativa fica registrada como não recebida, e não como sucesso.
+
+Já a confirmação é uma transação só, e é o único ponto do sistema onde um
+``BalancoMensal`` nasce.
 """
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
-from django.db import DatabaseError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from apps.balancos.constants import LayoutBalanco, StatusImportacao
+from apps.balancos.constants import (
+    LayoutBalanco,
+    ProcessamentoBalanco,
+    StatusBalanco,
+    StatusImportacao,
+)
+from apps.balancos.contratos import (
+    SCHEMA_VERSAO,
+    BalancoExtraidoV1,
+    BalancoValidadoV1,
+    ErroDeContrato,
+    TipoInconsistencia,
+    de_dicionario,
+    para_dicionario_validado,
+    validar_dicionario,
+    validar_dicionario_validado,
+)
 from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
 from apps.balancos.extrator_atual import ErroDeExtracao, extrair_balanco_atual
-from apps.balancos.models import ImportacaoBalanco
+from apps.balancos.models import BalancoMensal, DocumentoBalanco, ImportacaoBalanco
+from apps.balancos.normalizadores import decimal_para_texto, texto_para_decimal
 from apps.balancos.storage import ErroDeStorage, obter_provider
+from apps.balancos.validacao_financeira import TOLERANCIA
 
 # Assinatura de um PDF de verdade. Extensão e tipo informado pelo navegador não
 # provam nada: o que vale é o começo do arquivo.
@@ -300,8 +324,8 @@ def _remover_objeto(importacao) -> None:
     """Remove o arquivo do bucket sem tornar a operação refém do storage.
 
     Se a remoção — ou a própria configuração — falhar, a referência continua no
-    registro e o objeto pode ser limpo depois. O descarte em si já está
-    gravado. Nada disso vira erro para a gestão.
+    registro e o objeto pode ser limpo depois. O descarte em si já está gravado.
+    Nada disso vira erro para a gestão.
     """
     if not importacao.storage_key:
         return
@@ -310,3 +334,287 @@ def _remover_objeto(importacao) -> None:
         obter_provider().remover(key=importacao.storage_key)
     except (ErroDeStorage, ImproperlyConfigured):
         return
+
+
+# -- Confirmação: a importação vira balanço ------------------------------------
+#
+# Confirmar não é exigir que todo lançamento tenha sido compreendido. O que o
+# documento declara como total oficial continua sendo o valor oficial do mês, e
+# o quanto desse total ficou sem detalhe associado aparece ao lado — não é
+# escondido nem corrigido para o mês "fechar".
+
+
+class ErroDeConfirmacao(Exception):
+    """A importação não pode virar balanço agora. A mensagem é para a gestão."""
+
+
+@dataclass(frozen=True)
+class DetalhamentoDasDespesas:
+    """Quanto do total declarado ficou preso ao detalhe que a leitura achou.
+
+    ``valor_nao_associado`` é a parte do total declarado que não ficou presa a
+    nenhum lançamento lido. Quando a leitura encontra mais do que o documento
+    declara, ele fica negativo — e o sinal, em vez de escondido, é justamente o
+    que diz que o detalhe passou do declarado.
+    """
+
+    total_declarado: str | None
+    total_identificado: str
+    valor_nao_associado: str
+    percentual: str | None
+
+
+def medir_detalhamento(balanco: BalancoExtraidoV1) -> DetalhamentoDasDespesas:
+    """Mede a distância entre o total declarado e o detalhe identificado.
+
+    Não soma nada ao total e não estima nada: só compara dois números que o
+    documento e a leitura já deram, separadamente.
+    """
+    declarado = texto_para_decimal(balanco.despesas_total)
+    identificado = texto_para_decimal(balanco.soma_despesas_extraida) or Decimal("0.00")
+
+    if declarado is None or declarado <= 0:
+        # Sem total declarado não há contra o que comparar; a ausência continua
+        # sendo ausência, e não vira 0%.
+        return DetalhamentoDasDespesas(
+            total_declarado=decimal_para_texto(declarado),
+            total_identificado=decimal_para_texto(identificado),
+            valor_nao_associado="0.00",
+            percentual=None,
+        )
+
+    percentual = (identificado / declarado * 100).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+    return DetalhamentoDasDespesas(
+        total_declarado=decimal_para_texto(declarado),
+        total_identificado=decimal_para_texto(identificado),
+        valor_nao_associado=decimal_para_texto(declarado - identificado),
+        percentual=decimal_para_texto(percentual),
+    )
+
+
+def pode_confirmar(importacao) -> tuple[bool, str]:
+    """Diz se esta importação pode virar balanço, e por que não, quando não pode.
+
+    A resposta é do domínio, não da tela: o botão só aparece quando esta função
+    concorda, mas quem decide continua sendo ela.
+    """
+    if importacao.confirmado_em:
+        return False, "Esta importação já foi confirmada."
+    if importacao.descartado_em or importacao.status == StatusImportacao.DESCARTADO:
+        return False, "Uma importação descartada não vira balanço."
+    if importacao.status != StatusImportacao.PRONTO:
+        return False, "A leitura deste documento ainda não terminou."
+    if importacao.layout_detectado != LayoutBalanco.ATUAL_CANONICO:
+        return False, "Este documento ainda não foi lido pelo Eithra."
+    if not importacao.resultado_extraido:
+        return False, "A leitura deste documento não produziu dados."
+
+    try:
+        validar_dicionario(importacao.resultado_extraido)
+    except ErroDeContrato:
+        return False, "A leitura deste documento não passou na conferência."
+
+    balanco = de_dicionario(importacao.resultado_extraido)
+    if not balanco.competencia:
+        return False, "A competência do documento não foi identificada."
+    if not balanco.receitas_total:
+        return False, "O total de receitas do documento não foi identificado."
+    if not balanco.despesas_total:
+        return False, "O total de despesas do documento não foi identificado."
+
+    return True, ""
+
+
+def confirmar_importacao(importacao, *, usuario) -> BalancoMensal:
+    """Transforma uma importação pronta no balanço do mês, em uma transação.
+
+    É o único ponto do sistema onde um ``BalancoMensal`` nasce. Ou tudo
+    acontece — balanço, documento e desfecho da importação —, ou nada fica:
+    uma confirmação pela metade seria pior do que não confirmar.
+
+    Confirmar duas vezes não cria um segundo balanço: a segunda chamada devolve
+    o balanço que já existe. E uma competência que já tem versão em vigor não é
+    sobrescrita — o sistema informa e espera uma decisão explícita sobre versão,
+    que não é tomada aqui.
+    """
+    with transaction.atomic():
+        bloqueada = (
+            ImportacaoBalanco.objects.select_for_update()
+            .select_related("condominio")
+            .get(pk=importacao.pk)
+        )
+
+        if bloqueada.confirmado_em:
+            existente = _versao_vigente(bloqueada.condominio, _competencia_da(bloqueada))
+            if existente is None:
+                raise ErroDeConfirmacao("Esta importação já foi confirmada.")
+            return existente
+
+        confirma, motivo = pode_confirmar(bloqueada)
+        if not confirma:
+            raise ErroDeConfirmacao(motivo)
+
+        competencia = _competencia_da(bloqueada)
+        if _versao_vigente(bloqueada.condominio, competencia) is not None:
+            raise ErroDeConfirmacao(
+                "Já existe balanço confirmado para esta competência."
+            )
+
+        agora = timezone.now()
+        balanco = _criar_balanco(bloqueada, competencia, usuario=usuario, agora=agora)
+        _criar_documento(balanco, bloqueada)
+
+        bloqueada.status = StatusImportacao.CONFIRMADO
+        bloqueada.confirmado_em = agora
+        bloqueada.save(update_fields=["status", "confirmado_em", "atualizado_em"])
+
+    return balanco
+
+
+def _competencia_da(importacao) -> date | None:
+    """A competência que a leitura identificou, quando ela existe."""
+    return _data_iso((importacao.resultado_extraido or {}).get("competencia"))
+
+
+def _data_iso(texto) -> date | None:
+    if not texto:
+        return None
+    try:
+        return date.fromisoformat(texto)
+    except (TypeError, ValueError):
+        return None
+
+
+def _versao_vigente(condominio, competencia) -> BalancoMensal | None:
+    """A versão em vigor daquela competência, se houver.
+
+    Uma versão substituída não está em vigor: ela é memória, não o mês atual.
+    """
+    if competencia is None:
+        return None
+    return (
+        BalancoMensal.objects.filter(condominio=condominio, competencia=competencia)
+        .exclude(status=StatusBalanco.SUBSTITUIDO)
+        .first()
+    )
+
+
+def _criar_balanco(importacao, competencia, *, usuario, agora) -> BalancoMensal:
+    """Monta e grava o balanço do mês, com os totais oficiais do documento."""
+    lido = de_dicionario(importacao.resultado_extraido)
+    detalhamento = medir_detalhamento(lido)
+    inconsistencias = list(importacao.inconsistencias or [])
+
+    validado = BalancoValidadoV1(
+        competencia=lido.competencia,
+        receitas_total=lido.receitas_total,
+        despesas_total=lido.despesas_total,
+        saldo_anterior=lido.saldo_anterior,
+        saldo_final=lido.saldo_final,
+        total_declarado_despesas=detalhamento.total_declarado,
+        total_detalhado_identificado=detalhamento.total_identificado,
+        valor_nao_associado=detalhamento.valor_nao_associado,
+        percentual_detalhamento=detalhamento.percentual,
+        confirmado_com_ressalvas=_tem_ressalvas(detalhamento, inconsistencias),
+        confirmado_em=agora.isoformat(),
+        leitura=importacao.resultado_extraido,
+    )
+    dados_validados = para_dicionario_validado(validado)
+    validar_dicionario_validado(dados_validados)
+
+    balanco = BalancoMensal(
+        condominio=importacao.condominio,
+        competencia=competencia,
+        versao=1,
+        status=StatusBalanco.VALIDADO,
+        status_processamento=ProcessamentoBalanco.CONCLUIDO,
+        layout_detectado=LayoutBalanco.ATUAL_CANONICO,
+        schema_versao=SCHEMA_VERSAO,
+        dados_extraidos=importacao.resultado_extraido,
+        dados_validados=dados_validados,
+        inconsistencias=inconsistencias,
+        resumo=_resumo_do_balanco(lido, validado, inconsistencias),
+        criado_por=usuario,
+        validado_por=usuario,
+        validado_em=agora,
+    )
+    _gravar(balanco)
+    return balanco
+
+
+def _criar_documento(balanco, importacao) -> DocumentoBalanco:
+    """Referencia o arquivo já recebido — sem enviar uma segunda cópia.
+
+    O objeto no bucket é o mesmo da importação: guardar outro seria duplicar
+    arquivo sem motivo. O que se acrescenta aqui é o vínculo com o balanço.
+    """
+    documento = DocumentoBalanco(
+        balanco=balanco,
+        nome_original=importacao.nome_original,
+        storage_provider=importacao.storage_provider,
+        storage_bucket=importacao.storage_bucket,
+        storage_key=importacao.storage_key,
+        mime_type=importacao.mime_type,
+        tamanho_bytes=importacao.tamanho_bytes,
+        sha256=importacao.sha256,
+        enviado_por=importacao.criado_por,
+        enviado_em=importacao.criado_em,
+    )
+    _gravar(documento)
+    return documento
+
+
+def _gravar(instancia) -> None:
+    """Confere a instância e grava: o que não passa na conferência não entra."""
+    try:
+        instancia.full_clean()
+    except ValidationError as erro:
+        raise ErroDeConfirmacao(
+            "O balanço não passou na conferência e não foi confirmado."
+        ) from erro
+    instancia.save()
+
+
+def _tem_ressalvas(detalhamento: DetalhamentoDasDespesas, inconsistencias) -> bool:
+    """Se o balanço passa a valer com algo ainda em aberto.
+
+    A confirmação não remove inconsistência: ela assume o que ficou apontado. O
+    resíduo entre o declarado e o identificado continua sendo dito, e a
+    divergência de total apontada na leitura continua apontada.
+    """
+    diferenca = texto_para_decimal(detalhamento.valor_nao_associado) or Decimal("0.00")
+    if abs(diferenca) > TOLERANCIA:
+        return True
+    return any(
+        item.get("tipo") == TipoInconsistencia.TOTAL_DIVERGENTE
+        for item in (inconsistencias or [])
+    )
+
+
+def _resumo_do_balanco(lido, validado: BalancoValidadoV1, inconsistencias) -> dict:
+    """Agregados que a listagem e a comparação entre meses usam.
+
+    É resumo, não o balanço: o estado oficial completo está em ``dados_validados``.
+    """
+    return {
+        "competencia": validado.competencia,
+        "versao": 1,
+        "receitas_total": validado.receitas_total,
+        "despesas_total": validado.despesas_total,
+        "saldo_anterior": validado.saldo_anterior,
+        "saldo_final": validado.saldo_final,
+        "total_declarado_despesas": validado.total_declarado_despesas,
+        "total_detalhado_identificado": validado.total_detalhado_identificado,
+        "valor_nao_associado": validado.valor_nao_associado,
+        "percentual_detalhamento": validado.percentual_detalhamento,
+        "confirmado_com_ressalvas": validado.confirmado_com_ressalvas,
+        "recorrente_total": lido.resumo.recorrente_total,
+        "extraordinaria_total": lido.resumo.extraordinaria_total,
+        "nao_determinada_total": lido.resumo.nao_determinada_total,
+        "despesas_identificadas": lido.resumo.despesas_identificadas,
+        "grupos_conferidos": lido.resumo.grupos_conferidos,
+        "grupos_com_diferenca": lido.resumo.grupos_com_diferenca,
+        "pontos_de_atencao": len(inconsistencias or []),
+    }

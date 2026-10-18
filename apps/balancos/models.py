@@ -335,7 +335,7 @@ class ImportacaoBalanco(models.Model):
     Este registro representa um arquivo recebido — não um balanço. Enquanto
     existe só aqui, nada do mês mudou: nenhum valor passa a valer, nenhuma
     competência é criada. O ``BalancoMensal`` só nasce quando a gestão confirma
-    a importação, o que acontece em fase futura.
+    a importação.
 
     É por isso que upload, processamento e resultado preliminar não são
     balanço. Confundir os dois faria o sistema aceitar como oficial um arquivo

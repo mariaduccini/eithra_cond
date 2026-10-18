@@ -164,7 +164,7 @@ class RecebimentoTests(TestCase):
         self.assertEqual(self.provider.objetos[importacao.storage_key], CONTEUDO_PDF)
 
     def test_nao_cria_balanco_mensal(self):
-        """O mês só passa a valer com a confirmação da gestão, em fase futura."""
+        """O mês só passa a valer com a confirmação da gestão."""
         self.receber()
         self.assertEqual(BalancoMensal.objects.count(), 0)
 

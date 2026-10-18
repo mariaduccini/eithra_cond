@@ -30,6 +30,12 @@ from apps.balancos.natureza_despesa import NaturezaDespesa
 # contrato.
 SCHEMA_VERSAO = 1
 
+# Versão do contrato do balanço confirmado. É um contrato próprio, e não uma
+# cópia do contrato da leitura: o balanço confirmado carrega, além do que foi
+# lido, a decisão da gestão e o quanto do total declarado ficou sem detalhe
+# associado.
+SCHEMA_VALIDADO = 1
+
 # Tamanho máximo do trecho de origem guardado na procedência. O suficiente para
 # reconhecer a linha, longe de ser uma cópia do documento.
 LIMITE_DO_TRECHO = 160
@@ -59,6 +65,20 @@ class Severidade(models.TextChoices):
     ALTA = "alta", "Alta"
     MEDIA = "media", "Média"
     BAIXA = "baixa", "Baixa"
+
+
+class StatusConferencia(models.TextChoices):
+    """Se um grupo de despesa fecha com o subtotal que o documento declarou.
+
+    É o resultado da conferência por grupo — não do lançamento. ``SEM_SUBTOTAL``
+    é uma resposta legítima: o documento não declarou subtotal do grupo, então
+    não há o que conferir, e inventar um total para fechar seria pior do que
+    admitir a ausência.
+    """
+
+    CONFERE = "confere", "Confere"
+    FALTA_IDENTIFICAR = "falta_identificar", "Falta identificar"
+    SEM_SUBTOTAL = "sem_subtotal", "Sem subtotal no documento"
 
 
 class TipoInconsistencia(models.TextChoices):
@@ -142,10 +162,19 @@ class DespesaExtraida:
 
 @dataclass(frozen=True)
 class SaldoExtraido:
-    """Um saldo por conta ou banco, como o documento apresentar."""
+    """Um saldo por conta ou fundo, como o documento apresentar.
+
+    ``valor`` é o saldo que a linha mostra, com a identificação escrita pelo
+    próprio documento. Quando o documento separa a abertura do fechamento — uma
+    tabela com saldo anterior e saldo atual —, os dois ficam guardados; sem essa
+    separação eles ficam vazios, e o valor único continua sendo o que o
+    documento disse, sem virar dois.
+    """
 
     identificacao: str
     valor: str
+    saldo_anterior: str | None = None
+    saldo_final: str | None = None
     procedencia: Procedencia = field(default_factory=Procedencia)
 
 
@@ -176,6 +205,31 @@ class CategoriaAgregada:
 
 
 @dataclass(frozen=True)
+class GrupoDeDespesa:
+    """Um agrupamento de despesas do documento, conferido contra o seu subtotal.
+
+    O total declarado e a soma dos lançamentos são conceitos diferentes e não se
+    misturam: o primeiro é o que o documento afirma; o segundo é o que a leitura
+    encontrou. A diferença entre os dois é o que a gestão precisa ver — nunca um
+    lançamento inventado para fazer o grupo fechar.
+
+    ``nome`` é o rótulo do próprio documento (a categoria original preservada) e
+    fica vazio quando o documento não agrupou aquela despesa.
+    """
+
+    nome: str = ""
+    categoria_eithra: str = CategoriaEithra.NAO_CLASSIFICADO
+    total_declarado: str | None = None
+    soma_extraida: str = "0.00"
+    diferenca: str | None = None
+    status: str = StatusConferencia.SEM_SUBTOTAL
+    quantidade: int = 0
+    recorrente: str = "0.00"
+    extraordinaria: str = "0.00"
+    nao_determinada: str = "0.00"
+
+
+@dataclass(frozen=True)
 class Inconsistencia:
     """Um ponto concreto que merece atenção da gestão.
 
@@ -199,29 +253,76 @@ class ResumoExtraido:
     nao_determinada_total: str = "0.00"
     despesas_identificadas: int = 0
     receitas_identificadas: int = 0
+    grupos_conferidos: int = 0
+    grupos_com_diferenca: int = 0
     pontos_de_atencao: int = 0
     principais_categorias: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class BalancoExtraidoV1:
-    """Raiz da leitura de um balanço do modelo atual."""
+    """Raiz da leitura de um balanço do modelo atual.
+
+    ``despesas_total`` é o total **declarado** pelo documento, e
+    ``soma_despesas_extraida`` é o que a leitura **identificou** lançamento a
+    lançamento. São conceitos diferentes de propósito: a diferença entre eles é
+    o valor que ainda não foi explicado, e some-la ao total seria esconder o
+    problema em vez de mostrá-lo.
+    """
 
     schema_versao: int = SCHEMA_VERSAO
     competencia: str | None = None
     periodo: Periodo = field(default_factory=Periodo)
     receitas_total: str | None = None
     despesas_total: str | None = None
+    soma_despesas_extraida: str = "0.00"
     saldo_anterior: str | None = None
     saldo_final: str | None = None
     saldos: tuple[SaldoExtraido, ...] = ()
     categorias: tuple[CategoriaAgregada, ...] = ()
+    grupos: tuple[GrupoDeDespesa, ...] = ()
     receitas: tuple[ReceitaExtraida, ...] = ()
     despesas: tuple[DespesaExtraida, ...] = ()
     inadimplencia_agregada: InadimplenciaAgregada | None = None
     resumo: ResumoExtraido = field(default_factory=ResumoExtraido)
     provenance: dict = field(default_factory=dict)
     confianca: str = Confianca.MEDIA
+
+
+@dataclass(frozen=True)
+class BalancoValidadoV1:
+    """O balanço confirmado pela gestão — a leitura mais a decisão dela.
+
+    Confirmar não é exigir que todo lançamento tenha sido compreendido. O que o
+    documento **declara** como total oficial e o que a leitura **identificou**
+    como detalhe são duas coisas diferentes, e a diferença entre elas continua
+    visível aqui: ``valor_nao_associado`` é exatamente essa parte do total
+    declarado que não ficou presa a nenhum lançamento lido.
+
+    ``confirmado_com_ressalvas`` registra que o balanço passou a valer sem que
+    essa diferença tenha desaparecido. A confirmação não remove inconsistência:
+    ela assume o que ainda está aberto, e o que estava apontado continua
+    apontado.
+
+    ``leitura`` guarda o contrato da leitura inteiro — categorias, despesas,
+    natureza, grupos, reconciliação, saldos e procedência — sob o seu próprio
+    ``origem_schema_versao``: é o estado oficial do mês, não um resumo dele.
+    """
+
+    schema_versao: int = SCHEMA_VALIDADO
+    origem_schema_versao: int = SCHEMA_VERSAO
+    competencia: str | None = None
+    receitas_total: str | None = None
+    despesas_total: str | None = None
+    saldo_anterior: str | None = None
+    saldo_final: str | None = None
+    total_declarado_despesas: str | None = None
+    total_detalhado_identificado: str = "0.00"
+    valor_nao_associado: str = "0.00"
+    percentual_detalhamento: str | None = None
+    confirmado_com_ressalvas: bool = False
+    confirmado_em: str | None = None
+    leitura: dict = field(default_factory=dict)
 
 
 # -- Serialização ---------------------------------------------------------------
@@ -264,7 +365,7 @@ def validar_dicionario(dados) -> None:
             f"Versão de contrato inesperada: {versao!r}. Esperada: {SCHEMA_VERSAO}."
         )
 
-    for nome in ("saldos", "categorias", "receitas", "despesas"):
+    for nome in ("saldos", "categorias", "grupos", "receitas", "despesas"):
         if not isinstance(dados.get(nome), list):
             raise ErroDeContrato(f"O campo '{nome}' precisa ser uma lista.")
 
@@ -313,12 +414,15 @@ def de_dicionario(dados) -> BalancoExtraidoV1:
         periodo=Periodo(**(dados.get("periodo") or {})),
         receitas_total=dados.get("receitas_total"),
         despesas_total=dados.get("despesas_total"),
+        soma_despesas_extraida=dados.get("soma_despesas_extraida", "0.00"),
         saldo_anterior=dados.get("saldo_anterior"),
         saldo_final=dados.get("saldo_final"),
         saldos=tuple(
             SaldoExtraido(
                 identificacao=item.get("identificacao", ""),
                 valor=item.get("valor", ""),
+                saldo_anterior=item.get("saldo_anterior"),
+                saldo_final=item.get("saldo_final"),
                 procedencia=Procedencia(**(item.get("procedencia") or {})),
             )
             for item in dados.get("saldos") or []
@@ -333,6 +437,23 @@ def de_dicionario(dados) -> BalancoExtraidoV1:
                 quantidade=int(item.get("quantidade", 0) or 0),
             )
             for item in dados.get("categorias") or []
+        ),
+        grupos=tuple(
+            GrupoDeDespesa(
+                nome=item.get("nome", ""),
+                categoria_eithra=item.get(
+                    "categoria_eithra", CategoriaEithra.NAO_CLASSIFICADO
+                ),
+                total_declarado=item.get("total_declarado"),
+                soma_extraida=item.get("soma_extraida", "0.00"),
+                diferenca=item.get("diferenca"),
+                status=item.get("status", StatusConferencia.SEM_SUBTOTAL),
+                quantidade=int(item.get("quantidade", 0) or 0),
+                recorrente=item.get("recorrente", "0.00"),
+                extraordinaria=item.get("extraordinaria", "0.00"),
+                nao_determinada=item.get("nao_determinada", "0.00"),
+            )
+            for item in dados.get("grupos") or []
         ),
         receitas=tuple(
             ReceitaExtraida(
@@ -374,4 +495,69 @@ def de_dicionario(dados) -> BalancoExtraidoV1:
         resumo=_resumo_reconstruido(dados.get("resumo")),
         provenance=dict(dados.get("provenance") or {}),
         confianca=dados.get("confianca", Confianca.MEDIA),
+    )
+
+
+# -- Contrato do balanço confirmado ---------------------------------------------
+
+
+def para_dicionario_validado(validado: BalancoValidadoV1) -> dict:
+    """Prepara o balanço confirmado para ir ao banco, como JSON puro."""
+    return _json_puro(asdict(validado))
+
+
+def validar_dicionario_validado(dados) -> None:
+    """Confere a forma do balanço confirmado antes de confiar nele.
+
+    A leitura embutida é conferida pelo contrato dela, sob a sua própria
+    versão: um balanço confirmado cujo detalhe não respeita o contrato da
+    leitura é sinal de que algo saiu errado antes, e adivinhar aqui esconderia
+    o problema.
+    """
+    if not isinstance(dados, dict):
+        raise ErroDeContrato("O balanço confirmado precisa ser um objeto.")
+
+    versao = dados.get("schema_versao")
+    if versao != SCHEMA_VALIDADO:
+        raise ErroDeContrato(
+            f"Versão do balanço confirmado inesperada: {versao!r}. "
+            f"Esperada: {SCHEMA_VALIDADO}."
+        )
+
+    if int(dados.get("origem_schema_versao", 0) or 0) != SCHEMA_VERSAO:
+        raise ErroDeContrato("A leitura embutida não é da versão esperada.")
+
+    leitura = dados.get("leitura")
+    if not isinstance(leitura, dict):
+        raise ErroDeContrato("O campo 'leitura' precisa ser um objeto.")
+    validar_dicionario(leitura)
+
+
+def de_dicionario_validado(dados) -> BalancoValidadoV1:
+    """Reconstrói o balanço confirmado a partir do que está guardado.
+
+    Tolerante com o que ainda não existe, como o resto do contrato: quem lê um
+    balanço gravado antes desta fase recebe o contrato vazio, e não um erro.
+    """
+    if not dados:
+        return BalancoValidadoV1()
+
+    leitura = dados.get("leitura") or {}
+    return BalancoValidadoV1(
+        schema_versao=int(dados.get("schema_versao", SCHEMA_VALIDADO) or SCHEMA_VALIDADO),
+        origem_schema_versao=int(
+            dados.get("origem_schema_versao", SCHEMA_VERSAO) or SCHEMA_VERSAO
+        ),
+        competencia=dados.get("competencia"),
+        receitas_total=dados.get("receitas_total"),
+        despesas_total=dados.get("despesas_total"),
+        saldo_anterior=dados.get("saldo_anterior"),
+        saldo_final=dados.get("saldo_final"),
+        total_declarado_despesas=dados.get("total_declarado_despesas"),
+        total_detalhado_identificado=dados.get("total_detalhado_identificado", "0.00"),
+        valor_nao_associado=dados.get("valor_nao_associado", "0.00"),
+        percentual_detalhamento=dados.get("percentual_detalhamento"),
+        confirmado_com_ressalvas=bool(dados.get("confirmado_com_ressalvas", False)),
+        confirmado_em=dados.get("confirmado_em"),
+        leitura=dict(leitura),
     )

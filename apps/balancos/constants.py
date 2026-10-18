@@ -33,7 +33,7 @@ class StatusImportacao(models.TextChoices):
     """Situação de uma tentativa de importação ainda não confirmada.
 
     A importação é transitória: representa um arquivo recebido, que ainda não
-    virou balanço. Só a confirmação da gestão — em fase futura — cria o
+    virou balanço. Só a confirmação da gestão cria o
     ``BalancoMensal``. Por isso este ciclo é diferente do ciclo funcional do
     balanço: aqui se acompanha o recebimento, não a situação financeira do mês.
 

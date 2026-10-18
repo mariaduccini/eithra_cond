@@ -22,6 +22,7 @@ from apps.balancos.contratos import (
     SCHEMA_VERSAO,
     ErroDeContrato,
     Severidade,
+    StatusConferencia,
     TipoInconsistencia,
     de_dicionario,
     para_dicionario,
@@ -29,6 +30,7 @@ from apps.balancos.contratos import (
 )
 from apps.balancos.detector import ErroDeDeteccaoDeLayout
 from apps.balancos.extrator_atual import (
+    METODO_RESUMO,
     ErroDeExtracao,
     extrair_balanco_atual,
     ler_balanco_atual,
@@ -178,6 +180,457 @@ def pdf_sem_secoes() -> bytes:
     )
 
 
+def pdf_com_valor_em_qualquer_posicao() -> bytes:
+    """O valor vem antes ou depois da descrição, às vezes com a data no meio."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "01/08/2026 Energia Eletrica 45.000,00",
+                "01/08/2026 5.000,00 Material de limpeza",
+                "2.000,00 01/08/2026 Multa de atraso",
+            ]
+        ),
+    )
+
+
+def pdf_com_acumulado_e_percentual() -> bytes:
+    """Ao lado do lançamento vêm o acumulado do mês e o percentual de rateio."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "DEB. C/C Folha de Pagamento 12.000,00 35.644,13 55,55%",
+                "Total de Despesas 12.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_subtotal_de_categoria() -> bytes:
+    """O subtotal de um agrupamento não é o total do mês."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Folha de Pagamento 12.000,00",
+                "Material de limpeza 200,00",
+                "Total de Despesas 12.200,00",
+                "TOTAL DA CONTA DESPESA COM PESSOAL 12.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_descricao_multilinha() -> bytes:
+    """A linha seguinte, sem valor, completa a descrição do lançamento."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Energia Eletrica 3.450,00",
+                "NF.: 98765 - concessionaria de energia",
+                "Total de Despesas 3.450,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_cabecalho_repetido() -> bytes:
+    """O cabeçalho do relatório se repete em toda página e não é lançamento."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Demonstrativo de Contas",
+                "Despesas Detalhadas",
+                "Energia Eletrica 1.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Contas",
+                "Data Descricao Valor",
+                "Material de limpeza 200,00",
+                "Total de Despesas 1.200,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_resumo_e_detalhe() -> bytes:
+    """O resumo repete os valores; só o detalhamento gera lançamento."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo Financeiro",
+                "Taxa Condominial 45.000,00",
+                "Energia Eletrica 1.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Energia Eletrica 1.000,00",
+                "Total de Despesas 1.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Receitas Detalhadas",
+                "Taxa Condominial 45.000,00",
+                "Total de Receitas 45.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_grupos_reconciliados() -> bytes:
+    """Dois agrupamentos: um fecha com o subtotal declarado, o outro não.
+
+    O documento declara o subtotal de cada grupo; a leitura confere o que
+    encontrou dentro de cada um e mostra a diferença, sem inventar lançamento.
+    """
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Manutencao",
+                "Troca de bomba do recalque 2.500,00",
+                "Reparo de portao 500,00",
+                "TOTAL DA CONTA MANUTENCAO 3.000,00",
+                "Administracao",
+                "Honorarios contabeis 1.200,00",
+                "TOTAL DA CONTA ADMINISTRACAO 2.000,00",
+                "Total de Despesas 5.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_grupo_sem_lancamento() -> bytes:
+    """O documento declara o subtotal de um agrupamento que não rendeu linha."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Elevadores",
+                "TOTAL DA CONTA ELEVADORES 5.800,00",
+                "Total de Despesas 5.800,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_grupos_que_nao_fecham_no_total() -> bytes:
+    """Os subtotais dos grupos fecham entre si, mas não com o total declarado."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Manutencao",
+                "Reparo de portao 500,00",
+                "TOTAL DA CONTA MANUTENCAO 500,00",
+                "Total de Despesas 9.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_total_do_mes_rotulado_como_conta() -> bytes:
+    """O total do mês vem rotulado como conta e não é subtotal de agrupamento.
+
+    "Total da conta ordinária" fecha o documento, não um setor: tomá-lo por
+    subtotal amarraria o mês inteiro ao último agrupamento lido.
+    """
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Elevadores",
+                "Troca de cabos de tracao 4.600,00",
+                "TOTAL DA CONTA ELEVADORES 5.800,00",
+                "TOTAL DA CONTA ORDINARIA 9.000,00",
+                "Total de Despesas 9.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_leitura_acima_do_declarado() -> bytes:
+    """A leitura encontra mais do que o documento declara — e a tela diz isso."""
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Energia Eletrica 3.450,00",
+                "Material de limpeza 200,00",
+                "Total de Despesas 3.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_tabela_de_colunas() -> bytes:
+    """Tabela de movimento: várias colunas de valores na mesma linha.
+
+    A linha com três ou mais valores alinhados não é um lançamento, e o rótulo
+    de total do agrupamento pode chegar precedido da data e das colunas.
+    """
+    return gerar_pdf_textual(
+        "Despesas Detalhadas",
+        "\n".join(
+            [
+                "Energia Eletrica 3.450,00",
+                "Movimento do mes 10.000,00 2.000,00 0,00 12.000,00",
+                "25/08/2026 TOTAL DA CONTA DESPESA COM PESSOAL 3.450,00 3.450,00 55,55%",
+                "Total de Despesas 3.450,00",
+            ]
+        ),
+    )
+
+
+# -- Precedência entre resumo e detalhe ----------------------------------------
+
+
+def pdf_com_apenas_resumo_de_despesas() -> bytes:
+    """Sem demonstrativo, o resumo é a única leitura que o documento oferece."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_apenas_demonstrativo_de_despesas() -> bytes:
+    """Com demonstrativo, cada linha detalhada é um lançamento do mês."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_resumo_e_demonstrativo() -> bytes:
+    """O resumo antecipa os valores; o demonstrativo lista as despesas."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo de Despesas",
+                "Despesa com Pessoal 12.000,00",
+                "Energia Eletrica 4.650,00",
+                "Total de Despesas 16.650,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Energia Eletrica 4.650,00",
+                "Total de Despesas 16.650,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_resumo_e_demonstrativo_iguais() -> bytes:
+    """As duas leituras dizem exatamente o mesmo: somá-las seria contar duas vezes."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo de Despesas",
+                "Material de limpeza 200,00",
+                "Total de Despesas 200,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Material de limpeza 200,00",
+                "Total de Despesas 200,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_resumo_e_demonstrativo_divergentes() -> bytes:
+    """O resumo declara mais do que o demonstrativo detalha.
+
+    A soma segue o detalhe — o valor a mais do resumo não vira lançamento — e a
+    diferença declarada aparece como ponto de atenção.
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Energia Eletrica 4.650,00",
+                "Outras Despesas 3.350,00",
+                "Total de Despesas 20.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Energia Eletrica 4.650,00",
+                "Total de Despesas 20.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_anexo_depois_do_demonstrativo() -> bytes:
+    """O comprovante anexo traz valor, mas anexo não é lançamento do mês."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Documentos Comprovantes Anexos",
+                "Nota Fiscal 4455 9.999,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_resumo_e_grupo_detalhado() -> bytes:
+    """O grupo traz subtotal e lançamentos; o resumo acima não soma de novo."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo de Despesas",
+                "Manutencao 5.800,00",
+                "Total de Despesas 5.800,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Manutencao",
+                "Troca de cabos de tracao 4.600,00",
+                "Reparo de portao 1.200,00",
+                "TOTAL DA CONTA MANUTENCAO 5.800,00",
+                "Total de Despesas 5.800,00",
+            ]
+        ),
+    )
+
+
+# -- Saldos, contas e movimentação financeira ----------------------------------
+
+
+def pdf_com_bloco_de_conta_bancaria() -> bytes:
+    """Um bloco que anuncia saldo conta o que a conta tinha e o que sobrou.
+
+    Nada do que ele lista é despesa do mês: sem reconhecer o bloco, os saldos
+    entrariam na soma como se fossem lançamentos.
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+                "Conta bancaria Saldo atual",
+                "Conta Corrente 10.000,00",
+                "Aplicacao Automatica 2.500,00",
+                "Fundo de Investimento 200,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_saldo_anterior_e_final() -> bytes:
+    """O resumo declara de quanto a conta partiu e onde ela chegou."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Resumo Financeiro",
+                "Saldo Anterior 10.000,00",
+                "Saldo Final 43.350,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_saldos_por_fundo() -> bytes:
+    """A tabela declara abertura e fechamento; cada fundo traz as duas pontas."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Folha de Pagamento 1.000,00",
+                "Total de Despesas 1.000,00",
+                "Resumo Financeiro Contabil Saldo anterior Creditos Debitos Saldo atual",
+                "FUNDO DE RESERVA 10.000,00 5.000,00 3.000,00 12.000,00",
+                "FUNDO DE OBRAS 2.000,00 500,00 200,00 2.300,00",
+                "TOTAL 12.000,00 5.500,00 3.200,00 14.300,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_movimentacao_bancaria() -> bytes:
+    """O extrato lista movimentos datados: passam pela conta, não são despesa."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+                "Conta bancaria Saldo anterior Creditos Debitos Saldo atual",
+                "25/08/2026 Pagamento de fornecedor 1.000,00 1.200,00 300,00 1.900,00",
+                "26/08/2026 Recebimento de taxa 1.900,00 800,00 100,00 2.600,00",
+                "TOTAL 1.900,00 2.000,00 400,00 4.500,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_saldo_sem_estrutura() -> bytes:
+    """Valores sem rótulo de colunas: saldo e movimento não se distinguem."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Folha de Pagamento 12.000,00",
+                "Total de Despesas 12.000,00",
+                "Conta bancaria Saldo atual",
+                "Movimento do mes 1.000,00 2.000,00 3.000,00 4.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_saldo_entre_despesas() -> bytes:
+    """O bloco de saldo no meio da lista; as despesas seguintes continuam lidas."""
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Folha de Pagamento 1.000,00",
+                "Conta bancaria Saldo atual",
+                "Conta Corrente 500,00",
+                "MANUTENCAO GERAL",
+                "Energia Eletrica 300,00",
+            ]
+        ),
+    )
+
+
 def _despesa(despesas, descricao: str):
     """Acha a despesa pela descrição normalizada."""
     alvo = chave_de_comparacao(descricao)
@@ -208,14 +661,11 @@ class LeituraDoModeloAtualTests(TestCase):
         self.assertEqual(self.balanco.saldo_final, "43350.00")
         self.assertEqual(len(self.balanco.saldos), 2)
 
-    def test_le_cada_receita_com_valor_e_procedencia(self):
-        self.assertEqual(len(self.balanco.receitas), 2)
-        taxa = self.balanco.receitas[0]
-        self.assertEqual(taxa.descricao_original, "Taxa Condominial")
-        self.assertEqual(taxa.valor, "45000.00")
-        self.assertEqual(taxa.procedencia.secao, "receitas")
-        self.assertIsNotNone(taxa.procedencia.pagina)
-        self.assertEqual(taxa.procedencia.metodo, "camada textual do PDF")
+    def test_nao_le_receitas_individuais(self):
+        """Recebimento por unidade não é objetivo: só o total do resumo é lido."""
+        self.assertEqual(self.balanco.receitas, ())
+        self.assertEqual(self.balanco.receitas_total, "50000.00")
+        self.assertEqual(self.balanco.resumo.receitas_identificadas, 0)
 
     def test_le_cada_despesa_com_valor(self):
         self.assertEqual(len(self.balanco.despesas), 3)
@@ -271,8 +721,10 @@ class LeituraDoModeloAtualTests(TestCase):
         self.assertEqual(resumo.recorrente_total, "15450.00")
         self.assertEqual(resumo.extraordinaria_total, "0.00")
         self.assertEqual(resumo.nao_determinada_total, "1200.00")
-        self.assertEqual(resumo.receitas_identificadas, 2)
+        self.assertEqual(resumo.receitas_identificadas, 0)
         self.assertEqual(resumo.despesas_identificadas, 3)
+        self.assertEqual(resumo.grupos_conferidos, 0)
+        self.assertEqual(resumo.grupos_com_diferenca, 0)
         self.assertEqual(resumo.pontos_de_atencao, 0)
         self.assertEqual(
             resumo.principais_categorias, ("Pessoal", "Energia", "Elevadores")
@@ -313,6 +765,353 @@ class PreservacaoDaEstruturaTests(TestCase):
         balanco, inconsistencias = ler_balanco_atual(pdf_com_anexos())
         self.assertEqual(len(balanco.despesas), 1)
         self.assertEqual(balanco.despesas_total, "1000.00")
+        self.assertEqual(inconsistencias, ())
+
+
+class FormaDaLinhaTests(TestCase):
+    """Onde o valor estiver na linha, ele é lido — e só ele."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.balanco, cls.inconsistencias = ler_balanco_atual(
+            pdf_com_valor_em_qualquer_posicao()
+        )
+
+    def test_le_o_valor_antes_depois_e_no_meio_da_data(self):
+        valores = [despesa.valor for despesa in self.balanco.despesas]
+        self.assertEqual(valores, ["45000.00", "5000.00", "2000.00"])
+        for despesa in self.balanco.despesas:
+            self.assertEqual(despesa.data, "2026-08-01")
+
+    def test_nao_confunde_a_data_com_valor(self):
+        self.assertEqual(self.balanco.receitas_total, None)
+        self.assertEqual(self.inconsistencias, ())
+
+    def test_usa_o_lancamento_e_ignora_acumulado_e_percentual(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_acumulado_e_percentual())
+
+        self.assertEqual(len(balanco.despesas), 1)
+        despesa = balanco.despesas[0]
+        self.assertEqual(despesa.valor, "12000.00")
+        self.assertEqual(despesa.descricao_original, "DEB. C/C Folha de Pagamento")
+        self.assertEqual(balanco.despesas_total, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_subtotal_de_categoria_nao_sobrescreve_o_total_do_mes(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_subtotal_de_categoria())
+
+        self.assertEqual(len(balanco.despesas), 2)
+        self.assertEqual(balanco.despesas_total, "12200.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_descricao_quebrada_em_duas_linhas_completa_o_lancamento(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_descricao_multilinha())
+
+        self.assertEqual(len(balanco.despesas), 1)
+        despesa = balanco.despesas[0]
+        self.assertEqual(despesa.valor, "3450.00")
+        self.assertEqual(
+            despesa.descricao_original,
+            "Energia Eletrica NF.: 98765 - concessionaria de energia",
+        )
+        self.assertEqual(despesa.documento, "98765")
+        self.assertEqual(balanco.despesas_total, "3450.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_cabecalho_repetido_nao_vira_dado(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_cabecalho_repetido())
+
+        self.assertEqual(len(balanco.despesas), 2)
+        material = _despesa(balanco.despesas, "Material de limpeza")
+        self.assertEqual(material.valor, "200.00")
+        self.assertEqual(material.categoria_original, None)
+        self.assertEqual(balanco.despesas_total, "1200.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_resumo_e_detalhamento_nao_contam_duas_vezes(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_resumo_e_detalhe())
+
+        self.assertEqual(balanco.receitas, ())
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(balanco.receitas_total, "45000.00")
+        self.assertEqual(balanco.despesas_total, "1000.00")
+        self.assertEqual(inconsistencias, ())
+
+
+class TabelaDeColunasTests(TestCase):
+    """Linha de tabela com várias colunas de valores não é lançamento."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.balanco, cls.inconsistencias = ler_balanco_atual(
+            pdf_com_tabela_de_colunas()
+        )
+
+    def test_linha_de_colunas_e_subtotal_de_grupo_nao_viram_despesa(self):
+        self.assertEqual(len(self.balanco.despesas), 1)
+        despesa = self.balanco.despesas[0]
+        self.assertEqual(despesa.descricao_original, "Energia Eletrica")
+        self.assertEqual(despesa.valor, "3450.00")
+        self.assertEqual(self.balanco.despesas_total, "3450.00")
+        self.assertEqual(self.inconsistencias, ())
+
+
+class GruposDeDespesaTests(TestCase):
+    """Cada agrupamento é conferido contra o subtotal que o documento declara.
+
+    O subtotal não vira lançamento e a diferença não é escondida: o grupo que
+    não fecha termina em atenção, nunca com um lançamento inventado ao lado.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.balanco, cls.inconsistencias = ler_balanco_atual(
+            pdf_com_grupos_reconciliados()
+        )
+
+    def _grupo(self, nome: str):
+        alvo = chave_de_comparacao(nome)
+        return next(
+            grupo
+            for grupo in self.balanco.grupos
+            if chave_de_comparacao(grupo.nome) == alvo
+        )
+
+    def test_confere_o_grupo_que_fecha(self):
+        manutencao = self._grupo("Manutencao")
+        self.assertEqual(manutencao.total_declarado, "3000.00")
+        self.assertEqual(manutencao.soma_extraida, "3000.00")
+        self.assertEqual(manutencao.diferenca, "0.00")
+        self.assertEqual(manutencao.status, StatusConferencia.CONFERE)
+        self.assertEqual(manutencao.quantidade, 2)
+
+    def test_mostra_a_diferenca_do_grupo_que_nao_fecha(self):
+        administracao = self._grupo("Administracao")
+        self.assertEqual(administracao.total_declarado, "2000.00")
+        self.assertEqual(administracao.soma_extraida, "1200.00")
+        self.assertEqual(administracao.diferenca, "800.00")
+        self.assertEqual(administracao.status, StatusConferencia.FALTA_IDENTIFICAR)
+
+    def test_subtotal_do_grupo_nao_vira_lancamento(self):
+        descricoes = [item.descricao_normalizada for item in self.balanco.despesas]
+        self.assertEqual(len(self.balanco.despesas), 3)
+        self.assertFalse(any("total" in item for item in descricoes))
+
+    def test_soma_extraida_fica_ao_lado_do_total_declarado(self):
+        self.assertEqual(self.balanco.despesas_total, "5000.00")
+        self.assertEqual(self.balanco.soma_despesas_extraida, "4200.00")
+
+    def test_resumo_conta_os_grupos_conferidos_e_divergentes(self):
+        self.assertEqual(self.balanco.resumo.grupos_conferidos, 1)
+        self.assertEqual(self.balanco.resumo.grupos_com_diferenca, 1)
+
+    def test_grupo_declarado_sem_lancamento_mostra_o_que_falta(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_grupo_sem_lancamento())
+
+        self.assertEqual(balanco.despesas, ())
+        grupo = balanco.grupos[0]
+        self.assertEqual(grupo.nome, "Elevadores")
+        self.assertEqual(grupo.soma_extraida, "0.00")
+        self.assertEqual(grupo.total_declarado, "5800.00")
+        self.assertEqual(grupo.diferenca, "5800.00")
+        self.assertEqual(grupo.status, StatusConferencia.FALTA_IDENTIFICAR)
+        self.assertEqual(inconsistencias, ())
+
+    def test_aponta_quando_os_grupos_nao_fecham_com_o_total(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_grupos_que_nao_fecham_no_total()
+        )
+
+        self.assertEqual(balanco.despesas_total, "9000.00")
+        referencias = [item.referencia for item in inconsistencias]
+        self.assertIn("grupos", referencias)
+
+    def test_total_do_mes_nao_vira_subtotal_do_ultimo_grupo(self):
+        balanco, _ = ler_balanco_atual(pdf_com_total_do_mes_rotulado_como_conta())
+
+        self.assertEqual([grupo.nome for grupo in balanco.grupos], ["Elevadores"])
+        elevadores = balanco.grupos[0]
+        self.assertEqual(elevadores.total_declarado, "5800.00")
+        self.assertEqual(elevadores.soma_extraida, "4600.00")
+        self.assertEqual(elevadores.diferenca, "1200.00")
+        self.assertEqual(elevadores.status, StatusConferencia.FALTA_IDENTIFICAR)
+        self.assertEqual(balanco.despesas_total, "9000.00")
+        self.assertEqual(balanco.soma_despesas_extraida, "4600.00")
+
+
+class PrecedenciaEntreResumoEDetalheTests(TestCase):
+    """O resumo confere; o demonstrativo lança.
+
+    Quando o documento traz os dois blocos, só o detalhamento gera lançamento.
+    Somar o resumo junto contaria a mesma despesa duas vezes — e é isso que a
+    precedência entre os papéis dos blocos impede.
+    """
+
+    def test_resumo_sem_demonstrativo_vale_como_leitura(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_apenas_resumo_de_despesas()
+        )
+
+        self.assertEqual(len(balanco.despesas), 1)
+        despesa = balanco.despesas[0]
+        self.assertEqual(despesa.valor, "12000.00")
+        self.assertEqual(despesa.procedencia.metodo, METODO_RESUMO)
+        self.assertEqual(balanco.despesas_total, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_demonstrativo_sem_resumo_le_normalmente(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_apenas_demonstrativo_de_despesas()
+        )
+
+        self.assertEqual(len(balanco.despesas), 1)
+        despesa = balanco.despesas[0]
+        self.assertEqual(despesa.valor, "12000.00")
+        self.assertNotEqual(despesa.procedencia.metodo, METODO_RESUMO)
+        self.assertEqual(balanco.soma_despesas_extraida, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_com_resumo_e_demonstrativo_os_lancamentos_vem_do_detalhe(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_resumo_e_demonstrativo())
+
+        descricoes = sorted(item.descricao_normalizada for item in balanco.despesas)
+        self.assertEqual(descricoes, ["energia eletrica", "folha de pagamento"])
+        self.assertEqual(balanco.soma_despesas_extraida, "16650.00")
+        self.assertEqual(balanco.despesas_total, "16650.00")
+        self.assertTrue(
+            all(item.procedencia.metodo != METODO_RESUMO for item in balanco.despesas)
+        )
+        self.assertEqual(inconsistencias, ())
+
+    def test_valores_iguais_no_resumo_e_no_detalhe_nao_duplicam(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_resumo_e_demonstrativo_iguais()
+        )
+
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(balanco.soma_despesas_extraida, "200.00")
+        self.assertEqual(balanco.despesas_total, "200.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_valor_a_mais_no_resumo_nao_vira_lancamento(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_resumo_e_demonstrativo_divergentes()
+        )
+
+        self.assertEqual(len(balanco.despesas), 2)
+        self.assertEqual(balanco.soma_despesas_extraida, "16650.00")
+        self.assertEqual(balanco.despesas_total, "20000.00")
+        tipos = [item.tipo for item in inconsistencias]
+        self.assertIn(TipoInconsistencia.TOTAL_DIVERGENTE, tipos)
+
+    def test_valor_em_anexo_nao_vira_lancamento(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_anexo_depois_do_demonstrativo()
+        )
+
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(balanco.soma_despesas_extraida, "12000.00")
+        self.assertEqual(balanco.despesas_total, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_grupo_com_subtotal_e_detalhes_nao_soma_o_resumo_acima(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_resumo_e_grupo_detalhado())
+
+        self.assertEqual(len(balanco.despesas), 2)
+        self.assertEqual(balanco.soma_despesas_extraida, "5800.00")
+
+        grupo = balanco.grupos[0]
+        self.assertEqual(grupo.nome, "Manutencao")
+        self.assertEqual(grupo.total_declarado, "5800.00")
+        self.assertEqual(grupo.soma_extraida, "5800.00")
+        self.assertEqual(grupo.quantidade, 2)
+        self.assertEqual(grupo.status, StatusConferencia.CONFERE)
+        self.assertEqual(inconsistencias, ())
+
+
+class SaldoContaEMovimentacaoTests(TestCase):
+    """Saldo de conta e movimento bancário não são despesa do mês.
+
+    Um bloco que anuncia saldo fala do que a conta tinha, do que passou por ela
+    e do que sobrou. Contar esses valores como lançamento inflaria o mês, e é
+    isso que a leitura impede — sem inventar saldo onde o documento não
+    declarou.
+    """
+
+    def test_bloco_de_conta_bancaria_nao_vira_despesa(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_bloco_de_conta_bancaria())
+
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(balanco.despesas[0].descricao_normalizada, "folha de pagamento")
+        self.assertEqual(balanco.soma_despesas_extraida, "12000.00")
+        self.assertEqual(balanco.despesas_total, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_varias_contas_viram_varios_saldos(self):
+        balanco, _ = ler_balanco_atual(pdf_com_bloco_de_conta_bancaria())
+
+        self.assertEqual(len(balanco.saldos), 3)
+        self.assertEqual(
+            sorted(saldo.identificacao for saldo in balanco.saldos),
+            ["Aplicacao Automatica", "Conta Corrente", "Fundo de Investimento"],
+        )
+        self.assertTrue(all(saldo.procedencia.pagina for saldo in balanco.saldos))
+
+    def test_saldo_anterior_declarado(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_saldo_anterior_e_final())
+
+        self.assertEqual(balanco.saldo_anterior, "10000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_saldo_final_declarado(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_saldo_anterior_e_final())
+
+        self.assertEqual(balanco.saldo_final, "43350.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_saldos_por_fundo_com_abertura_e_fechamento(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_saldos_por_fundo())
+
+        self.assertEqual(len(balanco.saldos), 2)
+        reserva = balanco.saldos[0]
+        self.assertEqual(reserva.identificacao, "FUNDO DE RESERVA")
+        self.assertEqual(reserva.saldo_anterior, "10000.00")
+        self.assertEqual(reserva.saldo_final, "12000.00")
+        self.assertEqual(balanco.saldo_anterior, "12000.00")
+        self.assertEqual(balanco.saldo_final, "14300.00")
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(inconsistencias, ())
+
+    def test_movimentacao_com_varios_valores_nao_gera_lancamentos(self):
+        balanco, _ = ler_balanco_atual(pdf_com_movimentacao_bancaria())
+
+        self.assertEqual(len(balanco.despesas), 1)
+        self.assertEqual(balanco.saldos, ())
+
+    def test_movimentacoes_nao_entram_na_soma(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_movimentacao_bancaria())
+
+        self.assertEqual(balanco.soma_despesas_extraida, "12000.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_despesas_apos_o_bloco_de_saldo_continuam_sendo_lidas(self):
+        balanco, _ = ler_balanco_atual(pdf_com_saldo_entre_despesas())
+
+        self.assertEqual(
+            sorted(item.descricao_normalizada for item in balanco.despesas),
+            ["energia eletrica", "folha de pagamento"],
+        )
+        self.assertEqual(balanco.soma_despesas_extraida, "1300.00")
+        self.assertEqual(len(balanco.saldos), 1)
+        self.assertEqual(balanco.saldos[0].identificacao, "Conta Corrente")
+
+    def test_saldo_sem_estrutura_declarada_nao_e_inferido(self):
+        balanco, inconsistencias = ler_balanco_atual(pdf_com_saldo_sem_estrutura())
+
+        self.assertEqual(balanco.saldos, ())
+        self.assertIsNone(balanco.saldo_anterior)
+        self.assertIsNone(balanco.saldo_final)
+        self.assertEqual(len(balanco.despesas), 1)
         self.assertEqual(inconsistencias, ())
 
 
@@ -629,13 +1428,18 @@ class ContratoDaLeituraTests(TestCase):
         self.assertIsInstance(self.dados["receitas"], list)
         self.assertIsInstance(self.dados["despesas"], list)
         self.assertIsInstance(self.dados["categorias"], list)
+        self.assertIsInstance(self.dados["grupos"], list)
 
     def test_sobrevive_a_ida_e_volta(self):
         reconstruido = de_dicionario(self.dados)
         self.assertEqual(reconstruido.competencia, self.balanco.competencia)
         self.assertEqual(reconstruido.receitas_total, self.balanco.receitas_total)
+        self.assertEqual(
+            reconstruido.soma_despesas_extraida, self.balanco.soma_despesas_extraida
+        )
         self.assertEqual(len(reconstruido.despesas), len(self.balanco.despesas))
         self.assertEqual(len(reconstruido.categorias), len(self.balanco.categorias))
+        self.assertEqual(len(reconstruido.grupos), len(self.balanco.grupos))
         self.assertEqual(reconstruido.resumo, self.balanco.resumo)
 
     def test_recusa_competencia_que_nao_e_o_primeiro_dia(self):

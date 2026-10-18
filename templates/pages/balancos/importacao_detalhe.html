@@ -2,9 +2,10 @@
 
 {# O que o Eithra entendeu do balanço, para a gestão conferir.
 
-   A tela não oficializa nada: mostra os dados lidos e os pontos que merecem
-   atenção. Não há botão de confirmação — confirmar o balanço é etapa futura.
-   O arquivo continua a um toque, por acesso temporário. #}
+   A tela ainda não oficializa nada: mostra os dados lidos e os pontos que
+   merecem atenção. Confirmar é decisão da gestão — e o botão só aparece quando
+   o domínio concorda que esta importação pode virar balanço. O arquivo continua
+   a um toque, por acesso temporário. #}
 
 {% block title %}{{ importacao.nome_original }} · Balanços · Eithra{% endblock %}
 
@@ -37,7 +38,11 @@
         </h2>
         <p class="text-body-secondary mb-4">
           {% if competencia %}Competência de {{ competencia }}.{% endif %}
-          {{ resumo.receitas }} receita{{ resumo.receitas|pluralize }} e {{ resumo.despesas }} despesa{{ resumo.despesas|pluralize }} identificadas.
+          {% if grupos %}
+            {{ resumo.despesas }} despesa{{ resumo.despesas|pluralize }} identificada{{ resumo.despesas|pluralize }} em {{ grupos|length }} categoria{{ grupos|length|pluralize }} do documento.
+          {% else %}
+            Nenhuma despesa detalhada foi encontrada neste documento.
+          {% endif %}
         </p>
 
         <div class="row g-3">
@@ -59,21 +64,27 @@
           </div>
         </div>
 
-        {% if despesas %}
+        {% if grupos %}
           <hr class="my-4">
           <div class="row g-3">
-            <div class="col-6 col-lg-4">
-              <div class="text-body-secondary small">Despesas recorrentes</div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Recorrentes</div>
               <div class="h6 mb-0">{{ resumo.recorrente|default:"—" }}</div>
             </div>
-            <div class="col-6 col-lg-4">
-              <div class="text-body-secondary small">Despesas extraordinárias</div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Extras</div>
               <div class="h6 mb-0">{{ resumo.extraordinaria|default:"—" }}</div>
             </div>
             {% if tem_a_confirmar %}
-              <div class="col-6 col-lg-4">
+              <div class="col-6 col-lg-3">
                 <div class="text-body-secondary small">A confirmar</div>
                 <div class="h6 mb-0">{{ resumo.a_confirmar|default:"—" }}</div>
+              </div>
+            {% endif %}
+            {% if totais.residuo %}
+              <div class="col-6 col-lg-3">
+                <div class="text-body-secondary small">{{ totais.residuo.rotulo }}</div>
+                <div class="h6 mb-0">{{ totais.residuo.valor }}</div>
               </div>
             {% endif %}
           </div>
@@ -92,148 +103,105 @@
       </div>
     </div>
 
-    {% if despesas %}
+    {% if grupos %}
+      {% comment %}
+        As despesas aparecem pelo agrupamento do próprio documento: cada
+        categoria mostra o que o documento declarou, o que foi identificado e a
+        diferença entre os dois. Os lançamentos ficam guardados atrás da seta,
+        para a tela não abrir densa.
+      {% endcomment %}
       <div class="card mb-4">
         <div class="card-header">
-          <h2 class="h6 mb-0">Despesas</h2>
+          <h2 class="h6 mb-1">Despesas por categoria</h2>
+          <p class="text-body-secondary small mb-0">
+            O que o documento declara em cada categoria e o que a leitura encontrou.
+          </p>
         </div>
 
-        <div class="table-responsive d-none d-md-block">
-          <table class="table align-middle mb-0">
-            <caption class="visually-hidden">Despesas lidas do balanço</caption>
-            <thead>
-              <tr>
-                <th scope="col">Data</th>
-                <th scope="col">Descrição</th>
-                <th scope="col">Categoria</th>
-                <th scope="col">Natureza</th>
-                <th scope="col" class="text-end">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for despesa in despesas %}
-                <tr>
-                  <td class="text-nowrap text-body-secondary">{{ despesa.data|default:"—" }}</td>
-                  <td>
-                    <div>{{ despesa.descricao }}</div>
-                    {% if despesa.fornecedor %}
-                      <div class="text-body-secondary small">{{ despesa.fornecedor }}</div>
-                    {% endif %}
-                    {% if despesa.documento or despesa.parcela %}
-                      <div class="text-body-secondary small">
-                        {% if despesa.documento %}Documento {{ despesa.documento }}{% endif %}
-                        {% if despesa.documento and despesa.parcela %} · {% endif %}
-                        {% if despesa.parcela %}Parcela {{ despesa.parcela }}{% endif %}
+        <ul class="list-group list-group-flush">
+          {% for grupo in grupos %}
+            <li class="list-group-item">
+              <div class="d-flex align-items-start gap-2">
+                <button
+                  class="btn btn-icon btn-text-secondary rounded-pill flex-shrink-0"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#despesas-categoria-{{ forloop.counter }}"
+                  aria-expanded="false"
+                  aria-controls="despesas-categoria-{{ forloop.counter }}"
+                  title="Ver lançamentos"
+                  aria-label="Ver lançamentos de {{ grupo.nome }}">
+                  <i class="bx bx-chevron-down" aria-hidden="true"></i>
+                </button>
+
+                <div class="flex-grow-1">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <span class="fw-medium">{{ grupo.nome }}</span>
+                    <span class="badge bg-label-{{ grupo.tom_conferencia }}">{{ grupo.conferencia }}</span>
+                  </div>
+
+                  <div class="row g-2 mt-1">
+                    <div class="col-6 col-lg-3">
+                      <div class="text-body-secondary small">Total do documento</div>
+                      <div class="small">{{ grupo.total_declarado|default:"—" }}</div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                      <div class="text-body-secondary small">Identificado</div>
+                      <div class="small">{{ grupo.identificado }}</div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                      <div class="text-body-secondary small">Recorrente</div>
+                      <div class="small">{{ grupo.recorrente }}</div>
+                    </div>
+                    <div class="col-6 col-lg-3">
+                      <div class="text-body-secondary small">Extra</div>
+                      <div class="small">{{ grupo.extraordinaria }}</div>
+                    </div>
+                    {% if tem_a_confirmar %}
+                      <div class="col-6 col-lg-3">
+                        <div class="text-body-secondary small">A confirmar</div>
+                        <div class="small">{{ grupo.a_confirmar }}</div>
                       </div>
                     {% endif %}
-                  </td>
-                  <td>
-                    <div>{{ despesa.categoria }}</div>
-                    {% if despesa.categoria_original and despesa.categoria_original != despesa.categoria %}
-                      <div class="text-body-secondary small">{{ despesa.categoria_original }}</div>
-                    {% endif %}
-                  </td>
-                  <td>
-                    <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
-                  </td>
-                  <td class="text-end text-nowrap fw-medium">{{ despesa.valor }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+                  </div>
 
-        <div class="card-body d-md-none">
-          {% for despesa in despesas %}
-            <div class="{% if not forloop.last %}border-bottom pb-3 mb-3{% endif %}">
-              <div class="d-flex justify-content-between align-items-baseline gap-3">
-                <span class="text-body-secondary small">{{ despesa.data|default:"—" }}</span>
-                <span class="fw-medium">{{ despesa.valor }}</span>
-              </div>
-              <div class="mt-1">{{ despesa.descricao }}</div>
-              {% if despesa.fornecedor %}
-                <div class="text-body-secondary small">{{ despesa.fornecedor }}</div>
-              {% endif %}
-              <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-                <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
-                <span class="text-body-secondary small">{{ despesa.categoria }}</span>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-
-      {% if categorias %}
-        <div class="card mb-4">
-          <div class="card-header">
-            <h2 class="h6 mb-0">Despesas por categoria</h2>
-          </div>
-          <div class="table-responsive">
-            <table class="table align-middle mb-0">
-              <caption class="visually-hidden">Total de despesas por categoria</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Categoria</th>
-                  <th scope="col" class="text-end">Recorrente</th>
-                  <th scope="col" class="text-end">Extra</th>
-                  {% if tem_a_confirmar %}
-                    <th scope="col" class="text-end">A confirmar</th>
+                  {% if grupo.diferenca %}
+                    <p class="small mb-0 mt-2">{{ grupo.diferenca }}</p>
                   {% endif %}
-                  <th scope="col" class="text-end">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for categoria in categorias %}
-                  <tr>
-                    <td>
-                      {{ categoria.nome }}
-                      {% if categoria.quantidade %}
-                        <span class="text-body-secondary small">({{ categoria.quantidade }})</span>
-                      {% endif %}
-                    </td>
-                    <td class="text-end text-nowrap">{{ categoria.recorrente }}</td>
-                    <td class="text-end text-nowrap">{{ categoria.extraordinaria }}</td>
-                    {% if tem_a_confirmar %}
-                      <td class="text-end text-nowrap">{{ categoria.a_confirmar }}</td>
-                    {% endif %}
-                    <td class="text-end text-nowrap fw-medium">{{ categoria.total }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      {% endif %}
-    {% endif %}
 
-    {% if receitas %}
-      <div class="card mb-4">
-        <div class="card-header">
-          <h2 class="h6 mb-0">Receitas</h2>
-        </div>
-        <div class="table-responsive">
-          <table class="table align-middle mb-0">
-            <caption class="visually-hidden">Receitas lidas do balanço</caption>
-            <thead>
-              <tr>
-                <th scope="col">Data</th>
-                <th scope="col">Descrição</th>
-                <th scope="col">Origem</th>
-                <th scope="col" class="text-end">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for receita in receitas %}
-                <tr>
-                  <td class="text-nowrap text-body-secondary">{{ receita.data|default:"—" }}</td>
-                  <td>{{ receita.descricao }}</td>
-                  <td class="text-body-secondary">{{ receita.origem|default:"—" }}</td>
-                  <td class="text-end text-nowrap fw-medium">{{ receita.valor }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+                  <div class="collapse" id="despesas-categoria-{{ forloop.counter }}">
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mt-3">
+                      <span class="text-body-secondary small">
+                        {{ grupo.quantidade }} lançamento{{ grupo.quantidade|pluralize }} identificado{{ grupo.quantidade|pluralize }}
+                      </span>
+                      <span class="text-body-secondary small">{{ grupo.categoria }}</span>
+                    </div>
+
+                    {% for despesa in grupo.lancamentos %}
+                      <div class="border-top pt-2 mt-2">
+                        <div class="d-flex justify-content-between align-items-baseline gap-3">
+                          <span>{{ despesa.descricao }}</span>
+                          <span class="fw-medium text-nowrap">{{ despesa.valor }}</span>
+                        </div>
+                        <div class="text-body-secondary small">
+                          {{ despesa.data|default:"—" }}{% if despesa.fornecedor %} · {{ despesa.fornecedor }}{% endif %}{% if despesa.documento %} · Documento {{ despesa.documento }}{% endif %}
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                          <span class="badge bg-label-{{ despesa.natureza_tom }}">{{ despesa.natureza }}</span>
+                          <span class="text-body-secondary small">{{ despesa.categoria }}</span>
+                        </div>
+                      </div>
+                    {% empty %}
+                      <p class="text-body-secondary small mb-0 mt-2">
+                        Nenhum lançamento foi identificado nesta categoria.
+                      </p>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
       </div>
     {% endif %}
 
@@ -254,7 +222,7 @@
     {% endif %}
 
     {% if pendencias %}
-      <div class="card">
+      <div class="card mb-4">
         <div class="card-header">
           <h2 class="h6 mb-0">Pontos de atenção</h2>
         </div>
@@ -267,6 +235,116 @@
           {% endfor %}
         </ul>
       </div>
+    {% endif %}
+
+    {% comment %}
+      Confirmar é a primeira vez que o mês passa a valer. O resumo curto vem
+      antes do clique, e a confirmação em si acontece num modal: é uma decisão
+      irreversível, e não deve acontecer por um toque distraído.
+    {% endcomment %}
+    {% if pode_confirmar %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Confirmar balanço</h2>
+          <p class="text-body-secondary mb-4">
+            Os totais oficiais do documento foram identificados.
+            {% if detalhamento.tem_residual %}
+              Parte do detalhamento ainda não pôde ser associada automaticamente.
+            {% endif %}
+          </p>
+
+          <div class="row g-3 mb-4">
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Competência</div>
+              <div class="h6 mb-0">{{ competencia|default:"—" }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Receitas</div>
+              <div class="h6 mb-0">{{ totais.receitas|default:"—" }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Despesas</div>
+              <div class="h6 mb-0">{{ totais.despesas|default:"—" }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Saldo</div>
+              <div class="h6 mb-0">{{ totais.saldo_final|default:"—" }}</div>
+            </div>
+            <div class="col-6 col-lg-3">
+              <div class="text-body-secondary small">Detalhamento das despesas</div>
+              <div class="h6 mb-0">
+                {% if detalhamento.percentual %}{{ detalhamento.percentual }} identificado{% else %}—{% endif %}
+              </div>
+            </div>
+            {% if detalhamento.tem_residual %}
+              <div class="col-6 col-lg-3">
+                <div class="text-body-secondary small">Não associado ao detalhamento</div>
+                <div class="h6 mb-0">{{ detalhamento.valor_nao_associado }}</div>
+              </div>
+            {% endif %}
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#confirmar-balanco">
+            <i class="bx bx-check me-1" aria-hidden="true"></i> Confirmar balanço
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="modal fade"
+        id="confirmar-balanco"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="confirmar-balanco-titulo"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form method="post" action="{% url 'balancos:confirmar' importacao.pk %}">
+              {% csrf_token %}
+              <div class="modal-header">
+                <h5 class="modal-title" id="confirmar-balanco-titulo">Confirmar balanço</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+
+              <div class="modal-body">
+                <p class="mb-4">Confirmar o balanço de {{ competencia }}?</p>
+
+                <div class="d-flex justify-content-between gap-3 py-1">
+                  <span class="text-body-secondary">Receitas</span>
+                  <span class="fw-medium text-nowrap">{{ totais.receitas|default:"—" }}</span>
+                </div>
+                <div class="d-flex justify-content-between gap-3 py-1">
+                  <span class="text-body-secondary">Despesas</span>
+                  <span class="fw-medium text-nowrap">{{ totais.despesas|default:"—" }}</span>
+                </div>
+                <div class="d-flex justify-content-between gap-3 py-1">
+                  <span class="text-body-secondary">Detalhamento identificado</span>
+                  <span class="fw-medium text-nowrap">{{ detalhamento.percentual|default:"—" }}</span>
+                </div>
+                {% if detalhamento.tem_residual %}
+                  <div class="d-flex justify-content-between gap-3 py-1">
+                    <span class="text-body-secondary">Não associado</span>
+                    <span class="fw-medium text-nowrap">{{ detalhamento.valor_nao_associado }}</span>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Confirmar balanço</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% elif motivo_para_nao_confirmar %}
+      <p class="text-body-secondary">{{ motivo_para_nao_confirmar }}</p>
     {% endif %}
   {% else %}
     <div class="card">

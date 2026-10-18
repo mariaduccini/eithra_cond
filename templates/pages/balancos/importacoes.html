@@ -40,9 +40,13 @@
                 <td>{{ importacao.condominio.nome }}</td>
                 <td>{{ importacao.criado_em|date:"d/m/Y H:i" }}</td>
                 <td>
-                  <span class="badge bg-label-{{ importacao.tom_do_estado }}">
-                    {{ importacao.get_status_display }}
-                  </span>
+                  {% if importacao.balanco_confirmado %}
+                    <span class="badge bg-label-success">Balanço confirmado</span>
+                  {% else %}
+                    <span class="badge bg-label-{{ importacao.tom_do_estado }}">
+                      {{ importacao.get_status_display }}
+                    </span>
+                  {% endif %}
                 </td>
                 <td class="text-end text-nowrap">
                   {% if importacao.storage_key %}
@@ -55,7 +59,13 @@
                     </a>
                   {% endif %}
 
-                  {% if not importacao.descartada and not importacao.confirmado_em %}
+                  {% if importacao.balanco_confirmado %}
+                    <a
+                      class="btn btn-sm btn-label-primary"
+                      href="{% url 'balancos:balanco' importacao.balanco_confirmado.pk %}">
+                      Ver balanço
+                    </a>
+                  {% elif not importacao.descartada and not importacao.confirmado_em %}
                     <form
                       class="d-inline"
                       method="post"
