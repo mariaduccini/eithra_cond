@@ -38,6 +38,7 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.condominios",
     "apps.balancos",
+    "apps.demandas",
     "apps.core",
 ]
 

@@ -295,6 +295,63 @@ principal é "Dados lidos" ("Dados lidos · N pontos precisam de atenção"). O
 formato legado explica o que vai acontecer: "Este formato será processado pela
 leitura de documentos legados."
 
+## Fase 2A — Demandas operacionais
+
+### F1 — Demanda é unidade operacional, não sistema de chamados — APROVADA
+Uma demanda é "algo com consequência operacional que precisa de acompanhamento".
+Não há fila, SLA, etapas de atendimento, workflow BPM, thread, curtida nem anexo
+social. Também ficam de fora, por falta de uso claro, `categoria`, `solicitante`
+e `observacao_interna`.
+
+### F2 — Ciclo de situação curto e único — APROVADA
+`StatusDemanda` tem cinco valores (`aberta`, `em_andamento`, `aguardando`,
+`concluida`, `cancelada`) e não existe estado de revisão. `aguardando` registra
+dependência de terceiro e não é lido como atraso.
+
+### F3 — Coerência entre situação e datas garantida — APROVADA
+`concluido_em` acompanha `CONCLUIDA` e `cancelado_em` acompanha `CANCELADA`, nas
+duas direções. Garantido por `CheckConstraint` (`demanda_concluida_registra_quando`
+e `demanda_cancelada_registra_quando`) e validado no domínio por `clean()`. Não
+há constraint sobre `prazo`, que é opcional e livre.
+
+### F4 — Histórico append-only é a memória da demanda — APROVADA
+`HistoricoDemanda` registra decisão, não ruído: só o que muda o entendimento da
+demanda vira evento, e o ato de abrir e salvar o formulário não gera linha. O
+histórico nunca é reescrito nem excluído pela interface (`has_delete_permission`
+→ `False` no admin). Observação é um **evento** (`observacao`), não um campo.
+
+### F5 — Autorização centralizada, com resposta única por regra — APROVADA
+A autorização vive em `apps/demandas/permissoes.py`, decidida pelo vínculo ativo
+com o condomínio, *fail-closed*. `status_permitidos_para(usuario, demanda)` é a
+única resposta para "que situações esta pessoa pode dar a esta demanda agora":
+a regra não se espalha pelas views em uma dúzia de `if` de papel. A pergunta
+"esta pessoa acessa este condomínio?" continua em `apps/condominios/acesso.py`.
+
+### F6 — Papéis que enxergam o módulo nesta fase — APROVADA
+ADMIN e SINDICA gerenciam; SUPERVISORA cria e move a situação (sem cancelar nem
+editar conteúdo alheio); OPERACIONAL vê, move a situação e conclui o que é seu,
+sem cancelar. PORTEIRO e MORADOR não entram no módulo agora.
+
+### F7 — "Vencida" é situação calculada, nunca campo — APROVADA
+Vencida = `prazo < hoje` e status não encerrado; "vence hoje" e "próxima" (até 7
+dias) seguem a mesma lógica. Nenhum campo persistido de vencimento — o tempo é
+derivado, não gravado.
+
+### F8 — Sem relações prematuras — APROVADA
+Nada de FK ou model novo para manutenção, financeiro, fornecedor ou evidência
+nesta fase. As relações (Demanda → Manutenção, → Despesa, → Fornecedor/Orçamento,
+→ Evidência) ficam apenas documentadas em `docs/fase_2a_demandas.md`.
+
+### F9 — `local_contexto` é texto nesta fase — APROVADA
+O local é um texto curto (piscina, garagem, elevador...), sem model de área ou
+equipamento. Poderá virar relação estruturada mais adiante, como já previsto em
+B1.
+
+### F10 — Preparação para o painel "Hoje" sem implementá-lo — APROVADA
+`DemandaQuerySet` já responde `vencidas`, `vencendo_hoje`, `proximas`,
+`urgentes`, `minhas` e `na_ordem_de_atencao`. As perguntas ficam no domínio, não
+nas views; a tela do painel não entra nesta fase.
+
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 
 - Arquitetura de persistência dos lançamentos (relacional × JSON × híbrido).
@@ -304,5 +361,6 @@ leitura de documentos legados."
 Referência: `docs/fase_1a_balancos_decisoes.md`,
 `docs/fase_1b_balancos_implementacao.md`,
 `docs/fase_1c_entrada_balanco.md`,
-`docs/fase_1d_detector_layout_balanco.md` e
-`docs/fase_1e_extracao_balanco_atual.md`.
+`docs/fase_1d_detector_layout_balanco.md`,
+`docs/fase_1e_extracao_balanco_atual.md` e
+`docs/fase_2a_demandas.md`.

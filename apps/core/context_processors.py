@@ -9,9 +9,18 @@ importante, o menu **não** decide acesso: ele pergunta ao domínio, com a mesma
 regra que o backend usa. A proteção continua na view.
 """
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
+from apps.demandas.permissoes import pode_ver_alguma_demanda
 
 NAVIGATION = [
     {"label": "Painel", "view_name": "core:home", "icon": "bx-home-smile"},
+    {
+        "label": "Demandas",
+        "view_name": "demandas:listagem",
+        "icon": "bx-list-check",
+        # Módulo de acompanhamento operacional: quem vê a demanda em algum
+        # condomínio enxerga o item. O menu não autoriza — a view é que decide.
+        "visivel_para": pode_ver_alguma_demanda,
+    },
     {
         "label": "Balanços",
         "view_name": "balancos:importacoes",

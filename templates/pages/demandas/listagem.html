@@ -1,0 +1,303 @@
+{% extends "layouts/app.html" %}
+
+{# A lista é de trabalho, não de arquivo: o que está de pé, na ordem em que
+   merece atenção. Cada linha leva à demanda; não há botão "visualizar". #}
+
+{% block title %}Demandas · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Demandas</h1>
+      <p class="text-body-secondary mb-0">
+        O que precisa de acompanhamento{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    {% if pode_criar %}
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#registrar-demanda">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar demanda
+      </button>
+    {% endif %}
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-3">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.status.id_for_label }}">
+            {{ filtros.status.label }}
+          </label>
+          {{ filtros.status }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.prioridade.id_for_label }}">
+            {{ filtros.prioridade.label }}
+          </label>
+          {{ filtros.prioridade }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.prazo.id_for_label }}">
+            {{ filtros.prazo.label }}
+          </label>
+          {{ filtros.prazo }}
+        </div>
+        <div class="col-6 col-lg-3">
+          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
+            {{ filtros.responsavel.label }}
+          </label>
+          {{ filtros.responsavel }}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <div class="form-check mb-0">
+            {{ filtros.minhas }}
+            <label class="form-check-label small" for="{{ filtros.minhas.id_for_label }}">
+              {{ filtros.minhas.label }}
+            </label>
+          </div>
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'demandas:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if demandas %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Demandas em acompanhamento</caption>
+          <thead>
+            <tr>
+              <th scope="col">Demanda</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Responsável</th>
+              <th scope="col">Prazo</th>
+              <th scope="col">Prioridade</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for demanda in demandas %}
+              <tr
+                data-href="{% url 'demandas:detalhe' demanda.pk %}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'demandas:detalhe' demanda.pk %}"
+                    class="fw-medium text-decoration-none">{{ demanda.titulo }}</a>
+                  {% if demanda.local %}
+                    <div class="text-body-secondary small">{{ demanda.local }}</div>
+                  {% endif %}
+                </td>
+                {% if mostrar_condominio %}<td>{{ demanda.condominio }}</td>{% endif %}
+                <td>{{ demanda.responsavel }}</td>
+                <td>
+                  {{ demanda.prazo }}
+                  {% if demanda.prazo_situacao %}
+                    <span class="badge bg-label-{{ demanda.prazo_tom }} ms-1">{{ demanda.prazo_situacao }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
+                </td>
+                <td>
+                  <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
+                </td>
+                <td class="text-end text-nowrap">
+                  {% for acao in demanda.acoes %}
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="{{ acao.url }}"
+                      data-acao
+                      title="{{ acao.label }}"
+                      aria-label="{{ acao.label }}">
+                      <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                    </a>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for demanda in demandas %}
+          <a href="{% url 'demandas:detalhe' demanda.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ demanda.titulo }}</span>
+              <span class="badge bg-label-{{ demanda.status_tom }} flex-shrink-0">{{ demanda.status }}</span>
+            </div>
+            {% if demanda.local %}
+              <div class="text-body-secondary small mt-1">{{ demanda.local }}</div>
+            {% endif %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+              <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
+              {% if demanda.prazo_situacao %}
+                <span class="badge bg-label-{{ demanda.prazo_tom }}">{{ demanda.prazo_situacao }}</span>
+              {% endif %}
+              <span class="text-body-secondary small">{{ demanda.prazo }}</span>
+            </div>
+            <div class="text-body-secondary small mt-2">
+              {% if mostrar_condominio %}{{ demanda.condominio }} · {% endif %}{{ demanda.responsavel }}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-list-check" state_title="Nada em acompanhamento" state_message="Quando algo precisar de acompanhamento, registre aqui." %}
+    {% endif %}
+  </div>
+
+  {% if pode_criar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-demanda-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'demandas:criar' %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="registrar-demanda-titulo">Registrar demanda</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if formulario_demanda.condominio.is_hidden %}
+                {{ formulario_demanda.condominio }}
+              {% else %}
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_demanda.condominio.id_for_label }}">
+                    {{ formulario_demanda.condominio.label }}
+                  </label>
+                  {{ formulario_demanda.condominio }}
+                  {% for erro in formulario_demanda.condominio.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                  {{ formulario_demanda.titulo.label }}
+                </label>
+                {{ formulario_demanda.titulo }}
+                {% for erro in formulario_demanda.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                  {{ formulario_demanda.prioridade.label }}
+                </label>
+                {{ formulario_demanda.prioridade }}
+                {% for erro in formulario_demanda.prioridade.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <a
+                class="small text-decoration-none d-inline-block mt-3"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes">
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                    {{ formulario_demanda.descricao.label }}
+                  </label>
+                  {{ formulario_demanda.descricao }}
+                  {% for erro in formulario_demanda.descricao.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
+                    {{ formulario_demanda.responsavel.label }}
+                  </label>
+                  {{ formulario_demanda.responsavel }}
+                  {% for erro in formulario_demanda.responsavel.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                    {{ formulario_demanda.prazo.label }}
+                  </label>
+                  {{ formulario_demanda.prazo }}
+                  {% for erro in formulario_demanda.prazo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-0">
+                  <label class="form-label" for="{{ formulario_demanda.local_contexto.id_for_label }}">
+                    {{ formulario_demanda.local_contexto.label }}
+                  </label>
+                  {{ formulario_demanda.local_contexto }}
+                  {% for erro in formulario_demanda.local_contexto.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a demanda. A navegação por teclado continua pelo
+    // link do título, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

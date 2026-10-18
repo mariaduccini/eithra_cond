@@ -1,0 +1,298 @@
+{% extends "layouts/app.html" %}
+
+{# A demanda como ela é hoje e o que já aconteceu com ela. As ações ficam no
+   alto e cada uma abre um modal curto: mudar a situação é o caminho principal,
+   editar e observar são apoio. #}
+
+{% block title %}{{ demanda.titulo }} · Demandas · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'demandas:listagem' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Demandas
+      </a>
+      <h1 class="h4 mb-1">{{ demanda.titulo }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
+        <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
+        <span class="text-body-secondary small">{{ demanda.condominio }}</span>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      {% if pode_alterar_status %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#mudar-situacao">
+          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
+        </button>
+      {% endif %}
+      {% if pode_editar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-demanda"
+          title="Editar demanda"
+          aria-label="Editar demanda">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+      {% if pode_observar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#observar-demanda"
+          title="Registrar observação"
+          aria-label="Registrar observação">
+          <i class="bx bx-message-square-add" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">A demanda</h2>
+        </div>
+        <div class="card-body">
+          {% if demanda.descricao %}
+            <p class="mb-4">{{ demanda.descricao|linebreaksbr }}</p>
+          {% endif %}
+
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Responsável</span>
+            <span class="fw-medium text-end">{{ demanda.responsavel }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Prazo</span>
+            <span class="text-end">
+              {{ demanda.prazo }}
+              {% if demanda.prazo_situacao %}
+                <span class="badge bg-label-{{ demanda.prazo_tom }} ms-1">{{ demanda.prazo_situacao }}</span>
+              {% endif %}
+            </span>
+          </div>
+          {% if demanda.local %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Local</span>
+              <span class="text-end">{{ demanda.local }}</span>
+            </div>
+          {% endif %}
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Registrada em</span>
+            <span class="text-end">{{ demanda.criada_em }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Histórico</h2>
+        </div>
+        {% if historico %}
+          <ul class="list-group list-group-flush">
+            {% for evento in historico %}
+              <li class="list-group-item">
+                <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                  <span class="fw-medium">{{ evento.tipo }}</span>
+                  <span class="text-body-secondary small">{{ evento.momento }}</span>
+                </div>
+                <p class="mb-0">{{ evento.descricao }}</p>
+                <div class="text-body-secondary small">{{ evento.quem }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          {% include "components/state.html" with state_icon="bx-history" state_title="Sem histórico ainda" state_message="O que acontecer com esta demanda aparece aqui." %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_editar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-demanda-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'demandas:editar' demanda.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-demanda-titulo">Editar demanda</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                  {{ formulario_demanda.titulo.label }}
+                </label>
+                {{ formulario_demanda.titulo }}
+                {% for erro in formulario_demanda.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                  {{ formulario_demanda.descricao.label }}
+                </label>
+                {{ formulario_demanda.descricao }}
+                {% for erro in formulario_demanda.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                  {{ formulario_demanda.prioridade.label }}
+                </label>
+                {{ formulario_demanda.prioridade }}
+                {% for erro in formulario_demanda.prioridade.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
+                  {{ formulario_demanda.responsavel.label }}
+                </label>
+                {{ formulario_demanda.responsavel }}
+                {% for erro in formulario_demanda.responsavel.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                  {{ formulario_demanda.prazo.label }}
+                </label>
+                {{ formulario_demanda.prazo }}
+                {% for erro in formulario_demanda.prazo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_demanda.local_contexto.id_for_label }}">
+                  {{ formulario_demanda.local_contexto.label }}
+                </label>
+                {{ formulario_demanda.local_contexto }}
+                {% for erro in formulario_demanda.local_contexto.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_alterar_status %}
+    <div
+      class="modal fade{% if modal_aberto == 'status' %} show{% endif %}"
+      id="mudar-situacao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="mudar-situacao-titulo"
+      aria-hidden="{% if modal_aberto == 'status' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'status' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'demandas:mudar_status' demanda.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="mudar-situacao-titulo">Mudar situação</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
+                  {{ formulario_status.status.label }}
+                </label>
+                {{ formulario_status.status }}
+                {% for erro in formulario_status.status.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Atualizar situação</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_observar %}
+    <div
+      class="modal fade{% if modal_aberto == 'observacao' %} show{% endif %}"
+      id="observar-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="observar-demanda-titulo"
+      aria-hidden="{% if modal_aberto == 'observacao' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'observacao' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'demandas:observar' demanda.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="observar-demanda-titulo">Registrar observação</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_observacao.texto.id_for_label }}">
+                  {{ formulario_observacao.texto.label }}
+                </label>
+                {{ formulario_observacao.texto }}
+                {% for erro in formulario_observacao.texto.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
