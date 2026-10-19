@@ -132,4 +132,16 @@
   <script src="{% static 'vendor/sneat/js/bootstrap.js' %}"></script>
   <script src="{% static 'vendor/sneat/js/perfect-scrollbar.js' %}"></script>
   <script src="{% static 'vendor/sneat/js/menu.js' %}"></script>
+  <script>
+    // O menu do tema só ganha vida quando alguém o liga: no Sneat isso é feito
+    // em main.js, que este projeto não usa. Sem esta chamada, o grupo Cadastros
+    // abre no HTML mas o clique não faz nada — é o tema que cuida do clique
+    // (no desktop e no celular) e do abrir/fechar dos submenus.
+    document.addEventListener("DOMContentLoaded", function () {
+      var menu = document.getElementById("layout-menu");
+      if (menu && window.Menu) {
+        new window.Menu(menu);
+      }
+    });
+  </script>
 {% endblock %}
