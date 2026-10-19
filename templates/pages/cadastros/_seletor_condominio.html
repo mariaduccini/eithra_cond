@@ -1,0 +1,27 @@
+{% comment %}
+Diz qual condomínio está em vista e permite trocar quando a pessoa responde por
+mais de um. Com um só vínculo não há o que escolher, e a tela não pergunta.
+{% endcomment %}
+{% if mostrar_seletor %}
+  <div class="dropdown">
+    <button
+      class="btn btn-label-secondary dropdown-toggle"
+      type="button"
+      data-bs-toggle="dropdown"
+      aria-expanded="false"
+      aria-label="Trocar de condomínio">
+      <i class="bx bx-buildings me-1" aria-hidden="true"></i>{{ condominio_atual.nome }}
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      {% for condominio in condominios %}
+        <li>
+          <a
+            class="dropdown-item{% if condominio.pk == condominio_atual.pk %} active{% endif %}"
+            href="?condominio={{ condominio.pk }}">
+            {{ condominio.nome }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

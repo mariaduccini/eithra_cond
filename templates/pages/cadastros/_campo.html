@@ -1,0 +1,20 @@
+{% comment %}
+Um campo do cadastro: rótulo, entrada, orientação e o que o domínio recusou.
+
+Uso:
+  {% include "pages/cadastros/_campo.html" with campo=formulario.nome %}
+  {% include "pages/cadastros/_campo.html" with campo=formulario.nome classe="col-12 col-lg-6" %}
+
+Sem ``classe``, o campo ocupa a linha inteira de um modal. Os erros vêm do
+próprio formulário — não há segunda lista de regras para manter em sincronia.
+{% endcomment %}
+<div class="{{ classe|default:'mb-6' }}">
+  <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+  {{ campo }}
+  {% if campo.help_text %}
+    <div class="form-text">{{ campo.help_text }}</div>
+  {% endif %}
+  {% for erro in campo.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>

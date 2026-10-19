@@ -7,8 +7,12 @@ Cada item pode declarar para quem ele existe. Isso mantém a decisão fora dos
 templates — nada de condição de papel espalhada pelas telas — e, mais
 importante, o menu **não** decide acesso: ele pergunta ao domínio, com a mesma
 regra que o backend usa. A proteção continua na view.
+
+Um item pode reunir outros em ``filhos``. O grupo existe enquanto existir ao
+menos um filho visível, e o destaque da tela aberta sobe do filho para o grupo.
 """
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
+from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
 
 NAVIGATION = [
@@ -20,6 +24,20 @@ NAVIGATION = [
         # Módulo de acompanhamento operacional: quem vê a demanda em algum
         # condomínio enxerga o item. O menu não autoriza — a view é que decide.
         "visivel_para": pode_ver_alguma_demanda,
+    },
+    {
+        "label": "Cadastros",
+        "icon": "bx-folder",
+        # Módulo de quem responde pelo condomínio, em leitura para a supervisão.
+        # Quem não enxerga os cadastros em nenhum condomínio não recebe o grupo.
+        "visivel_para": pode_ver_cadastros_em_algum,
+        "filhos": [
+            {"label": "Condomínio", "view_name": "cadastros:condominio"},
+            {"label": "Usuários e acessos", "view_name": "cadastros:acessos"},
+            {"label": "Áreas e locais", "view_name": "cadastros:locais"},
+            {"label": "Equipamentos", "view_name": "cadastros:equipamentos"},
+            {"label": "Fornecedores", "view_name": "cadastros:fornecedores"},
+        ],
     },
     {
         "label": "Balanços",
@@ -36,8 +54,29 @@ NAVIGATION = [
 def navigation(request):
     """Disponibiliza apenas os itens de menu que fazem sentido para quem está vendo."""
     usuario = getattr(request, "user", None)
-    itens = [item for item in NAVIGATION if _aparece_para(item, usuario)]
+    aberta = getattr(getattr(request, "resolver_match", None), "view_name", None)
+    itens = [
+        _preparar(item, usuario, aberta)
+        for item in NAVIGATION
+        if _aparece_para(item, usuario)
+    ]
     return {"navigation": itens}
+
+
+def _preparar(item, usuario, aberta):
+    """Copia o item com os filhos visíveis e marca o que corresponde à tela aberta.
+
+    A cópia existe para que o destaque de hoje não fique gravado no menu de
+    amanhã: ``NAVIGATION`` é declarado uma vez e compartilhado por todas as
+    requisições.
+    """
+    filhos = [
+        {**filho, "ativo": filho.get("view_name") == aberta}
+        for filho in item.get("filhos", ())
+        if _aparece_para(filho, usuario)
+    ]
+    ativo = item.get("view_name") == aberta or any(filho["ativo"] for filho in filhos)
+    return {**item, "filhos": filhos, "ativo": ativo}
 
 
 def _aparece_para(item, usuario) -> bool:

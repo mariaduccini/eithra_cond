@@ -22,12 +22,31 @@
 
         <ul class="menu-inner py-1">
           {% for item in navigation %}
-            <li class="menu-item{% if request.resolver_match.view_name == item.view_name %} active{% endif %}">
-              <a href="{% url item.view_name %}" class="menu-link">
-                <i class="menu-icon tf-icons bx {{ item.icon }}" aria-hidden="true"></i>
-                <div class="text-truncate">{{ item.label }}</div>
-              </a>
-            </li>
+            {% if item.filhos %}
+              {# Grupo: abre os cadastros e acende quando uma das telas dele está à vista. #}
+              <li class="menu-item{% if item.ativo %} active open{% endif %}">
+                <a href="javascript:void(0);" class="menu-link menu-toggle">
+                  <i class="menu-icon tf-icons bx {{ item.icon }}" aria-hidden="true"></i>
+                  <div class="text-truncate">{{ item.label }}</div>
+                </a>
+                <ul class="menu-sub">
+                  {% for filho in item.filhos %}
+                    <li class="menu-item{% if filho.ativo %} active{% endif %}">
+                      <a href="{% url filho.view_name %}" class="menu-link">
+                        <div class="text-truncate">{{ filho.label }}</div>
+                      </a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </li>
+            {% else %}
+              <li class="menu-item{% if item.ativo %} active{% endif %}">
+                <a href="{% url item.view_name %}" class="menu-link">
+                  <i class="menu-icon tf-icons bx {{ item.icon }}" aria-hidden="true"></i>
+                  <div class="text-truncate">{{ item.label }}</div>
+                </a>
+              </li>
+            {% endif %}
           {% endfor %}
         </ul>
       </aside>

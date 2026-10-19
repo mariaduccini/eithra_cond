@@ -1,0 +1,101 @@
+{% extends "layouts/app.html" %}
+
+{# O cadastro do condomínio é a raiz do sistema: é ele que dá nome a tudo o mais.
+   A tela mostra o que existe e deixa corrigir. Não há histórico aqui. #}
+
+{% block title %}Condomínio · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Condomínio</h1>
+      <p class="text-body-secondary mb-0">
+        {% if pode_gerenciar %}
+          Os dados que identificam este condomínio.
+        {% else %}
+          Os dados deste condomínio, em leitura.
+        {% endif %}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% if pode_gerenciar %}
+        <button type="submit" form="form-condominio" class="btn btn-primary">
+          <i class="bx bx-save me-1" aria-hidden="true"></i> Salvar
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <form
+    id="form-condominio"
+    method="post"
+    action="{% url 'cadastros:condominio' %}"
+    novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">Dados gerais</h2>
+        <p class="text-body-secondary small mb-0">Como este condomínio é identificado.</p>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          {% include "pages/cadastros/_campo.html" with campo=formulario.nome classe="col-12 col-lg-6" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.cnpj classe="col-12 col-lg-4" %}
+          <div class="col-12 col-lg-2">
+            <span class="form-label d-block">Situação</span>
+            <span class="badge bg-label-{% if condominio_atual.ativo %}success{% else %}secondary{% endif %}">
+              {% if condominio_atual.ativo %}Ativo{% else %}Inativo{% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">Endereço</h2>
+        <p class="text-body-secondary small mb-0">Onde este condomínio fica.</p>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          {% include "pages/cadastros/_campo.html" with campo=formulario.logradouro classe="col-12 col-lg-6" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.numero classe="col-6 col-lg-2" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.complemento classe="col-6 col-lg-4" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.bairro classe="col-12 col-lg-4" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.cidade classe="col-12 col-lg-4" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.uf classe="col-6 col-lg-2" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.cep classe="col-6 col-lg-2" %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">Administração</h2>
+        <p class="text-body-secondary small mb-0">Com quem se fala e o que se sabe sobre este condomínio.</p>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          {% include "pages/cadastros/_campo.html" with campo=formulario.telefone_administrativo classe="col-12 col-lg-4" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.email_administrativo classe="col-12 col-lg-5" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.quantidade_unidades classe="col-12 col-lg-3" %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.observacao_administrativa classe="col-12" %}
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-3 fw-normal text-body-secondary small">Criado em</dt>
+        <dd class="col-sm-9">{{ condominio_atual.criado_em|date:"d/m/Y H:i" }}</dd>
+        <dt class="col-sm-3 fw-normal text-body-secondary small">Atualizado em</dt>
+        <dd class="col-sm-9 mb-0">{{ condominio_atual.atualizado_em|date:"d/m/Y H:i" }}</dd>
+      </dl>
+    </div>
+  </div>
+{% endblock %}

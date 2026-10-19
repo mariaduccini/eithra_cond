@@ -1,0 +1,69 @@
+{% extends "layouts/app.html" %}
+
+{# Nesta fase a tela é de leitura: o Eithra mostra o acesso como ele está. Dar ou
+   tirar acesso é uma decisão sobre pessoas e será tratada com o cuidado que ela
+   pede — não como um formulário solto de cadastro. #}
+
+{% block title %}Usuários e acessos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Usuários e acessos</h1>
+      <p class="text-body-secondary mb-0">
+        Quem tem acesso a este condomínio e com qual papel.
+      </p>
+    </div>
+    {% include "pages/cadastros/_seletor_condominio.html" %}
+  </div>
+
+  <div class="card">
+    {% if acessos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Pessoas com acesso a este condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Pessoa</th>
+              <th scope="col">Papel</th>
+              <th scope="col">Situação</th>
+              <th scope="col">Desde</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for acesso in acessos %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ acesso.nome }}</span>
+                  <div class="text-body-secondary small">{{ acesso.email }}</div>
+                </td>
+                <td>{{ acesso.papel }}</td>
+                <td><span class="badge bg-label-{{ acesso.tom }}">{{ acesso.situacao }}</span></td>
+                <td>{{ acesso.desde }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for acesso in acessos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ acesso.nome }}</span>
+              <span class="badge bg-label-{{ acesso.tom }} flex-shrink-0">{{ acesso.situacao }}</span>
+            </div>
+            <div class="text-body-secondary small">{{ acesso.email }}</div>
+            <div class="text-body-secondary small mt-1">{{ acesso.papel }} · desde {{ acesso.desde }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-user-check" state_title="Ninguém com acesso ainda" state_message="Quando alguém for vinculado a este condomínio, aparece aqui." %}
+    {% endif %}
+  </div>
+
+  <p class="text-body-secondary small mt-4 mb-0">
+    O Eithra mostra o acesso como ele está. Dar ou tirar acesso será tratado à parte.
+  </p>
+{% endblock %}
