@@ -1,0 +1,278 @@
+{% extends "layouts/app.html" %}
+
+{# A lista responde a uma pergunta só: quanto há de cada item agora. O saldo
+   aparece ao lado do que se espera ter, e a linha inteira abre o item — não há
+   botão "visualizar". #}
+
+{% block title %}Estoque · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Estoque</h1>
+      <p class="text-body-secondary mb-0">
+        O que o condomínio tem guardado{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    {% if pode_criar %}
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#cadastrar-item">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Cadastrar item
+      </button>
+    {% endif %}
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-3">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-3">
+          <label class="form-label small" for="{{ filtros.situacao.id_for_label }}">
+            {{ filtros.situacao.label }}
+          </label>
+          {{ filtros.situacao }}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'estoque:itens' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if itens %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Itens em estoque</caption>
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Local</th>
+              <th scope="col" class="text-end">Disponível</th>
+              <th scope="col" class="text-end">Mínimo</th>
+              <th scope="col">Situação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in itens %}
+              <tr
+                data-href="{% url 'estoque:item_detalhe' item.pk %}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'estoque:item_detalhe' item.pk %}"
+                    class="fw-medium text-decoration-none">{{ item.nome }}</a>
+                  {% if item.critico %}
+                    <span class="badge bg-label-warning ms-1">Crítico</span>
+                  {% endif %}
+                  {% if item.categoria %}
+                    <div class="text-body-secondary small">{{ item.categoria }}</div>
+                  {% endif %}
+                </td>
+                {% if mostrar_condominio %}<td>{{ item.condominio }}</td>{% endif %}
+                <td>{{ item.local|default:"—" }}</td>
+                <td class="text-end fw-medium">{{ item.saldo }}</td>
+                <td class="text-end text-body-secondary">{{ item.minimo|default:"—" }}</td>
+                <td>
+                  {% if item.situacao %}
+                    <span class="badge bg-label-{{ item.situacao_tom }}">{{ item.situacao }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for item in itens %}
+          <a href="{% url 'estoque:item_detalhe' item.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ item.nome }}</span>
+              {% if item.situacao %}
+                <span class="badge bg-label-{{ item.situacao_tom }} flex-shrink-0">{{ item.situacao }}</span>
+              {% endif %}
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {% if mostrar_condominio %}{{ item.condominio }} · {% endif %}
+              {{ item.saldo }}
+              {% if item.local %} · {{ item.local }}{% endif %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+              {% if item.critico %}<span class="badge bg-label-warning">Crítico</span>{% endif %}
+              {% if item.categoria %}<span class="text-body-secondary small">{{ item.categoria }}</span>{% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-package" state_title="Nada cadastrado ainda" state_message="Quando houver material a controlar, cadastre o item aqui." %}
+    {% endif %}
+  </div>
+
+  {% if pode_criar and formulario_item %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="cadastrar-item"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="cadastrar-item-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'estoque:criar_item' %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="cadastrar-item-titulo">Cadastrar item</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if formulario_item.condominio.is_hidden %}
+                {{ formulario_item.condominio }}
+              {% else %}
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_item.condominio.id_for_label }}">
+                    {{ formulario_item.condominio.label }}
+                  </label>
+                  {{ formulario_item.condominio }}
+                  {% for erro in formulario_item.condominio.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_item.nome.id_for_label }}">
+                  {{ formulario_item.nome.label }}
+                </label>
+                {{ formulario_item.nome }}
+                {% for erro in formulario_item.nome.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-item"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-item">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-item">
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_item.categoria_texto.id_for_label }}">
+                      {{ formulario_item.categoria_texto.label }}
+                    </label>
+                    {{ formulario_item.categoria_texto }}
+                    {% for erro in formulario_item.categoria_texto.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_item.unidade.id_for_label }}">
+                      {{ formulario_item.unidade.label }}
+                    </label>
+                    {{ formulario_item.unidade }}
+                    {% for erro in formulario_item.unidade.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_item.local_armazenamento.id_for_label }}">
+                      {{ formulario_item.local_armazenamento.label }}
+                    </label>
+                    {{ formulario_item.local_armazenamento }}
+                    {% for erro in formulario_item.local_armazenamento.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_item.estoque_minimo.id_for_label }}">
+                      {{ formulario_item.estoque_minimo.label }}
+                    </label>
+                    {{ formulario_item.estoque_minimo }}
+                    {% for erro in formulario_item.estoque_minimo.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="form-check mb-2">
+                  {{ formulario_item.item_critico }}
+                  <label class="form-check-label" for="{{ formulario_item.item_critico.id_for_label }}">
+                    {{ formulario_item.item_critico.label }}
+                  </label>
+                </div>
+                <div class="form-check mb-6">
+                  {{ formulario_item.controla_validade }}
+                  <label class="form-check-label" for="{{ formulario_item.controla_validade.id_for_label }}">
+                    {{ formulario_item.controla_validade.label }}
+                  </label>
+                </div>
+
+                <div class="mb-0">
+                  <label class="form-label" for="{{ formulario_item.descricao.id_for_label }}">
+                    {{ formulario_item.descricao.label }}
+                  </label>
+                  {{ formulario_item.descricao }}
+                  {% for erro in formulario_item.descricao.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre o item. A navegação por teclado continua pelo link
+    // do título, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

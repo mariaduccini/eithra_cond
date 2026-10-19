@@ -1,0 +1,490 @@
+{% extends "layouts/app.html" %}
+
+{# A compra como ela está hoje: de quem, quando, quanto e o que já movimentou.
+   Enquanto é rascunho, as linhas podem ser montadas; ao confirmar, a compra
+   passa a valer e movimenta o estoque. Confirmar e cancelar são decisões. #}
+
+{% block title %}Compra de {{ compra.data }} · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'compras:listagem' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Compras
+      </a>
+      <h1 class="h4 mb-1">Compra de {{ compra.data }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ compra.status_tom }}">{{ compra.status }}</span>
+        <span class="text-body-secondary small">{{ compra.condominio }}</span>
+        {% if compra.fornecedor %}
+          <span class="text-body-secondary small">· {{ compra.fornecedor }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if pode_confirmar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#confirmar-compra">
+          <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Confirmar compra
+        </button>
+      {% endif %}
+      {% if pode_editar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-compra"
+          title="Editar compra"
+          aria-label="Editar compra">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+      {% if pode_cancelar %}
+        <button
+          type="button"
+          class="btn btn-label-danger"
+          data-bs-toggle="modal"
+          data-bs-target="#cancelar-compra">
+          Cancelar compra
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">A compra</h2>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Fornecedor</span>
+            <span class="fw-medium text-end">{{ compra.fornecedor }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Data</span>
+            <span class="text-end">{{ compra.data }}</span>
+          </div>
+          {% if compra.documento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Documento</span>
+              <span class="text-end">{{ compra.documento }}</span>
+            </div>
+          {% endif %}
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Total</span>
+            <span class="fw-medium text-end">{{ compra.total }}</span>
+          </div>
+          {% if compra.manutencao_origem %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Manutenção de origem</span>
+              <span class="text-end">{{ compra.manutencao_origem }}</span>
+            </div>
+          {% endif %}
+          {% if compra.confirmada_em %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Confirmada em</span>
+              <span class="text-end">{{ compra.confirmada_em }}</span>
+            </div>
+          {% endif %}
+          {% if compra.observacao %}
+            <hr>
+            <p class="mb-0">{{ compra.observacao|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+        <div class="card-footer">
+          <span class="text-body-secondary small">
+            Registrada por {{ compra.criado_por }} em {{ compra.criado_em }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Itens da compra</h2>
+          {% if pode_editar %}
+            <a
+              href="{% url 'compras:detalhe' compra.pk %}?abrir=linha"
+              class="btn btn-label-primary btn-sm">
+              <i class="bx bx-plus me-1" aria-hidden="true"></i> Adicionar item
+            </a>
+          {% endif %}
+        </div>
+        {% if linhas %}
+          <div class="table-responsive">
+            <table class="table align-middle mb-0">
+              <caption class="visually-hidden">Itens desta compra</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col">Destino</th>
+                  <th scope="col" class="text-end">Qtd.</th>
+                  <th scope="col" class="text-end">Unitário</th>
+                  <th scope="col" class="text-end">Total</th>
+                  {% if pode_editar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for linha in linhas %}
+                  <tr>
+                    <td>
+                      <span class="fw-medium">{{ linha.descricao }}</span>
+                      {% if linha.item %}
+                        <div class="text-body-secondary small">Repõe {{ linha.item }}</div>
+                      {% endif %}
+                      {% if linha.manutencao %}
+                        <div class="text-body-secondary small">Manutenção · {{ linha.manutencao }}</div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <span class="badge bg-label-{{ linha.destino_tom }}">{{ linha.destino }}</span>
+                      {% if linha.consumo_imediato %}
+                        <div class="text-body-secondary small">{{ linha.consumo_imediato }} no ato</div>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ linha.quantidade }}</td>
+                    <td class="text-end">{{ linha.valor_unitario }}</td>
+                    <td class="text-end fw-medium">{{ linha.valor_total }}</td>
+                    {% if pode_editar %}
+                      <td class="text-end text-nowrap">
+                        <a
+                          class="btn btn-icon btn-text-secondary rounded-pill"
+                          href="{% url 'compras:detalhe' compra.pk %}?abrir=linha&amp;linha={{ linha.pk }}"
+                          title="Editar item"
+                          aria-label="Editar item">
+                          <i class="bx bx-pencil" aria-hidden="true"></i>
+                        </a>
+                        <form
+                          method="post"
+                          action="{% url 'compras:remover_linha' compra.pk linha.pk %}"
+                          class="d-inline">
+                          {% csrf_token %}
+                          <button
+                            type="submit"
+                            class="btn btn-icon btn-text-secondary rounded-pill"
+                            title="Remover item"
+                            aria-label="Remover item">
+                            <i class="bx bx-trash" aria-hidden="true"></i>
+                          </button>
+                        </form>
+                      </td>
+                    {% endif %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          {% include "components/state.html" with state_icon="bx-cart" state_title="Nenhum item ainda" state_message="Registre o que foi comprado e para onde vai." %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if movimentos %}
+    <div class="card mt-4">
+      <div class="card-header">
+        <h2 class="h6 mb-0">O que esta compra movimentou</h2>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for movimento in movimentos %}
+          <li class="list-group-item d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+            <span class="fw-medium">{{ movimento.item }} · {{ movimento.quantidade }}</span>
+            <span class="text-body-secondary small">{{ movimento.quando }} · {{ movimento.quem }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if pode_editar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-compra"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-compra-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'compras:editar' compra.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-compra-titulo">Editar compra</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.data_compra.id_for_label }}">
+                  {{ formulario_compra.data_compra.label }}
+                </label>
+                {{ formulario_compra.data_compra }}
+                {% for erro in formulario_compra.data_compra.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.fornecedor.id_for_label }}">
+                  {{ formulario_compra.fornecedor.label }}
+                </label>
+                {{ formulario_compra.fornecedor }}
+                {% for erro in formulario_compra.fornecedor.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.numero_documento.id_for_label }}">
+                  {{ formulario_compra.numero_documento.label }}
+                </label>
+                {{ formulario_compra.numero_documento }}
+                {% for erro in formulario_compra.numero_documento.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.manutencao_origem.id_for_label }}">
+                  {{ formulario_compra.manutencao_origem.label }}
+                </label>
+                {{ formulario_compra.manutencao_origem }}
+                {% for erro in formulario_compra.manutencao_origem.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_compra.observacao.id_for_label }}">
+                  {{ formulario_compra.observacao.label }}
+                </label>
+                {{ formulario_compra.observacao }}
+                {% for erro in formulario_compra.observacao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade{% if modal_aberto == 'linha' %} show{% endif %}"
+      id="item-compra"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="item-compra-titulo"
+      aria-hidden="{% if modal_aberto == 'linha' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'linha' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% if linha_em_edicao %}{% url 'compras:editar_linha' compra.pk linha_em_edicao.pk %}{% else %}{% url 'compras:adicionar_linha' compra.pk %}{% endif %}"
+            novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="item-compra-titulo">
+                {% if linha_em_edicao %}Editar item da compra{% else %}Adicionar item{% endif %}
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.descricao.id_for_label }}">
+                  {{ formulario_linha.descricao.label }}
+                </label>
+                {{ formulario_linha.descricao }}
+                {% for erro in formulario_linha.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_linha.quantidade.id_for_label }}">
+                    {{ formulario_linha.quantidade.label }}
+                  </label>
+                  {{ formulario_linha.quantidade }}
+                  {% for erro in formulario_linha.quantidade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_linha.unidade.id_for_label }}">
+                    {{ formulario_linha.unidade.label }}
+                  </label>
+                  {{ formulario_linha.unidade }}
+                  {% for erro in formulario_linha.unidade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.valor_unitario.id_for_label }}">
+                  {{ formulario_linha.valor_unitario.label }}
+                </label>
+                {{ formulario_linha.valor_unitario }}
+                {% for erro in formulario_linha.valor_unitario.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.destino.id_for_label }}">
+                  {{ formulario_linha.destino.label }}
+                </label>
+                {{ formulario_linha.destino }}
+                {% for erro in formulario_linha.destino.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.item_estoque.id_for_label }}">
+                  {{ formulario_linha.item_estoque.label }}
+                </label>
+                {{ formulario_linha.item_estoque }}
+                {% for erro in formulario_linha.item_estoque.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.quantidade_uso_imediato.id_for_label }}">
+                  {{ formulario_linha.quantidade_uso_imediato.label }}
+                </label>
+                {{ formulario_linha.quantidade_uso_imediato }}
+                {% for erro in formulario_linha.quantidade_uso_imediato.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_linha.manutencao.id_for_label }}">
+                  {{ formulario_linha.manutencao.label }}
+                </label>
+                {{ formulario_linha.manutencao }}
+                {% for erro in formulario_linha.manutencao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_linha.validade.id_for_label }}">
+                  {{ formulario_linha.validade.label }}
+                </label>
+                {{ formulario_linha.validade }}
+                {% for erro in formulario_linha.validade.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">
+                {% if linha_em_edicao %}Salvar{% else %}Adicionar{% endif %}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_confirmar %}
+    <div
+      class="modal fade"
+      id="confirmar-compra"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="confirmar-compra-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'compras:confirmar' compra.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="confirmar-compra-titulo">Confirmar compra</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <p class="text-body-secondary mb-0">
+                Confirmar faz a compra valer: o que tem destino de estoque entra no
+                estoque agora. Depois de confirmada, a compra não muda mais.
+              </p>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Voltar
+              </button>
+              <button type="submit" class="btn btn-primary">Confirmar compra</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_cancelar %}
+    <div
+      class="modal fade"
+      id="cancelar-compra"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="cancelar-compra-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'compras:cancelar' compra.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="cancelar-compra-titulo">Cancelar compra</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <p class="text-body-secondary mb-0">
+                Cancelar encerra este rascunho sem que a compra valha. Nada é
+                apagado.
+              </p>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Voltar
+              </button>
+              <button type="submit" class="btn btn-danger">Cancelar compra</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

@@ -14,6 +14,7 @@ menos um filho visível, e o destaque da tela aberta sobe do filho para o grupo.
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
 from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
+from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
 from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
 
 NAVIGATION = [
@@ -33,6 +34,23 @@ NAVIGATION = [
         # Módulo de quem executa e acompanha o serviço: quem vê a manutenção em
         # algum condomínio enxerga o item. O menu não autoriza — a view decide.
         "visivel_para": pode_ver_alguma_manutencao,
+    },
+    {
+        "label": "Estoque",
+        "view_name": "estoque:itens",
+        "icon": "bx-package",
+        # Quem responde pelo condomínio, supervisiona ou executa a manutenção
+        # enxerga o estoque — a operação entra para retirar material do serviço
+        # que assume. O menu não autoriza: a view é que decide.
+        "visivel_para": pode_ver_estoque_em_algum,
+    },
+    {
+        "label": "Compras",
+        "view_name": "compras:listagem",
+        "icon": "bx-cart",
+        # Compras são de quem responde pela gestão. A operação não entra nesta
+        # fase, e por isso não recebe o item. O menu não autoriza: a view decide.
+        "visivel_para": pode_ver_compras_em_algum,
     },
     {
         "label": "Cadastros",

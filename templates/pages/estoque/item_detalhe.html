@@ -1,0 +1,403 @@
+{% extends "layouts/app.html" %}
+
+{# O item como ele está hoje e o que produziu esse saldo. O saldo abre a página;
+   os movimentos explicam de onde ele veio. Registrar movimento, retirar para
+   manutenção e editar o cadastro ficam no alto, cada um num modal curto. #}
+
+{% block title %}{{ item.nome }} · Estoque · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'estoque:itens' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Estoque
+      </a>
+      <h1 class="h4 mb-1">{{ item.nome }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        {% if item.situacao %}
+          <span class="badge bg-label-{{ item.situacao_tom }}">{{ item.situacao }}</span>
+        {% endif %}
+        {% if item.critico %}<span class="badge bg-label-warning">Crítico</span>{% endif %}
+        <span class="text-body-secondary small">{{ item.condominio }}</span>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if pode_movimentar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#registrar-movimento">
+          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Registrar movimento
+        </button>
+      {% endif %}
+      {% if pode_retirar %}
+        <button
+          type="button"
+          class="btn btn-label-secondary"
+          data-bs-toggle="modal"
+          data-bs-target="#retirar-manutencao">
+          <i class="bx bx-wrench me-1" aria-hidden="true"></i> Retirar para manutenção
+        </button>
+      {% endif %}
+      {% if pode_gerenciar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-item"
+          title="Editar item"
+          aria-label="Editar item">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not item.ativo %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-block mt-1" aria-hidden="true"></i>
+      <div>Este item foi retirado da operação. Ele não aparece nas listas, mas os movimentos continuam guardados.</div>
+    </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">O item</h2>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Disponível</span>
+            <span class="fw-medium text-end">{{ item.saldo }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Estoque mínimo</span>
+            <span class="text-end">{{ item.minimo|default:"—" }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Unidade</span>
+            <span class="text-end">{{ item.unidade }}</span>
+          </div>
+          {% if item.categoria %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Categoria</span>
+              <span class="text-end">{{ item.categoria }}</span>
+            </div>
+          {% endif %}
+          {% if item.local %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Local</span>
+              <span class="text-end">{{ item.local }}</span>
+            </div>
+          {% endif %}
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Controla validade</span>
+            <span class="text-end">{% if item.controla_validade %}Sim{% else %}Não{% endif %}</span>
+          </div>
+          <hr>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Última compra</span>
+            <span class="text-end">
+              {% if item.ultima_compra %}
+                {{ item.ultima_compra }}{% if item.ultimo_fornecedor %} · {{ item.ultimo_fornecedor }}{% endif %}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Último custo</span>
+            <span class="text-end">{{ item.ultimo_custo|default:"—" }}</span>
+          </div>
+          {% if item.descricao %}
+            <hr>
+            <p class="mb-0">{{ item.descricao|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+        <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span class="text-body-secondary small">
+            Cadastrado por {{ item.criado_por }} em {{ item.criado_em }}
+          </span>
+          {% if pode_gerenciar %}
+            <form method="post" action="{% url 'estoque:alternar_item' item.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-text-secondary btn-sm">
+                {% if item.ativo %}
+                  <i class="bx bx-block me-1" aria-hidden="true"></i> Retirar da operação
+                {% else %}
+                  <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Devolver à operação
+                {% endif %}
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Movimentos</h2>
+        </div>
+        {% if movimentos %}
+          <ul class="list-group list-group-flush">
+            {% for movimento in movimentos %}
+              <li class="list-group-item">
+                <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                  <span class="fw-medium">
+                    {% if movimento.entrada %}+{% else %}−{% endif %}{{ movimento.quantidade }}
+                    <span class="text-body-secondary fw-normal">· {{ movimento.tipo }}</span>
+                  </span>
+                  <span class="text-body-secondary small">{{ movimento.quando }}</span>
+                </div>
+                {% if movimento.origem %}
+                  <div class="text-body-secondary small">{{ movimento.origem }}</div>
+                {% endif %}
+                {% if movimento.motivo %}
+                  <p class="mb-0">{{ movimento.motivo }}</p>
+                {% endif %}
+                <div class="text-body-secondary small">{{ movimento.quem }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          {% include "components/state.html" with state_icon="bx-history" state_title="Sem movimentos ainda" state_message="Quando este item entrar ou sair, o fato aparece aqui." %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_gerenciar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-item"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-item-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'estoque:editar_item' item.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-item-titulo">Editar item</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_item.nome.id_for_label }}">
+                  {{ formulario_item.nome.label }}
+                </label>
+                {{ formulario_item.nome }}
+                {% for erro in formulario_item.nome.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.categoria_texto.id_for_label }}">
+                    {{ formulario_item.categoria_texto.label }}
+                  </label>
+                  {{ formulario_item.categoria_texto }}
+                  {% for erro in formulario_item.categoria_texto.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.unidade.id_for_label }}">
+                    {{ formulario_item.unidade.label }}
+                  </label>
+                  {{ formulario_item.unidade }}
+                  {% for erro in formulario_item.unidade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.local_armazenamento.id_for_label }}">
+                    {{ formulario_item.local_armazenamento.label }}
+                  </label>
+                  {{ formulario_item.local_armazenamento }}
+                  {% for erro in formulario_item.local_armazenamento.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.estoque_minimo.id_for_label }}">
+                    {{ formulario_item.estoque_minimo.label }}
+                  </label>
+                  {{ formulario_item.estoque_minimo }}
+                  {% for erro in formulario_item.estoque_minimo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="form-check mb-2">
+                {{ formulario_item.item_critico }}
+                <label class="form-check-label" for="{{ formulario_item.item_critico.id_for_label }}">
+                  {{ formulario_item.item_critico.label }}
+                </label>
+              </div>
+              <div class="form-check mb-6">
+                {{ formulario_item.controla_validade }}
+                <label class="form-check-label" for="{{ formulario_item.controla_validade.id_for_label }}">
+                  {{ formulario_item.controla_validade.label }}
+                </label>
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_item.descricao.id_for_label }}">
+                  {{ formulario_item.descricao.label }}
+                </label>
+                {{ formulario_item.descricao }}
+                {% for erro in formulario_item.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_movimentar %}
+    <div
+      class="modal fade{% if modal_aberto == 'movimentar' %} show{% endif %}"
+      id="registrar-movimento"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-movimento-titulo"
+      aria-hidden="{% if modal_aberto == 'movimentar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'movimentar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'estoque:movimentar_item' item.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="registrar-movimento-titulo">Registrar movimento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_movimento.tipo.id_for_label }}">
+                  {{ formulario_movimento.tipo.label }}
+                </label>
+                {{ formulario_movimento.tipo }}
+                {% for erro in formulario_movimento.tipo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_movimento.quantidade.id_for_label }}">
+                  {{ formulario_movimento.quantidade.label }}
+                </label>
+                {{ formulario_movimento.quantidade }}
+                {% for erro in formulario_movimento.quantidade.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_movimento.motivo.id_for_label }}">
+                  {{ formulario_movimento.motivo.label }}
+                </label>
+                {{ formulario_movimento.motivo }}
+                {% for erro in formulario_movimento.motivo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_retirar %}
+    <div
+      class="modal fade{% if modal_aberto == 'retirar' %} show{% endif %}"
+      id="retirar-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="retirar-manutencao-titulo"
+      aria-hidden="{% if modal_aberto == 'retirar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'retirar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'estoque:retirar_para_manutencao' item.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="retirar-manutencao-titulo">Retirar para manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_retirada.manutencao.id_for_label }}">
+                  {{ formulario_retirada.manutencao.label }}
+                </label>
+                {{ formulario_retirada.manutencao }}
+                {% for erro in formulario_retirada.manutencao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_retirada.quantidade.id_for_label }}">
+                  {{ formulario_retirada.quantidade.label }}
+                </label>
+                {{ formulario_retirada.quantidade }}
+                {% for erro in formulario_retirada.quantidade.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_retirada.motivo.id_for_label }}">
+                  {{ formulario_retirada.motivo.label }}
+                </label>
+                {{ formulario_retirada.motivo }}
+                {% for erro in formulario_retirada.motivo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar retirada</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

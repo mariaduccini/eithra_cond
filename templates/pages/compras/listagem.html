@@ -1,0 +1,247 @@
+{% extends "layouts/app.html" %}
+
+{# As compras do condomínio: o que foi adquirido, de quem e por quanto. Cada
+   linha abre a compra; não há botão "visualizar". #}
+
+{% block title %}Compras · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Compras</h1>
+      <p class="text-body-secondary mb-0">
+        O que o condomínio adquiriu{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    {% if pode_criar %}
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#registrar-compra">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar compra
+      </button>
+    {% endif %}
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-2">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.status.id_for_label }}">
+            {{ filtros.status.label }}
+          </label>
+          {{ filtros.status }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.fornecedor.id_for_label }}">
+            {{ filtros.fornecedor.label }}
+          </label>
+          {{ filtros.fornecedor }}
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'compras:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if compras %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Compras registradas</caption>
+          <thead>
+            <tr>
+              <th scope="col">Compra</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Fornecedor</th>
+              <th scope="col" class="text-end">Total</th>
+              <th scope="col">Situação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for compra in compras %}
+              <tr
+                data-href="{% url 'compras:detalhe' compra.pk %}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'compras:detalhe' compra.pk %}"
+                    class="fw-medium text-decoration-none">{{ compra.data }}</a>
+                  {% if compra.documento %}
+                    <div class="text-body-secondary small">{{ compra.documento }}</div>
+                  {% endif %}
+                </td>
+                {% if mostrar_condominio %}<td>{{ compra.condominio }}</td>{% endif %}
+                <td>{{ compra.fornecedor }}</td>
+                <td class="text-end fw-medium">{{ compra.total }}</td>
+                <td>
+                  <span class="badge bg-label-{{ compra.status_tom }}">{{ compra.status }}</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for compra in compras %}
+          <a href="{% url 'compras:detalhe' compra.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ compra.data }}</span>
+              <span class="badge bg-label-{{ compra.status_tom }} flex-shrink-0">{{ compra.status }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {{ compra.fornecedor }}{% if compra.documento %} · {{ compra.documento }}{% endif %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+              {% if mostrar_condominio %}<span class="text-body-secondary small">{{ compra.condominio }}</span>{% endif %}
+              <span class="fw-medium small">{{ compra.total }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-cart" state_title="Nenhuma compra registrada" state_message="Quando houver uma compra, registre aqui e acompanhe até confirmar." %}
+    {% endif %}
+  </div>
+
+  {% if pode_criar and formulario_compra %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-compra"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-compra-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'compras:criar' %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="registrar-compra-titulo">Registrar compra</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if formulario_compra.condominio.is_hidden %}
+                {{ formulario_compra.condominio }}
+              {% else %}
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_compra.condominio.id_for_label }}">
+                    {{ formulario_compra.condominio.label }}
+                  </label>
+                  {{ formulario_compra.condominio }}
+                  {% for erro in formulario_compra.condominio.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.data_compra.id_for_label }}">
+                  {{ formulario_compra.data_compra.label }}
+                </label>
+                {{ formulario_compra.data_compra }}
+                {% for erro in formulario_compra.data_compra.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.fornecedor.id_for_label }}">
+                  {{ formulario_compra.fornecedor.label }}
+                </label>
+                {{ formulario_compra.fornecedor }}
+                {% for erro in formulario_compra.fornecedor.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-compra"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-compra">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-compra">
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_compra.numero_documento.id_for_label }}">
+                    {{ formulario_compra.numero_documento.label }}
+                  </label>
+                  {{ formulario_compra.numero_documento }}
+                  {% for erro in formulario_compra.numero_documento.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_compra.manutencao_origem.id_for_label }}">
+                    {{ formulario_compra.manutencao_origem.label }}
+                  </label>
+                  {{ formulario_compra.manutencao_origem }}
+                  {% for erro in formulario_compra.manutencao_origem.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-0">
+                  <label class="form-label" for="{{ formulario_compra.observacao.id_for_label }}">
+                    {{ formulario_compra.observacao.label }}
+                  </label>
+                  {{ formulario_compra.observacao }}
+                  {% for erro in formulario_compra.observacao.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Abrir compra</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a compra. A navegação por teclado continua pelo link
+    // da data, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}
