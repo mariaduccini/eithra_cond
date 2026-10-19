@@ -40,6 +40,7 @@ LOCAL_APPS = [
     "apps.cadastros",
     "apps.balancos",
     "apps.demandas",
+    "apps.manutencoes",
     "apps.core",
 ]
 

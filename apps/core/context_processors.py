@@ -14,6 +14,7 @@ menos um filho visível, e o destaque da tela aberta sobe do filho para o grupo.
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
 from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
+from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
 
 NAVIGATION = [
     {"label": "Painel", "view_name": "core:home", "icon": "bx-home-smile"},
@@ -24,6 +25,14 @@ NAVIGATION = [
         # Módulo de acompanhamento operacional: quem vê a demanda em algum
         # condomínio enxerga o item. O menu não autoriza — a view é que decide.
         "visivel_para": pode_ver_alguma_demanda,
+    },
+    {
+        "label": "Manutenções",
+        "view_name": "manutencoes:listagem",
+        "icon": "bx-wrench",
+        # Módulo de quem executa e acompanha o serviço: quem vê a manutenção em
+        # algum condomínio enxerga o item. O menu não autoriza — a view decide.
+        "visivel_para": pode_ver_alguma_manutencao,
     },
     {
         "label": "Cadastros",

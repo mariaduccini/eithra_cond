@@ -1,0 +1,490 @@
+{% extends "layouts/app.html" %}
+
+{# A manutenção como ela é hoje e o que já aconteceu com ela. As ações ficam no
+   alto: mudar a situação é o caminho comum, concluir e cancelar são decisões, e
+   editar é apoio. Cada uma abre um modal curto. #}
+
+{% block title %}{{ manutencao.titulo }} · Manutenções · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'manutencoes:listagem' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Manutenções
+      </a>
+      <h1 class="h4 mb-1">{{ manutencao.titulo }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ manutencao.status_tom }}">{{ manutencao.status }}</span>
+        <span class="badge bg-label-{{ manutencao.prioridade_tom }}">{{ manutencao.prioridade }}</span>
+        <span class="badge bg-label-secondary">{{ manutencao.tipo }}</span>
+        <span class="text-body-secondary small">{{ manutencao.condominio }}</span>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if pode_alterar_status %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#mudar-situacao">
+          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
+        </button>
+      {% endif %}
+      {% if pode_concluir %}
+        <button
+          type="button"
+          class="btn btn-label-success"
+          data-bs-toggle="modal"
+          data-bs-target="#concluir-manutencao">
+          <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Concluir
+        </button>
+      {% endif %}
+      {% if pode_editar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-manutencao"
+          title="Editar manutenção"
+          aria-label="Editar manutenção">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+      {% if pode_cancelar and manutencao.status_valor != 'cancelada' %}
+        <button
+          type="button"
+          class="btn btn-label-danger"
+          data-bs-toggle="modal"
+          data-bs-target="#cancelar-manutencao">
+          Cancelar manutenção
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not manutencao.ativo %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-block mt-1" aria-hidden="true"></i>
+      <div>Esta manutenção foi retirada da operação. Ela não aparece nas listas, mas o histórico continua guardado.</div>
+    </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">A manutenção</h2>
+        </div>
+        <div class="card-body">
+          {% if manutencao.problema %}
+            <p class="mb-4">{{ manutencao.problema|linebreaksbr }}</p>
+          {% endif %}
+
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Responsável</span>
+            <span class="fw-medium text-end">{{ manutencao.responsavel }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Previsão</span>
+            <span class="text-end">
+              {{ manutencao.previsao }}
+              {% if manutencao.previsao_situacao %}
+                <span class="badge bg-label-{{ manutencao.previsao_tom }} ms-1">{{ manutencao.previsao_situacao }}</span>
+              {% endif %}
+            </span>
+          </div>
+          {% if manutencao.local %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Local</span>
+              <span class="text-end">{{ manutencao.local }}</span>
+            </div>
+          {% endif %}
+          {% if manutencao.equipamento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Equipamento</span>
+              <span class="text-end">{{ manutencao.equipamento }}</span>
+            </div>
+          {% endif %}
+          {% if manutencao.fornecedor %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Fornecedor</span>
+              <span class="text-end">{{ manutencao.fornecedor }}</span>
+            </div>
+          {% endif %}
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Custo previsto</span>
+            <span class="text-end">{{ manutencao.custo_previsto }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Custo real</span>
+            <span class="text-end">{{ manutencao.custo_real }}</span>
+          </div>
+          {% if manutencao.inicio %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Iniciada em</span>
+              <span class="text-end">{{ manutencao.inicio }}</span>
+            </div>
+          {% endif %}
+          {% if manutencao.conclusao %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Concluída em</span>
+              <span class="text-end">{{ manutencao.conclusao }}</span>
+            </div>
+          {% endif %}
+          {% if manutencao.servico %}
+            <hr>
+            <div class="text-body-secondary small mb-1">Serviço realizado</div>
+            <p class="mb-0">{{ manutencao.servico|linebreaksbr }}</p>
+          {% endif %}
+          {% if manutencao.demanda_origem %}
+            <hr>
+            <div class="text-body-secondary small">
+              Veio da demanda
+              <a href="{% url 'demandas:detalhe' manutencao.demanda_origem_pk %}" class="fw-medium text-decoration-none">
+                «{{ manutencao.demanda_origem }}»</a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span class="text-body-secondary small">
+            Registrada por {{ manutencao.criada_por }} em {{ manutencao.criada_em }}
+          </span>
+          {% if pode_administrar %}
+            <form method="post" action="{% url 'manutencoes:alternar_ativo' manutencao.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-text-secondary btn-sm">
+                {% if manutencao.ativo %}
+                  <i class="bx bx-block me-1" aria-hidden="true"></i> Retirar da operação
+                {% else %}
+                  <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Devolver à operação
+                {% endif %}
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Histórico</h2>
+        </div>
+        {% if historico %}
+          <ul class="list-group list-group-flush">
+            {% for evento in historico %}
+              <li class="list-group-item">
+                <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
+                  <span class="fw-medium">{{ evento.tipo }}</span>
+                  <span class="text-body-secondary small">{{ evento.momento }}</span>
+                </div>
+                <p class="mb-0">{{ evento.descricao }}</p>
+                <div class="text-body-secondary small">{{ evento.quem }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          {% include "components/state.html" with state_icon="bx-history" state_title="Sem histórico ainda" state_message="O que acontecer com esta manutenção aparece aqui." %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_editar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-manutencao-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'manutencoes:editar' manutencao.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-manutencao-titulo">Editar manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                  {{ formulario_manutencao.titulo.label }}
+                </label>
+                {{ formulario_manutencao.titulo }}
+                {% for erro in formulario_manutencao.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-6">
+                  <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
+                    {{ formulario_manutencao.tipo.label }}
+                  </label>
+                  {{ formulario_manutencao.tipo }}
+                  {% for erro in formulario_manutencao.tipo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-6">
+                  <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
+                    {{ formulario_manutencao.prioridade.label }}
+                  </label>
+                  {{ formulario_manutencao.prioridade }}
+                  {% for erro in formulario_manutencao.prioridade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                  {{ formulario_manutencao.descricao_problema.label }}
+                </label>
+                {{ formulario_manutencao.descricao_problema }}
+                {% for erro in formulario_manutencao.descricao_problema.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.responsavel.id_for_label }}">
+                  {{ formulario_manutencao.responsavel.label }}
+                </label>
+                {{ formulario_manutencao.responsavel }}
+                {% for erro in formulario_manutencao.responsavel.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.local.id_for_label }}">
+                    {{ formulario_manutencao.local.label }}
+                  </label>
+                  {{ formulario_manutencao.local }}
+                  {% for erro in formulario_manutencao.local.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.equipamento.id_for_label }}">
+                    {{ formulario_manutencao.equipamento.label }}
+                  </label>
+                  {{ formulario_manutencao.equipamento }}
+                  {% for erro in formulario_manutencao.equipamento.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.fornecedor.id_for_label }}">
+                    {{ formulario_manutencao.fornecedor.label }}
+                  </label>
+                  {{ formulario_manutencao.fornecedor }}
+                  {% for erro in formulario_manutencao.fornecedor.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                    {{ formulario_manutencao.data_prevista.label }}
+                  </label>
+                  {{ formulario_manutencao.data_prevista }}
+                  {% for erro in formulario_manutencao.data_prevista.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.custo_previsto.id_for_label }}">
+                    {{ formulario_manutencao.custo_previsto.label }}
+                  </label>
+                  {{ formulario_manutencao.custo_previsto }}
+                  {% for erro in formulario_manutencao.custo_previsto.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_manutencao.custo_real.id_for_label }}">
+                    {{ formulario_manutencao.custo_real.label }}
+                  </label>
+                  {{ formulario_manutencao.custo_real }}
+                  {% for erro in formulario_manutencao.custo_real.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_manutencao.descricao_servico.id_for_label }}">
+                  {{ formulario_manutencao.descricao_servico.label }}
+                </label>
+                {{ formulario_manutencao.descricao_servico }}
+                {% for erro in formulario_manutencao.descricao_servico.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_alterar_status %}
+    <div
+      class="modal fade{% if modal_aberto == 'status' %} show{% endif %}"
+      id="mudar-situacao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="mudar-situacao-titulo"
+      aria-hidden="{% if modal_aberto == 'status' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'status' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'manutencoes:mudar_status' manutencao.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="mudar-situacao-titulo">Mudar situação</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
+                  {{ formulario_status.status.label }}
+                </label>
+                {{ formulario_status.status }}
+                {% for erro in formulario_status.status.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Atualizar situação</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_concluir %}
+    <div
+      class="modal fade{% if modal_aberto == 'concluir' %} show{% endif %}"
+      id="concluir-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="concluir-manutencao-titulo"
+      aria-hidden="{% if modal_aberto == 'concluir' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'concluir' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'manutencoes:concluir' manutencao.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="concluir-manutencao-titulo">Concluir manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_conclusao.descricao_servico.id_for_label }}">
+                  {{ formulario_conclusao.descricao_servico.label }}
+                </label>
+                {{ formulario_conclusao.descricao_servico }}
+                {% for erro in formulario_conclusao.descricao_servico.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_conclusao.custo_real.id_for_label }}">
+                  {{ formulario_conclusao.custo_real.label }}
+                </label>
+                {{ formulario_conclusao.custo_real }}
+                {% for erro in formulario_conclusao.custo_real.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Concluir</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_cancelar and manutencao.status_valor != 'cancelada' %}
+    <div
+      class="modal fade{% if modal_aberto == 'cancelar' %} show{% endif %}"
+      id="cancelar-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="cancelar-manutencao-titulo"
+      aria-hidden="{% if modal_aberto == 'cancelar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'cancelar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'manutencoes:cancelar' manutencao.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="cancelar-manutencao-titulo">Cancelar manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <p class="text-body-secondary">
+                Cancelar encerra esta manutenção sem que o serviço aconteça. O motivo fica guardado no histórico.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_cancelamento.motivo.id_for_label }}">
+                  {{ formulario_cancelamento.motivo.label }}
+                </label>
+                {{ formulario_cancelamento.motivo }}
+                {% for erro in formulario_cancelamento.motivo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Voltar
+              </button>
+              <button type="submit" class="btn btn-danger">Cancelar manutenção</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

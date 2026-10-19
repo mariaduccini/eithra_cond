@@ -10,6 +10,8 @@ concluída ou cancelada — e nada além disso.
 """
 from django.db import models
 
+from apps.core.constants import Prioridade
+
 
 class StatusDemanda(models.TextChoices):
     """Onde a demanda está agora.
@@ -26,17 +28,10 @@ class StatusDemanda(models.TextChoices):
     CANCELADA = "cancelada", "Cancelada"
 
 
-class PrioridadeDemanda(models.TextChoices):
-    """O quanto a demanda pesa, na leitura de quem acompanha o condomínio.
-
-    Não há matriz de impacto e urgência: quatro degraus, com ``NORMAL`` como
-    padrão, evitam que tudo vire urgente e mantêm a lista utilizável.
-    """
-
-    BAIXA = "baixa", "Baixa"
-    NORMAL = "normal", "Normal"
-    ALTA = "alta", "Alta"
-    URGENTE = "urgente", "Urgente"
+# O peso da demanda é o mesmo vocabulário usado por outros módulos do Eithra.
+# O nome antigo continua valendo para quem já o importa daqui, e os valores e
+# rótulos são exatamente os de sempre — nada muda no que já está gravado.
+PrioridadeDemanda = Prioridade
 
 
 class OrigemDemanda(models.TextChoices):

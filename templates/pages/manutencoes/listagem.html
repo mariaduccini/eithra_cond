@@ -1,0 +1,385 @@
+{% extends "layouts/app.html" %}
+
+{# A lista é de trabalho, não de arquivo: o que está por fazer, na ordem em que
+   merece atenção. Cada linha leva à manutenção; não há botão "visualizar". #}
+
+{% block title %}Manutenções · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Manutenções</h1>
+      <p class="text-body-secondary mb-0">
+        O que precisa ser feito{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    {% if pode_criar %}
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#registrar-manutencao">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar manutenção
+      </button>
+    {% endif %}
+  </div>
+
+  {% if demanda_origem %}
+    <div class="alert alert-primary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-info-circle mt-1" aria-hidden="true"></i>
+      <div>
+        Esta manutenção nasce da demanda
+        <span class="fw-medium">«{{ demanda_origem.titulo }}»</span>.
+        Revise o que já veio preenchido antes de confirmar.
+        <a href="{% url 'demandas:detalhe' demanda_origem.pk %}" class="ms-1">Ver demanda</a>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-3">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.status.id_for_label }}">
+            {{ filtros.status.label }}
+          </label>
+          {{ filtros.status }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.tipo.id_for_label }}">
+            {{ filtros.tipo.label }}
+          </label>
+          {{ filtros.tipo }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.prioridade.id_for_label }}">
+            {{ filtros.prioridade.label }}
+          </label>
+          {{ filtros.prioridade }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.previsao.id_for_label }}">
+            {{ filtros.previsao.label }}
+          </label>
+          {{ filtros.previsao }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
+            {{ filtros.responsavel.label }}
+          </label>
+          {{ filtros.responsavel }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.local.id_for_label }}">
+            {{ filtros.local.label }}
+          </label>
+          {{ filtros.local }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.equipamento.id_for_label }}">
+            {{ filtros.equipamento.label }}
+          </label>
+          {{ filtros.equipamento }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.fornecedor.id_for_label }}">
+            {{ filtros.fornecedor.label }}
+          </label>
+          {{ filtros.fornecedor }}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <div class="form-check mb-0">
+            {{ filtros.minhas }}
+            <label class="form-check-label small" for="{{ filtros.minhas.id_for_label }}">
+              {{ filtros.minhas.label }}
+            </label>
+          </div>
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'manutencoes:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if manutencoes %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Manutenções em acompanhamento</caption>
+          <thead>
+            <tr>
+              <th scope="col">Manutenção</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Responsável</th>
+              <th scope="col">Previsão</th>
+              <th scope="col">Prioridade</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for manutencao in manutencoes %}
+              <tr
+                data-href="{% url 'manutencoes:detalhe' manutencao.pk %}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'manutencoes:detalhe' manutencao.pk %}"
+                    class="fw-medium text-decoration-none">{{ manutencao.titulo }}</a>
+                  <div class="text-body-secondary small">
+                    {{ manutencao.tipo }}{% if manutencao.local %} · {{ manutencao.local }}{% endif %}
+                  </div>
+                </td>
+                {% if mostrar_condominio %}<td>{{ manutencao.condominio }}</td>{% endif %}
+                <td>{{ manutencao.responsavel }}</td>
+                <td>
+                  {{ manutencao.previsao }}
+                  {% if manutencao.previsao_situacao %}
+                    <span class="badge bg-label-{{ manutencao.previsao_tom }} ms-1">{{ manutencao.previsao_situacao }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge bg-label-{{ manutencao.prioridade_tom }}">{{ manutencao.prioridade }}</span>
+                </td>
+                <td>
+                  <span class="badge bg-label-{{ manutencao.status_tom }}">{{ manutencao.status }}</span>
+                </td>
+                <td class="text-end text-nowrap">
+                  {% for acao in manutencao.acoes %}
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="{{ acao.url }}"
+                      data-acao
+                      title="{{ acao.label }}"
+                      aria-label="{{ acao.label }}">
+                      <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                    </a>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for manutencao in manutencoes %}
+          <a href="{% url 'manutencoes:detalhe' manutencao.pk %}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ manutencao.titulo }}</span>
+              <span class="badge bg-label-{{ manutencao.status_tom }} flex-shrink-0">{{ manutencao.status }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {{ manutencao.tipo }}{% if manutencao.local %} · {{ manutencao.local }}{% endif %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+              <span class="badge bg-label-{{ manutencao.prioridade_tom }}">{{ manutencao.prioridade }}</span>
+              {% if manutencao.previsao_situacao %}
+                <span class="badge bg-label-{{ manutencao.previsao_tom }}">{{ manutencao.previsao_situacao }}</span>
+              {% endif %}
+              <span class="text-body-secondary small">{{ manutencao.previsao }}</span>
+            </div>
+            <div class="text-body-secondary small mt-2">
+              {% if mostrar_condominio %}{{ manutencao.condominio }} · {% endif %}{{ manutencao.responsavel }}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-wrench" state_title="Nada em manutenção" state_message="Quando houver um serviço a fazer, registre aqui." %}
+    {% endif %}
+  </div>
+
+  {% if pode_criar and formulario_manutencao %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-manutencao-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'manutencoes:criar' %}" novalidate>
+            {% csrf_token %}
+            {% if demanda_origem %}
+              <input type="hidden" name="demanda_origem" value="{{ demanda_origem.pk }}">
+            {% endif %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="registrar-manutencao-titulo">Registrar manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if formulario_manutencao.condominio.is_hidden %}
+                {{ formulario_manutencao.condominio }}
+              {% else %}
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_manutencao.condominio.id_for_label }}">
+                    {{ formulario_manutencao.condominio.label }}
+                  </label>
+                  {{ formulario_manutencao.condominio }}
+                  {% for erro in formulario_manutencao.condominio.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                  {{ formulario_manutencao.titulo.label }}
+                </label>
+                {{ formulario_manutencao.titulo }}
+                {% for erro in formulario_manutencao.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3">
+                <div class="col-6">
+                  <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
+                    {{ formulario_manutencao.tipo.label }}
+                  </label>
+                  {{ formulario_manutencao.tipo }}
+                  {% for erro in formulario_manutencao.tipo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-6">
+                  <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
+                    {{ formulario_manutencao.prioridade.label }}
+                  </label>
+                  {{ formulario_manutencao.prioridade }}
+                  {% for erro in formulario_manutencao.prioridade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <a
+                class="small text-decoration-none d-inline-block mt-3"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-manutencao"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-manutencao">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-manutencao">
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                    {{ formulario_manutencao.descricao_problema.label }}
+                  </label>
+                  {{ formulario_manutencao.descricao_problema }}
+                  {% for erro in formulario_manutencao.descricao_problema.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_manutencao.responsavel.id_for_label }}">
+                    {{ formulario_manutencao.responsavel.label }}
+                  </label>
+                  {{ formulario_manutencao.responsavel }}
+                  {% for erro in formulario_manutencao.responsavel.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_manutencao.local.id_for_label }}">
+                      {{ formulario_manutencao.local.label }}
+                    </label>
+                    {{ formulario_manutencao.local }}
+                    {% for erro in formulario_manutencao.local.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_manutencao.equipamento.id_for_label }}">
+                      {{ formulario_manutencao.equipamento.label }}
+                    </label>
+                    {{ formulario_manutencao.equipamento }}
+                    {% for erro in formulario_manutencao.equipamento.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_manutencao.fornecedor.id_for_label }}">
+                      {{ formulario_manutencao.fornecedor.label }}
+                    </label>
+                    {{ formulario_manutencao.fornecedor }}
+                    {% for erro in formulario_manutencao.fornecedor.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                      {{ formulario_manutencao.data_prevista.label }}
+                    </label>
+                    {{ formulario_manutencao.data_prevista }}
+                    {% for erro in formulario_manutencao.data_prevista.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="mt-3">
+                  <label class="form-label" for="{{ formulario_manutencao.custo_previsto.id_for_label }}">
+                    {{ formulario_manutencao.custo_previsto.label }}
+                  </label>
+                  {{ formulario_manutencao.custo_previsto }}
+                  {% for erro in formulario_manutencao.custo_previsto.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a manutenção. A navegação por teclado continua pelo
+    // link do título, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

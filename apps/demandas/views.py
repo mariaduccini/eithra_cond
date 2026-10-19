@@ -20,6 +20,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.manutencoes.permissoes import pode_criar_manutencao
+
 from .constants import PrioridadeDemanda, StatusDemanda
 from .forms import (
     AlteracaoDeStatusForm,
@@ -299,6 +301,10 @@ def _render_detalhe(
         "pode_editar": pode_editar,
         "pode_observar": pode_observar,
         "pode_alterar_status": bool(permitidos),
+        # A oferta de criar manutenção a partir desta demanda é do domínio de
+        # manutenções. A demanda só pergunta, com a mesma regra que a outra tela
+        # usaria — e quem não pode registrar não recebe a ação.
+        "pode_criar_manutencao": pode_criar_manutencao(request.user, demanda.condominio),
         "formulario_demanda": formulario
         or DemandaForm(condominio=demanda.condominio, initial=_iniciais_da_demanda(demanda)),
         "formulario_status": formulario_status
