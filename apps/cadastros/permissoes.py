@@ -26,6 +26,12 @@ PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
 # A supervisão acompanha o cadastro sem respondê-lo: vê, não altera.
 PAPEIS_QUE_VEEM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}
 
+# Disponibilização de um fornecedor aos moradores: as quatro decisões — editar
+# o que o morador lê, indicar, liberar e revalidar — são a mesma responsabilidade
+# de responder pelo condomínio, e por isso vivem todas em PAPEIS_QUE_GERENCIAM.
+# A supervisão vê os dados públicos junto com o cadastro, mas não decide sobre
+# eles: mostrar ao morador é decisão de quem responde pelo condomínio.
+
 
 def _com_papel(usuario, papeis: frozenset[str]) -> QuerySet[Condominio]:
     """Condomínios em que a pessoa tem vínculo ativo com algum destes papéis."""

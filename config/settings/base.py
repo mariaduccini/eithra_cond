@@ -43,6 +43,7 @@ LOCAL_APPS = [
     "apps.manutencoes",
     "apps.rotinas",
     "apps.estoque",
+    "apps.governanca",
     "apps.core",
 ]
 
@@ -173,6 +174,11 @@ BALANCOS_MAX_FOTO_BYTES = env.int(
 # arquivo — so para distinguir o layout; anexos e comprovantes nao definem o
 # formato.
 BALANCOS_DETECTOR_MAX_PAGINAS = env.int("BALANCOS_DETECTOR_MAX_PAGINAS", default=15)
+
+# Documentos operacionais usam o mesmo provedor e as mesmas credenciais, em um
+# bucket privado próprio: o arquivo de um domínio não deve ficar no bucket de
+# outro. A infraestrutura compartilhada vive em ``apps/core/storage.py``.
+DOCUMENTOS_STORAGE_BUCKET = env("DOCUMENTOS_STORAGE_BUCKET", default="")
 
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")

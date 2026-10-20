@@ -1,0 +1,241 @@
+{% extends "layouts/app.html" %}
+
+{# As garantias deste condomínio. Uma garantia em uso responde a uma pergunta
+   só: o que ela cobre. Por isso a lista diz o que cada uma assegura, e a tela
+   avisa antes de registrar — a recusa, quando houver, vem do domínio. #}
+
+{% block title %}Garantias · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Garantias</h1>
+      <p class="text-body-secondary mb-0">O que ainda está garantido, por quanto tempo e por quem.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#nova-garantia">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Nova garantia
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if garantias %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Garantias deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Garantia</th>
+              <th scope="col">Vigência</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for garantia in garantias %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ garantia.descricao }}</span>
+                  <div class="text-body-secondary small">{{ garantia.fornecedor }}</div>
+                  <div class="text-body-secondary small">Cobre {{ garantia.cobre }}</div>
+                </td>
+                <td>{{ garantia.vigencia }}</td>
+                <td><span class="badge bg-label-{{ garantia.tom }}">{{ garantia.texto }}</span></td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ garantia.pk }}"
+                      data-acao
+                      title="Editar"
+                      aria-label="Editar {{ garantia.descricao }}">
+                      <i class="bx bx-edit" aria-hidden="true"></i>
+                    </a>
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'governanca:alternar_garantia' garantia.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if garantia.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if garantia.ativo %}Desativar{% else %}Ativar{% endif %} {{ garantia.descricao }}">
+                        <i class="bx {% if garantia.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for garantia in garantias %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ garantia.descricao }}</span>
+              <span class="badge bg-label-{{ garantia.tom }} flex-shrink-0">{{ garantia.texto }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">{{ garantia.fornecedor }}</div>
+            <div class="text-body-secondary small mt-1">{{ garantia.vigencia }}</div>
+            <div class="text-body-secondary small mt-1">Cobre {{ garantia.cobre }}</div>
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ garantia.pk }}">
+                  <i class="bx bx-edit me-1" aria-hidden="true"></i> Editar
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'governanca:alternar_garantia' garantia.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if garantia.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-shield-quarter" state_title="Nenhuma garantia registrada" state_message="Garantias de equipamentos, serviços e itens de compra aparecem aqui quando forem registradas." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="nova-garantia"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="nova-garantia-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'governanca:criar_garantia' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="nova-garantia-titulo">Nova garantia</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.descricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.fornecedor %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.numero_referencia %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.data_inicio %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.data_fim %}
+
+              <p class="text-body-secondary small mb-3">
+                Uma garantia em uso precisa cobrir pelo menos um equipamento, uma
+                manutenção ou um item de compra.
+              </p>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.equipamentos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.manutencoes %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.itens_de_compra %}
+
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-garantia-nova"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-garantia-nova">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-garantia-nova">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.antecedencia_alerta_dias %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_garantia.observacao %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if item_edicao %}
+      <div
+        class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+        id="editar-garantia"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="editar-garantia-titulo"
+        aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+          <div class="modal-content">
+            <form
+              method="post"
+              action="{% url 'governanca:editar_garantia' item_edicao.pk %}"
+              novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="editar-garantia-titulo">Editar garantia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.fornecedor %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.numero_referencia %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_inicio %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_fim %}
+
+                <p class="text-body-secondary small mb-3">
+                  Uma garantia em uso precisa cobrir pelo menos um equipamento, uma
+                  manutenção ou um item de compra.
+                </p>
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.equipamentos %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.manutencoes %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.itens_de_compra %}
+
+                <a
+                  class="small text-decoration-none d-inline-block"
+                  data-bs-toggle="collapse"
+                  href="#mais-detalhes-garantia-edicao"
+                  role="button"
+                  aria-expanded="false"
+                  aria-controls="mais-detalhes-garantia-edicao">
+                  Mais detalhes
+                </a>
+                <div class="collapse mt-3" id="mais-detalhes-garantia-edicao">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.antecedencia_alerta_dias %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.observacao %}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

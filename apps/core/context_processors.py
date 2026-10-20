@@ -15,6 +15,7 @@ from apps.balancos.permissoes import pode_importar_em_algum_condominio
 from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
 from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
+from apps.governanca.permissoes import pode_ver_governanca_em_algum
 from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
 from apps.rotinas.permissoes import pode_ver_alguma_rotina
 
@@ -75,6 +76,21 @@ NAVIGATION = [
             {"label": "Áreas e locais", "view_name": "cadastros:locais"},
             {"label": "Equipamentos", "view_name": "cadastros:equipamentos"},
             {"label": "Fornecedores", "view_name": "cadastros:fornecedores"},
+            {
+                "label": "Contratos",
+                "view_name": "governanca:contratos",
+                "visivel_para": pode_ver_governanca_em_algum,
+            },
+            {
+                "label": "Garantias",
+                "view_name": "governanca:garantias",
+                "visivel_para": pode_ver_governanca_em_algum,
+            },
+            {
+                "label": "Documentos",
+                "view_name": "governanca:documentos",
+                "visivel_para": pode_ver_governanca_em_algum,
+            },
         ],
     },
     {

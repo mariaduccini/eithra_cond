@@ -25,11 +25,29 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from apps.condominios import services as servicos_de_acesso
 from apps.condominios.models import AcessoUsuarioCondominio
 
 from . import services
-from .forms import CondominioForm, EquipamentoForm, FornecedorForm, LocalForm
-from .models import Equipamento, Fornecedor, LocalOperacional
+from .forms import (
+    AdicionarAcessoForm,
+    CondominioForm,
+    EquipamentoForm,
+    EspecialidadeFornecedorForm,
+    FornecedorForm,
+    LocalForm,
+    PapelForm,
+    TipoEquipamentoForm,
+    TipoLocalOperacionalForm,
+)
+from .models import (
+    Equipamento,
+    EspecialidadeFornecedor,
+    Fornecedor,
+    LocalOperacional,
+    TipoEquipamento,
+    TipoLocalOperacional,
+)
 from .permissoes import (
     condominios_para_gerenciar,
     condominios_para_ver,
@@ -82,24 +100,150 @@ def _render_condominio(request, base, pode_gerenciar, *, formulario=None, status
 
 
 # -- Usuários e acessos ---------------------------------------------------------
+#
+# Dar acesso é uma decisão sobre pessoas, e não um cadastro qualquer. A tela
+# mostra quem tem vínculo com o condomínio e permite acrescentar, mudar o papel,
+# ativar e desativar. Nada disso apaga: o vínculo é desativado, e o histórico de
+# quem mudou o quê fica registrado. Quem responde pelo condomínio decide; a
+# supervisão consulta. A regra — inclusive a do último administrador — vive no
+# domínio de condomínios, não na tela.
 
 
 @login_required
 def acessos(request):
-    """Quem tem acesso a este condomínio e com qual papel.
+    """Quem tem acesso a este condomínio e com qual papel."""
+    return _render_acessos(request)
 
-    Nesta fase a tela é de leitura: o Eithra mostra o vínculo como ele está. Dar
-    ou tirar acesso é uma decisão sobre pessoas, e será tratada com o cuidado
-    que ela pede — não como um formulário solto de cadastro.
-    """
-    base = _base_da_pagina(request)
-    vinculos = (
-        AcessoUsuarioCondominio.objects.filter(condominio=base["condominio_atual"])
-        .select_related("usuario")
-        .order_by("usuario__full_name")[:LIMITE_DA_LISTA]
+
+@login_required
+@require_POST
+def adicionar_acesso(request):
+    """Dá acesso a uma pessoa neste condomínio, com o papel escolhido."""
+    atual = _condominio_para_gestao(request)
+    formulario = AdicionarAcessoForm(request.POST)
+    if not formulario.is_valid():
+        return _render_acessos(
+            request, formulario_acesso=formulario, modal="adicionar", status=400
+        )
+
+    try:
+        servicos_de_acesso.adicionar_acesso(
+            condominio=atual,
+            email=formulario.cleaned_data["email"],
+            nome_completo=formulario.cleaned_data["nome_completo"],
+            papel=formulario.cleaned_data["papel"],
+            executor=request.user,
+        )
+    except servicos_de_acesso.ErroDeAcesso as erro:
+        messages.error(request, str(erro))
+        return _render_acessos(
+            request, formulario_acesso=formulario, modal="adicionar", status=400
+        )
+
+    messages.success(request, "Acesso concedido.")
+    return redirect(_destino("cadastros:acessos", atual))
+
+
+@login_required
+@require_POST
+def alterar_papel_acesso(request, pk):
+    """Muda o papel de uma pessoa neste condomínio."""
+    atual = _condominio_para_gestao(request)
+    vinculo = _obter_ou_404(
+        AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
     )
-    contexto = {**base, "acessos": [_acesso_para_tela(item) for item in vinculos]}
-    return render(request, "pages/cadastros/acessos.html", contexto)
+    formulario = PapelForm(request.POST)
+    if not formulario.is_valid():
+        return _render_acessos(
+            request,
+            formulario_papel=formulario,
+            item_edicao=vinculo,
+            modal="papel",
+            status=400,
+        )
+
+    try:
+        servicos_de_acesso.alterar_papel(
+            acesso=vinculo, papel=formulario.cleaned_data["papel"], executor=request.user
+        )
+    except servicos_de_acesso.ErroDeAcesso as erro:
+        messages.error(request, str(erro))
+        return _render_acessos(
+            request,
+            formulario_papel=formulario,
+            item_edicao=vinculo,
+            modal="papel",
+            status=400,
+        )
+
+    messages.success(request, "Papel atualizado.")
+    return redirect(_destino("cadastros:acessos", atual))
+
+
+@login_required
+@require_POST
+def alternar_acesso(request, pk):
+    """Retira ou devolve o acesso de uma pessoa, sem apagar o vínculo."""
+    atual = _condominio_para_gestao(request)
+    vinculo = _obter_ou_404(
+        AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
+    )
+    novo = not vinculo.ativo
+    try:
+        servicos_de_acesso.definir_ativo_acesso(
+            acesso=vinculo, ativo=novo, executor=request.user
+        )
+    except servicos_de_acesso.ErroDeAcesso as erro:
+        messages.error(request, str(erro))
+        return redirect(_destino("cadastros:acessos", atual))
+
+    if novo:
+        messages.success(request, "Acesso reativado.")
+    else:
+        messages.success(request, "Acesso retirado.")
+    return redirect(_destino("cadastros:acessos", atual))
+
+
+def _render_acessos(
+    request,
+    *,
+    formulario_acesso=None,
+    formulario_papel=None,
+    item_edicao=None,
+    modal=None,
+    status=200,
+):
+    """Monta a lista de acessos com o formulário que a tela pediu."""
+    base = _base_da_pagina(request)
+    atual = base["condominio_atual"]
+    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+
+    if item_edicao is None and pode_gerenciar:
+        item_edicao = _item_em_edicao(
+            request, AcessoUsuarioCondominio, base["condominios"]
+        )
+    if item_edicao is None:
+        if modal == "papel":
+            modal = None
+    elif modal is None:
+        modal = "papel"
+
+    vinculos = (
+        AcessoUsuarioCondominio.objects.filter(condominio=atual)
+        .select_related("usuario")
+        .order_by("usuario__full_name", "usuario__email")[:LIMITE_DA_LISTA]
+    )
+    contexto = {
+        **base,
+        "pode_gerenciar": pode_gerenciar,
+        "acessos": [_acesso_para_tela(item) for item in vinculos],
+        "formulario_acesso": formulario_acesso or AdicionarAcessoForm(),
+        "formulario_papel": formulario_papel
+        or (PapelForm(initial={"papel": item_edicao.papel}) if item_edicao else None),
+        "item_edicao": item_edicao,
+        "modal_aberto": modal,
+    }
+    return render(request, "pages/cadastros/acessos.html", contexto, status=status)
 
 
 # -- Áreas e locais -------------------------------------------------------------
@@ -116,7 +260,7 @@ def locais(request):
 def criar_local(request):
     """Registra um local novo. Só quem responde pelo condomínio cadastra."""
     atual = _condominio_para_gestao(request)
-    formulario = LocalForm(request.POST)
+    formulario = LocalForm(request.POST, condominio=atual)
     if not formulario.is_valid():
         return _render_locais(
             request, formulario_criacao=formulario, modal="criar", status=400
@@ -135,7 +279,7 @@ def editar_local(request, pk):
     """Corrige o cadastro de um local do condomínio em vista."""
     atual = _condominio_para_gestao(request)
     local = _obter_ou_404(LocalOperacional.objects.filter(condominio=atual), pk)
-    formulario = LocalForm(request.POST, instance=local)
+    formulario = LocalForm(request.POST, instance=local, condominio=atual)
     if not formulario.is_valid():
         return _render_locais(
             request,
@@ -185,13 +329,139 @@ def _render_locais(
         **base,
         "pode_gerenciar": pode_gerenciar,
         "locais": _locais_para_tela(atual),
-        "formulario_local": formulario_criacao or LocalForm(),
+        "formulario_local": formulario_criacao or LocalForm(condominio=atual),
         "formulario_edicao": formulario_edicao
-        or (LocalForm(instance=item_edicao) if item_edicao else None),
+        or (LocalForm(instance=item_edicao, condominio=atual) if item_edicao else None),
         "item_edicao": item_edicao,
         "modal_aberto": modal,
     }
     return render(request, "pages/cadastros/locais.html", contexto, status=status)
+
+
+# -- Tipos de local -------------------------------------------------------------
+#
+# O catálogo abre ao lado de quem o usa: os tipos de local a partir da lista de
+# locais, os de equipamento a partir da lista de equipamentos, as especialidades
+# a partir dos fornecedores. Não é item de menu, e a razão é simples — o tipo
+# não tem vida própria; ele serve para nomear o que se cadastra.
+
+
+@login_required
+def tipos_de_local(request):
+    """As classificações com que este condomínio nomeia os seus lugares."""
+    return _render_tipos_de_local(request)
+
+
+@login_required
+@require_POST
+def criar_tipo_local(request):
+    """Registra um tipo de local novo. O catálogo é de quem responde pelo condomínio."""
+    atual = _condominio_para_gestao(request)
+    formulario = TipoLocalOperacionalForm(request.POST, condominio=atual)
+    if not formulario.is_valid():
+        return _render_tipos_de_local(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    try:
+        services.criar_tipo_local(
+            condominio=atual, criado_por=request.user, dados=formulario.cleaned_data
+        )
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_tipos_de_local(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    messages.success(request, "Tipo de local cadastrado.")
+    return redirect(_destino("cadastros:tipos_de_local", atual))
+
+
+@login_required
+@require_POST
+def editar_tipo_local(request, pk):
+    """Corrige o nome e a descrição de um tipo de local."""
+    atual = _condominio_para_gestao(request)
+    tipo = _obter_ou_404(TipoLocalOperacional.objects.filter(condominio=atual), pk)
+    formulario = TipoLocalOperacionalForm(request.POST, instance=tipo, condominio=atual)
+    if not formulario.is_valid():
+        return _render_tipos_de_local(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=tipo,
+            modal="editar",
+            status=400,
+        )
+
+    try:
+        services.editar_tipo_local(tipo=tipo, dados=formulario.cleaned_data)
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_tipos_de_local(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=tipo,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Tipo de local atualizado.")
+    return redirect(_destino("cadastros:tipos_de_local", atual))
+
+
+@login_required
+@require_POST
+def alternar_tipo_local(request, pk):
+    """Tira um tipo de circulação, ou o devolve, sem apagar o que já o usa."""
+    atual = _condominio_para_gestao(request)
+    tipo = _obter_ou_404(TipoLocalOperacional.objects.filter(condominio=atual), pk)
+    return _alternar(
+        request, tipo, destino="cadastros:tipos_de_local", nome="Tipo de local"
+    )
+
+
+def _render_tipos_de_local(
+    request,
+    *,
+    formulario_criacao=None,
+    formulario_edicao=None,
+    item_edicao=None,
+    modal=None,
+    status=200,
+):
+    """Monta a lista de tipos de local com o formulário que a tela pediu."""
+    base = _base_da_pagina(request)
+    atual = base["condominio_atual"]
+    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+
+    if item_edicao is None and pode_gerenciar:
+        item_edicao = _item_em_edicao(
+            request, TipoLocalOperacional, base["condominios"]
+        )
+    if item_edicao is None:
+        if modal == "editar":
+            modal = None
+    elif modal is None:
+        modal = "editar"
+
+    contexto = {
+        **base,
+        "pode_gerenciar": pode_gerenciar,
+        "tipos": _tipos_para_tela(TipoLocalOperacional.objects.filter(condominio=atual)),
+        "formulario_tipo": formulario_criacao
+        or TipoLocalOperacionalForm(condominio=atual),
+        "formulario_edicao": formulario_edicao
+        or (
+            TipoLocalOperacionalForm(instance=item_edicao, condominio=atual)
+            if item_edicao
+            else None
+        ),
+        "item_edicao": item_edicao,
+        "modal_aberto": modal,
+    }
+    return render(
+        request, "pages/cadastros/tipos_de_local.html", contexto, status=status
+    )
 
 
 # -- Equipamentos ---------------------------------------------------------------
@@ -295,6 +565,124 @@ def _render_equipamentos(
     return render(request, "pages/cadastros/equipamentos.html", contexto, status=status)
 
 
+# -- Tipos de equipamento -------------------------------------------------------
+
+
+@login_required
+def tipos_de_equipamento(request):
+    """As classificações com que este condomínio nomeia o que mantém."""
+    return _render_tipos_de_equipamento(request)
+
+
+@login_required
+@require_POST
+def criar_tipo_equipamento(request):
+    """Registra um tipo de equipamento novo no condomínio."""
+    atual = _condominio_para_gestao(request)
+    formulario = TipoEquipamentoForm(request.POST, condominio=atual)
+    if not formulario.is_valid():
+        return _render_tipos_de_equipamento(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    try:
+        services.criar_tipo_equipamento(
+            condominio=atual, criado_por=request.user, dados=formulario.cleaned_data
+        )
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_tipos_de_equipamento(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    messages.success(request, "Tipo de equipamento cadastrado.")
+    return redirect(_destino("cadastros:tipos_de_equipamento", atual))
+
+
+@login_required
+@require_POST
+def editar_tipo_equipamento(request, pk):
+    """Corrige o nome e a descrição de um tipo de equipamento."""
+    atual = _condominio_para_gestao(request)
+    tipo = _obter_ou_404(TipoEquipamento.objects.filter(condominio=atual), pk)
+    formulario = TipoEquipamentoForm(request.POST, instance=tipo, condominio=atual)
+    if not formulario.is_valid():
+        return _render_tipos_de_equipamento(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=tipo,
+            modal="editar",
+            status=400,
+        )
+
+    try:
+        services.editar_tipo_equipamento(tipo=tipo, dados=formulario.cleaned_data)
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_tipos_de_equipamento(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=tipo,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Tipo de equipamento atualizado.")
+    return redirect(_destino("cadastros:tipos_de_equipamento", atual))
+
+
+@login_required
+@require_POST
+def alternar_tipo_equipamento(request, pk):
+    """Tira um tipo de circulação, ou o devolve, sem apagar o que já o usa."""
+    atual = _condominio_para_gestao(request)
+    tipo = _obter_ou_404(TipoEquipamento.objects.filter(condominio=atual), pk)
+    return _alternar(
+        request, tipo, destino="cadastros:tipos_de_equipamento", nome="Tipo de equipamento"
+    )
+
+
+def _render_tipos_de_equipamento(
+    request,
+    *,
+    formulario_criacao=None,
+    formulario_edicao=None,
+    item_edicao=None,
+    modal=None,
+    status=200,
+):
+    """Monta a lista de tipos de equipamento com o formulário que a tela pediu."""
+    base = _base_da_pagina(request)
+    atual = base["condominio_atual"]
+    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+
+    if item_edicao is None and pode_gerenciar:
+        item_edicao = _item_em_edicao(request, TipoEquipamento, base["condominios"])
+    if item_edicao is None:
+        if modal == "editar":
+            modal = None
+    elif modal is None:
+        modal = "editar"
+
+    contexto = {
+        **base,
+        "pode_gerenciar": pode_gerenciar,
+        "tipos": _tipos_para_tela(TipoEquipamento.objects.filter(condominio=atual)),
+        "formulario_tipo": formulario_criacao or TipoEquipamentoForm(condominio=atual),
+        "formulario_edicao": formulario_edicao
+        or (
+            TipoEquipamentoForm(instance=item_edicao, condominio=atual)
+            if item_edicao
+            else None
+        ),
+        "item_edicao": item_edicao,
+        "modal_aberto": modal,
+    }
+    return render(
+        request, "pages/cadastros/tipos_de_equipamento.html", contexto, status=status
+    )
+
+
 # -- Fornecedores ---------------------------------------------------------------
 
 
@@ -316,7 +704,10 @@ def criar_fornecedor(request):
         )
 
     services.criar_fornecedor(
-        condominio=atual, criado_por=request.user, dados=formulario.cleaned_data
+        condominio=atual,
+        criado_por=request.user,
+        dados=_campos_do_modelo(Fornecedor, formulario.cleaned_data),
+        especialidades=formulario.cleaned_data.get("especialidades", ()),
     )
     messages.success(request, "Fornecedor cadastrado.")
     return redirect(_destino("cadastros:fornecedores", atual))
@@ -338,7 +729,14 @@ def editar_fornecedor(request, pk):
             status=400,
         )
 
-    services.editar_fornecedor(fornecedor=fornecedor, dados=formulario.cleaned_data)
+    services.editar_fornecedor(
+        fornecedor=fornecedor,
+        dados=_campos_do_modelo(Fornecedor, formulario.cleaned_data),
+        especialidades=formulario.cleaned_data.get("especialidades", ()),
+        # Quem está na tela responde pela liberação aos moradores, se ela
+        # acontecer nesta gravação. A decisão é do domínio; a tela só diz quem.
+        responsavel=request.user,
+    )
     messages.success(request, "Fornecedor atualizado.")
     return redirect(_destino("cadastros:fornecedores", atual))
 
@@ -387,6 +785,137 @@ def _render_fornecedores(
         "modal_aberto": modal,
     }
     return render(request, "pages/cadastros/fornecedores.html", contexto, status=status)
+
+
+# -- Especialidades -------------------------------------------------------------
+
+
+@login_required
+def especialidades(request):
+    """O que os fornecedores deste condomínio sabem fazer."""
+    return _render_especialidades(request)
+
+
+@login_required
+@require_POST
+def criar_especialidade(request):
+    """Registra uma especialidade nova no condomínio."""
+    atual = _condominio_para_gestao(request)
+    formulario = EspecialidadeFornecedorForm(request.POST, condominio=atual)
+    if not formulario.is_valid():
+        return _render_especialidades(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    try:
+        services.criar_especialidade(
+            condominio=atual, criado_por=request.user, dados=formulario.cleaned_data
+        )
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_especialidades(
+            request, formulario_criacao=formulario, modal="criar", status=400
+        )
+
+    messages.success(request, "Especialidade cadastrada.")
+    return redirect(_destino("cadastros:especialidades", atual))
+
+
+@login_required
+@require_POST
+def editar_especialidade(request, pk):
+    """Corrige o nome e a descrição de uma especialidade."""
+    atual = _condominio_para_gestao(request)
+    especialidade = _obter_ou_404(
+        EspecialidadeFornecedor.objects.filter(condominio=atual), pk
+    )
+    formulario = EspecialidadeFornecedorForm(
+        request.POST, instance=especialidade, condominio=atual
+    )
+    if not formulario.is_valid():
+        return _render_especialidades(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=especialidade,
+            modal="editar",
+            status=400,
+        )
+
+    try:
+        services.editar_especialidade(
+            especialidade=especialidade, dados=formulario.cleaned_data
+        )
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_especialidades(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=especialidade,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Especialidade atualizada.")
+    return redirect(_destino("cadastros:especialidades", atual))
+
+
+@login_required
+@require_POST
+def alternar_especialidade(request, pk):
+    """Tira uma especialidade de circulação, ou a devolve, sem apagar o vínculo."""
+    atual = _condominio_para_gestao(request)
+    especialidade = _obter_ou_404(
+        EspecialidadeFornecedor.objects.filter(condominio=atual), pk
+    )
+    return _alternar(
+        request, especialidade, destino="cadastros:especialidades", nome="Especialidade"
+    )
+
+
+def _render_especialidades(
+    request,
+    *,
+    formulario_criacao=None,
+    formulario_edicao=None,
+    item_edicao=None,
+    modal=None,
+    status=200,
+):
+    """Monta a lista de especialidades com o formulário que a tela pediu."""
+    base = _base_da_pagina(request)
+    atual = base["condominio_atual"]
+    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+
+    if item_edicao is None and pode_gerenciar:
+        item_edicao = _item_em_edicao(
+            request, EspecialidadeFornecedor, base["condominios"]
+        )
+    if item_edicao is None:
+        if modal == "editar":
+            modal = None
+    elif modal is None:
+        modal = "editar"
+
+    contexto = {
+        **base,
+        "pode_gerenciar": pode_gerenciar,
+        "tipos": _tipos_para_tela(
+            EspecialidadeFornecedor.objects.filter(condominio=atual)
+        ),
+        "formulario_tipo": formulario_criacao
+        or EspecialidadeFornecedorForm(condominio=atual),
+        "formulario_edicao": formulario_edicao
+        or (
+            EspecialidadeFornecedorForm(instance=item_edicao, condominio=atual)
+            if item_edicao
+            else None
+        ),
+        "item_edicao": item_edicao,
+        "modal_aberto": modal,
+    }
+    return render(
+        request, "pages/cadastros/especialidades.html", contexto, status=status
+    )
 
 
 # -- Autorização e contexto -----------------------------------------------------
@@ -486,6 +1015,17 @@ def _alternar(request, objeto, *, destino, nome):
     return redirect(_destino(destino, objeto.condominio))
 
 
+def _campos_do_modelo(modelo, dados: dict) -> dict:
+    """O que o formulário validou que é campo do modelo.
+
+    O que o formulário devolve a mais — as especialidades de um fornecedor — não
+    é coluna: vira linha de vínculo, e por isso é entregue ao domínio à parte,
+    nunca como atributo do cadastro.
+    """
+    nomes = {campo.name for campo in modelo._meta.fields}
+    return {campo: valor for campo, valor in dados.items() if campo in nomes}
+
+
 # -- Tradução para a tela -------------------------------------------------------
 
 
@@ -493,6 +1033,7 @@ def _acesso_para_tela(vinculo) -> dict:
     """O vínculo como a lista de acessos precisa dele."""
     usuario = vinculo.usuario
     return {
+        "pk": vinculo.pk,
         "nome": usuario.full_name or usuario.email,
         "email": usuario.email,
         "papel": vinculo.get_papel_display(),
@@ -511,16 +1052,38 @@ def _situacao_do_cadastro(ativo: bool) -> dict:
     }
 
 
-def _locais_para_tela(condominio) -> list[dict]:
-    """Os locais do condomínio, como a lista precisa deles."""
-    locais = LocalOperacional.objects.filter(condominio=condominio).order_by("nome")[
-        :LIMITE_DA_LISTA
+def _tipos_para_tela(tipos) -> list[dict]:
+    """Um catálogo de tipos, como as listas de tipo precisam dele."""
+    return [
+        {
+            "pk": tipo.pk,
+            "nome": tipo.nome,
+            "descricao": tipo.descricao,
+            **_situacao_do_cadastro(tipo.ativo),
+        }
+        for tipo in tipos
     ]
+
+
+def _locais_para_tela(condominio) -> list[dict]:
+    """Os locais do condomínio, como a lista precisa deles.
+
+    A leitura prefere a classificação nova. O texto antigo só aparece enquanto
+    o local que veio da fase anterior não tiver sido classificado — nada é
+    convertido no lugar dele.
+    """
+    locais = (
+        LocalOperacional.objects.filter(condominio=condominio)
+        .select_related("tipo_local")
+        .order_by("nome")[:LIMITE_DA_LISTA]
+    )
     return [
         {
             "pk": local.pk,
             "nome": local.nome,
-            "tipo": local.get_tipo_display(),
+            "tipo": (
+                local.tipo_local.nome if local.tipo_local_id else local.get_tipo_display()
+            ),
             "descricao": local.descricao,
             **_situacao_do_cadastro(local.ativo),
         }
@@ -529,17 +1092,25 @@ def _locais_para_tela(condominio) -> list[dict]:
 
 
 def _equipamentos_para_tela(condominio) -> list[dict]:
-    """Os equipamentos do condomínio, como a lista precisa deles."""
+    """Os equipamentos do condomínio, como a lista precisa deles.
+
+    Como no local, a classificação nova vem primeiro e o texto antigo só
+    permanece enquanto o equipamento não for classificado.
+    """
     equipamentos = (
         Equipamento.objects.filter(condominio=condominio)
-        .select_related("local")
+        .select_related("local", "tipo_equipamento")
         .order_by("nome")[:LIMITE_DA_LISTA]
     )
     return [
         {
             "pk": equipamento.pk,
             "nome": equipamento.nome,
-            "tipo": equipamento.tipo_texto,
+            "tipo": (
+                equipamento.tipo_equipamento.nome
+                if equipamento.tipo_equipamento_id
+                else equipamento.tipo_texto
+            ),
             "local": equipamento.local.nome if equipamento.local else "",
             "fabricante": equipamento.fabricante,
             "modelo": equipamento.modelo,
@@ -551,9 +1122,11 @@ def _equipamentos_para_tela(condominio) -> list[dict]:
 
 def _fornecedores_para_tela(condominio) -> list[dict]:
     """Os fornecedores do condomínio, como a lista precisa deles."""
-    fornecedores = Fornecedor.objects.filter(condominio=condominio).order_by(
-        "nome_razao_social"
-    )[:LIMITE_DA_LISTA]
+    fornecedores = (
+        Fornecedor.objects.filter(condominio=condominio)
+        .prefetch_related("especialidades__especialidade")
+        .order_by("nome_razao_social")[:LIMITE_DA_LISTA]
+    )
     return [
         {
             "pk": fornecedor.pk,
@@ -562,6 +1135,12 @@ def _fornecedores_para_tela(condominio) -> list[dict]:
             "documento": fornecedor.documento_formatado,
             "contato": fornecedor.contato,
             "telefone": fornecedor.telefone,
+            "especialidades": ", ".join(
+                vinculo.especialidade.nome for vinculo in fornecedor.especialidades.all()
+            ),
+            # A disponibilização aos moradores é lida do próprio cadastro: não
+            # há situação guardada para ficar desatualizada.
+            "disponivel_para_moradores": fornecedor.disponivel_para_moradores,
             **_situacao_do_cadastro(fornecedor.ativo),
         }
         for fornecedor in fornecedores

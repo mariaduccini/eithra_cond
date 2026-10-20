@@ -15,7 +15,6 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -28,39 +27,12 @@ from apps.balancos.constants import (
     TipoVinculoEvidencia,
 )
 from apps.condominios.models import Condominio
-
-# SHA-256 em hexadecimal minúsculo. Fixar a caixa evita que o mesmo arquivo
-# apareça como dois hashes diferentes na detecção de duplicidade.
-FORMATO_SHA256 = RegexValidator(
-    regex=r"^[0-9a-f]{64}$",
-    message="Informe o hash SHA-256 em hexadecimal minúsculo (64 caracteres).",
-)
+from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
 
 # Tipos de imagem aceitos numa evidência visual. A lista é do domínio e vive
 # aqui porque é o modelo que recusa o que não é imagem — a borda usa a mesma
 # lista, para não existirem duas respostas para a mesma pergunta.
 MIMES_DE_EVIDENCIA = ("image/jpeg", "image/png", "image/webp")
-
-# Campos que guardam a referência do objeto no storage externo privado.
-CAMPOS_DE_REFERENCIA_DE_STORAGE = ("storage_provider", "storage_bucket", "storage_key")
-
-
-def erros_de_referencia_de_storage(instancia) -> dict:
-    """Recusa URL pública ou assinada guardada no lugar da referência.
-
-    O que se persiste é provider, bucket e chave do objeto. URL pública ou
-    assinada é gerada sob demanda e nunca fica gravada: guardá-la seria expor
-    o arquivo, e ela ainda expiraria, deixando o registro inválido.
-    """
-    erros: dict[str, str] = {}
-    for campo in CAMPOS_DE_REFERENCIA_DE_STORAGE:
-        valor = (getattr(instancia, campo) or "").strip().lower()
-        if valor.startswith(("http://", "https://")):
-            erros[campo] = (
-                "Guarde apenas a referência do objeto. URL pública ou "
-                "assinada é gerada sob demanda, nunca persistida."
-            )
-    return erros
 
 
 class BalancoMensal(models.Model):

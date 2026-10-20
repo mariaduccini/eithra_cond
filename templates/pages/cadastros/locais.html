@@ -14,6 +14,9 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
+      <a class="btn btn-label-secondary" href="{% url 'cadastros:tipos_de_local' %}?condominio={{ condominio_atual.pk }}">
+        <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i> Tipos de local
+      </a>
       {% if pode_gerenciar %}
         <button
           type="button"
@@ -140,7 +143,7 @@
             </div>
             <div class="modal-body">
               {% include "pages/cadastros/_campo.html" with campo=formulario_local.nome %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_local.tipo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_local.tipo_local %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_local.descricao %}
             </div>
             <div class="modal-footer">
@@ -177,7 +180,7 @@
               </div>
               <div class="modal-body">
                 {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.nome %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_local %}
                 {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
               </div>
               <div class="modal-footer">

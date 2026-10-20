@@ -1,0 +1,193 @@
+{% extends "layouts/app.html" %}
+
+{# O vocabulário com que o condomínio classifica o que um fornecedor atende. Não
+   é item de menu: a especialidade existe para dizer o que o fornecedor faz, e
+   por isso abre ao lado da lista de fornecedores. Quem responde pelo condomínio
+   mantém o catálogo; a supervisão lê e não reescreve. #}
+
+{% block title %}Especialidades · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Especialidades</h1>
+      <p class="text-body-secondary mb-0">O que um fornecedor deste condomínio pode atender.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <a class="btn btn-label-secondary" href="{% url 'cadastros:fornecedores' %}?condominio={{ condominio_atual.pk }}">
+        <i class="bx bx-chevron-left me-1" aria-hidden="true"></i> Voltar para fornecedores
+      </a>
+      {% if pode_gerenciar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#nova-especialidade">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Nova especialidade
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if tipos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Especialidades deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Especialidade</th>
+              <th scope="col">Situação</th>
+              {% if pode_gerenciar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for tipo in tipos %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ tipo.nome }}</span>
+                  {% if tipo.descricao %}
+                    <div class="text-body-secondary small">{{ tipo.descricao }}</div>
+                  {% endif %}
+                </td>
+                <td><span class="badge bg-label-{{ tipo.tom }}">{{ tipo.texto }}</span></td>
+                {% if pode_gerenciar %}
+                  <td class="text-end text-nowrap">
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ tipo.pk }}"
+                      data-acao
+                      title="Editar"
+                      aria-label="Editar {{ tipo.nome }}">
+                      <i class="bx bx-edit" aria-hidden="true"></i>
+                    </a>
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'cadastros:alternar_especialidade' tipo.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if tipo.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if tipo.ativo %}Desativar{% else %}Ativar{% endif %} {{ tipo.nome }}">
+                        <i class="bx {% if tipo.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for tipo in tipos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ tipo.nome }}</span>
+              <span class="badge bg-label-{{ tipo.tom }} flex-shrink-0">{{ tipo.texto }}</span>
+            </div>
+            {% if tipo.descricao %}
+              <div class="text-body-secondary small mt-1">{{ tipo.descricao }}</div>
+            {% endif %}
+            {% if pode_gerenciar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ tipo.pk }}">
+                  <i class="bx bx-edit me-1" aria-hidden="true"></i> Editar
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'cadastros:alternar_especialidade' tipo.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if tipo.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-wrench" state_title="Nenhuma especialidade" state_message="Elétrica, hidráulica, elevadores e outras especialidades aparecem aqui quando forem criadas." %}
+    {% endif %}
+  </div>
+
+  {% if pode_gerenciar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="nova-especialidade"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="nova-especialidade-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'cadastros:criar_especialidade' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="nova-especialidade-titulo">Nova especialidade</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_tipo.nome %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_tipo.descricao %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if item_edicao %}
+      <div
+        class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+        id="editar-especialidade"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="editar-especialidade-titulo"
+        aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form
+              method="post"
+              action="{% url 'cadastros:editar_especialidade' item_edicao.pk %}"
+              novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="editar-especialidade-titulo">Editar especialidade</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.nome %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

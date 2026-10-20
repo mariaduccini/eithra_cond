@@ -1,8 +1,9 @@
 {% extends "layouts/app.html" %}
 
-{# Nesta fase a tela é de leitura: o Eithra mostra o acesso como ele está. Dar ou
-   tirar acesso é uma decisão sobre pessoas e será tratada com o cuidado que ela
-   pede — não como um formulário solto de cadastro. #}
+{# Quem tem acesso a este condomínio e com qual papel. Dar acesso é uma decisão
+   sobre pessoas: quem responde pelo condomínio acrescenta, muda o papel, ativa e
+   desativa; a supervisão apenas consulta. Nada é apagado — o vínculo desativado
+   permanece, e o histórico de quem mudou o quê fica registrado. #}
 
 {% block title %}Usuários e acessos · Eithra{% endblock %}
 
@@ -14,7 +15,18 @@
         Quem tem acesso a este condomínio e com qual papel.
       </p>
     </div>
-    {% include "pages/cadastros/_seletor_condominio.html" %}
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% if pode_gerenciar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#adicionar-acesso">
+          <i class="bx bx-user-plus me-1" aria-hidden="true"></i> Adicionar acesso
+        </button>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card">
@@ -28,6 +40,7 @@
               <th scope="col">Papel</th>
               <th scope="col">Situação</th>
               <th scope="col">Desde</th>
+              {% if pode_gerenciar %}<th scope="col" class="text-end">Ações</th>{% endif %}
             </tr>
           </thead>
           <tbody>
@@ -40,6 +53,32 @@
                 <td>{{ acesso.papel }}</td>
                 <td><span class="badge bg-label-{{ acesso.tom }}">{{ acesso.situacao }}</span></td>
                 <td>{{ acesso.desde }}</td>
+                {% if pode_gerenciar %}
+                  <td class="text-end text-nowrap">
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ acesso.pk }}"
+                      data-acao
+                      title="Mudar papel"
+                      aria-label="Mudar o papel de {{ acesso.nome }}">
+                      <i class="bx bx-transfer" aria-hidden="true"></i>
+                    </a>
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'cadastros:alternar_acesso' acesso.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if acesso.situacao == 'Ativo' %}Retirar acesso{% else %}Devolver acesso{% endif %}"
+                        aria-label="{% if acesso.situacao == 'Ativo' %}Retirar acesso{% else %}Devolver acesso{% endif %} de {{ acesso.nome }}">
+                        <i class="bx {% if acesso.situacao == 'Ativo' %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
               </tr>
             {% endfor %}
           </tbody>
@@ -55,6 +94,25 @@
             </div>
             <div class="text-body-secondary small">{{ acesso.email }}</div>
             <div class="text-body-secondary small mt-1">{{ acesso.papel }} · desde {{ acesso.desde }}</div>
+            {% if pode_gerenciar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ acesso.pk }}">
+                  <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar papel
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'cadastros:alternar_acesso' acesso.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if acesso.situacao == 'Ativo' %}Retirar acesso{% else %}Devolver acesso{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -64,6 +122,82 @@
   </div>
 
   <p class="text-body-secondary small mt-4 mb-0">
-    O Eithra mostra o acesso como ele está. Dar ou tirar acesso será tratado à parte.
+    Retirar o acesso desativa o vínculo com este condomínio, e nada é apagado: quem
+    teve acesso a quê continua legível. A conta da pessoa em outros condomínios não
+    é afetada.
   </p>
+
+  {% if pode_gerenciar %}
+    <div
+      class="modal fade{% if modal_aberto == 'adicionar' %} show{% endif %}"
+      id="adicionar-acesso"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="adicionar-acesso-titulo"
+      aria-hidden="{% if modal_aberto == 'adicionar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'adicionar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'cadastros:adicionar_acesso' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="adicionar-acesso-titulo">Adicionar acesso</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.email %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.nome_completo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.papel %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Adicionar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if item_edicao %}
+      <div
+        class="modal fade{% if modal_aberto == 'papel' %} show{% endif %}"
+        id="editar-papel"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="editar-papel-titulo"
+        aria-hidden="{% if modal_aberto == 'papel' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'papel' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <form
+              method="post"
+              action="{% url 'cadastros:alterar_papel_acesso' item_edicao.pk %}"
+              novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="editar-papel-titulo">Mudar papel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                <p class="text-body-secondary small mb-6">
+                  {{ item_edicao.usuario.full_name|default:item_edicao.usuario.email }}
+                </p>
+                {% include "pages/cadastros/_campo.html" with campo=formulario_papel.papel %}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
 {% endblock %}

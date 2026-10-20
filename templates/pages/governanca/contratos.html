@@ -1,0 +1,271 @@
+{% extends "layouts/app.html" %}
+
+{# Os contratos deste condomínio. A lista não guarda situação: vencido,
+   vencendo e em vigor são lidos do prazo na hora, e por isso ela nunca
+   mostra um estado atrasado. Quem decide sobre a renovação aparece marcado. #}
+
+{% block title %}Contratos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Contratos</h1>
+      <p class="text-body-secondary mb-0">O que este condomínio contratou, por quanto tempo e com quem.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      <a class="btn btn-label-secondary" href="{% url 'governanca:tipos_de_contrato' %}?condominio={{ condominio_atual.pk }}">
+        <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i> Tipos de contrato
+      </a>
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#novo-contrato">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo contrato
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if contratos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Contratos deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Contrato</th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Vigência</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for contrato in contratos %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ contrato.objeto }}</span>
+                  <div class="text-body-secondary small">{{ contrato.fornecedor }}</div>
+                  {% if contrato.cobre %}
+                    <div class="text-body-secondary small">Cobre {{ contrato.cobre }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ contrato.tipo }}</td>
+                <td>
+                  <div>{{ contrato.vigencia }}</div>
+                  {% if contrato.valor %}
+                    <div class="text-body-secondary small">{{ contrato.valor }}</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge bg-label-{{ contrato.tom }}">{{ contrato.texto }}</span>
+                  {% if contrato.decisao_proxima %}
+                    <div class="text-warning small mt-1">Hora de decidir sobre a renovação</div>
+                  {% endif %}
+                </td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ contrato.pk }}"
+                      data-acao
+                      title="Editar"
+                      aria-label="Editar {{ contrato.objeto }}">
+                      <i class="bx bx-edit" aria-hidden="true"></i>
+                    </a>
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'governanca:alternar_contrato' contrato.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if contrato.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if contrato.ativo %}Desativar{% else %}Ativar{% endif %} {{ contrato.objeto }}">
+                        <i class="bx {% if contrato.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for contrato in contratos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ contrato.objeto }}</span>
+              <span class="badge bg-label-{{ contrato.tom }} flex-shrink-0">{{ contrato.texto }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">{{ contrato.fornecedor }}</div>
+            <div class="text-body-secondary small mt-1">{{ contrato.vigencia }}</div>
+            {% if contrato.cobre %}
+              <div class="text-body-secondary small mt-1">Cobre {{ contrato.cobre }}</div>
+            {% endif %}
+            {% if contrato.decisao_proxima %}
+              <div class="text-warning small mt-1">Hora de decidir sobre a renovação</div>
+            {% endif %}
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ contrato.pk }}">
+                  <i class="bx bx-edit me-1" aria-hidden="true"></i> Editar
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'governanca:alternar_contrato' contrato.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if contrato.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-file" state_title="Nenhum contrato registrado" state_message="Contratos de manutenção, seguro, locação e outros aparecem aqui quando forem registrados." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="novo-contrato"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="novo-contrato-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'governanca:criar_contrato' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="novo-contrato-titulo">Novo contrato</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.objeto %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.fornecedor %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.tipo_contrato %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.numero_referencia %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.data_inicio %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.data_fim %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.valor %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.periodicidade_cobranca %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.equipamentos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.locais %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.rotinas %}
+
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-contrato-novo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-contrato-novo">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-contrato-novo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.renovacao_automatica %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.antecedencia_alerta_dias %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.prazo_aviso_rescisao_dias %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.data_proximo_reajuste %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.indice_reajuste_texto %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.responsavel_interno %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.descricao %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_contrato.observacao %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if item_edicao %}
+      <div
+        class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+        id="editar-contrato"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="editar-contrato-titulo"
+        aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+          <div class="modal-content">
+            <form
+              method="post"
+              action="{% url 'governanca:editar_contrato' item_edicao.pk %}"
+              novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="editar-contrato-titulo">Editar contrato</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.objeto %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.fornecedor %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_contrato %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.numero_referencia %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_inicio %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_fim %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.valor %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.periodicidade_cobranca %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.equipamentos %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.locais %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.rotinas %}
+
+                <a
+                  class="small text-decoration-none d-inline-block"
+                  data-bs-toggle="collapse"
+                  href="#mais-detalhes-contrato-edicao"
+                  role="button"
+                  aria-expanded="false"
+                  aria-controls="mais-detalhes-contrato-edicao">
+                  Mais detalhes
+                </a>
+                <div class="collapse mt-3" id="mais-detalhes-contrato-edicao">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.renovacao_automatica %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.antecedencia_alerta_dias %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.prazo_aviso_rescisao_dias %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_proximo_reajuste %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.indice_reajuste_texto %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.responsavel_interno %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.observacao %}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

@@ -5,8 +5,9 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
-from apps.condominios.constants import Papel
+from apps.condominios.constants import EventoAcesso, Papel
 
 
 def somente_digitos(valor: str | None) -> str:
@@ -213,3 +214,48 @@ class AcessoUsuarioCondominio(models.Model):
 
     def __str__(self) -> str:
         return f"{self.usuario} · {self.condominio}"
+
+
+class HistoricoAcessoCondominio(models.Model):
+    """O que mudou no acesso de alguém a um condomínio — e quem mudou.
+
+    Linha acrescentada, nunca reescrita: a aplicação não atualiza nem apaga o
+    que já foi registrado. Guarda o retrato do antes e do depois para que a
+    pergunta "quando esta pessoa passou a ser supervisora?" tenha resposta.
+
+    A exclusão é protegida nas duas pontas: apagar o vínculo não pode levar
+    junto, em silêncio, o registro de quem tinha acesso a quê. Na operação
+    normal o vínculo é desativado, nunca excluído.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    acesso = models.ForeignKey(
+        AcessoUsuarioCondominio,
+        on_delete=models.PROTECT,
+        related_name="historico",
+        verbose_name="acesso",
+    )
+    usuario_executor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="eventos_de_acesso",
+        verbose_name="registrado por",
+        help_text="Quem fez a alteração. Nunca é apagado em silêncio.",
+    )
+    evento = models.CharField("evento", max_length=20, choices=EventoAcesso.choices)
+    dados_anteriores = models.JSONField("antes", null=True, blank=True)
+    dados_novos = models.JSONField("depois", null=True, blank=True)
+    data_hora = models.DateTimeField("data e hora", default=timezone.now)
+
+    class Meta:
+        verbose_name = "histórico de acesso"
+        verbose_name_plural = "históricos de acesso"
+        ordering = ["-data_hora"]
+        indexes = [
+            models.Index(
+                fields=["acesso", "data_hora"], name="hist_acesso_data_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_evento_display()} · {self.acesso}"

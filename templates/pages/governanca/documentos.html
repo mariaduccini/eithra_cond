@@ -1,0 +1,245 @@
+{% extends "layouts/app.html" %}
+
+{# Os documentos deste condomínio, com a validade quando ela existe. Um mesmo
+   documento pode valer para um contrato e para um equipamento ao mesmo tempo —
+   por isso ele é guardado uma vez só, e a lista mostra a que ele se liga. #}
+
+{% block title %}Documentos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Documentos</h1>
+      <p class="text-body-secondary mb-0">Atas, laudos, certificados e apólices deste condomínio.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      <a class="btn btn-label-secondary" href="{% url 'governanca:tipos_de_documento' %}?condominio={{ condominio_atual.pk }}">
+        <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i> Tipos de documento
+      </a>
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#novo-documento">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo documento
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if documentos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Documentos deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Documento</th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Relacionado a</th>
+              <th scope="col">Validade</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for documento in documentos %}
+              <tr>
+                <td><span class="fw-medium">{{ documento.titulo }}</span></td>
+                <td>{{ documento.tipo }}</td>
+                <td>{{ documento.relacionado }}</td>
+                <td>{{ documento.validade }}</td>
+                <td><span class="badge bg-label-{{ documento.tom }}">{{ documento.texto }}</span></td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <a
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ documento.pk }}"
+                      data-acao
+                      title="Editar"
+                      aria-label="Editar {{ documento.titulo }}">
+                      <i class="bx bx-edit" aria-hidden="true"></i>
+                    </a>
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'governanca:alternar_documento' documento.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if documento.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if documento.ativo %}Desativar{% else %}Ativar{% endif %} {{ documento.titulo }}">
+                        <i class="bx {% if documento.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for documento in documentos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ documento.titulo }}</span>
+              <span class="badge bg-label-{{ documento.tom }} flex-shrink-0">{{ documento.texto }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">{{ documento.tipo }} · {{ documento.relacionado }}</div>
+            <div class="text-body-secondary small mt-1">Validade: {{ documento.validade }}</div>
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ documento.pk }}">
+                  <i class="bx bx-edit me-1" aria-hidden="true"></i> Editar
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'governanca:alternar_documento' documento.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if documento.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-file-blank" state_title="Nenhum documento registrado" state_message="Documentos do condomínio e o que eles valem aparecem aqui quando forem registrados." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="novo-documento"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="novo-documento-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'governanca:criar_documento' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="novo-documento-titulo">Novo documento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.titulo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.tipo_documento %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.numero_referencia %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_emissao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_validade %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.emissor %}
+
+              <p class="text-body-secondary small mb-3">
+                Um documento pode valer para mais de um contexto. Deixar tudo em
+                branco também vale: uma ata pertence só ao condomínio.
+              </p>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.contratos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.equipamentos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.garantias %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.fornecedores %}
+
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-documento-novo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-documento-novo">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-documento-novo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_documento.observacao %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if item_edicao %}
+      <div
+        class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+        id="editar-documento"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="editar-documento-titulo"
+        aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+          <div class="modal-content">
+            <form
+              method="post"
+              action="{% url 'governanca:editar_documento' item_edicao.pk %}"
+              novalidate>
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+              <div class="modal-header">
+                <h5 class="modal-title" id="editar-documento-titulo">Editar documento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+              </div>
+              <div class="modal-body">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.titulo %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_documento %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.numero_referencia %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_emissao %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_validade %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.emissor %}
+
+                <p class="text-body-secondary small mb-3">
+                  Um documento pode valer para mais de um contexto. Deixar tudo em
+                  branco também vale: uma ata pertence só ao condomínio.
+                </p>
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.contratos %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.equipamentos %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.garantias %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.fornecedores %}
+
+                <a
+                  class="small text-decoration-none d-inline-block"
+                  data-bs-toggle="collapse"
+                  href="#mais-detalhes-documento-edicao"
+                  role="button"
+                  aria-expanded="false"
+                  aria-controls="mais-detalhes-documento-edicao">
+                  Mais detalhes
+                </a>
+                <div class="collapse mt-3" id="mais-detalhes-documento-edicao">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.observacao %}
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                  Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

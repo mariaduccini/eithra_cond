@@ -4,30 +4,74 @@ O Admin não é a experiência do domínio: existe apenas para conferir a estrut
 durante a fundação. Por isso não há ação em massa, e a exclusão é bloqueada —
 um cadastro sai de uso sendo desativado, e não apagado, para que o que aponta
 para ele continue legível.
+
+O tipo antigo do local e do equipamento continua listável e filtrável enquanto
+a base da fase anterior não for classificada: é por ele que se enxerga o que
+ainda falta migrar, sem que a leitura nova dependa dele.
 """
 from django.contrib import admin
 
-from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
+from apps.cadastros.models import (
+    Equipamento,
+    EspecialidadeFornecedor,
+    Fornecedor,
+    FornecedorEspecialidade,
+    LocalOperacional,
+    TipoEquipamento,
+    TipoLocalOperacional,
+)
 
 
-@admin.register(LocalOperacional)
-class LocalOperacionalAdmin(admin.ModelAdmin):
-    list_display = ("nome", "condominio", "tipo", "ativo")
-    list_filter = ("tipo", "ativo", "condominio")
-    search_fields = ("nome", "descricao", "condominio__nome")
-    autocomplete_fields = ("condominio", "criado_por")
+class SemExclusaoAdmin(admin.ModelAdmin):
+    """Base dos cadastros: o registro sai de uso sendo desativado."""
+
     readonly_fields = ("id", "criado_em", "atualizado_em")
-    ordering = ("condominio__nome", "nome")
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        """Desativa-se o local, não se apaga pela tela."""
+        """Desativa-se o cadastro, não se apaga pela tela."""
         return False
 
 
+@admin.register(TipoLocalOperacional)
+class TipoLocalOperacionalAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "condominio", "ativo")
+    list_filter = ("ativo", "condominio")
+    search_fields = ("nome", "descricao", "condominio__nome")
+    autocomplete_fields = ("condominio", "criado_por")
+    ordering = ("condominio__nome", "nome")
+
+
+@admin.register(TipoEquipamento)
+class TipoEquipamentoAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "condominio", "ativo")
+    list_filter = ("ativo", "condominio")
+    search_fields = ("nome", "descricao", "condominio__nome")
+    autocomplete_fields = ("condominio", "criado_por")
+    ordering = ("condominio__nome", "nome")
+
+
+@admin.register(EspecialidadeFornecedor)
+class EspecialidadeFornecedorAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "condominio", "ativo")
+    list_filter = ("ativo", "condominio")
+    search_fields = ("nome", "descricao", "condominio__nome")
+    autocomplete_fields = ("condominio", "criado_por")
+    ordering = ("condominio__nome", "nome")
+
+
+@admin.register(LocalOperacional)
+class LocalOperacionalAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "condominio", "tipo_local", "tipo", "ativo")
+    list_filter = ("tipo_local", "tipo", "ativo", "condominio")
+    search_fields = ("nome", "descricao", "condominio__nome")
+    autocomplete_fields = ("condominio", "tipo_local", "criado_por")
+    ordering = ("condominio__nome", "nome")
+
+
 @admin.register(Equipamento)
-class EquipamentoAdmin(admin.ModelAdmin):
-    list_display = ("nome", "condominio", "local", "tipo_texto", "ativo")
-    list_filter = ("ativo", "condominio", "local")
+class EquipamentoAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "condominio", "local", "tipo_equipamento", "ativo")
+    list_filter = ("tipo_equipamento", "ativo", "condominio", "local")
     search_fields = (
         "nome",
         "tipo_texto",
@@ -37,17 +81,12 @@ class EquipamentoAdmin(admin.ModelAdmin):
         "patrimonio",
         "condominio__nome",
     )
-    autocomplete_fields = ("condominio", "local", "criado_por")
-    readonly_fields = ("id", "criado_em", "atualizado_em")
+    autocomplete_fields = ("condominio", "local", "tipo_equipamento", "criado_por")
     ordering = ("condominio__nome", "nome")
-
-    def has_delete_permission(self, request, obj=None) -> bool:
-        """Desativa-se o equipamento, não se apaga pela tela."""
-        return False
 
 
 @admin.register(Fornecedor)
-class FornecedorAdmin(admin.ModelAdmin):
+class FornecedorAdmin(SemExclusaoAdmin):
     list_display = ("nome_razao_social", "condominio", "tipo_pessoa", "ativo")
     list_filter = ("tipo_pessoa", "ativo", "condominio")
     search_fields = (
@@ -59,9 +98,18 @@ class FornecedorAdmin(admin.ModelAdmin):
         "condominio__nome",
     )
     autocomplete_fields = ("condominio", "criado_por")
-    readonly_fields = ("id", "criado_em", "atualizado_em")
     ordering = ("condominio__nome", "nome_razao_social")
 
+
+@admin.register(FornecedorEspecialidade)
+class FornecedorEspecialidadeAdmin(admin.ModelAdmin):
+    list_display = ("fornecedor", "especialidade")
+    search_fields = (
+        "fornecedor__nome_razao_social",
+        "especialidade__nome",
+    )
+    autocomplete_fields = ("fornecedor", "especialidade")
+
     def has_delete_permission(self, request, obj=None) -> bool:
-        """Desativa-se o fornecedor, não se apaga pela tela."""
+        """O vínculo é ajustado pelo domínio, não apagado pela tela."""
         return False

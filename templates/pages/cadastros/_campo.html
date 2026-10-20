@@ -7,14 +7,32 @@ Uso:
 
 Sem ``classe``, o campo ocupa a linha inteira de um modal. Os erros vêm do
 próprio formulário — não há segunda lista de regras para manter em sincronia.
+
+A marcação de escolha (caixa) inverte a ordem do tema: a caixa vem antes do
+rótulo, e não depois.
 {% endcomment %}
-<div class="{{ classe|default:'mb-6' }}">
-  <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
-  {{ campo }}
-  {% if campo.help_text %}
-    <div class="form-text">{{ campo.help_text }}</div>
-  {% endif %}
-  {% for erro in campo.errors %}
-    <div class="text-danger small mt-1">{{ erro }}</div>
-  {% endfor %}
-</div>
+{% if campo.field.widget.input_type == "checkbox" %}
+  <div class="{{ classe|default:'mb-6' }}">
+    <div class="form-check">
+      {{ campo }}
+      <label class="form-check-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+    </div>
+    {% if campo.help_text %}
+      <div class="form-text">{{ campo.help_text }}</div>
+    {% endif %}
+    {% for erro in campo.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="{{ classe|default:'mb-6' }}">
+    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+    {{ campo }}
+    {% if campo.help_text %}
+      <div class="form-text">{{ campo.help_text }}</div>
+    {% endif %}
+    {% for erro in campo.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+{% endif %}

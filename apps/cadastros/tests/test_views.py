@@ -2,7 +2,14 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
+from apps.cadastros.models import (
+    Equipamento,
+    EspecialidadeFornecedor,
+    Fornecedor,
+    LocalOperacional,
+    TipoEquipamento,
+    TipoLocalOperacional,
+)
 from apps.cadastros.tests.apoio import (
     criar_condominio,
     criar_local,
@@ -11,7 +18,7 @@ from apps.cadastros.tests.apoio import (
     entrar_como,
 )
 from apps.condominios.constants import Papel
-from apps.condominios.models import Condominio
+from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
 
 class AcessoAsTelasTests(TestCase):
@@ -188,21 +195,25 @@ class LocaisTests(TestCase):
         self.assertEqual(nomes, ["Bloco A"])
 
     def test_cadastra_local_guardando_quem_cadastrou(self):
+        tipo = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="Casa de máquinas"
+        )
         resposta = self.client.post(
             reverse("cadastros:criar_local"),
             {
                 "condominio": str(self.condominio.pk),
-                "nome": "Casa de máquinas",
-                "tipo": "casa_de_maquinas",
+                "nome": "Casa de máquinas do bloco A",
+                "tipo_local": str(tipo.pk),
                 "descricao": "Ao lado do elevador social",
             },
         )
         self.assertRedirects(
             resposta, f"{self.url}?condominio={self.condominio.pk}"
         )
-        local = LocalOperacional.objects.get(nome="Casa de máquinas")
+        local = LocalOperacional.objects.get(nome="Casa de máquinas do bloco A")
         self.assertEqual(local.criado_por, self.gestao)
         self.assertEqual(local.condominio, self.condominio)
+        self.assertEqual(local.tipo_local, tipo)
 
     def test_local_sem_nome_volta_com_erro(self):
         resposta = self.client.post(
@@ -214,17 +225,21 @@ class LocaisTests(TestCase):
 
     def test_edita_local_existente(self):
         local = criar_local(self.condominio, nome="Bloco A")
+        tipo = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="Área comum"
+        )
         resposta = self.client.post(
             reverse("cadastros:editar_local", args=[local.pk]),
             {
                 "condominio": str(self.condominio.pk),
                 "nome": "Bloco A - reformado",
-                "tipo": "area_comum",
+                "tipo_local": str(tipo.pk),
             },
         )
         self.assertEqual(resposta.status_code, 302)
         local.refresh_from_db()
         self.assertEqual(local.nome, "Bloco A - reformado")
+        self.assertEqual(local.tipo_local, tipo)
 
     def test_local_de_outro_condominio_e_404_ao_editar(self):
         alheio = criar_local(criar_condominio("Beta"), nome="Bloco do vizinho")
@@ -283,18 +298,22 @@ class EquipamentosTests(TestCase):
 
     def test_cadastra_equipamento_apontando_um_local_do_condominio(self):
         local = criar_local(self.condominio, nome="Casa de máquinas")
+        tipo = TipoEquipamento.objects.create(
+            condominio=self.condominio, nome="Bomba"
+        )
         resposta = self.client.post(
             reverse("cadastros:criar_equipamento"),
             {
                 "condominio": str(self.condominio.pk),
                 "nome": "Bomba de recalque",
-                "tipo_texto": "Bomba",
+                "tipo_equipamento": str(tipo.pk),
                 "local": str(local.pk),
             },
         )
         self.assertRedirects(resposta, f"{self.url}?condominio={self.condominio.pk}")
         equipamento = Equipamento.objects.get(nome="Bomba de recalque")
         self.assertEqual(equipamento.local, local)
+        self.assertEqual(equipamento.tipo_equipamento, tipo)
 
     def test_local_de_outro_condominio_e_recusado(self):
         alheio = criar_local(criar_condominio("Beta"), nome="Bloco do vizinho")
@@ -382,7 +401,7 @@ class MenuTests(TestCase):
         resposta = self.client.get(reverse("core:home"))
         return resposta.context["navigation"]
 
-    def test_grupo_cadastros_traz_os_cinco_cadastros(self):
+    def test_grupo_cadastros_traz_os_oito_cadastros(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         grupo = next(item for item in self._menu() if item["label"] == "Cadastros")
         self.assertEqual(
@@ -393,6 +412,9 @@ class MenuTests(TestCase):
                 "Áreas e locais",
                 "Equipamentos",
                 "Fornecedores",
+                "Contratos",
+                "Garantias",
+                "Documentos",
             ],
         )
 
