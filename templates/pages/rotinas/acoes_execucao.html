@@ -1,0 +1,45 @@
+{# Ações de uma ocorrência na lista. Um ou dois ícones sem borda; três ou mais
+   vão para um menu de três pontos, para a linha não virar uma fileira de
+   botões. Cada ação abre um modal curto — o mesmo para todas as linhas —, e o
+   modal aprende a ocorrência ao abrir, pelo endereço que confirma a decisão.
+   Usa `alvo`, o dicionário da ocorrência montado pela view. #}
+{% if alvo.acoes|length > 2 %}
+  <button
+    type="button"
+    class="btn btn-icon btn-text-secondary rounded-pill"
+    data-bs-toggle="dropdown"
+    aria-expanded="false"
+    title="Mais ações"
+    aria-label="Mais ações para {{ alvo.rotina }}">
+    <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    {% for acao in alvo.acoes %}
+      <li>
+        <button
+          type="button"
+          class="dropdown-item"
+          data-bs-toggle="modal"
+          data-bs-target="#modal-execucao-{{ acao.chave }}"
+          data-execucao-url="{{ acao.url }}"
+          data-execucao-rotina="{{ alvo.rotina }}">
+          <i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  {% for acao in alvo.acoes %}
+    <button
+      type="button"
+      class="btn btn-icon btn-text-secondary rounded-pill"
+      data-bs-toggle="modal"
+      data-bs-target="#modal-execucao-{{ acao.chave }}"
+      data-execucao-url="{{ acao.url }}"
+      data-execucao-rotina="{{ alvo.rotina }}"
+      title="{{ acao.label }}"
+      aria-label="{{ acao.label }}">
+      <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+    </button>
+  {% endfor %}
+{% endif %}

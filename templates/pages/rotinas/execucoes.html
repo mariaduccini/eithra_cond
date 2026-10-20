@@ -1,0 +1,543 @@
+{% extends "layouts/app.html" %}
+
+{# A lista de trabalho das rotinas: o que está atrasado, o que cai hoje e o que
+   vem. Não é o cadastro — é o que depende de alguém agora. Cada ação abre um
+   modal curto, e a decisão só sai por POST. #}
+
+{% block title %}Ocorrências · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      {% if pode_ver_cadastro %}
+        <a
+          href="{% url 'rotinas:listagem' %}"
+          class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+          <i class="bx bx-chevron-left" aria-hidden="true"></i> Rotinas
+        </a>
+      {% endif %}
+      <h1 class="h4 mb-1">Ocorrências</h1>
+      <p class="text-body-secondary mb-0">
+        O que precisa acontecer{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    {% if pode_ver_cadastro %}
+      <a href="{% url 'rotinas:listagem' %}" class="btn btn-label-primary">
+        <i class="bx bx-repeat me-1" aria-hidden="true"></i> Rotinas
+      </a>
+    {% endif %}
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-3">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.recorte.id_for_label }}">
+            {{ filtros.recorte.label }}
+          </label>
+          {{ filtros.recorte }}
+        </div>
+        <div class="col-6 col-lg-3">
+          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
+            {{ filtros.responsavel.label }}
+          </label>
+          {{ filtros.responsavel }}
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'rotinas:execucoes' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if execucoes %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Ocorrências das rotinas</caption>
+          <thead>
+            <tr>
+              <th scope="col">Data prevista</th>
+              <th scope="col">Rotina</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Responsável</th>
+              <th scope="col">Situação</th>
+              <th scope="col">Resultado</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for execucao in execucoes %}
+              <tr>
+                <td class="text-nowrap">
+                  <a
+                    href="{% url 'rotinas:execucao' execucao.pk %}"
+                    class="fw-medium text-decoration-none">{{ execucao.data_prevista }}</a>
+                  {% if execucao.atrasada %}
+                    <span class="badge bg-label-danger ms-1">atrasada</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a
+                    href="{% url 'rotinas:detalhe' execucao.rotina_pk %}"
+                    class="fw-medium text-decoration-none">{{ execucao.rotina }}</a>
+                </td>
+                {% if mostrar_condominio %}<td>{{ execucao.condominio }}</td>{% endif %}
+                <td>{{ execucao.responsavel }}</td>
+                <td>
+                  <span class="badge bg-label-{{ execucao.situacao_tom }}">{{ execucao.situacao }}</span>
+                  {% if execucao.encerrada and execucao.concluida_em %}
+                    <div class="text-body-secondary small mt-1">{{ execucao.concluida_em }}</div>
+                  {% endif %}
+                  {% if execucao.tem_checklist %}
+                    <div class="text-body-secondary small mt-1">
+                      <i class="bx bx-list-check me-1" aria-hidden="true"></i>{{ execucao.checklist_percentual }}% da lista
+                    </div>
+                    {% if execucao.checklist_obrigatorio_pendente %}
+                      <div class="small mt-1">
+                        <span class="badge bg-label-warning">tarefa obrigatória pendente</span>
+                      </div>
+                    {% endif %}
+                  {% endif %}
+                </td>
+                <td>
+                  {% if execucao.resultado %}
+                    {{ execucao.resultado }}
+                  {% else %}
+                    <span class="text-body-secondary">—</span>
+                  {% endif %}
+                  {% if execucao.demanda_gerada %}
+                    <div class="small mt-1">
+                      Demanda
+                      <a href="{% url 'demandas:detalhe' execucao.demanda_gerada_pk %}" class="text-decoration-none">
+                        «{{ execucao.demanda_gerada }}»</a>
+                    </div>
+                  {% endif %}
+                  {% if execucao.manutencao_gerada %}
+                    <div class="small mt-1">
+                      Manutenção
+                      <a href="{% url 'manutencoes:detalhe' execucao.manutencao_gerada_pk %}" class="text-decoration-none">
+                        «{{ execucao.manutencao_gerada }}»</a>
+                    </div>
+                  {% endif %}
+                </td>
+                <td class="text-end text-nowrap">
+                  {% if execucao.acoes %}
+                    <div class="dropdown">
+                      {% include "pages/rotinas/acoes_execucao.html" with alvo=execucao %}
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for execucao in execucoes %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <a
+                href="{% url 'rotinas:detalhe' execucao.rotina_pk %}"
+                class="fw-medium text-decoration-none">{{ execucao.rotina }}</a>
+              <span class="badge bg-label-{{ execucao.situacao_tom }} flex-shrink-0">{{ execucao.situacao }}</span>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+              <a
+                href="{% url 'rotinas:execucao' execucao.pk %}"
+                class="text-body-secondary small text-decoration-none">{{ execucao.data_prevista }}</a>
+              {% if execucao.atrasada %}
+                <span class="badge bg-label-danger">atrasada</span>
+              {% endif %}
+              {% if execucao.tem_checklist %}
+                <span class="text-body-secondary small">
+                  <i class="bx bx-list-check me-1" aria-hidden="true"></i>{{ execucao.checklist_percentual }}% da lista
+                </span>
+              {% endif %}
+            </div>
+            {% if execucao.checklist_obrigatorio_pendente %}
+              <div class="small mt-1">
+                <span class="badge bg-label-warning">tarefa obrigatória pendente</span>
+              </div>
+            {% endif %}
+            {% if execucao.resultado %}
+              <div class="text-body-secondary small mt-2">O que se encontrou: {{ execucao.resultado }}</div>
+            {% endif %}
+            {% if execucao.demanda_gerada %}
+              <div class="small mt-1">
+                Demanda
+                <a href="{% url 'demandas:detalhe' execucao.demanda_gerada_pk %}" class="text-decoration-none">
+                  «{{ execucao.demanda_gerada }}»</a>
+              </div>
+            {% endif %}
+            {% if execucao.manutencao_gerada %}
+              <div class="small mt-1">
+                Manutenção
+                <a href="{% url 'manutencoes:detalhe' execucao.manutencao_gerada_pk %}" class="text-decoration-none">
+                  «{{ execucao.manutencao_gerada }}»</a>
+              </div>
+            {% endif %}
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+              <span class="text-body-secondary small">
+                {{ execucao.responsavel }}{% if mostrar_condominio %} · {{ execucao.condominio }}{% endif %}
+              </span>
+              {% if execucao.acoes %}
+                <div class="dropdown">
+                  {% include "pages/rotinas/acoes_execucao.html" with alvo=execucao %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% if filtros_ativos %}
+        {% include "components/state.html" with state_icon="bx-filter" state_title="Nada neste recorte" state_message="Não há ocorrências para o filtro escolhido." %}
+      {% else %}
+        {% include "components/state.html" with state_icon="bx-list-check" state_title="Nada por fazer" state_message="Quando as rotinas tiverem ocorrências, elas aparecem aqui." %}
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {# Um modal por ação, e não um por linha: ao abrir, o modal aprende a
+     ocorrência — o endereço que confirma a decisão e o nome da rotina. #}
+  {% if 'iniciar' in acoes_disponiveis %}
+    <div
+      class="modal fade"
+      id="modal-execucao-iniciar"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-iniciar-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-iniciar-titulo">Iniciar ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="mb-0">
+                Registrar que <span class="fw-medium" data-ocorrencia-rotina>esta ocorrência</span>
+                começou agora?
+              </p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Iniciar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_conclusao %}
+    <div
+      class="modal fade"
+      id="modal-execucao-concluir"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-concluir-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                <span class="fw-medium" data-ocorrencia-rotina>Esta ocorrência</span> foi feita.
+                Diga o que se encontrou.
+              </p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
+                  {{ formulario_conclusao.resultado.label }}
+                </label>
+                {{ formulario_conclusao.resultado }}
+                {% for erro in formulario_conclusao.resultado.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
+                  {{ formulario_conclusao.observacao.label }}
+                </label>
+                {{ formulario_conclusao.observacao }}
+                {% for erro in formulario_conclusao.observacao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Concluir</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_ignorar %}
+    <div
+      class="modal fade"
+      id="modal-execucao-ignorar"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-ignorar-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-ignorar-titulo">Ignorar ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                <span class="fw-medium" data-ocorrencia-rotina>Esta ocorrência</span> não se aplicava
+                neste período. A rotina segue adiante.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_ignorar.justificativa.id_for_label }}">
+                  {{ formulario_ignorar.justificativa.label }}
+                </label>
+                {{ formulario_ignorar.justificativa }}
+                {% for erro in formulario_ignorar.justificativa.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-label-warning">Ignorar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_cancelar %}
+    <div
+      class="modal fade"
+      id="modal-execucao-cancelar"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-cancelar-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-cancelar-titulo">Cancelar ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                <span class="fw-medium" data-ocorrencia-rotina>Esta ocorrência</span> não vai acontecer.
+                A rotina não é cancelada — só esta data.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_cancelar.justificativa.id_for_label }}">
+                  {{ formulario_cancelar.justificativa.label }}
+                </label>
+                {{ formulario_cancelar.justificativa }}
+                {% for erro in formulario_cancelar.justificativa.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-label-danger">Cancelar ocorrência</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_demanda %}
+    <div
+      class="modal fade"
+      id="modal-execucao-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-demanda-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-demanda-titulo">Abrir demanda</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                O que <span class="fw-medium" data-ocorrencia-rotina>esta ocorrência</span> encontrou
+                vira uma demanda para acompanhar. Revise antes de confirmar.
+              </p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                  {{ formulario_demanda.titulo.label }}
+                </label>
+                {{ formulario_demanda.titulo }}
+                {% for erro in formulario_demanda.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                  {{ formulario_demanda.descricao.label }}
+                </label>
+                {{ formulario_demanda.descricao }}
+                {% for erro in formulario_demanda.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="row g-3">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                    {{ formulario_demanda.prioridade.label }}
+                  </label>
+                  {{ formulario_demanda.prioridade }}
+                  {% for erro in formulario_demanda.prioridade.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                    {{ formulario_demanda.prazo.label }}
+                  </label>
+                  {{ formulario_demanda.prazo }}
+                  {% for erro in formulario_demanda.prazo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Abrir demanda</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_manutencao %}
+    <div
+      class="modal fade"
+      id="modal-execucao-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-manutencao-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-manutencao-titulo">Criar manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                A partir de <span class="fw-medium" data-ocorrencia-rotina>esta ocorrência</span>,
+                cria-se uma manutenção preventiva. Revise antes de confirmar.
+              </p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                  {{ formulario_manutencao.titulo.label }}
+                </label>
+                {{ formulario_manutencao.titulo }}
+                {% for erro in formulario_manutencao.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                  {{ formulario_manutencao.descricao_problema.label }}
+                </label>
+                {{ formulario_manutencao.descricao_problema }}
+                {% for erro in formulario_manutencao.descricao_problema.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                  {{ formulario_manutencao.data_prevista.label }}
+                </label>
+                {{ formulario_manutencao.data_prevista }}
+                {% for erro in formulario_manutencao.data_prevista.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Criar manutenção</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // Cada ação abre um modal curto — o mesmo para todas as linhas. Ao abrir, o
+    // modal aprende a ocorrência: o endereço que confirma a decisão e o nome da
+    // rotina, para a confirmação não depender do que ficou para trás na tela.
+    document.querySelectorAll("[data-execucao-url]").forEach(function (botao) {
+      botao.addEventListener("click", function () {
+        var modal = document.querySelector(botao.getAttribute("data-bs-target"));
+        if (!modal) {
+          return;
+        }
+
+        var rotina = botao.getAttribute("data-execucao-rotina") || "";
+        var formulario = modal.querySelector("form");
+        if (formulario) {
+          formulario.action = botao.getAttribute("data-execucao-url");
+          // Onde a gestão vai escrever, parte-se do nome da rotina.
+          var titulo = formulario.querySelector('[name="titulo"]');
+          if (titulo && !titulo.value) {
+            titulo.value = rotina;
+          }
+        }
+        modal.querySelectorAll("[data-ocorrencia-rotina]").forEach(function (alvo) {
+          alvo.textContent = rotina;
+        });
+      });
+    });
+  </script>
+{% endblock %}

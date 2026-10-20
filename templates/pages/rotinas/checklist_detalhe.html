@@ -1,0 +1,291 @@
+{% extends "layouts/app.html" %}
+
+{# O modelo de checklist por dentro: as tarefas, na ordem em que costumam
+   acontecer, e as rotinas que citam esta lista. As tarefas são ajustadas uma a
+   uma; editar o modelo não toca no que já foi feito nas ocorrências. #}
+
+{% block title %}{{ checklist.nome }} · Modelos de checklist · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'rotinas:checklists' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Modelos de checklist
+      </a>
+      <h1 class="h4 mb-1">{{ checklist.nome }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ checklist.situacao_tom }}">{{ checklist.situacao }}</span>
+        <span class="text-body-secondary small">{{ checklist.condominio }}</span>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% if pode_editar %}
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-checklist"
+          title="Renomear checklist"
+          aria-label="Renomear checklist">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+      {% endif %}
+      {% if pode_administrar %}
+        <form method="post" action="{% url 'rotinas:checklist_alternar' checklist.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-label-secondary">
+            <i class="bx {% if checklist.ativo %}bx-block{% else %}bx-check-circle{% endif %} me-1" aria-hidden="true"></i>
+            {% if checklist.ativo %}Desativar{% else %}Ativar{% endif %}
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not checklist.ativo %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-block mt-1" aria-hidden="true"></i>
+      <div>Este modelo foi retirado das próximas rotinas. Ele deixa de aparecer para novos vínculos, mas as ocorrências que já nasceram continuam guardadas como estavam.</div>
+    </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-7">
+      <div class="card">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Tarefas{% if total_de_itens %} · {{ total_de_itens }}{% endif %}</h2>
+        </div>
+
+        {% if itens %}
+          <ul class="list-group list-group-flush">
+            {% for item in itens %}
+              <li class="list-group-item d-flex align-items-start justify-content-between gap-3">
+                <div class="d-flex align-items-start gap-3">
+                  <span class="badge bg-label-secondary flex-shrink-0">{{ item.ordem }}</span>
+                  <div>
+                    <div class="fw-medium{% if not item.ativo %} text-body-secondary text-decoration-line-through{% endif %}">
+                      {{ item.descricao }}
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                      {% if item.obrigatorio %}
+                        <span class="badge bg-label-primary">Obrigatória</span>
+                      {% else %}
+                        <span class="badge bg-label-secondary">Opcional</span>
+                      {% endif %}
+                      {% if not item.ativo %}
+                        <span class="badge bg-label-secondary">Inativa</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+                {% if item.acoes %}
+                  <div class="dropdown flex-shrink-0">
+                    {% include "pages/rotinas/acoes.html" with alvo=item %}
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            {% include "components/state.html" with state_icon="bx-list-ul" state_title="Nenhuma tarefa ainda" state_message="Acrescente a primeira tarefa para a lista começar a existir." %}
+          </div>
+        {% endif %}
+
+        {% if pode_editar %}
+          <div class="card-footer">
+            <form
+              method="post"
+              action="{% url 'rotinas:checklist_item_criar' checklist.pk %}"
+              class="row g-3 align-items-end">
+              {% csrf_token %}
+              <div class="col-12 col-sm-6">
+                <label class="form-label small" for="{{ formulario_item.descricao.id_for_label }}">
+                  {{ formulario_item.descricao.label }}
+                </label>
+                {{ formulario_item.descricao }}
+              </div>
+              <div class="col-4 col-sm-2">
+                <label class="form-label small" for="{{ formulario_item.ordem.id_for_label }}">
+                  {{ formulario_item.ordem.label }}
+                </label>
+                {{ formulario_item.ordem }}
+              </div>
+              <div class="col-8 col-sm-2">
+                <div class="form-check">
+                  {{ formulario_item.obrigatorio }}
+                  <label class="form-check-label" for="{{ formulario_item.obrigatorio.id_for_label }}">
+                    {{ formulario_item.obrigatorio.label }}
+                  </label>
+                </div>
+              </div>
+              <div class="col-12 col-sm-2">
+                <button type="submit" class="btn btn-label-primary w-100">
+                  <i class="bx bx-plus me-1" aria-hidden="true"></i> Acrescentar
+                </button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Rotinas que usam este checklist</h2>
+        </div>
+        {% if rotinas_que_usam %}
+          <ul class="list-group list-group-flush">
+            {% for rotina in rotinas_que_usam %}
+              <li class="list-group-item d-flex align-items-center justify-content-between gap-2">
+                <a
+                  href="{% url 'rotinas:detalhe' rotina.pk %}"
+                  class="fw-medium text-decoration-none">{{ rotina.titulo }}</a>
+                <span class="badge bg-label-{{ rotina.situacao_tom }} flex-shrink-0">{{ rotina.situacao }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body text-body-secondary small">
+            Nenhuma rotina usa este checklist ainda. Ele fica disponível para ser escolhido ao registrar uma rotina.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="text-body-secondary small mt-3">
+        Criado por {{ checklist.criado_por }}{% if checklist.criado_em %} · {{ checklist.criado_em }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_editar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-checklist"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-checklist-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:checklist_editar' checklist.pk %}" novalidate>
+            {% csrf_token %}
+            {{ formulario_checklist.condominio }}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-checklist-titulo">Renomear checklist</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_checklist.nome.id_for_label }}">
+                  {{ formulario_checklist.nome.label }}
+                </label>
+                {{ formulario_checklist.nome }}
+                {% for erro in formulario_checklist.nome.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_checklist.descricao.id_for_label }}">
+                  {{ formulario_checklist.descricao.label }}
+                </label>
+                {{ formulario_checklist.descricao }}
+                {% for erro in formulario_checklist.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if item_em_edicao %}
+    <div
+      class="modal fade show"
+      id="editar-item"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-item-titulo"
+      aria-hidden="false"
+      style="display: block; background-color: rgba(0, 0, 0, 0.5);">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'rotinas:checklist_item_editar' checklist.pk item_em_edicao.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-item-titulo">Editar tarefa</h5>
+              <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn-close" aria-label="Fechar"></a>
+            </div>
+
+            <div class="modal-body">
+              <div class="mb-6">
+                <label class="form-label" for="id_item_descricao">{{ formulario_item.descricao.label }}</label>
+                <input
+                  type="text"
+                  name="descricao"
+                  id="id_item_descricao"
+                  class="form-control"
+                  maxlength="200"
+                  value="{{ item_em_edicao.descricao }}"
+                  autocomplete="off"
+                  required>
+              </div>
+
+              <div class="row g-3">
+                <div class="col-6">
+                  <label class="form-label" for="id_item_ordem">{{ formulario_item.ordem.label }}</label>
+                  <input
+                    type="number"
+                    name="ordem"
+                    id="id_item_ordem"
+                    class="form-control"
+                    min="0"
+                    value="{{ item_em_edicao.ordem }}">
+                </div>
+                <div class="col-6 d-flex align-items-end">
+                  <div class="form-check">
+                    <input
+                      type="checkbox"
+                      name="obrigatorio"
+                      id="id_item_obrigatorio"
+                      class="form-check-input"
+                      {% if item_em_edicao.obrigatorio %}checked{% endif %}>
+                    <label class="form-check-label" for="id_item_obrigatorio">
+                      {{ formulario_item.obrigatorio.label }}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn btn-label-secondary">
+                Cancelar
+              </a>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

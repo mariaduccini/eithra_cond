@@ -1,0 +1,417 @@
+{% extends "layouts/app.html" %}
+
+{# O cadastro das rotinas: o que precisa voltar a acontecer, com o ritmo e a
+   próxima data. Cada linha leva à rotina; não há botão "visualizar". #}
+
+{% block title %}Rotinas · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Rotinas</h1>
+      <p class="text-body-secondary mb-0">
+        O que precisa voltar a acontecer{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <a href="{% url 'rotinas:execucoes' %}" class="btn btn-label-primary">
+        <i class="bx bx-list-check me-1" aria-hidden="true"></i> Ocorrências
+      </a>
+      <a
+        href="{% url 'rotinas:checklists' %}"
+        class="btn btn-icon btn-text-secondary rounded-pill"
+        title="Modelos de checklist"
+        aria-label="Modelos de checklist">
+        <i class="bx bx-list-ul" aria-hidden="true"></i>
+      </a>
+      {% if pode_criar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#registrar-rotina">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar rotina
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        {% if mostrar_condominio %}
+          <div class="col-6 col-lg-3">
+            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
+              {{ filtros.condominio.label }}
+            </label>
+            {{ filtros.condominio }}
+          </div>
+        {% endif %}
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.situacao.id_for_label }}">
+            {{ filtros.situacao.label }}
+          </label>
+          {{ filtros.situacao }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.tipo.id_for_label }}">
+            {{ filtros.tipo.label }}
+          </label>
+          {{ filtros.tipo }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
+            {{ filtros.responsavel.label }}
+          </label>
+          {{ filtros.responsavel }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.local.id_for_label }}">
+            {{ filtros.local.label }}
+          </label>
+          {{ filtros.local }}
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small" for="{{ filtros.equipamento.id_for_label }}">
+            {{ filtros.equipamento.label }}
+          </label>
+          {{ filtros.equipamento }}
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
+            {{ filtros.busca.label }}
+          </label>
+          {{ filtros.busca }}
+        </div>
+        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
+          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
+          <a href="{% url 'rotinas:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if rotinas %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Rotinas em acompanhamento</caption>
+          <thead>
+            <tr>
+              <th scope="col">Rotina</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Responsável</th>
+              <th scope="col">Próxima</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rotina in rotinas %}
+              <tr
+                data-href="{% url 'rotinas:detalhe' rotina.pk %}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'rotinas:detalhe' rotina.pk %}"
+                    class="fw-medium text-decoration-none">{{ rotina.titulo }}</a>
+                  <div class="text-body-secondary small">
+                    {{ rotina.tipo }} · {{ rotina.periodicidade }}{% if rotina.local %} · {{ rotina.local }}{% endif %}
+                  </div>
+                </td>
+                {% if mostrar_condominio %}<td>{{ rotina.condominio }}</td>{% endif %}
+                <td>{{ rotina.responsavel }}</td>
+                <td>{{ rotina.proxima }}</td>
+                <td>
+                  <span class="badge bg-label-{{ rotina.situacao_tom }}">{{ rotina.situacao }}</span>
+                </td>
+                <td class="text-end text-nowrap">
+                  {% if rotina.acoes %}
+                    <div class="dropdown">
+                      {% include "pages/rotinas/acoes.html" with alvo=rotina %}
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for rotina in rotinas %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <a
+                href="{% url 'rotinas:detalhe' rotina.pk %}"
+                class="fw-medium text-decoration-none">{{ rotina.titulo }}</a>
+              <span class="badge bg-label-{{ rotina.situacao_tom }} flex-shrink-0">{{ rotina.situacao }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {{ rotina.tipo }} · {{ rotina.periodicidade }}{% if rotina.local %} · {{ rotina.local }}{% endif %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+              <span class="text-body-secondary small">
+                Próxima: {{ rotina.proxima }}{% if mostrar_condominio %} · {{ rotina.condominio }}{% endif %}
+              </span>
+              {% if rotina.acoes %}
+                <div class="dropdown">
+                  {% include "pages/rotinas/acoes.html" with alvo=rotina %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-repeat" state_title="Nenhuma rotina em vista" state_message="Quando algo precisar voltar a acontecer, registre a rotina aqui." %}
+    {% endif %}
+  </div>
+
+  {% if pode_criar and formulario_rotina %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-rotina"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-rotina-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:criar' %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="registrar-rotina-titulo">Registrar rotina</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if formulario_rotina.condominio.is_hidden %}
+                {{ formulario_rotina.condominio }}
+              {% else %}
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_rotina.condominio.id_for_label }}">
+                    {{ formulario_rotina.condominio.label }}
+                  </label>
+                  {{ formulario_rotina.condominio }}
+                  {% for erro in formulario_rotina.condominio.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_rotina.titulo.id_for_label }}">
+                  {{ formulario_rotina.titulo.label }}
+                </label>
+                {{ formulario_rotina.titulo }}
+                {% for erro in formulario_rotina.titulo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_rotina.data_inicio.id_for_label }}">
+                  {{ formulario_rotina.data_inicio.label }}
+                </label>
+                {{ formulario_rotina.data_inicio }}
+                {% for erro in formulario_rotina.data_inicio.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_rotina.periodicidade_tipo.id_for_label }}">
+                    {{ formulario_rotina.periodicidade_tipo.label }}
+                  </label>
+                  {{ formulario_rotina.periodicidade_tipo }}
+                  {% for erro in formulario_rotina.periodicidade_tipo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_rotina.intervalo.id_for_label }}">
+                    {{ formulario_rotina.intervalo.label }}
+                  </label>
+                  {{ formulario_rotina.intervalo }}
+                  {% for erro in formulario_rotina.intervalo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <a
+                class="small text-decoration-none d-inline-block mt-2"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-rotina"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-rotina">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-rotina">
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_rotina.descricao.id_for_label }}">
+                    {{ formulario_rotina.descricao.label }}
+                  </label>
+                  {{ formulario_rotina.descricao }}
+                  {% for erro in formulario_rotina.descricao.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-6">
+                    <label class="form-label" for="{{ formulario_rotina.tipo.id_for_label }}">
+                      {{ formulario_rotina.tipo.label }}
+                    </label>
+                    {{ formulario_rotina.tipo }}
+                    {% for erro in formulario_rotina.tipo.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="{{ formulario_rotina.prioridade.id_for_label }}">
+                      {{ formulario_rotina.prioridade.label }}
+                    </label>
+                    {{ formulario_rotina.prioridade }}
+                    {% for erro in formulario_rotina.prioridade.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-4">
+                    <label class="form-label" for="{{ formulario_rotina.dia_semana.id_for_label }}">
+                      {{ formulario_rotina.dia_semana.label }}
+                    </label>
+                    {{ formulario_rotina.dia_semana }}
+                    {% for erro in formulario_rotina.dia_semana.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-6 col-sm-4">
+                    <label class="form-label" for="{{ formulario_rotina.dia_mes.id_for_label }}">
+                      {{ formulario_rotina.dia_mes.label }}
+                    </label>
+                    {{ formulario_rotina.dia_mes }}
+                    {% for erro in formulario_rotina.dia_mes.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-6 col-sm-4">
+                    <label class="form-label" for="{{ formulario_rotina.mes_ano.id_for_label }}">
+                      {{ formulario_rotina.mes_ano.label }}
+                    </label>
+                    {{ formulario_rotina.mes_ano }}
+                    {% for erro in formulario_rotina.mes_ano.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_rotina.responsavel.id_for_label }}">
+                    {{ formulario_rotina.responsavel.label }}
+                  </label>
+                  {{ formulario_rotina.responsavel }}
+                  {% for erro in formulario_rotina.responsavel.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_rotina.local.id_for_label }}">
+                      {{ formulario_rotina.local.label }}
+                    </label>
+                    {{ formulario_rotina.local }}
+                    {% for erro in formulario_rotina.local.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_rotina.equipamento.id_for_label }}">
+                      {{ formulario_rotina.equipamento.label }}
+                    </label>
+                    {{ formulario_rotina.equipamento }}
+                    {% for erro in formulario_rotina.equipamento.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="row g-3 mb-6">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_rotina.fornecedor.id_for_label }}">
+                      {{ formulario_rotina.fornecedor.label }}
+                    </label>
+                    {{ formulario_rotina.fornecedor }}
+                    {% for erro in formulario_rotina.fornecedor.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label" for="{{ formulario_rotina.data_fim.id_for_label }}">
+                      {{ formulario_rotina.data_fim.label }}
+                    </label>
+                    {{ formulario_rotina.data_fim }}
+                    {% for erro in formulario_rotina.data_fim.errors %}
+                      <div class="text-danger small mt-1">{{ erro }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="mb-6">
+                  <label class="form-label" for="{{ formulario_rotina.checklist_modelo.id_for_label }}">
+                    {{ formulario_rotina.checklist_modelo.label }}
+                  </label>
+                  {{ formulario_rotina.checklist_modelo }}
+                  {% for erro in formulario_rotina.checklist_modelo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                  <div class="form-text">
+                    A lista é copiada para cada ocorrência nova. Mudar depois não altera o que já foi feito.
+                  </div>
+                </div>
+
+                <div class="form-check">
+                  {{ formulario_rotina.gera_manutencao }}
+                  <label class="form-check-label" for="{{ formulario_rotina.gera_manutencao.id_for_label }}">
+                    {{ formulario_rotina.gera_manutencao.label }}
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a rotina. A navegação por teclado continua pelo link
+    // do título, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

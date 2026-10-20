@@ -16,6 +16,7 @@ from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
 from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
 from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
+from apps.rotinas.permissoes import pode_ver_alguma_rotina
 
 NAVIGATION = [
     {"label": "Painel", "view_name": "core:home", "icon": "bx-home-smile"},
@@ -34,6 +35,16 @@ NAVIGATION = [
         # Módulo de quem executa e acompanha o serviço: quem vê a manutenção em
         # algum condomínio enxerga o item. O menu não autoriza — a view decide.
         "visivel_para": pode_ver_alguma_manutencao,
+    },
+    {
+        "label": "Rotinas",
+        "view_name": "rotinas:listagem",
+        "icon": "bx-repeat",
+        # O que se repete sem depender de alguém lembrar. Quem responde,
+        # supervisiona ou executa enxerga o item: a operação entra pela lista de
+        # ocorrências dela, com o conteúdo filtrado. O menu não autoriza — a
+        # view é que decide.
+        "visivel_para": pode_ver_alguma_rotina,
     },
     {
         "label": "Estoque",

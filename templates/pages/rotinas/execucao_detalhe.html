@@ -1,0 +1,626 @@
+{% extends "layouts/app.html" %}
+
+{# A ocorrência por dentro: o dia, o contexto e o checklist que a acompanha.
+   As tarefas andam por ações rápidas — um ícone conclui, outro marca que não se
+   aplicava —, e a anotação entra no mesmo movimento. As decisões sobre a
+   ocorrência em si continuam em modais curtos, e só saem por POST. #}
+
+{% block title %}{{ execucao.rotina }} · Ocorrência · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'rotinas:execucoes' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Ocorrências
+      </a>
+      <h1 class="h4 mb-1">{{ execucao.rotina }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ execucao.situacao_tom }}">{{ execucao.situacao }}</span>
+        {% if execucao.atrasada %}
+          <span class="badge bg-label-danger">atrasada</span>
+        {% endif %}
+        <span class="badge bg-label-secondary">{{ execucao.prioridade }}</span>
+        <span class="text-body-secondary small">{{ execucao.data_prevista }} · {{ execucao.condominio }}</span>
+      </div>
+    </div>
+
+    {% if not execucao.encerrada %}
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        {% if pode_iniciar %}
+          <form method="post" action="{% url 'rotinas:iniciar' execucao.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-label-primary">
+              <i class="bx bx-play-circle me-1" aria-hidden="true"></i> Iniciar
+            </button>
+          </form>
+        {% endif %}
+        {% if pode_concluir %}
+          <button
+            type="button"
+            class="btn btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#modal-execucao-concluir">
+            <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Concluir
+          </button>
+        {% endif %}
+        <div class="dropdown">
+          <button
+            type="button"
+            class="btn btn-icon btn-text-secondary rounded-pill"
+            data-bs-toggle="dropdown"
+            aria-expanded="false"
+            title="Mais ações"
+            aria-label="Mais ações para esta ocorrência">
+            <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            {% if pode_ignorar %}
+              <li>
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-execucao-ignorar">
+                  <i class="bx bx-slash-circle me-2" aria-hidden="true"></i> Ignorar
+                </button>
+              </li>
+            {% endif %}
+            {% if pode_cancelar %}
+              <li>
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-execucao-cancelar">
+                  <i class="bx bx-x-circle me-2" aria-hidden="true"></i> Cancelar ocorrência
+                </button>
+              </li>
+            {% endif %}
+            {% if pode_demanda %}
+              <li>
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-execucao-demanda">
+                  <i class="bx bx-list-plus me-2" aria-hidden="true"></i> Abrir demanda
+                </button>
+              </li>
+            {% endif %}
+            {% if pode_manutencao %}
+              <li>
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modal-execucao-manutencao">
+                  <i class="bx bx-wrench me-2" aria-hidden="true"></i> Criar manutenção
+                </button>
+              </li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if execucao.encerrada %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-lock-alt mt-1" aria-hidden="true"></i>
+      <div>Esta ocorrência já foi encerrada. O que aconteceu nela está guardado e não muda mais.</div>
+    </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <h2 class="h6 mb-0">Checklist</h2>
+          {% if tem_checklist %}
+            <span class="text-body-secondary small">
+              {{ progresso.concluidos }} de {{ progresso.total }} concluídas
+              {% if progresso.nao_aplicaveis %} · {{ progresso.nao_aplicaveis }} não aplicáveis{% endif %}
+            </span>
+          {% endif %}
+        </div>
+
+        {% if tem_checklist %}
+          <div class="card-body pb-0">
+            <div
+              class="progress"
+              role="progressbar"
+              aria-label="Progresso do checklist"
+              aria-valuenow="{{ progresso.percentual }}"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              style="height: 6px;">
+              <div
+                class="progress-bar {% if progresso.pendentes == 0 %}bg-success{% else %}bg-primary{% endif %}"
+                style="width: {{ progresso.percentual }}%;"></div>
+            </div>
+            {% if pode_concluir and execucao.checklist_obrigatorio_pendente %}
+              <p class="text-body-secondary small mb-0 mt-2">
+                Ainda há tarefas obrigatórias por concluir. A ocorrência só encerra depois delas.
+              </p>
+            {% endif %}
+          </div>
+
+          <ul class="list-group list-group-flush">
+            {% for item in itens %}
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                  <div>
+                    <span class="{% if item.pendente %}fw-medium{% endif %}">{{ item.descricao }}</span>
+                    {% if item.obrigatorio %}
+                      <span class="badge bg-label-secondary ms-1">obrigatória</span>
+                    {% endif %}
+                    {% if not item.pendente %}
+                      <span class="badge bg-label-{{ item.situacao_tom }} ms-1">{{ item.situacao }}</span>
+                    {% endif %}
+                    {% if item.observacao %}
+                      <div class="text-body-secondary small mt-1">{{ item.observacao|linebreaksbr }}</div>
+                    {% endif %}
+                    {% if item.tratado_por %}
+                      <div class="text-body-secondary small mt-1">
+                        {{ item.tratado_por }}{% if item.tratado_em %} · {{ item.tratado_em }}{% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  {% if pode_tratar %}
+                    <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        class="btn btn-icon btn-text-success rounded-pill"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modal-item-concluir"
+                        data-item-url="{% url 'rotinas:tratar_item' execucao.pk item.pk %}"
+                        data-item-descricao="{{ item.descricao }}"
+                        title="Concluir tarefa"
+                        aria-label="Concluir tarefa {{ item.descricao }}">
+                        <i class="bx bx-check" aria-hidden="true"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modal-item-nao-aplicavel"
+                        data-item-url="{% url 'rotinas:tratar_item' execucao.pk item.pk %}"
+                        data-item-descricao="{{ item.descricao }}"
+                        title="Não aplicável"
+                        aria-label="Marcar {{ item.descricao }} como não aplicável">
+                        <i class="bx bx-minus-circle" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                  {% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            {% include "components/state.html" with state_icon="bx-list-check" state_title="Sem checklist" state_message="Esta ocorrência não tem uma lista de tarefas — é só fazer e registrar o que se encontrou." %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">O que aconteceu</h2>
+        </div>
+        <div class="card-body">
+          {% if execucao.descricao_rotina %}
+            <p class="text-body-secondary small mb-4">{{ execucao.descricao_rotina|linebreaksbr }}</p>
+          {% endif %}
+
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Responsável</span>
+            <span class="fw-medium text-end">{{ execucao.responsavel }}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Prevista</span>
+            <span class="text-end">{{ execucao.data_prevista }}</span>
+          </div>
+          {% if execucao.iniciada_em %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Iniciada</span>
+              <span class="text-end">{{ execucao.iniciada_em }}</span>
+            </div>
+          {% endif %}
+          {% if execucao.concluida_em %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Concluída</span>
+              <span class="text-end">{{ execucao.concluida_em }}</span>
+            </div>
+          {% endif %}
+          {% if execucao.local %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Local</span>
+              <span class="text-end">{{ execucao.local }}</span>
+            </div>
+          {% endif %}
+          {% if execucao.equipamento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Equipamento</span>
+              <span class="text-end">{{ execucao.equipamento }}</span>
+            </div>
+          {% endif %}
+          {% if execucao.fornecedor %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Fornecedor</span>
+              <span class="text-end">{{ execucao.fornecedor }}</span>
+            </div>
+          {% endif %}
+
+          {% if execucao.resultado or execucao.observacao %}
+            <hr>
+            {% if execucao.resultado %}
+              <div class="d-flex justify-content-between gap-3 py-1">
+                <span class="text-body-secondary">O que se encontrou</span>
+                <span class="fw-medium text-end">{{ execucao.resultado }}</span>
+              </div>
+            {% endif %}
+            {% if execucao.observacao %}
+              <p class="mb-0 mt-2">{{ execucao.observacao|linebreaksbr }}</p>
+            {% endif %}
+          {% endif %}
+
+          {% if execucao.demanda_gerada or execucao.manutencao_gerada %}
+            <hr>
+            {% if execucao.demanda_gerada %}
+              <div class="small mb-1">
+                Demanda
+                <a href="{% url 'demandas:detalhe' execucao.demanda_gerada_pk %}" class="text-decoration-none">
+                  «{{ execucao.demanda_gerada }}»</a>
+              </div>
+            {% endif %}
+            {% if execucao.manutencao_gerada %}
+              <div class="small">
+                Manutenção
+                <a href="{% url 'manutencoes:detalhe' execucao.manutencao_gerada_pk %}" class="text-decoration-none">
+                  «{{ execucao.manutencao_gerada }}»</a>
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div class="card-footer">
+          <a href="{% url 'rotinas:detalhe' execucao.rotina_pk %}" class="small text-decoration-none">
+            Ver a rotina «{{ execucao.rotina }}»
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Ações sobre uma tarefa: um modal por desfecho, reusado por todas as tarefas.
+     Ao abrir, o modal aprende de qual tarefa se trata. #}
+  {% if pode_tratar %}
+    <div
+      class="modal fade"
+      id="modal-item-concluir"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-item-concluir-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="status" value="concluido">
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-item-concluir-titulo">Concluir tarefa</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                <span class="fw-medium" data-item-descricao>Esta tarefa</span> foi feita.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="item-concluir-observacao">Observação</label>
+                <textarea
+                  class="form-control"
+                  id="item-concluir-observacao"
+                  name="observacao"
+                  rows="3"
+                  placeholder="O que vale registrar sobre esta tarefa"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Concluir</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="modal-item-nao-aplicavel"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-item-nao-aplicavel-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="status" value="nao_aplicavel">
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-item-nao-aplicavel-titulo">Tarefa não aplicável</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                <span class="fw-medium" data-item-descricao>Esta tarefa</span> não se aplicava nesta ocorrência.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="item-nao-aplicavel-observacao">Observação</label>
+                <textarea
+                  class="form-control"
+                  id="item-nao-aplicavel-observacao"
+                  name="observacao"
+                  rows="3"
+                  placeholder="O que vale registrar sobre esta tarefa"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-label-secondary">Marcar não aplicável</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_concluir %}
+    <div
+      class="modal fade"
+      id="modal-execucao-concluir"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-concluir-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:concluir' execucao.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">A ocorrência foi feita. Diga o que se encontrou.</p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
+                  {{ formulario_conclusao.resultado.label }}
+                </label>
+                {{ formulario_conclusao.resultado }}
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
+                  {{ formulario_conclusao.observacao.label }}
+                </label>
+                {{ formulario_conclusao.observacao }}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Concluir</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_ignorar %}
+    <div
+      class="modal fade"
+      id="modal-execucao-ignorar"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-ignorar-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:ignorar' execucao.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-ignorar-titulo">Ignorar ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                A atividade não se aplicava neste período. A rotina segue adiante.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_ignorar.justificativa.id_for_label }}">
+                  {{ formulario_ignorar.justificativa.label }}
+                </label>
+                {{ formulario_ignorar.justificativa }}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-label-warning">Ignorar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_cancelar %}
+    <div
+      class="modal fade"
+      id="modal-execucao-cancelar"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-cancelar-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:cancelar' execucao.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-cancelar-titulo">Cancelar ocorrência</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                Esta data não vai acontecer. A rotina não é cancelada — só esta ocorrência.
+              </p>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_cancelar.justificativa.id_for_label }}">
+                  {{ formulario_cancelar.justificativa.label }}
+                </label>
+                {{ formulario_cancelar.justificativa }}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-label-danger">Cancelar ocorrência</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_demanda %}
+    <div
+      class="modal fade"
+      id="modal-execucao-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-demanda-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:demanda' execucao.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-demanda-titulo">Abrir demanda</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                O que esta ocorrência encontrou vira uma demanda para acompanhar. Revise antes de confirmar.
+              </p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                  {{ formulario_demanda.titulo.label }}
+                </label>
+                {{ formulario_demanda.titulo }}
+              </div>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                  {{ formulario_demanda.descricao.label }}
+                </label>
+                {{ formulario_demanda.descricao }}
+              </div>
+              <div class="row g-3">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                    {{ formulario_demanda.prioridade.label }}
+                  </label>
+                  {{ formulario_demanda.prioridade }}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                    {{ formulario_demanda.prazo.label }}
+                  </label>
+                  {{ formulario_demanda.prazo }}
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Abrir demanda</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_manutencao %}
+    <div
+      class="modal fade"
+      id="modal-execucao-manutencao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="modal-execucao-manutencao-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'rotinas:manutencao' execucao.pk %}">
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-execucao-manutencao-titulo">Criar manutenção</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                A partir desta ocorrência, cria-se uma manutenção preventiva. Revise antes de confirmar.
+              </p>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                  {{ formulario_manutencao.titulo.label }}
+                </label>
+                {{ formulario_manutencao.titulo }}
+              </div>
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                  {{ formulario_manutencao.descricao_problema.label }}
+                </label>
+                {{ formulario_manutencao.descricao_problema }}
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                  {{ formulario_manutencao.data_prevista.label }}
+                </label>
+                {{ formulario_manutencao.data_prevista }}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+              <button type="submit" class="btn btn-primary">Criar manutenção</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // Ao abrir, o modal aprende de qual tarefa se trata: o endereço que registra
+    // o desfecho e o nome da tarefa, para a confirmação não depender do que
+    // ficou para trás na tela.
+    document.querySelectorAll("[data-item-url]").forEach(function (botao) {
+      botao.addEventListener("click", function () {
+        var modal = document.querySelector(botao.getAttribute("data-bs-target"));
+        if (!modal) {
+          return;
+        }
+
+        var formulario = modal.querySelector("form");
+        if (formulario) {
+          formulario.action = botao.getAttribute("data-item-url");
+        }
+        var descricao = botao.getAttribute("data-item-descricao") || "";
+        modal.querySelectorAll("[data-item-descricao]").forEach(function (alvo) {
+          alvo.textContent = descricao;
+        });
+      });
+    });
+  </script>
+{% endblock %}

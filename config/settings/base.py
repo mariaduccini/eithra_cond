@@ -41,6 +41,7 @@ LOCAL_APPS = [
     "apps.balancos",
     "apps.demandas",
     "apps.manutencoes",
+    "apps.rotinas",
     "apps.estoque",
     "apps.core",
 ]
