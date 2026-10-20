@@ -1,9 +1,11 @@
 # Ambiente e segredos
-# Nenhuma variação de arquivo de ambiente é versionada, exceto o modelo
-# .env.example, que existe justamente para documentar as variáveis.
+# Nenhuma variação de arquivo de ambiente é versionada, exceto os modelos
+# (.env.example e .env.local.example), que existem justamente para documentar
+# as variáveis — e nunca contêm segredo.
 .env
 .env.*
 !.env.example
+!.env.local.example
 *.pem
 *.key
 credentials.json

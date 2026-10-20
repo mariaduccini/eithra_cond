@@ -1,7 +1,9 @@
 """Configurações comuns a todos os ambientes do Eithra."""
+import os
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # Diretório raiz do projeto (onde ficam manage.py, apps/, templates/, static/).
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -12,9 +14,42 @@ env = environ.Env(
     DJANGO_ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
 )
 
-_env_file = BASE_DIR / ".env"
+
+def _arquivo_de_ambiente(nome: str) -> Path:
+    """Resolve o arquivo de ambiente escolhido, sem deixar o projeto.
+
+    O nome vem de ``EITHRA_ENV_FILE`` e existe para escolher de forma
+    consciente entre ambientes — o local e o remoto não podem ser confundidos
+    por descuido. Como o valor vem do ambiente, é tratado como entrada não
+    confiável: um caminho absoluto ou com ".." apontaria para qualquer arquivo
+    da máquina, e um arquivo de ambiente carrega segredos. Só o que fica dentro
+    do projeto é aceito.
+    """
+    candidato = (BASE_DIR / nome).resolve()
+    if BASE_DIR not in candidato.parents:
+        raise ImproperlyConfigured(
+            f"EITHRA_ENV_FILE aponta para fora do projeto: {nome!r}. "
+            "Informe apenas o nome do arquivo, como .env.local."
+        )
+    return candidato
+
+
+# O Eithra tem mais de um arquivo de ambiente — o remoto (.env) e o local
+# (.env.local) —, e a escolha é explícita por EITHRA_ENV_FILE. Sem a variável,
+# o comportamento é o de sempre: ler ".env".
+_env_file_name = os.environ.get("EITHRA_ENV_FILE", "").strip() or ".env"
+_env_file = _arquivo_de_ambiente(_env_file_name)
+
 if _env_file.exists():
     environ.Env.read_env(_env_file)
+elif _env_file_name != ".env":
+    # Escolher um arquivo que não existe é engano de configuração: seguir em
+    # frente faria o ambiente subir contra o banco errado sem avisar.
+    raise ImproperlyConfigured(
+        f"EITHRA_ENV_FILE aponta para {_env_file_name!r}, mas o arquivo não "
+        f"existe em {BASE_DIR}. Confira o nome ou crie o arquivo."
+    )
+
 
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 

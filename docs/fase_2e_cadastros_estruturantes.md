@@ -959,6 +959,10 @@ local.
 | `showmigrations cadastros condominios governanca` | as três migrations acima em `[X]` — aplicadas |
 | **`manage.py test` — suíte completa, PostgreSQL local** | **1110 testes, `OK`** |
 
+Nenhum settings oficial do Eithra usa SQLite — inclusive `config.settings.test`,
+que também roda sobre PostgreSQL via `DATABASE_URL`. O caminho seguro para o
+desenvolvimento local está em [ambiente_postgresql_local.md](ambiente_postgresql_local.md).
+
 #### Lote `apps.balancos` + `apps.core` — validado no PostgreSQL local
 
 O lote `apps.balancos` + `apps.core` não havia concluído no DEV remoto por

@@ -16,8 +16,11 @@ if not DATABASE_URL:  # noqa: F405
     # ambiente não subir do que subir contra um banco diferente do real.
     raise ImproperlyConfigured(
         "DATABASE_URL não está definida. O desenvolvimento do Eithra usa "
-        "PostgreSQL remoto. Copie .env.example para .env e informe a string "
-        "de conexão (formato: postgresql://USUARIO:SENHA@HOST:PORTA/BANCO)."
+        "PostgreSQL, definido por DATABASE_URL — normalmente o banco local, "
+        "escolhido por .env.local (veja run-local.ps1 e test-local.ps1). O "
+        "ambiente remoto continua disponível quando selecionado de forma "
+        "explícita. Informe a string de conexão no formato "
+        "postgresql://USUARIO:SENHA@HOST:PORTA/BANCO."
     )
 
 DATABASES = {"default": env.db_url("DATABASE_URL")}
