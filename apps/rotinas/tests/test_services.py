@@ -15,6 +15,7 @@ from apps.demandas.models import Demanda
 from apps.manutencoes.constants import TipoManutencao
 from apps.manutencoes.models import Manutencao
 from apps.rotinas.constants import (
+    SITUACOES_PENDENTES,
     Periodicidade,
     ResultadoExecucao,
     StatusExecucao,
@@ -136,7 +137,9 @@ class GerarProximaExecucaoTests(BaseDeRotinas):
         rotina.refresh_from_db()
         datas = set(rotina.execucoes.values_list("data_prevista", flat=True))
         self.assertEqual(datas, {date(2026, 1, 10), date(2026, 2, 10)})
-        self.assertEqual(rotina.proxima_execucao, date(2026, 2, 10))
+        # Preparar a seguinte não muda a próxima a tratar: a de 10/01 continua
+        # em aberto, e é ela que espera alguém.
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
 
     def test_rotina_inativa_nao_gera(self):
         rotina = self._criar()
@@ -149,7 +152,9 @@ class GerarProximaExecucaoTests(BaseDeRotinas):
         # A primeira ocorrência ainda cabe no fim; a seguinte, não.
         self.assertIsNone(gerar_proxima_execucao(rotina))
         rotina.refresh_from_db()
-        self.assertIsNone(rotina.proxima_execucao)
+        # Nada mais será preparado, mas a de 10/01 segue em aberto: é a próxima.
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
+        self.assertEqual(rotina.execucoes.count(), 1)
 
     def test_mesma_data_calculada_nao_gera_duas(self):
         # §67 — dupla tentativa de geração para a mesma data.
@@ -163,6 +168,133 @@ class GerarProximaExecucaoTests(BaseDeRotinas):
         self.assertEqual(
             rotina.execucoes.filter(data_prevista=alvo).count(), 1
         )
+
+
+class SemanticaDeProximaExecucaoTests(BaseDeRotinas):
+    """``proxima_execucao`` diz sempre a próxima ocorrência a ser tratada.
+
+    O campo não guarda a data que acabou de ser calculada — guarda a ocorrência
+    em aberto mais antiga e, quando não há nenhuma, a próxima data válida da
+    regra. O valor não depende de qual operação o escreveu.
+    """
+
+    def _abertas(self, rotina):
+        """As datas das ocorrências que ainda esperam alguém."""
+        return set(
+            rotina.execucoes.filter(status__in=SITUACOES_PENDENTES).values_list(
+                "data_prevista", flat=True
+            )
+        )
+
+    def _em(self, rotina, dia):
+        return rotina.execucoes.get(data_prevista=date(2026, *dia))
+
+    def test_uma_ocorrencia_aberta_e_a_proxima(self):
+        rotina = self._criar()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
+
+    def test_duas_ocorrencias_abertas_aponta_para_a_mais_antiga(self):
+        rotina = self._criar()
+        gerar_proxima_execucao(rotina)
+        rotina.refresh_from_db()
+        self.assertEqual(len(self._abertas(rotina)), 2)
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
+
+    def test_geracao_antecipada_nao_move_a_proxima(self):
+        # §5 — a de 21/10 entra adiantada; a de 20/10 continua sendo a próxima,
+        # e só assume depois que ela for encerrada.
+        rotina = self._criar(
+            data_inicio=date(2026, 10, 20),
+            periodicidade_tipo=Periodicidade.DIARIA,
+            dia_mes=None,
+        )
+        gerar_proxima_execucao(rotina)
+        rotina.refresh_from_db()
+        self.assertEqual(
+            self._abertas(rotina), {date(2026, 10, 20), date(2026, 10, 21)}
+        )
+        self.assertEqual(rotina.proxima_execucao, date(2026, 10, 20))
+
+        concluir_execucao(
+            execucao=self._em(rotina, (10, 20)),
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+        )
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 10, 21))
+
+    def test_concluir_a_mais_antiga_move_a_proxima(self):
+        rotina = self._criar()
+        gerar_proxima_execucao(rotina)
+        concluir_execucao(
+            execucao=self._em(rotina, (1, 10)),
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+        )
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 2, 10))
+
+    def test_ignorar_a_mais_antiga_move_a_proxima(self):
+        rotina = self._criar()
+        gerar_proxima_execucao(rotina)
+        ignorar_execucao(
+            execucao=self._em(rotina, (1, 10)),
+            usuario=self.gestao,
+            justificativa="Reservatório em manutenção.",
+        )
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 2, 10))
+
+    def test_cancelar_a_mais_antiga_move_a_proxima(self):
+        rotina = self._criar()
+        gerar_proxima_execucao(rotina)
+        cancelar_execucao(
+            execucao=self._em(rotina, (1, 10)),
+            usuario=self.gestao,
+            justificativa="Não vai acontecer neste ciclo.",
+        )
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 2, 10))
+
+    def test_sem_ocorrencia_aberta_a_proxima_vem_da_regra(self):
+        # Um histórico sem nada em aberto: a data vem da regra, não de execução.
+        rotina = self._criar()
+        rotina.execucoes.all().delete()
+        definir_ativo(rotina=rotina, ativo=False)
+        rotina.refresh_from_db()
+        self.assertIsNone(rotina.proxima_execucao)
+
+        definir_ativo(rotina=rotina, ativo=True)
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
+
+    def test_fim_de_vigencia_esvazia_a_proxima(self):
+        rotina = self._criar(data_fim=date(2026, 1, 10))
+        concluir_execucao(
+            execucao=self._pendente(rotina),
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+        )
+        rotina.refresh_from_db()
+        # Nada em aberto e nenhuma data futura cabendo no fim de vigência.
+        self.assertEqual(rotina.execucoes.count(), 1)
+        self.assertIsNone(rotina.proxima_execucao)
+
+    def test_rotina_inativa_sem_aberta_nao_tem_proxima(self):
+        rotina = self._criar()
+        rotina.execucoes.all().delete()
+        definir_ativo(rotina=rotina, ativo=False)
+        rotina.refresh_from_db()
+        self.assertIsNone(rotina.proxima_execucao)
+
+    def test_rotina_inativa_mantem_o_que_esta_em_aberto(self):
+        # Desativar não apaga o que existe: a ocorrência em aberto segue sendo
+        # o que espera alguém, e continua anunciada.
+        rotina = self._criar()
+        definir_ativo(rotina=rotina, ativo=False)
+        rotina.refresh_from_db()
+        self.assertEqual(rotina.execucoes.count(), 1)
+        self.assertEqual(rotina.proxima_execucao, date(2026, 1, 10))
 
 
 class IniciarExecucaoTests(BaseDeRotinas):

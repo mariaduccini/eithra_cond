@@ -10,9 +10,11 @@ continua valendo — não porque o Eithra decidiu fazer algo. Criar uma manuten�
 ou abrir uma demanda a partir de uma ocorrência só acontece quando a gestão
 pede; a rotina sugere, a pessoa confirma. O que o Eithra alcança é lembrar.
 
-Duas decisões merecem ser ditas em voz alta. ``proxima_execucao`` é escrita
-apenas por aqui, sempre a partir da regra — nunca à mão. E a ocorrência preserva
-o responsável que tinha no momento em que foi preparada: mudar o responsável da
+Duas decisões merecem ser ditas em voz alta. ``proxima_execucao`` tem um sentido
+só — a ocorrência operacional que ainda espera alguém — e é escrita apenas por
+aqui: ``_recalcular_proxima_execucao`` é a única regra do campo, e nenhuma
+operação grava esse valor por conta própria. E a ocorrência preserva o
+responsável que tinha no momento em que foi preparada: mudar o responsável da
 rotina depois não reescreve o passado.
 
 A terceira decisão é o checklist. Quando a ocorrência nasce, as tarefas ativas do
@@ -127,7 +129,7 @@ def _ultima_data(rotina):
 
 
 def _data_pendente(rotina):
-    """A data da ocorrência ainda em aberto, se houver."""
+    """A data da ocorrência em aberto mais antiga, se houver alguma."""
     return (
         rotina.execucoes.filter(status__in=SITUACOES_PENDENTES)
         .order_by("data_prevista")
@@ -137,10 +139,38 @@ def _data_pendente(rotina):
 
 
 def _definir_proxima(rotina, valor) -> None:
-    """Guarda a próxima execução calculada, só quando ela realmente muda."""
+    """Guarda o valor decidido pela regra, e só quando ele realmente muda."""
     if rotina.proxima_execucao != valor:
         rotina.proxima_execucao = valor
         rotina.save(update_fields=["proxima_execucao", "atualizado_em"])
+
+
+def _recalcular_proxima_execucao(rotina) -> None:
+    """A única regra do campo: a próxima ocorrência operacional a ser tratada.
+
+    Uma ocorrência em aberto é, por definição, o que ainda espera alguém. Então
+    a próxima é a mais antiga delas — mesmo que já exista outra preparada mais
+    adiante, como acontece quando se adianta uma geração. Sem nada em aberto, a
+    próxima é a data que a regra de recorrência aponta depois da última já
+    criada. E quando não há o que esperar — rotina inativa, fim de vigência
+    alcançado, nenhuma data futura válida —, o campo fica vazio, em vez de
+    anunciar uma data que não vai acontecer.
+
+    Toda escrita passa por aqui: o valor não depende de qual operação pediu a
+    conta, e sim do estado da rotina naquele instante.
+    """
+    aberta = _data_pendente(rotina)
+    if aberta is not None:
+        _definir_proxima(rotina, aberta)
+        return
+
+    if not rotina.ativo:
+        _definir_proxima(rotina, None)
+        return
+
+    _definir_proxima(
+        rotina, _calcular_proxima(rotina, a_partir_de=_ultima_data(rotina))
+    )
 
 
 @transaction.atomic
@@ -381,28 +411,26 @@ def gerar_proxima_execucao(rotina: RotinaRecorrente) -> ExecucaoRotina | None:
     """
     origem = rotina
     rotina = RotinaRecorrente.objects.select_for_update().get(pk=rotina.pk)
-    if not rotina.ativo:
-        return None
 
-    proxima = _calcular_proxima(rotina, a_partir_de=_ultima_data(rotina))
-    if proxima is None:
-        _definir_proxima(rotina, None)
-        origem.proxima_execucao = None
-        return None
+    execucao = None
+    if rotina.ativo:
+        proxima = _calcular_proxima(rotina, a_partir_de=_ultima_data(rotina))
+        if proxima is not None:
+            execucao, criada = ExecucaoRotina.objects.get_or_create(
+                rotina=rotina,
+                data_prevista=proxima,
+                defaults={
+                    "condominio": rotina.condominio,
+                    "responsavel": rotina.responsavel,
+                    "status": StatusExecucao.PENDENTE,
+                },
+            )
+            if criada:
+                _copiar_checklist(rotina, execucao)
 
-    execucao, criada = ExecucaoRotina.objects.get_or_create(
-        rotina=rotina,
-        data_prevista=proxima,
-        defaults={
-            "condominio": rotina.condominio,
-            "responsavel": rotina.responsavel,
-            "status": StatusExecucao.PENDENTE,
-        },
-    )
-    if criada:
-        _copiar_checklist(rotina, execucao)
-
-    _definir_proxima(rotina, proxima)
+    # A ocorrência preparada não é, por si, a próxima a tratar: quem decide isso
+    # é a regra, olhando o que ficou em aberto.
+    _recalcular_proxima_execucao(rotina)
     origem.proxima_execucao = rotina.proxima_execucao
     return execucao
 
@@ -433,26 +461,17 @@ def _copiar_checklist(rotina: RotinaRecorrente, execucao: ExecucaoRotina) -> Non
 
 
 def _reassentar_proxima(rotina: RotinaRecorrente) -> None:
-    """Recalcula a próxima execução a partir de onde a rotina está agora.
+    """Recalcula a próxima e, se nada estiver em aberto, prepara a seguinte.
 
     Uma ocorrência em aberto continua sendo a próxima — a edição não a move. Sem
-    ocorrência em aberto e com a rotina ativa, a próxima é calculada depois da
-    última já criada, e a ocorrência é preparada na hora. Uma rotina inativa
-    apenas mantém a data que já tinha.
+    nada em aberto e com a rotina ativa, a regra é retomada depois da última já
+    criada, e a ocorrência é preparada na hora.
     """
-    pendente = _data_pendente(rotina)
-
-    if pendente is not None:
-        _definir_proxima(rotina, pendente)
-        return
-
-    if not rotina.ativo:
-        return
-
-    proxima = _calcular_proxima(rotina, a_partir_de=_ultima_data(rotina))
-    _definir_proxima(rotina, proxima)
-    if proxima is not None:
+    if rotina.ativo and _data_pendente(rotina) is None:
         gerar_proxima_execucao(rotina)
+        return
+
+    _recalcular_proxima_execucao(rotina)
 
 
 @transaction.atomic
@@ -633,9 +652,11 @@ def cancelar_execucao(
 def definir_ativo(*, rotina: RotinaRecorrente, ativo: bool) -> RotinaRecorrente:
     """Para de gerar novas ocorrências, ou volta a gerar, sem apagar nada.
 
-    Desativar é retirada administrativa: as execuções que existem continuam
-    como estão, e nenhuma é cancelada por causa disso. Reativar apenas devolve a
-    rotina ao ritmo, preparando a próxima ocorrência se não houver uma em aberto.
+    Desativar é retirada administrativa: as execuções que existem continuam como
+    estão, e nenhuma é cancelada por causa disso. O que está em aberto continua
+    sendo a próxima a tratar; sem nada em aberto, a rotina inativa deixa de
+    anunciar uma data. Reativar devolve a rotina ao ritmo, preparando a próxima
+    ocorrência se não houver uma em aberto.
     """
     ativo = bool(ativo)
     if rotina.ativo == ativo:
@@ -646,6 +667,8 @@ def definir_ativo(*, rotina: RotinaRecorrente, ativo: bool) -> RotinaRecorrente:
 
     if ativo:
         _reassentar_proxima(rotina)
+    else:
+        _recalcular_proxima_execucao(rotina)
     return rotina
 
 

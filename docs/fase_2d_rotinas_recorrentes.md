@@ -134,7 +134,21 @@ equipamento tem local definido e a rotina escolheu outro, a gravação é recusa
 (divergência bloqueia — nunca corrige em silêncio).
 
 `proxima_execucao` é persistida **para tornar a operação leve**, mas não é campo
-de digitação: quem escreve nela é `services.py`, sempre a partir da regra.
+de digitação: quem escreve nela é `services.py`, e **toda escrita passa por uma
+função só** — `_recalcular_proxima_execucao(rotina)`.
+
+O sentido do campo é **um só**: a próxima ocorrência operacional a ser tratada.
+
+1. Se existe ocorrência **em aberto** (PENDENTE ou EM_ANDAMENTO), o campo aponta
+   para a **mais antiga** delas. Preparar uma ocorrência adiantada **não** move o
+   campo: quem espera alguém continua sendo a mais antiga.
+2. Sem nada em aberto, o campo recebe a **próxima data válida da regra**.
+3. Sem o que esperar — rotina **inativa**, **fim de vigência** alcançado ou
+   nenhuma data futura válida —, o campo fica **vazio**.
+
+O valor depende do **estado da rotina**, nunca de qual operação pediu a conta.
+Por isso `proxima_execucao` é somente leitura no Django Admin: não há caminho de
+escrita à mão.
 
 ## 5. Periodicidade e cálculo da próxima data
 
@@ -211,7 +225,9 @@ Desfechos poucos, e nenhum apaga o que houve:
 `esta_atrasada` é **propriedade calculada**: pendente (PENDENTE ou EM_ANDAMENTO)
 com `data_prevista` anterior a hoje. Não existe campo de "atrasado", de "vencido"
 nem "situação de prazo" no banco. O mesmo vale para a rotina: sua regra de atraso
-olha apenas `proxima_execucao` diante de hoje, e nunca o estado de uma execução.
+olha apenas `proxima_execucao` diante de hoje — e esse campo já aponta para a
+ocorrência em aberto mais antiga (§4), de modo que a rotina está atrasada
+exatamente quando a ocorrência que espera alguém venceu.
 
 ## 9. Autorização
 
@@ -260,11 +276,16 @@ poder acompanhar o que assume.
 `gerar_proxima_execucao(rotina)`:
 
 1. Trava a rotina com `select_for_update()`.
-2. Se a rotina não está ativa, devolve `None`.
+2. Se a rotina não está ativa, **não prepara nada**.
 3. Calcula a próxima data **depois da última já criada**.
 4. `get_or_create` por `(rotina, data_prevista)` — **a mesma data nunca gera duas
    ocorrências**.
-5. Regrava `proxima_execucao` apenas quando ela realmente muda.
+5. Recalcula `proxima_execucao` pela regra do campo (§4). A ocorrência preparada
+   **não é, por si, a próxima a tratar**: quem decide isso é o que ficou em
+   aberto.
+
+A geração é **incremental, uma ocorrência por vez**: não há catch-up massivo de
+ocorrências atrasadas, nem geração automática em lote.
 
 **Idempotência:** chamar a geração duas vezes para a mesma rotina não duplica nada
 — o `get_or_create` e a constraint `rotina_execucao_unica` são a garantia.

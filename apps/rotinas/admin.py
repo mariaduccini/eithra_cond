@@ -42,7 +42,7 @@ class RotinaRecorrenteAdmin(admin.ModelAdmin):
         "fornecedor",
         "criado_por",
     )
-    readonly_fields = ("id", "criado_em", "atualizado_em")
+    readonly_fields = ("id", "proxima_execucao", "criado_em", "atualizado_em")
     ordering = ("-criado_em",)
 
     def has_delete_permission(self, request, obj=None) -> bool:
