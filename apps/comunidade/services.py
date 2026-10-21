@@ -18,6 +18,9 @@ Um vínculo diz a relação entre duas coisas, e não uma autorização: o papel
 uma pessoa na unidade não responde se ela pode entrar no condomínio. Essa é
 outra pergunta, de outra fase.
 """
+import unicodedata
+from dataclasses import dataclass
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
@@ -38,6 +41,19 @@ class ErroDeComunidade(Exception):
     """Uma decisão do domínio de comunidade que a gestão precisa saber."""
 
 
+@dataclass(frozen=True)
+class VinculoNormalizadoDaFonte:
+    """O resultado determinístico da leitura de um rótulo vindo da fonte.
+
+    `tipo_vinculo=None` significa que o rótulo não deve virar vínculo de
+    unidade automaticamente nesta etapa e exige outro tratamento de domínio.
+    """
+
+    tipo_vinculo: str | None
+    rotulo_origem: str
+    exige_tratamento_separado: bool = False
+
+
 def _primeiro_recado(erro: ValidationError) -> str:
     """A primeira frase humana de um erro de validação do cadastro."""
     if hasattr(erro, "message_dict"):
@@ -55,6 +71,59 @@ def _validar(instancia) -> None:
         instancia.full_clean()
     except ValidationError as erro:
         raise ErroDeComunidade(_primeiro_recado(erro)) from erro
+
+
+def _rotulo_fonte_chave(rotulo: str) -> str:
+    """A chave estável do rótulo vindo da fonte, sem acentos nem ruído visual."""
+    base = " ".join((rotulo or "").split()).upper()
+    sem_acentos = unicodedata.normalize("NFKD", base).encode("ascii", "ignore")
+    return sem_acentos.decode("ascii")
+
+
+def normalizar_vinculo_pessoa_unidade_da_fonte(rotulo: str) -> VinculoNormalizadoDaFonte:
+    """Traduz o rótulo da fonte para o tipo de vínculo canônico, sem perdê-lo.
+
+    Contato de emergência fica de fora de propósito: é outra dimensão do dado e
+    não deve ser jogada para dentro do vínculo de unidade por conveniência.
+    """
+    rotulo_limpo = " ".join((rotulo or "").split())
+    chave = _rotulo_fonte_chave(rotulo_limpo)
+
+    if not rotulo_limpo:
+        return VinculoNormalizadoDaFonte(
+            tipo_vinculo=TipoVinculoPessoaUnidade.OUTRO,
+            rotulo_origem="",
+        )
+
+    mapa = {
+        "PROPRIETARIO": TipoVinculoPessoaUnidade.PROPRIETARIO,
+        "PROPRIETARIA": TipoVinculoPessoaUnidade.PROPRIETARIO,
+        "INQUILINO": TipoVinculoPessoaUnidade.LOCATARIO,
+        "INQUILINA": TipoVinculoPessoaUnidade.LOCATARIO,
+        "ESPOSA": TipoVinculoPessoaUnidade.FAMILIAR,
+        "ESPOSO": TipoVinculoPessoaUnidade.FAMILIAR,
+        "FILHO": TipoVinculoPessoaUnidade.FAMILIAR,
+        "FILHA": TipoVinculoPessoaUnidade.FAMILIAR,
+        "IRMAO": TipoVinculoPessoaUnidade.FAMILIAR,
+        "IRMA": TipoVinculoPessoaUnidade.FAMILIAR,
+        "MAE": TipoVinculoPessoaUnidade.FAMILIAR,
+        "PAI": TipoVinculoPessoaUnidade.FAMILIAR,
+        "COMPANHEIRO": TipoVinculoPessoaUnidade.FAMILIAR,
+        "EMPREGADA": TipoVinculoPessoaUnidade.FUNCIONARIO_UNIDADE,
+        "DIARISTA": TipoVinculoPessoaUnidade.FUNCIONARIO_UNIDADE,
+        "RESPONSAVEL": TipoVinculoPessoaUnidade.OUTRO,
+        "PROCURADORA": TipoVinculoPessoaUnidade.OUTRO,
+    }
+    if chave == "CONTATO DE EMERGENCIA":
+        return VinculoNormalizadoDaFonte(
+            tipo_vinculo=None,
+            rotulo_origem=rotulo_limpo,
+            exige_tratamento_separado=True,
+        )
+    return VinculoNormalizadoDaFonte(
+        tipo_vinculo=mapa.get(chave, TipoVinculoPessoaUnidade.OUTRO),
+        rotulo_origem=rotulo_limpo,
+    )
 
 
 def _conferir_mesmo_condominio(alvos, condominio_id, recado: str) -> None:
@@ -265,6 +334,7 @@ def criar_vinculo_pessoa_unidade(
     tipo_vinculo: str = TipoVinculoPessoaUnidade.MORADOR,
     data_inicio,
     data_fim=None,
+    rotulo_origem: str = "",
     observacao_interna: str = "",
 ) -> VinculoPessoaUnidade:
     """Liga uma pessoa a uma unidade a partir de uma data.
@@ -299,6 +369,7 @@ def criar_vinculo_pessoa_unidade(
         pessoa=pessoa,
         unidade=unidade,
         tipo_vinculo=tipo_vinculo,
+        rotulo_origem=rotulo_origem,
         data_inicio=data_inicio,
         data_fim=data_fim,
         observacao_interna=observacao_interna,
@@ -355,6 +426,7 @@ def transferir_pessoa_unidade(
         pessoa=vinculo.pessoa,
         unidade=para_unidade,
         tipo_vinculo=vinculo.tipo_vinculo,
+        rotulo_origem=vinculo.rotulo_origem,
         data_inicio=data,
     )
 

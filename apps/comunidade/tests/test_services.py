@@ -259,6 +259,27 @@ class VinculoPessoaUnidadeTests(TestCase):
             .exists()
         )
 
+    def test_transferencia_preserva_o_rotulo_original(self):
+        antiga = apoio.criar_unidade(self.condominio, "303")
+        nova = apoio.criar_unidade(self.condominio, "404")
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio,
+            self.pessoa,
+            antiga,
+            tipo_vinculo=TipoVinculoPessoaUnidade.FAMILIAR,
+            rotulo_origem="ESPOSA",
+        )
+
+        novo = services.transferir_pessoa_unidade(
+            vinculo=vinculo,
+            para_unidade=nova,
+            data=apoio.HOJE,
+            criado_por=self.gestao,
+        )
+
+        self.assertEqual(novo.tipo_vinculo, TipoVinculoPessoaUnidade.FAMILIAR)
+        self.assertEqual(novo.rotulo_origem, "ESPOSA")
+
 
 class SobreposicaoDeVinculosTests(TestCase):
     """O mesmo fato não se registra duas vezes no mesmo período.
@@ -280,13 +301,16 @@ class SobreposicaoDeVinculosTests(TestCase):
         """Um dia contado a partir da referência dos testes."""
         return apoio.HOJE + timedelta(days=dias)
 
-    def _abrir(self, *, inicio, fim=None, unidade=None, pessoa=None, tipo=None):
+    def _abrir(
+        self, *, inicio, fim=None, unidade=None, pessoa=None, tipo=None, rotulo=""
+    ):
         return services.criar_vinculo_pessoa_unidade(
             condominio=self.condominio,
             criado_por=self.gestao,
             pessoa=pessoa or self.pessoa,
             unidade=unidade or self.unidade,
             tipo_vinculo=tipo or TipoVinculoPessoaUnidade.FAMILIAR,
+            rotulo_origem=rotulo,
             data_inicio=inicio,
             data_fim=fim,
         )
@@ -357,6 +381,52 @@ class SobreposicaoDeVinculosTests(TestCase):
         self._abrir(inicio=self._dia(-60), fim=self._dia(-10))
         novo = self._abrir(inicio=self._dia(-9))
         self.assertTrue(novo.vigente)
+
+    def test_rotulo_da_fonte_nao_muda_a_regra_de_sobreposicao(self):
+        """I. O texto de origem é registro da fonte, não natureza do vínculo.
+
+        Duas anotações do mesmo papel na mesma unidade, no mesmo período, são a
+        mesma coisa duas vezes — mesmo que cada uma tenha vindo com um rótulo
+        diferente da planilha.
+        """
+        self._abrir(inicio=self._dia(-30), rotulo="ESPOSA")
+        with self.assertRaises(services.ErroDeComunidade):
+            self._abrir(inicio=self._dia(-10), rotulo="PROCURADORA")
+
+    def test_rotulo_da_fonte_e_preservado_no_vinculo_manual(self):
+        """I. O rótulo da fonte convive com a natureza normalizada do papel."""
+        vinculo = self._abrir(inicio=self._dia(-30), rotulo="  ESPOSA  ")
+
+        self.assertEqual(vinculo.tipo_vinculo, TipoVinculoPessoaUnidade.FAMILIAR)
+        self.assertEqual(vinculo.rotulo_origem, "ESPOSA")
+
+
+class NormalizacaoDoRotuloDaFonteTests(TestCase):
+    """A importação futura normaliza o tipo sem perder o texto de origem."""
+
+    def test_familiar_preserva_rotulo_original(self):
+        normalizado = services.normalizar_vinculo_pessoa_unidade_da_fonte("  ESPOSA  ")
+
+        self.assertEqual(normalizado.tipo_vinculo, TipoVinculoPessoaUnidade.FAMILIAR)
+        self.assertEqual(normalizado.rotulo_origem, "ESPOSA")
+        self.assertFalse(normalizado.exige_tratamento_separado)
+
+    def test_rotulo_ambiguo_vira_outro_sem_perder_texto(self):
+        normalizado = services.normalizar_vinculo_pessoa_unidade_da_fonte(
+            "PROCURADORA"
+        )
+
+        self.assertEqual(normalizado.tipo_vinculo, TipoVinculoPessoaUnidade.OUTRO)
+        self.assertEqual(normalizado.rotulo_origem, "PROCURADORA")
+
+    def test_contato_de_emergencia_nao_vira_vinculo_automaticamente(self):
+        normalizado = services.normalizar_vinculo_pessoa_unidade_da_fonte(
+            "CONTATO DE EMERGÊNCIA"
+        )
+
+        self.assertIsNone(normalizado.tipo_vinculo)
+        self.assertEqual(normalizado.rotulo_origem, "CONTATO DE EMERGÊNCIA")
+        self.assertTrue(normalizado.exige_tratamento_separado)
 
 
 class VinculosDoVeiculoTests(TestCase):

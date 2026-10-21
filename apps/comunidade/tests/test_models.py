@@ -292,6 +292,21 @@ class VinculoPessoaUnidadeTests(TestCase):
         )
         self.assertEqual(outro.tipo_vinculo, TipoVinculoPessoaUnidade.PROPRIETARIO)
 
+    def test_rotulo_origem_e_opcional(self):
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, self.pessoa, self.unidade
+        )
+        self.assertEqual(vinculo.rotulo_origem, "")
+
+    def test_rotulo_origem_e_guardado_normalizado(self):
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio,
+            self.pessoa,
+            self.unidade,
+            rotulo_origem="  ESPOSA   ",
+        )
+        self.assertEqual(vinculo.rotulo_origem, "ESPOSA")
+
     def test_uma_unidade_admite_varios_vinculos_ao_mesmo_tempo(self):
         outra = apoio.criar_pessoa_da_comunidade(self.condominio, "Pessoa Exemplo 02")
         apoio.criar_vinculo_pessoa_unidade(self.condominio, self.pessoa, self.unidade)

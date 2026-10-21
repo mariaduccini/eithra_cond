@@ -611,6 +611,13 @@ class VinculoPessoaUnidade(models.Model):
         choices=TipoVinculoPessoaUnidade.choices,
         default=TipoVinculoPessoaUnidade.MORADOR,
     )
+    rotulo_origem = models.CharField(
+        "Rótulo original da fonte",
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Texto original do papel na fonte, quando houver importação histórica.",
+    )
     data_inicio = models.DateField(
         "Início", help_text="Desde quando este vínculo vale."
     )
@@ -667,6 +674,7 @@ class VinculoPessoaUnidade(models.Model):
 
     def save(self, *args, **kwargs):
         """Guarda o vínculo já normalizado, venha ele do formulário ou não."""
+        self.rotulo_origem = _texto(self.rotulo_origem)
         self.observacao_interna = _texto_longo(self.observacao_interna)
         super().save(*args, **kwargs)
 

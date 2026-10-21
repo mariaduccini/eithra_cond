@@ -21,3 +21,51 @@ class Prioridade(models.TextChoices):
     NORMAL = "normal", "Normal"
     ALTA = "alta", "Alta"
     URGENTE = "urgente", "Urgente"
+
+
+class OrigemImportacaoHistorica(models.TextChoices):
+    """De qual fonte externa veio um lote de carga histórica.
+
+    Gmail e Drive são fontes de migração e rastreabilidade, não dependências
+    permanentes do Eithra. Depois que o dado entra, o sistema continua a viver
+    sem elas.
+    """
+
+    GMAIL = "gmail", "Gmail"
+    DRIVE = "drive", "Google Drive"
+    IMPORTACAO = "importacao", "Importação"
+
+
+class EntidadeImportacaoHistorica(models.TextChoices):
+    """Que tipo de registro do Eithra um item da carga pretende atingir."""
+
+    UNIDADE = "unidade", "Unidade"
+    PESSOA = "pessoa", "Pessoa"
+    VINCULO_PESSOA_UNIDADE = "vinculo_pessoa_unidade", "Vínculo pessoa x unidade"
+    VEICULO = "veiculo", "Veículo"
+    VINCULO_VEICULO_PESSOA = "vinculo_veiculo_pessoa", "Vínculo veículo x pessoa"
+    VINCULO_VEICULO_UNIDADE = (
+        "vinculo_veiculo_unidade",
+        "Vínculo veículo x unidade",
+    )
+    VAGA_GARAGEM = "vaga_garagem", "Vaga de garagem"
+    VINCULO_VAGA_UNIDADE = "vinculo_vaga_unidade", "Vínculo vaga x unidade"
+    FORNECEDOR = "fornecedor", "Fornecedor"
+    LOCAL_OPERACIONAL = "local_operacional", "Local operacional"
+    EQUIPAMENTO = "equipamento", "Equipamento"
+    CONTRATO_FORNECEDOR = "contrato_fornecedor", "Contrato"
+    GARANTIA = "garantia", "Garantia"
+    DOCUMENTO_OPERACIONAL = "documento_operacional", "Documento operacional"
+    ROTINA = "rotina", "Rotina"
+    MANUTENCAO = "manutencao", "Manutenção"
+    DEMANDA = "demanda", "Demanda"
+
+
+class ResultadoImportacaoHistorica(models.TextChoices):
+    """Como terminou a tentativa de registrar um item da carga histórica."""
+
+    PENDENTE = "pendente", "Pendente"
+    CRIADO = "criado", "Criado"
+    ATUALIZADO = "atualizado", "Atualizado"
+    IGNORADO = "ignorado", "Ignorado"
+    ERRO = "erro", "Erro"
