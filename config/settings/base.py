@@ -79,6 +79,7 @@ LOCAL_APPS = [
     "apps.rotinas",
     "apps.estoque",
     "apps.governanca",
+    "apps.comunidade",
     "apps.core",
 ]
 

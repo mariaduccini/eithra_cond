@@ -1,0 +1,385 @@
+{% extends "layouts/app.html" %}
+
+{# O veículo como ele está hoje: os dados, quem o utiliza agora e a que
+   unidades se relaciona. Entrada e saída de veículos não são deste cadastro. #}
+
+{% block title %}{{ veiculo.placa }} · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'comunidade:veiculos' %}?condominio={{ condominio_atual.pk }}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Veículos
+      </a>
+      <h1 class="h4 mb-1">{{ veiculo.placa }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ veiculo.tom }}">{{ veiculo.texto }}</span>
+        <span class="text-body-secondary small">{{ condominio_atual.nome }}</span>
+        {% if veiculo.descricao %}
+          <span class="text-body-secondary small">· {{ veiculo.descricao }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if pode_operar %}
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-veiculo"
+          title="Editar veículo"
+          aria-label="Editar o veículo {{ veiculo.placa }}">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+        <form method="post" action="{% url 'comunidade:alternar_veiculo' veiculo.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <button
+            type="submit"
+            class="btn btn-label-secondary"
+            title="{% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %}">
+            {% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">O veículo</h2>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Placa</span>
+            <span class="fw-medium text-end">{{ veiculo.placa }}</span>
+          </div>
+          {% if veiculo.marca %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Marca</span>
+              <span class="text-end">{{ veiculo.marca }}</span>
+            </div>
+          {% endif %}
+          {% if veiculo.modelo %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Modelo</span>
+              <span class="text-end">{{ veiculo.modelo }}</span>
+            </div>
+          {% endif %}
+          {% if veiculo.cor %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Cor</span>
+              <span class="text-end">{{ veiculo.cor }}</span>
+            </div>
+          {% endif %}
+          {% if veiculo.observacao_interna %}
+            <hr>
+            <p class="text-body-secondary small mb-1">Observação interna</p>
+            <p class="mb-0">{{ veiculo.observacao_interna|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+        <div class="card-footer">
+          <span class="text-body-secondary small">
+            Cadastrado em {{ veiculo.criado_em|date:"d/m/Y H:i" }} · atualizado em {{ veiculo.atualizado_em|date:"d/m/Y H:i" }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card mb-4">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Quem utiliza</h2>
+          {% if pode_operar %}
+            <button
+              type="button"
+              class="btn btn-label-primary btn-sm"
+              data-bs-toggle="modal"
+              data-bs-target="#vincular-pessoa">
+              <i class="bx bx-plus me-1" aria-hidden="true"></i> Vincular pessoa
+            </button>
+          {% endif %}
+        </div>
+        {% if pessoas_atuais %}
+          <ul class="list-group list-group-flush">
+            {% for vinculo in pessoas_atuais %}
+              <li class="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                  <a
+                    href="{% url 'comunidade:pessoa' vinculo.pessoa_pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ vinculo.pessoa }}</a>
+                  <div class="text-body-secondary small">desde {{ vinculo.inicio|date:"d/m/Y" }}</div>
+                </div>
+                {% if pode_operar %}
+                  <form
+                    method="post"
+                    action="{% url 'comunidade:encerrar_vinculo_veiculo_pessoa' vinculo.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <input type="hidden" name="voltar" value="veiculo">
+                    <button
+                      type="submit"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      title="Encerrar vínculo"
+                      aria-label="Encerrar vínculo de {{ vinculo.pessoa }} com este veículo">
+                      <i class="bx bx-unlink" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            <p class="text-body-secondary mb-0">Ninguém está ligado a este veículo no momento.</p>
+          </div>
+        {% endif %}
+        {% if pessoas_encerradas %}
+          <div class="card-footer">
+            <a
+              class="small text-decoration-none"
+              data-bs-toggle="collapse"
+              href="#historico-pessoas-veiculo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="historico-pessoas-veiculo">
+              Histórico de pessoas ({{ pessoas_encerradas|length }})
+            </a>
+            <div class="collapse mt-2" id="historico-pessoas-veiculo">
+              {% for vinculo in pessoas_encerradas %}
+                <div class="d-flex flex-wrap justify-content-between gap-2 py-1 border-top">
+                  <span>{{ vinculo.pessoa }}</span>
+                  <span class="text-body-secondary small">
+                    {{ vinculo.inicio|date:"d/m/Y" }} a {{ vinculo.fim|date:"d/m/Y" }}
+                  </span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Unidades relacionadas</h2>
+          {% if pode_operar %}
+            <button
+              type="button"
+              class="btn btn-label-primary btn-sm"
+              data-bs-toggle="modal"
+              data-bs-target="#vincular-unidade">
+              <i class="bx bx-plus me-1" aria-hidden="true"></i> Relacionar unidade
+            </button>
+          {% endif %}
+        </div>
+        {% if unidades_atuais %}
+          <ul class="list-group list-group-flush">
+            {% for vinculo in unidades_atuais %}
+              <li class="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                  <a
+                    href="{% url 'comunidade:unidade' vinculo.unidade_pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ vinculo.unidade }}</a>
+                  <div class="text-body-secondary small">desde {{ vinculo.inicio|date:"d/m/Y" }}</div>
+                </div>
+                {% if pode_operar %}
+                  <form
+                    method="post"
+                    action="{% url 'comunidade:encerrar_vinculo_veiculo_unidade' vinculo.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <input type="hidden" name="voltar" value="veiculo">
+                    <button
+                      type="submit"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      title="Encerrar vínculo"
+                      aria-label="Encerrar a relação deste veículo com a unidade {{ vinculo.unidade }}">
+                      <i class="bx bx-unlink" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            <p class="text-body-secondary mb-0">Este veículo não está relacionado a nenhuma unidade no momento.</p>
+          </div>
+        {% endif %}
+        {% if unidades_encerradas %}
+          <div class="card-footer">
+            <a
+              class="small text-decoration-none"
+              data-bs-toggle="collapse"
+              href="#historico-unidades-veiculo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="historico-unidades-veiculo">
+              Histórico de unidades ({{ unidades_encerradas|length }})
+            </a>
+            <div class="collapse mt-2" id="historico-unidades-veiculo">
+              {% for vinculo in unidades_encerradas %}
+                <div class="d-flex flex-wrap justify-content-between gap-2 py-1 border-top">
+                  <span>{{ vinculo.unidade }}</span>
+                  <span class="text-body-secondary small">
+                    {{ vinculo.inicio|date:"d/m/Y" }} a {{ vinculo.fim|date:"d/m/Y" }}
+                  </span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-veiculo"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-veiculo-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:editar_veiculo' veiculo.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-veiculo-titulo">Editar veículo</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
+              {% for erro in formulario_veiculo.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade{% if modal_aberto == 'vincular-pessoa' %} show{% endif %}"
+      id="vincular-pessoa"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="vincular-pessoa-titulo"
+      aria-hidden="{% if modal_aberto == 'vincular-pessoa' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'vincular-pessoa' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:vincular_pessoa_veiculo' veiculo.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="vincular-pessoa-titulo">Vincular pessoa</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.pessoa %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_inicio %}
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-pessoa-veiculo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-pessoa-veiculo">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-pessoa-veiculo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_fim %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.observacao %}
+              </div>
+              {% for erro in formulario_pessoa.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Vincular</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade{% if modal_aberto == 'vincular-unidade' %} show{% endif %}"
+      id="vincular-unidade"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="vincular-unidade-titulo"
+      aria-hidden="{% if modal_aberto == 'vincular-unidade' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'vincular-unidade' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:vincular_unidade_veiculo' veiculo.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="vincular-unidade-titulo">Relacionar unidade</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.unidade %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_inicio %}
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-unidade-veiculo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-unidade-veiculo">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-unidade-veiculo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_fim %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao %}
+              </div>
+              {% for erro in formulario_unidade.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Relacionar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

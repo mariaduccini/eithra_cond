@@ -1,0 +1,217 @@
+{% extends "layouts/app.html" %}
+
+{# As pessoas do condomínio, com as unidades a que cada uma se liga hoje. A
+   busca é a mesma pergunta de sempre: quem é esta pessoa — pelo nome, pelo
+   telefone, pelo WhatsApp ou pelo e-mail. #}
+
+{% block title %}Pessoas · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Pessoas</h1>
+      <p class="text-body-secondary mb-0">Quem mora, responde ou trabalha neste condomínio.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      <form method="get" class="d-flex align-items-center gap-2" role="search">
+        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        <label class="visually-hidden" for="busca-pessoas">Buscar pessoa</label>
+        <input
+          type="search"
+          class="form-control form-control-sm"
+          id="busca-pessoas"
+          name="q"
+          value="{{ termo }}"
+          placeholder="Nome, telefone, WhatsApp ou e-mail">
+        <button type="submit" class="btn btn-sm btn-label-secondary">Buscar</button>
+      </form>
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#nova-pessoa">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Nova pessoa
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if pessoas %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Pessoas deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Pessoa</th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Contato</th>
+              <th scope="col">Unidades hoje</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for pessoa in pessoas %}
+              <tr
+                data-href="{% url 'comunidade:pessoa' pessoa.pk %}?condominio={{ condominio_atual.pk }}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'comunidade:pessoa' pessoa.pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ pessoa.chamado }}</a>
+                  {% if pessoa.nome_social %}
+                    <div class="text-body-secondary small">{{ pessoa.nome }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ pessoa.tipo }}</td>
+                <td class="text-body-secondary small">
+                  {% if pessoa.telefone %}<div>{{ pessoa.telefone }}</div>{% endif %}
+                  {% if pessoa.whatsapp %}<div>WhatsApp {{ pessoa.whatsapp }}</div>{% endif %}
+                  {% if pessoa.email %}<div>{{ pessoa.email }}</div>{% endif %}
+                  {% if not pessoa.telefone and not pessoa.whatsapp and not pessoa.email %}—{% endif %}
+                </td>
+                <td class="text-body-secondary">{{ pessoa.unidades_resumo }}</td>
+                <td><span class="badge bg-label-{{ pessoa.tom }}">{{ pessoa.texto }}</span></td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'comunidade:alternar_pessoa' pessoa.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if pessoa.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if pessoa.ativo %}Desativar{% else %}Ativar{% endif %} {{ pessoa.chamado }}">
+                        <i class="bx {% if pessoa.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for pessoa in pessoas %}
+          <div class="list-group-item">
+            <a
+              href="{% url 'comunidade:pessoa' pessoa.pk %}?condominio={{ condominio_atual.pk }}"
+              class="d-flex justify-content-between align-items-start gap-2 text-decoration-none text-body">
+              <span class="fw-medium">{{ pessoa.chamado }}</span>
+              <span class="badge bg-label-{{ pessoa.tom }} flex-shrink-0">{{ pessoa.texto }}</span>
+            </a>
+            <div class="text-body-secondary small mt-1">{{ pessoa.tipo }}</div>
+            {% if pessoa.telefone or pessoa.whatsapp or pessoa.email %}
+              <div class="text-body-secondary small">
+                {{ pessoa.telefone|default:"" }}{% if pessoa.telefone and pessoa.whatsapp %} · {% endif %}{% if pessoa.whatsapp %}WhatsApp {{ pessoa.whatsapp }}{% endif %}{% if pessoa.email %}<div>{{ pessoa.email }}</div>{% endif %}
+              </div>
+            {% endif %}
+            <div class="text-body-secondary small mt-1">{{ pessoa.unidades_resumo }}</div>
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="{% url 'comunidade:pessoa' pessoa.pk %}?condominio={{ condominio_atual.pk }}">
+                  Abrir
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'comunidade:alternar_pessoa' pessoa.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if pessoa.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% elif termo %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nada encontrado" state_message="Ninguém deste condomínio corresponde à busca." %}
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-group" state_title="Nenhuma pessoa cadastrada" state_message="Cadastre a primeira pessoa deste condomínio para começar." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="nova-pessoa"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="nova-pessoa-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'comunidade:criar_pessoa' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="nova-pessoa-titulo">Nova pessoa</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.nome %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.telefone %}
+
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-pessoa"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-pessoa">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-pessoa">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.tipo_pessoa %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.nome_social %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.whatsapp %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.email %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.documento %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.observacao_interna %}
+              </div>
+              {% for erro in formulario_pessoa.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a pessoa. A navegação por teclado continua pelo link
+    // do nome, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

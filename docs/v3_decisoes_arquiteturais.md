@@ -38,9 +38,13 @@ Mantido como `False` até decisão consciente de preload no domínio definitivo.
 
 ## Fase 1A — Balanços Mensais
 
-### B1 — `Condominio` é o contexto suficiente de prédio — APROVADA
+### B1 — `Condominio` é o contexto suficiente de prédio — SUBSTITUÍDA
 Não se cria estrutura predial (`Unidade`, `Bloco`, `Torre`, `Pavimento`, `Área`,
 `Equipamento`, `SistemaPredial`) por antecipação.
+**Substituída pela decisão G1** (Fase 2F), que autoriza `Unidade` e mantém
+`Bloco`, `Torre` e `Pavimento` fora como models. A decisão nasceu na Fase 1A,
+quando prédio estava fora de escopo; a Constituição §1 exige que a exceção seja
+registrada e justificada antes da implementação — nunca depois.
 
 ### B2 — Versionar, nunca sobrescrever — APROVADA
 Substituição gera nova versão; a anterior é preservada e marcada `SUBSTITUIDO`,
@@ -351,6 +355,108 @@ B1.
 `DemandaQuerySet` já responde `vencidas`, `vencendo_hoje`, `proximas`,
 `urgentes`, `minhas` e `na_ordem_de_atencao`. As perguntas ficam no domínio, não
 nas views; a tela do painel não entra nesta fase.
+
+## Fase 2F — Unidades, pessoas, vínculos e veículos
+
+### G1 — `Unidade` existe; `Bloco`, `Torre` e `Pavimento` não — APROVADA
+Substitui B1. A unidade é a menor porção identificável do condomínio — "101",
+"A-101", "Casa 03", "Loja 02", "Sala 105" — e é o que permite perguntar quem
+mora onde. Bloco, torre e pavimento continuam sendo **campos opcionais da
+unidade** (`bloco_torre`, `andar`), e não models: criar a hierarquia predial
+inteira antes de precisar dela é a antecipação que B1 recusava, e continua
+recusada. `Equipamento` já existia desde a Fase 2A.1 apesar de constar na lista
+de B1.
+
+### G2 — Pessoa não é usuário; usuário não é pessoa — APROVADA
+`Pessoa` é quem se relaciona com uma unidade. `User` é quem entra no sistema.
+São coisas diferentes, com ciclos de vida diferentes: a relação `Pessoa ↔ User`
+é opcional e explícita, nunca implica senha nem acesso, e a criação de um acesso
+continua sendo decisão separada (`AcessoUsuarioCondominio`).
+
+### G3 — Estado de ocupação é derivado, nunca guardado — APROVADA
+Não existe campo `ocupada`, `vazia` ou `possui_morador`. Quem mora onde agora é
+resposta de leitura sobre os vínculos vigentes (`moradores_atuais()`,
+`proprietarios_atuais()`, `vinculos_vigentes()`). Persistir o estado criaria um
+segundo lugar onde ele pode estar errado — e o tempo já é o dado que muda.
+
+### G4 — Um vínculo por papel, e não um vínculo por unidade — APROVADA
+Uma unidade pode ter, ao mesmo tempo, um proprietário, um locatário e várias
+pessoas morando. Não existe a regra "somente um vínculo ativo por unidade": ela
+descreveria a vida real errada. Também não há booleano genérico de "principal".
+
+A mesma pessoa pode ter **mais de um papel na mesma unidade** ao mesmo tempo:
+ser familiar e funcionária da casa são relações de naturezas diferentes, e as
+duas coexistem. Papel nenhum se infere de outro, e nenhum exclui outro.
+
+O que a unicidade alcança é a combinação exata: **mesma pessoa + mesma unidade +
+mesmo papel** não pode ter dois períodos que se cruzem — isso não são dois
+vínculos, é o mesmo registrado duas vezes. O fim é inclusivo dos dois lados: um
+vínculo que termina em 31/03 e outro que começa em 31/03 disputam o mesmo dia e
+são recusados; um que começa em 01/04 é outro período. A conferência vive no
+service, e não em constraint de banco, porque depende de interseção de
+intervalos. A mesma regra vale para os vínculos de veículo: por
+(veículo + pessoa) e por (veículo + unidade), e só dentro de cada dupla.
+
+### G5 — Sobreposição e duplicidade são detectadas, nunca fundidas — APROVADA
+Dois cadastros de pessoa com o mesmo e-mail, telefone ou documento normalizados
+são candidatos a duplicidade, detectados de forma determinística (comparação de
+valores normalizados, sem IA e sem busca semântica). O Eithra **nunca** funde
+cadastros sozinho: ele mostra e a gestão decide.
+
+### G6 — Vínculo é linha explícita, com vigência — APROVADA
+`VinculoPessoaUnidade`, `VinculoVeiculoPessoa` e `VinculoVeiculoUnidade` são
+models próprios, com `data_inicio` e `data_fim` opcional, e nunca
+`GenericForeignKey`. Um vínculo não se infere do outro: o veículo estar ligado a
+uma pessoa não diz com qual unidade ele está; e o vínculo é registro histórico,
+por isso os alvos são preservados com `on_delete=PROTECT`.
+
+Quem **registrou** o vínculo não é um alvo do fato: o campo `criado_por` usa
+`SET_NULL`. O registro continua legível — a pessoa, a unidade e o período
+permanecem — e a remoção de uma conta de acesso não fica travada por ter criado
+cadastros operacionais.
+
+### G7 — Inativar exige tratar os vínculos vigentes — APROVADA
+Antes de desativar uma pessoa, uma unidade ou um veículo que ainda tenha vínculo
+vigente, o domínio detecta e recusa a operação, exigindo que os vínculos sejam
+encerrados primeiro. Apagar ou desativar em silêncio deixaria o histórico
+contando uma história que não aconteceu.
+
+### G8 — Placa é obrigatória e única por condomínio — APROVADA
+`Veiculo.placa` é obrigatória, guardada em maiúsculas e sem separadores, e única
+dentro do condomínio (`UniqueConstraint(Lower("placa"), "condominio")`). Não há
+consulta a serviço externo nem validação de formato: aceita o padrão antigo e o
+Mercosul. Bicicleta e veículo sem placa não entram em `Veiculo`.
+
+### G9 — Quem acessa as telas administrativas nesta fase — APROVADA
+Administração, síndica e supervisão acessam as telas de Unidades, Pessoas e
+Veículos — ver, cadastrar, editar, criar e encerrar vínculos e cuidar de
+veículos. Operação, portaria e morador **não** acessam: recebem 404, sem
+descobrir que a tela existe. A decisão é conferida no backend, a partir do
+vínculo ativo com o condomínio, e falha fechada.
+
+### G10 — O Eithra não decide entrada e saída nesta fase — APROVADA
+Autorização de visitante, controle de acesso, biometria, câmera, QR, leitura de
+placa e feed de portaria não entram na Fase 2F. A fase entrega o cadastro e os
+vínculos; a operação de portaria é assunto de outra fase, e o cadastro é o que a
+habilita.
+
+**RELAÇÃO CIVIL/OPERACIONAL ≠ AUTORIZAÇÃO DE ACESSO FÍSICO.** O tipo de vínculo
+responde *"qual é a relação desta pessoa com esta unidade?"*. Ele não responde
+*"esta pessoa pode entrar?"*, *"pode autorizar terceiros?"*, *"em que horários?"*
+ou *"pode entrar sem confirmação?"*. Ser **familiar** não significa estar
+autorizado a entrar; ser **funcionário da unidade** também não. São perguntas de
+naturezas diferentes, e misturá-las acoplaria o cadastro à operação de portaria.
+
+Por isso a Fase 2F não tem — e não terá — campos como `pode_entrar`,
+`autorizado`, `pode_autorizar_visitante`, `acesso_livre`, `horario_autorizado`,
+`validade_autorizacao` ou qualquer enum de autorização. Também não existe o tipo
+`SECRETARIA_AUTORIZADA`: distinguir função (secretária, cuidador, motorista) da
+regra de acesso é outra pergunta, a ser analisada quando houver necessidade real.
+
+O que a Fase 2G acrescenta é uma entidade **separada**, ligada a pessoa, unidade
+e contexto temporal, sem alterar o significado de `VinculoPessoaUnidade`. Nada
+dessa entidade é criado agora: a 2F apenas deixa pessoa + unidade + vigência
+prontas para serem referenciadas.
 
 ## Decisões pendentes de aprovação (não arquivadas aqui)
 

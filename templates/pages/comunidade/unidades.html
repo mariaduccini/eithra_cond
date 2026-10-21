@@ -1,0 +1,197 @@
+{% extends "layouts/app.html" %}
+
+{# As unidades do condomínio, com quem está ligado a cada uma hoje. O resumo
+   de vínculos é derivado dos vínculos vigentes, e não um número guardado. #}
+
+{% block title %}Unidades · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Unidades</h1>
+      <p class="text-body-secondary mb-0">As unidades deste condomínio e quem está ligado a cada uma.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      <form method="get" class="d-flex align-items-center gap-2" role="search">
+        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        <label class="visually-hidden" for="busca-unidades">Buscar unidade</label>
+        <input
+          type="search"
+          class="form-control form-control-sm"
+          id="busca-unidades"
+          name="q"
+          value="{{ termo }}"
+          placeholder="Buscar unidade">
+        <button type="submit" class="btn btn-sm btn-label-secondary">Buscar</button>
+      </form>
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#nova-unidade">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Nova unidade
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if unidades %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Unidades deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Unidade</th>
+              <th scope="col">Bloco ou torre</th>
+              <th scope="col">Pessoas hoje</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for unidade in unidades %}
+              <tr
+                data-href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ unidade.identificador }}</a>
+                  {% if unidade.andar %}
+                    <div class="text-body-secondary small">{{ unidade.andar }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ unidade.bloco_torre|default:"—" }}</td>
+                <td class="text-body-secondary">{{ unidade.pessoas_resumo }}</td>
+                <td><span class="badge bg-label-{{ unidade.tom }}">{{ unidade.texto }}</span></td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'comunidade:alternar_unidade' unidade.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %} a unidade {{ unidade.identificador }}">
+                        <i class="bx {% if unidade.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for unidade in unidades %}
+          <div class="list-group-item">
+            <a
+              href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
+              class="d-flex justify-content-between align-items-start gap-2 text-decoration-none text-body">
+              <span class="fw-medium">{{ unidade.rotulo }}</span>
+              <span class="badge bg-label-{{ unidade.tom }} flex-shrink-0">{{ unidade.texto }}</span>
+            </a>
+            <div class="text-body-secondary small mt-1">{{ unidade.pessoas_resumo }}</div>
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}">
+                  Abrir
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'comunidade:alternar_unidade' unidade.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% elif termo %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nada encontrado" state_message="Nenhuma unidade deste condomínio corresponde à busca." %}
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-door-open" state_title="Nenhuma unidade cadastrada" state_message="Cadastre a primeira unidade deste condomínio para começar." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="nova-unidade"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="nova-unidade-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'comunidade:criar_unidade' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="nova-unidade-titulo">Nova unidade</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.identificador %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.bloco_torre %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.andar %}
+
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-unidade"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-unidade">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-unidade">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.complemento %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao_interna %}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre a unidade. A navegação por teclado continua pelo link
+    // do identificador, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

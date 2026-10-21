@@ -1,0 +1,207 @@
+{% extends "layouts/app.html" %}
+
+{# Os veículos que circulam pelo condomínio, com quem os utiliza e a que
+   unidades se relacionam hoje. O condomínio não controla entrada e saída
+   aqui — isto é cadastro. #}
+
+{% block title %}Veículos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Veículos</h1>
+      <p class="text-body-secondary mb-0">O que circula por este condomínio e a quem está ligado.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+      <form method="get" class="d-flex align-items-center gap-2" role="search">
+        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        <label class="visually-hidden" for="busca-veiculos">Buscar veículo</label>
+        <input
+          type="search"
+          class="form-control form-control-sm"
+          id="busca-veiculos"
+          name="q"
+          value="{{ termo }}"
+          placeholder="Placa, marca ou modelo">
+        <button type="submit" class="btn btn-sm btn-label-secondary">Buscar</button>
+      </form>
+      {% if pode_operar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#novo-veiculo">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo veículo
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if veiculos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Veículos deste condomínio</caption>
+          <thead>
+            <tr>
+              <th scope="col">Placa</th>
+              <th scope="col">Veículo</th>
+              <th scope="col">Pessoas hoje</th>
+              <th scope="col">Unidades hoje</th>
+              <th scope="col">Situação</th>
+              {% if pode_operar %}<th scope="col" class="text-end">Ações</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for veiculo in veiculos %}
+              <tr
+                data-href="{% url 'comunidade:veiculo' veiculo.pk %}?condominio={{ condominio_atual.pk }}"
+                style="cursor: pointer;">
+                <td>
+                  <a
+                    href="{% url 'comunidade:veiculo' veiculo.pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ veiculo.placa }}</a>
+                  {% if veiculo.cor %}
+                    <div class="text-body-secondary small">{{ veiculo.cor }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ veiculo.descricao|default:"—" }}</td>
+                <td class="text-body-secondary">{{ veiculo.pessoas_resumo }}</td>
+                <td class="text-body-secondary">{{ veiculo.unidades_resumo }}</td>
+                <td><span class="badge bg-label-{{ veiculo.tom }}">{{ veiculo.texto }}</span></td>
+                {% if pode_operar %}
+                  <td class="text-end text-nowrap">
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'comunidade:alternar_veiculo' veiculo.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="{% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %}"
+                        aria-label="{% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %} o veículo {{ veiculo.placa }}">
+                        <i class="bx {% if veiculo.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for veiculo in veiculos %}
+          <div class="list-group-item">
+            <a
+              href="{% url 'comunidade:veiculo' veiculo.pk %}?condominio={{ condominio_atual.pk }}"
+              class="d-flex justify-content-between align-items-start gap-2 text-decoration-none text-body">
+              <span class="fw-medium">{{ veiculo.placa }}</span>
+              <span class="badge bg-label-{{ veiculo.tom }} flex-shrink-0">{{ veiculo.texto }}</span>
+            </a>
+            {% if veiculo.descricao %}
+              <div class="text-body-secondary small mt-1">{{ veiculo.descricao }}</div>
+            {% endif %}
+            <div class="text-body-secondary small mt-1">{{ veiculo.pessoas_resumo }}</div>
+            <div class="text-body-secondary small">{{ veiculo.unidades_resumo }}</div>
+            {% if pode_operar %}
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <a
+                  class="btn btn-sm btn-label-secondary"
+                  href="{% url 'comunidade:veiculo' veiculo.pk %}?condominio={{ condominio_atual.pk }}">
+                  Abrir
+                </a>
+                <form
+                  class="d-inline"
+                  method="post"
+                  action="{% url 'comunidade:alternar_veiculo' veiculo.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    {% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% elif termo %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nada encontrado" state_message="Nenhum veículo deste condomínio corresponde à busca." %}
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-car" state_title="Nenhum veículo cadastrado" state_message="Cadastre o primeiro veículo deste condomínio para começar." %}
+    {% endif %}
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="novo-veiculo"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="novo-veiculo-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form method="post" action="{% url 'comunidade:criar_veiculo' %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="novo-veiculo-titulo">Novo veículo</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
+
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-veiculo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-veiculo">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-veiculo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
+              </div>
+              {% for erro in formulario_veiculo.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A linha inteira abre o veículo. A navegação por teclado continua pelo link
+    // da placa, para quem não usa mouse.
+    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button")) {
+          return;
+        }
+        window.location.href = linha.dataset.href;
+      });
+    });
+  </script>
+{% endblock %}

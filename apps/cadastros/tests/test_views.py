@@ -401,7 +401,7 @@ class MenuTests(TestCase):
         resposta = self.client.get(reverse("core:home"))
         return resposta.context["navigation"]
 
-    def test_grupo_cadastros_traz_os_oito_cadastros(self):
+    def test_grupo_cadastros_traz_os_onze_cadastros(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         grupo = next(item for item in self._menu() if item["label"] == "Cadastros")
         self.assertEqual(
@@ -412,6 +412,9 @@ class MenuTests(TestCase):
                 "Áreas e locais",
                 "Equipamentos",
                 "Fornecedores",
+                "Unidades",
+                "Pessoas",
+                "Veículos",
                 "Contratos",
                 "Garantias",
                 "Documentos",

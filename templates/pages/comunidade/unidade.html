@@ -1,0 +1,366 @@
+{% extends "layouts/app.html" %}
+
+{# A unidade como ela está hoje: os dados, quem está ligado a ela agora e o que
+   já passou. A pessoa que saiu não desaparece daqui — ela passa para o
+   histórico, com a data em que o vínculo terminou. #}
+
+{% block title %}{{ unidade.rotulo }} · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'comunidade:unidades' %}?condominio={{ condominio_atual.pk }}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Unidades
+      </a>
+      <h1 class="h4 mb-1">{{ unidade.rotulo }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-{{ unidade.tom }}">{{ unidade.texto }}</span>
+        <span class="text-body-secondary small">{{ condominio_atual.nome }}</span>
+        {% if unidade.bloco_torre %}
+          <span class="text-body-secondary small">· {{ unidade.bloco_torre }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if pode_operar %}
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-icon btn-text-secondary rounded-pill"
+          data-bs-toggle="modal"
+          data-bs-target="#editar-unidade"
+          title="Editar unidade"
+          aria-label="Editar unidade {{ unidade.identificador }}">
+          <i class="bx bx-pencil" aria-hidden="true"></i>
+        </button>
+        <form method="post" action="{% url 'comunidade:alternar_unidade' unidade.pk %}">
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <button
+            type="submit"
+            class="btn btn-label-secondary"
+            title="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}">
+            {% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">A unidade</h2>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between gap-3 py-1">
+            <span class="text-body-secondary">Identificação</span>
+            <span class="fw-medium text-end">{{ unidade.identificador }}</span>
+          </div>
+          {% if unidade.bloco_torre %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Bloco ou torre</span>
+              <span class="text-end">{{ unidade.bloco_torre }}</span>
+            </div>
+          {% endif %}
+          {% if unidade.andar %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Andar</span>
+              <span class="text-end">{{ unidade.andar }}</span>
+            </div>
+          {% endif %}
+          {% if unidade.complemento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Complemento</span>
+              <span class="text-end">{{ unidade.complemento }}</span>
+            </div>
+          {% endif %}
+          {% if unidade.observacao_interna %}
+            <hr>
+            <p class="text-body-secondary small mb-1">Observação interna</p>
+            <p class="mb-0">{{ unidade.observacao_interna|linebreaksbr }}</p>
+          {% endif %}
+        </div>
+        <div class="card-footer">
+          <span class="text-body-secondary small">
+            Cadastrada em {{ unidade.criada_em|date:"d/m/Y H:i" }} · atualizada em {{ unidade.atualizada_em|date:"d/m/Y H:i" }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      <div class="card mb-4">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Pessoas nesta unidade</h2>
+          {% if pode_operar %}
+            <button
+              type="button"
+              class="btn btn-label-primary btn-sm"
+              data-bs-toggle="modal"
+              data-bs-target="#vincular-pessoa">
+              <i class="bx bx-plus me-1" aria-hidden="true"></i> Vincular à unidade
+            </button>
+          {% endif %}
+        </div>
+        {% if vinculos_atuais %}
+          <ul class="list-group list-group-flush">
+            {% for vinculo in vinculos_atuais %}
+              <li class="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                  <a
+                    href="{% url 'comunidade:pessoa' vinculo.pessoa_pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ vinculo.pessoa }}</a>
+                  <div class="text-body-secondary small">
+                    {{ vinculo.papel }} · desde {{ vinculo.inicio|date:"d/m/Y" }}
+                  </div>
+                </div>
+                {% if pode_operar %}
+                  <form
+                    method="post"
+                    action="{% url 'comunidade:encerrar_vinculo_pessoa_unidade' vinculo.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <input type="hidden" name="voltar" value="unidade">
+                    <button
+                      type="submit"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      title="Encerrar vínculo"
+                      aria-label="Encerrar vínculo de {{ vinculo.pessoa }}">
+                      <i class="bx bx-unlink" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            <p class="text-body-secondary mb-0">Ninguém está vinculado a esta unidade no momento.</p>
+          </div>
+        {% endif %}
+        {% if vinculos_encerrados %}
+          <div class="card-footer">
+            <a
+              class="small text-decoration-none"
+              data-bs-toggle="collapse"
+              href="#historico-pessoas"
+              role="button"
+              aria-expanded="false"
+              aria-controls="historico-pessoas">
+              Histórico de pessoas ({{ vinculos_encerrados|length }})
+            </a>
+            <div class="collapse mt-2" id="historico-pessoas">
+              {% for vinculo in vinculos_encerrados %}
+                <div class="d-flex flex-wrap justify-content-between gap-2 py-1 border-top">
+                  <span>{{ vinculo.pessoa }}</span>
+                  <span class="text-body-secondary small">
+                    {{ vinculo.papel }} · {{ vinculo.inicio|date:"d/m/Y" }} a {{ vinculo.fim|date:"d/m/Y" }}
+                  </span>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h2 class="h6 mb-0">Veículos relacionados</h2>
+          {% if pode_operar %}
+            <button
+              type="button"
+              class="btn btn-label-primary btn-sm"
+              data-bs-toggle="modal"
+              data-bs-target="#vincular-veiculo">
+              <i class="bx bx-plus me-1" aria-hidden="true"></i> Relacionar veículo
+            </button>
+          {% endif %}
+        </div>
+        {% if veiculos_relacionados %}
+          <ul class="list-group list-group-flush">
+            {% for veiculo in veiculos_relacionados %}
+              <li class="list-group-item d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div>
+                  <a
+                    href="{% url 'comunidade:veiculo' veiculo.veiculo_pk %}?condominio={{ condominio_atual.pk }}"
+                    class="fw-medium text-decoration-none">{{ veiculo.veiculo }}</a>
+                  <div class="text-body-secondary small">
+                    {{ veiculo.marca|default:"" }}{% if veiculo.marca and veiculo.modelo %} {% endif %}{{ veiculo.modelo|default:"" }}
+                    · desde {{ veiculo.inicio|date:"d/m/Y" }}
+                  </div>
+                </div>
+                {% if pode_operar %}
+                  <form
+                    method="post"
+                    action="{% url 'comunidade:encerrar_vinculo_veiculo_unidade' veiculo.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <input type="hidden" name="voltar" value="unidade">
+                    <button
+                      type="submit"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      title="Encerrar vínculo"
+                      aria-label="Encerrar vínculo do veículo {{ veiculo.veiculo }}">
+                      <i class="bx bx-unlink" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            <p class="text-body-secondary mb-0">Nenhum veículo está relacionado a esta unidade no momento.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if pode_operar %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-unidade"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-unidade-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:editar_unidade' unidade.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-unidade-titulo">Editar unidade</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.identificador %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.bloco_torre %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.andar %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.complemento %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao_interna %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade{% if modal_aberto == 'vincular-pessoa' %} show{% endif %}"
+      id="vincular-pessoa"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="vincular-pessoa-titulo"
+      aria-hidden="{% if modal_aberto == 'vincular-pessoa' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'vincular-pessoa' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:vincular_pessoa' unidade.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="vincular-pessoa-titulo">Vincular à unidade</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.pessoa %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.tipo_vinculo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_inicio %}
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-vinculo"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-vinculo">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-vinculo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_fim %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.observacao_interna %}
+              </div>
+              {% for erro in formulario_pessoa.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Vincular</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade{% if modal_aberto == 'vincular-veiculo' %} show{% endif %}"
+      id="vincular-veiculo"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="vincular-veiculo-titulo"
+      aria-hidden="{% if modal_aberto == 'vincular-veiculo' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'vincular-veiculo' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'comunidade:vincular_veiculo' unidade.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="vincular-veiculo-titulo">Relacionar veículo</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.veiculo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.data_inicio %}
+              <a
+                class="small text-decoration-none d-inline-block mb-6"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-veiculo-unidade"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-veiculo-unidade">
+                Mais detalhes
+              </a>
+              <div class="collapse" id="mais-detalhes-veiculo-unidade">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.data_fim %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao %}
+              </div>
+              {% for erro in formulario_veiculo.non_field_errors %}
+                <div class="text-danger small mb-2">{{ erro }}</div>
+              {% endfor %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Relacionar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

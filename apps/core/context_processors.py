@@ -13,6 +13,7 @@ menos um filho visível, e o destaque da tela aberta sobe do filho para o grupo.
 """
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
 from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
+from apps.comunidade.permissoes import pode_ver_comunidade_em_algum
 from apps.demandas.permissoes import pode_ver_alguma_demanda
 from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
 from apps.governanca.permissoes import pode_ver_governanca_em_algum
@@ -76,6 +77,21 @@ NAVIGATION = [
             {"label": "Áreas e locais", "view_name": "cadastros:locais"},
             {"label": "Equipamentos", "view_name": "cadastros:equipamentos"},
             {"label": "Fornecedores", "view_name": "cadastros:fornecedores"},
+            {
+                "label": "Unidades",
+                "view_name": "comunidade:unidades",
+                "visivel_para": pode_ver_comunidade_em_algum,
+            },
+            {
+                "label": "Pessoas",
+                "view_name": "comunidade:pessoas",
+                "visivel_para": pode_ver_comunidade_em_algum,
+            },
+            {
+                "label": "Veículos",
+                "view_name": "comunidade:veiculos",
+                "visivel_para": pode_ver_comunidade_em_algum,
+            },
             {
                 "label": "Contratos",
                 "view_name": "governanca:contratos",
