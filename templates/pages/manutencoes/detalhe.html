@@ -406,6 +406,17 @@
 
           <div class="modal-body">
             <div class="mb-6">
+              <label class="form-label" for="{{ formulario_conclusao.data_conclusao.id_for_label }}">
+                {{ formulario_conclusao.data_conclusao.label }}
+              </label>
+              {{ formulario_conclusao.data_conclusao }}
+              <div class="form-text">Informe o dia em que o serviço foi concluído.</div>
+              {% for erro in formulario_conclusao.data_conclusao.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-6">
               <label class="form-label" for="{{ formulario_conclusao.descricao_servico.id_for_label }}">
                 {{ formulario_conclusao.descricao_servico.label }}
               </label>

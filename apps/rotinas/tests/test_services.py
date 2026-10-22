@@ -4,10 +4,11 @@ Cada operação acontece inteira, em uma transação: ou a ocorrência e a rotin
 mudam juntas, ou nada muda. Nada dispara sozinho — a rotina lembra, e quem cria
 a consequência é a pessoa, na confirmação.
 """
-from datetime import date
+from datetime import date, timedelta
 from unittest import mock
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.core.constants import Prioridade
 from apps.demandas.constants import OrigemDemanda
@@ -32,11 +33,14 @@ from apps.rotinas.services import (
     gerar_proxima_execucao,
     ignorar_execucao,
     iniciar_execucao,
+    tratar_item_checklist,
 )
 from apps.rotinas.tests.apoio import (
+    criar_checklist,
     criar_condominio,
     criar_equipamento,
     criar_fornecedor,
+    criar_item_do_checklist,
     criar_local,
     criar_pessoa,
 )
@@ -367,6 +371,183 @@ class ConcluirExecucaoTests(BaseDeRotinas):
                 usuario=self.gestao,
                 resultado=ResultadoExecucao.OK,
             )
+
+
+class ConclusaoComDataDoFatoTests(BaseDeRotinas):
+    """Concluir guarda o dia da verificação, e a agenda continua vindo da regra.
+
+    Uma rotina feita em setembro pode ser lançada agora: o dia informado vai
+    para ``concluido_em``, que é o quando do fato. A próxima ocorrência continua
+    vindo de ``data_prevista`` — por isso um lançamento retroativo não puxa a
+    agenda para trás.
+    """
+
+    def _dia_guardado(self, execucao):
+        execucao.refresh_from_db()
+        return timezone.localtime(execucao.concluido_em).date()
+
+    def test_execucao_de_hoje(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+            data_execucao=timezone.localdate(),
+        )
+        self.assertEqual(self._dia_guardado(execucao), timezone.localdate())
+
+    def test_execucao_historica_guarda_o_dia_do_fato(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        feita_em = timezone.localdate() - timedelta(days=40)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+            data_execucao=feita_em,
+        )
+        self.assertEqual(self._dia_guardado(execucao), feita_em)
+
+    def test_data_futura_e_recusada(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        amanha = timezone.localdate() + timedelta(days=1)
+        with self.assertRaises(ErroDeRotina):
+            concluir_execucao(
+                execucao=execucao,
+                usuario=self.gestao,
+                resultado=ResultadoExecucao.OK,
+                data_execucao=amanha,
+            )
+        execucao.refresh_from_db()
+        self.assertEqual(execucao.status, StatusExecucao.PENDENTE)
+        self.assertIsNone(execucao.concluido_em)
+
+    def test_sem_data_informada_vale_o_momento_do_registro(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+        )
+        self.assertEqual(self._dia_guardado(execucao), timezone.localdate())
+
+    def test_resultado_e_preservado(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.PROBLEMA,
+            observacao="Vazamento encontrado.",
+            data_execucao=timezone.localdate() - timedelta(days=10),
+        )
+        execucao.refresh_from_db()
+        self.assertEqual(execucao.resultado, ResultadoExecucao.PROBLEMA)
+        self.assertEqual(execucao.observacao_execucao, "Vazamento encontrado.")
+
+    def test_execucao_historica_encerra_sem_tocar_no_ciclo(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        ciclo = execucao.data_prevista
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+            data_execucao=timezone.localdate() - timedelta(days=40),
+        )
+        execucao.refresh_from_db()
+        self.assertEqual(execucao.status, StatusExecucao.CONCLUIDA)
+        self.assertEqual(execucao.data_prevista, ciclo)
+
+    def test_execucao_retroativa_nao_corrompe_a_proxima(self):
+        # §9: registrar uma execução em data passada não puxa a agenda para trás.
+        hoje = timezone.localdate()
+        rotina = self._criar(
+            data_inicio=hoje, periodicidade_tipo=Periodicidade.DIARIA, dia_mes=None
+        )
+        execucao = self._pendente(rotina)
+        self.assertEqual(execucao.data_prevista, hoje)
+
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+            data_execucao=hoje - timedelta(days=30),
+        )
+        execucao.refresh_from_db()
+        rotina.refresh_from_db()
+
+        self.assertEqual(execucao.data_prevista, hoje)
+        # A agenda avança a partir da ocorrência (amanhã), nunca da data informada.
+        self.assertEqual(rotina.proxima_execucao, hoje + timedelta(days=1))
+
+    def test_checklist_obrigatorio_segura_a_conclusao(self):
+        checklist = criar_checklist(self.condominio, self.gestao)
+        criar_item_do_checklist(checklist, "Fechar o registro", obrigatorio=True)
+        rotina = self._criar(checklist_modelo=checklist)
+        execucao = self._pendente(rotina)
+
+        with self.assertRaises(ErroDeRotina):
+            concluir_execucao(
+                execucao=execucao,
+                usuario=self.gestao,
+                resultado=ResultadoExecucao.OK,
+                data_execucao=timezone.localdate() - timedelta(days=5),
+            )
+
+        item = execucao.itens.get()
+        tratar_item_checklist(
+            item=item,
+            usuario=self.gestao,
+            status="concluido",
+        )
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.OK,
+            data_execucao=timezone.localdate() - timedelta(days=5),
+        )
+        execucao.refresh_from_db()
+        self.assertEqual(execucao.status, StatusExecucao.CONCLUIDA)
+
+    def test_abrir_demanda_continua_funcionando(self):
+        rotina = self._criar()
+        execucao = self._pendente(rotina)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.PROBLEMA,
+            data_execucao=timezone.localdate() - timedelta(days=20),
+        )
+        abrir_demanda_da_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            titulo="Vazamento na caixa",
+        )
+        execucao.refresh_from_db()
+        self.assertIsNotNone(execucao.demanda_gerada)
+        self.assertEqual(execucao.demanda_gerada.titulo, "Vazamento na caixa")
+
+    def test_criar_manutencao_continua_funcionando(self):
+        rotina = self._criar(gera_manutencao=True)
+        execucao = self._pendente(rotina)
+        concluir_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            resultado=ResultadoExecucao.PROBLEMA,
+            data_execucao=timezone.localdate() - timedelta(days=20),
+        )
+        criar_manutencao_da_execucao(
+            execucao=execucao,
+            usuario=self.gestao,
+            titulo="Revisar bomba",
+        )
+        execucao.refresh_from_db()
+        self.assertIsNotNone(execucao.manutencao_gerada)
+        self.assertEqual(execucao.manutencao_gerada.tipo, TipoManutencao.PREVENTIVA)
 
 
 class IgnorarExecucaoTests(BaseDeRotinas):

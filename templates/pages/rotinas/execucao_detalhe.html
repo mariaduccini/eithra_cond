@@ -398,6 +398,16 @@
               </label>
               {{ formulario_conclusao.resultado }}
             </div>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_conclusao.data_execucao.id_for_label }}">
+                {{ formulario_conclusao.data_execucao.label }}
+              </label>
+              {{ formulario_conclusao.data_execucao }}
+              <div class="form-text">Informe o dia em que a verificação foi feita.</div>
+              {% for erro in formulario_conclusao.data_execucao.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
             <div class="mb-0">
               <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
                 {{ formulario_conclusao.observacao.label }}

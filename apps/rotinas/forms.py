@@ -12,6 +12,7 @@ pelo próprio formulário, e não por uma checagem solta na tela.
 """
 from django import forms
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
@@ -457,10 +458,15 @@ class InicioDeExecucaoForm(forms.Form):
 
 
 class ConclusaoDeExecucaoForm(forms.Form):
-    """Conclui a ocorrência dizendo o que se encontrou.
+    """Conclui a ocorrência dizendo o que se encontrou e quando.
 
     Concluir não é só encerrar: exige o resultado. A observação é opcional — nem
     toda atividade rende o que contar.
+
+    A data é a do dia em que a verificação aconteceu, não a do registro: uma
+    rotina feita em setembro pode ser lançada agora. Ela vem preenchida com hoje
+    e pode recuar; em branco, vale o momento do registro. O futuro é recusado
+    porque ainda não aconteceu. A agenda da rotina não é tocada por ela.
     """
 
     resultado = forms.ChoiceField(
@@ -468,6 +474,18 @@ class ConclusaoDeExecucaoForm(forms.Form):
         choices=ResultadoExecucao.choices,
         error_messages={"required": "Diga o que se encontrou antes de concluir."},
         widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    data_execucao = forms.DateField(
+        label="Data da execução",
+        required=False,
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        initial=timezone.localdate,
+        error_messages={
+            "invalid": "Informe uma data válida, no formato dd/mm/aaaa.",
+        },
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d"
+        ),
     )
     observacao = forms.CharField(
         label="Observação",
@@ -480,6 +498,14 @@ class ConclusaoDeExecucaoForm(forms.Form):
             }
         ),
     )
+
+    def clean_data_execucao(self):
+        data = self.cleaned_data["data_execucao"]
+        if data is not None and data > timezone.localdate():
+            raise forms.ValidationError(
+                "A data da execução não pode estar no futuro."
+            )
+        return data
 
     def clean_observacao(self):
         return (self.cleaned_data["observacao"] or "").strip()

@@ -16,6 +16,8 @@ acontecimentos e guardam dia e hora: a primeira é escrita quando o serviço
 começa, a segunda quando ele termina — e some quando a manutenção volta a andar,
 porque aí ela ainda não terminou.
 """
+from datetime import datetime
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -133,6 +135,18 @@ def _completar_local_pelo_equipamento(manutencao) -> None:
     local_do_equipamento = manutencao.equipamento.local
     if local_do_equipamento is not None:
         manutencao.local = local_do_equipamento
+
+
+def _momento_do_fato(data) -> "datetime":
+    """Quando o serviço terminou: o dia informado, com a hora do registro.
+
+    O campo guarda dia e hora. Quando a gestão diz o dia em que o serviço foi
+    concluído, é esse dia que fica guardado — a hora é a do momento em que ela
+    registrou. Sem dia informado, vale o próprio momento do registro.
+    """
+    if data is None:
+        return timezone.now()
+    return timezone.make_aware(datetime.combine(data, timezone.localtime().time()))
 
 
 def _validar(manutencao) -> None:
@@ -460,15 +474,25 @@ def concluir_manutencao(
     usuario,
     descricao_servico: str = "",
     custo_real=None,
+    data_conclusao=None,
 ) -> Manutencao:
     """Conclui a manutenção, registrando o que foi feito e quando.
 
     Concluir exige dizer o que foi realizado — a manutenção não termina em
     silêncio. O custo real pode continuar vazio: nem todo serviço tem valor
     fechado no momento em que termina.
+
+    A data é a do fato, não a do registro: uma manutenção feita em setembro
+    pode ser lançada agora, e o que fica guardado é o dia em que o serviço
+    terminou. Sem data informada, vale o momento do registro. O histórico
+    continua guardando o momento em que a conclusão foi registrada — as duas
+    informações são diferentes e as duas importam.
     """
     if manutencao.status == StatusManutencao.CONCLUIDA:
         raise ErroDeManutencao("Esta manutenção já foi concluída.")
+
+    if data_conclusao is not None and data_conclusao > timezone.localdate():
+        raise ErroDeManutencao("A data da conclusão não pode estar no futuro.")
 
     servico = _texto_longo(descricao_servico) or _texto_longo(manutencao.descricao_servico)
     if not servico:
@@ -509,7 +533,7 @@ def concluir_manutencao(
         campos.append("custo_real")
 
     manutencao.status = StatusManutencao.CONCLUIDA
-    manutencao.data_conclusao = timezone.now()
+    manutencao.data_conclusao = _momento_do_fato(data_conclusao)
     _validar(manutencao)
 
     _registrar(

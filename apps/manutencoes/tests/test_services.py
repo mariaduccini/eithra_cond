@@ -1,4 +1,6 @@
 """Operações do domínio de manutenções: criar, editar, mover, concluir, cancelar."""
+from datetime import timedelta
+
 from django.test import TestCase
 from django.utils import timezone
 
@@ -356,6 +358,135 @@ class ConcluirManutencaoTests(TestCase):
                 usuario=self.gestao,
                 descricao_servico="De novo.",
             )
+
+
+class ConclusaoComDataDoFatoTests(TestCase):
+    """Concluir guarda o dia em que o serviço aconteceu, não o dia do registro.
+
+    Uma preventiva feita em setembro pode ser lançada agora; o que fica guardado
+    é o dia do serviço. O futuro é recusado porque ainda não aconteceu.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio()
+        self.gestao = criar_pessoa("gestao@data.test", "Gestão")
+        self.manutencao = criar_manutencao(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Preventiva do elevador",
+        )
+
+    def _dia_guardado(self):
+        self.manutencao.refresh_from_db()
+        return timezone.localtime(self.manutencao.data_conclusao).date()
+
+    def test_conclusao_com_a_data_de_hoje(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Revisão feita.",
+            data_conclusao=timezone.localdate(),
+        )
+        self.assertEqual(self._dia_guardado(), timezone.localdate())
+
+    def test_conclusao_retroativa_guarda_o_dia_do_servico(self):
+        # §5: hoje é 22/10, mas o serviço foi em 15/09 — o dia guardado é o do fato.
+        servico_em = timezone.localdate() - timedelta(days=37)
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Bomba substituída.",
+            data_conclusao=servico_em,
+        )
+        self.assertEqual(self._dia_guardado(), servico_em)
+
+    def test_data_futura_e_recusada(self):
+        amanha = timezone.localdate() + timedelta(days=1)
+        with self.assertRaises(ErroDeManutencao):
+            concluir_manutencao(
+                manutencao=self.manutencao,
+                usuario=self.gestao,
+                descricao_servico="Feito.",
+                data_conclusao=amanha,
+            )
+        self.manutencao.refresh_from_db()
+        self.assertEqual(self.manutencao.status, StatusManutencao.ABERTA)
+        self.assertIsNone(self.manutencao.data_conclusao)
+
+    def test_sem_data_informada_vale_o_momento_do_registro(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+        )
+        self.assertEqual(self._dia_guardado(), timezone.localdate())
+
+    def test_conclusao_muda_a_situacao_para_concluida(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+            data_conclusao=timezone.localdate(),
+        )
+        self.manutencao.refresh_from_db()
+        self.assertEqual(self.manutencao.status, StatusManutencao.CONCLUIDA)
+
+    def test_historico_registra_uma_unica_conclusao(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+            data_conclusao=timezone.localdate(),
+        )
+        eventos = self.manutencao.historico.filter(
+            tipo_evento=TipoEventoManutencao.CONCLUIDA
+        )
+        self.assertEqual(eventos.count(), 1)
+
+    def test_custo_real_e_preservado_na_conclusao(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+            custo_real=320,
+            data_conclusao=timezone.localdate(),
+        )
+        self.manutencao.refresh_from_db()
+        self.assertEqual(self.manutencao.custo_real, 320)
+
+    def test_servico_realizado_e_preservado_na_conclusao(self):
+        concluir_manutencao(
+            manutencao=self.manutencao,
+            usuario=self.gestao,
+            descricao_servico="Trocado o rolamento do motor.",
+            data_conclusao=timezone.localdate(),
+        )
+        self.manutencao.refresh_from_db()
+        self.assertEqual(
+            self.manutencao.descricao_servico, "Trocado o rolamento do motor."
+        )
+
+    def test_conclusao_preserva_demanda_de_origem_e_equipamento(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        equipamento = criar_equipamento(self.condominio, "Bomba", local=local)
+        demanda = criar_demanda(self.condominio, self.gestao, "Barulho na bomba")
+        manutencao = criar_manutencao(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Revisar bomba",
+            equipamento=equipamento,
+            demanda_origem=demanda,
+        )
+        concluir_manutencao(
+            manutencao=manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+            data_conclusao=timezone.localdate(),
+        )
+        manutencao.refresh_from_db()
+        self.assertEqual(manutencao.demanda_origem, demanda)
+        self.assertEqual(manutencao.equipamento, equipamento)
+        self.assertEqual(manutencao.local, local)
 
 
 class CancelarManutencaoTests(TestCase):

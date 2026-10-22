@@ -229,6 +229,7 @@ def concluir(request, pk):
             usuario=request.user,
             descricao_servico=formulario.cleaned_data["descricao_servico"],
             custo_real=formulario.cleaned_data["custo_real"],
+            data_conclusao=formulario.cleaned_data["data_conclusao"],
         )
     except ErroDeManutencao as erro:
         messages.error(request, str(erro))

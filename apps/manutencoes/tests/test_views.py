@@ -459,3 +459,65 @@ class AcoesTests(BaseDeTelas):
         self.assertEqual(resposta.status_code, 302)
         manutencao.refresh_from_db()
         self.assertFalse(manutencao.ativo)
+
+    def test_concluir_com_data_retroativa_pela_tela(self):
+        manutencao = self._manutencao()
+        servico_em = timezone.localdate() - timedelta(days=37)
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {
+                "descricao_servico": "Bomba substituída.",
+                "data_conclusao": servico_em.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        manutencao.refresh_from_db()
+        self.assertEqual(
+            timezone.localtime(manutencao.data_conclusao).date(), servico_em
+        )
+
+    def test_concluir_com_data_futura_e_recusado(self):
+        manutencao = self._manutencao()
+        amanha = timezone.localdate() + timedelta(days=1)
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {
+                "descricao_servico": "Feito.",
+                "data_conclusao": amanha.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertEqual(resposta.status_code, 400)
+        manutencao.refresh_from_db()
+        self.assertEqual(manutencao.status, StatusManutencao.ABERTA)
+
+    def test_concluir_com_data_invalida_e_recusado(self):
+        manutencao = self._manutencao()
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {"descricao_servico": "Feito.", "data_conclusao": "31/02/2026"},
+        )
+        self.assertEqual(resposta.status_code, 400)
+        manutencao.refresh_from_db()
+        self.assertEqual(manutencao.status, StatusManutencao.ABERTA)
+
+    def test_concluir_de_outro_condominio_e_404(self):
+        outro = criar_condominio("Beta")
+        alheia = Manutencao.objects.create(
+            condominio=outro, titulo="Alheia", criado_por=self.gestao
+        )
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[alheia.pk]),
+            {"descricao_servico": "Feito.", "data_conclusao": ""},
+        )
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_morador_nao_conclui(self):
+        morador = criar_pessoa("morador@exemplo.test", "Morador")
+        criar_vinculo(morador, self.condominio, papel=Papel.MORADOR)
+        manutencao = self._manutencao()
+        self.client.force_login(morador)
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {"descricao_servico": "Feito.", "data_conclusao": ""},
+        )
+        self.assertEqual(resposta.status_code, 404)

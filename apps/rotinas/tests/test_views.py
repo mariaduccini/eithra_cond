@@ -423,6 +423,40 @@ class AcoesTests(BaseDeTelas):
         self.assertEqual(execucao.resultado, ResultadoExecucao.OK)
         self.assertIsNotNone(execucao.concluido_em)
 
+    def test_concluir_guarda_a_data_informada(self):
+        rotina = self._rotina()
+        execucao = self._pendente(rotina)
+        feita_em = timezone.localdate() - timedelta(days=40)
+        resposta = self.client.post(
+            reverse("rotinas:concluir", args=[execucao.pk]),
+            {
+                "resultado": ResultadoExecucao.OK,
+                "data_execucao": feita_em.strftime("%Y-%m-%d"),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        execucao.refresh_from_db()
+        self.assertEqual(
+            timezone.localtime(execucao.concluido_em).date(), feita_em
+        )
+
+    def test_concluir_de_outro_condominio_e_404(self):
+        outro = criar_condominio("Beta")
+        alheia = criar_rotina(
+            condominio=outro,
+            criado_por=self.gestao,
+            titulo="Do Beta",
+            data_inicio=date(2026, 1, 10),
+            periodicidade_tipo=Periodicidade.MENSAL,
+            dia_mes=10,
+        )
+        execucao = alheia.execucoes.get()
+        resposta = self.client.post(
+            reverse("rotinas:concluir", args=[execucao.pk]),
+            {"resultado": ResultadoExecucao.OK},
+        )
+        self.assertEqual(resposta.status_code, 404)
+
     def test_concluir_sem_resultado_e_recusado(self):
         rotina = self._rotina()
         execucao = self._pendente(rotina)

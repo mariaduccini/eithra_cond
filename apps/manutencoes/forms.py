@@ -12,6 +12,7 @@ pelo próprio formulário, e não por uma checagem solta na tela.
 """
 from django import forms
 from django.db.models import Q
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
@@ -289,12 +290,30 @@ class AlteracaoDeStatusManutencaoForm(forms.Form):
 
 
 class ConclusaoDeManutencaoForm(forms.Form):
-    """Conclui a manutenção dizendo o que foi feito.
+    """Conclui a manutenção dizendo o que foi feito e quando.
 
-    Concluir não é só trocar de situação: exige a descrição do serviço. O custo
-    real pode continuar vazio — nem todo serviço fecha valor ao terminar.
+    Concluir não é só trocar de situação: exige a descrição do serviço. A data
+    vem preenchida com hoje, mas pode recuar até o dia em que o serviço de fato
+    aconteceu; em branco, vale o momento do registro. O custo real pode
+    continuar vazio — nem todo serviço fecha valor ao terminar.
+
+    A data é a do serviço, não a do registro: uma preventiva feita em setembro
+    pode ser lançada agora, e o que fica guardado é o dia em que ela aconteceu.
+    O futuro é recusado porque ainda não aconteceu.
     """
 
+    data_conclusao = forms.DateField(
+        label="Data da conclusão",
+        required=False,
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        initial=timezone.localdate,
+        error_messages={
+            "invalid": "Informe uma data válida, no formato dd/mm/aaaa.",
+        },
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d"
+        ),
+    )
     descricao_servico = forms.CharField(
         label="Serviço realizado",
         error_messages={
@@ -319,6 +338,14 @@ class ConclusaoDeManutencaoForm(forms.Form):
             attrs={"class": "form-control", "step": "0.01", "min": "0"}
         ),
     )
+
+    def clean_data_conclusao(self):
+        data = self.cleaned_data["data_conclusao"]
+        if data is not None and data > timezone.localdate():
+            raise forms.ValidationError(
+                "A data da conclusão não pode estar no futuro."
+            )
+        return data
 
     def clean_descricao_servico(self):
         servico = (self.cleaned_data["descricao_servico"] or "").strip()

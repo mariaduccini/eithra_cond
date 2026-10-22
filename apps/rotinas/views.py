@@ -526,6 +526,7 @@ def concluir(request, pk):
             usuario=request.user,
             resultado=formulario.cleaned_data["resultado"],
             observacao=formulario.cleaned_data["observacao"],
+            data_execucao=formulario.cleaned_data["data_execucao"],
         )
     except ErroDeRotina as erro:
         messages.error(request, str(erro))

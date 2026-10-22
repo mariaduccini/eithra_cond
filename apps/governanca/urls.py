@@ -57,6 +57,11 @@ urlpatterns = [
         views.alternar_documento,
         name="alternar_documento",
     ),
+    path(
+        "documentos/<uuid:pk>/arquivos/",
+        views.anexar_arquivo,
+        name="anexar_arquivo",
+    ),
     path("documentos/tipos/", views.tipos_de_documento, name="tipos_de_documento"),
     path(
         "documentos/tipos/registrar/",

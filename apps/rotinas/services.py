@@ -23,6 +23,8 @@ partir daí, o modelo pode mudar à vontade: a ocorrência continua contando o q
 foi combinado então. Concluir exige que as tarefas obrigatórias estejam
 resolvidas; as opcionais podem ficar como o que não foi feito.
 """
+from datetime import datetime
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -103,6 +105,22 @@ def _validar(objeto) -> None:
         objeto.full_clean()
     except ValidationError as erro:
         raise ErroDeRotina(_primeiro_recado(erro)) from erro
+
+
+def _momento_do_fato(data) -> "datetime":
+    """Quando a verificação aconteceu: o dia informado, com a hora do registro.
+
+    O campo guarda dia e hora. Quando a gestão diz o dia em que a rotina foi
+    executada, é esse dia que fica guardado — a hora é a do momento em que ela
+    registrou. Sem dia informado, vale o próprio momento do registro.
+
+    Isto é só o dia do fato: a agenda da rotina continua vindo de
+    ``data_prevista``, e é por isso que um lançamento retroativo não move a
+    próxima ocorrência.
+    """
+    if data is None:
+        return timezone.now()
+    return timezone.make_aware(datetime.combine(data, timezone.localtime().time()))
 
 
 def _calcular_proxima(rotina, *, a_partir_de=None):
@@ -502,6 +520,7 @@ def concluir_execucao(
     usuario,
     resultado: str,
     observacao: str = "",
+    data_execucao=None,
 ) -> ExecucaoRotina:
     """Conclui a ocorrência, registrando o que se encontrou e quando.
 
@@ -513,12 +532,20 @@ def concluir_execucao(
     pendente: cada uma precisa estar concluída ou marcada como não aplicável.
     Tarefa opcional pendente não segura a conclusão — ela fica registrada como o
     que não foi feito.
+
+    A data é a do dia da verificação, não a do registro: uma rotina feita em
+    setembro pode ser lançada agora. Ela é gravada em ``concluido_em``, que é o
+    quando da verificação — a agenda da rotina vem de ``data_prevista``, então
+    um lançamento retroativo não move a próxima ocorrência.
     """
     if execucao.esta_encerrada:
         raise ErroDeRotina("Esta ocorrência já foi encerrada.")
 
     if resultado not in ResultadoExecucao.values:
         raise ErroDeRotina("Diga o que se encontrou antes de concluir.")
+
+    if data_execucao is not None and data_execucao > timezone.localdate():
+        raise ErroDeRotina("A data da execução não pode estar no futuro.")
 
     if execucao.tem_item_obrigatorio_pendente:
         raise ErroDeRotina(
@@ -529,7 +556,7 @@ def concluir_execucao(
     execucao.status = StatusExecucao.CONCLUIDA
     execucao.resultado = resultado
     execucao.observacao_execucao = _texto_longo(observacao)
-    execucao.concluido_em = timezone.now()
+    execucao.concluido_em = _momento_do_fato(data_execucao)
     _validar(execucao)
     execucao.save(
         update_fields=[

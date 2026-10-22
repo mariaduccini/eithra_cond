@@ -29,8 +29,9 @@ from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.core.paginacao import paginar
+from apps.core.storage import ErroDeStorage
 
-from . import services
+from . import arquivos, services
 from .constants import SituacaoVigencia
 from .forms import (
     ContratoForm,
@@ -529,12 +530,45 @@ def alternar_documento(request, pk):
     )
 
 
+@login_required
+@require_POST
+def anexar_arquivo(request, pk):
+    """Guarda o arquivo que comprova um documento deste condomínio.
+
+    O arquivo não altera o documento: ele sustenta o que já está registrado. Por
+    isso o erro do domínio volta como frase, no próprio modal, e o documento
+    continua como a gestão o deixou.
+    """
+    atual = _condominio_para_operar(request)
+    documento = _obter_ou_404(DocumentoOperacional.objects.filter(condominio=atual), pk)
+
+    try:
+        arquivos.anexar_arquivo(
+            documento=documento,
+            arquivo=request.FILES.get("arquivo"),
+            usuario=request.user,
+        )
+    except (arquivos.ErroDeArquivo, ErroDeStorage) as erro:
+        return _render_documentos(
+            request,
+            item_arquivos=documento,
+            erro_arquivo=str(erro),
+            modal="arquivos",
+            status=400,
+        )
+
+    messages.success(request, "Arquivo anexado.")
+    return redirect(_destino_dos_arquivos(atual, documento))
+
+
 def _render_documentos(
     request,
     *,
     formulario_criacao=None,
     formulario_edicao=None,
     item_edicao=None,
+    item_arquivos=None,
+    erro_arquivo="",
     modal=None,
     status=200,
 ):
@@ -544,12 +578,24 @@ def _render_documentos(
     pode_operar_aqui = pode_operar(request.user, atual)
 
     if item_edicao is None and pode_operar_aqui:
-        item_edicao = _item_em_edicao(request, DocumentoOperacional, base["condominios"])
+        item_edicao = _item_pedido(
+            request, DocumentoOperacional, base["condominios"], abrir="editar"
+        )
     if item_edicao is None:
         if modal == "editar":
             modal = None
     elif modal is None:
         modal = "editar"
+
+    if item_arquivos is None and pode_operar_aqui:
+        item_arquivos = _item_pedido(
+            request, DocumentoOperacional, base["condominios"], abrir="arquivos"
+        )
+    if item_arquivos is None:
+        if modal == "arquivos":
+            modal = None
+    elif modal is None:
+        modal = "arquivos"
 
     pagina_documentos = paginar(
         _documentos_do_condominio(atual, base["termo"]), request.GET.get("page")
@@ -564,6 +610,14 @@ def _render_documentos(
         "formulario_edicao": formulario_edicao
         or (DocumentoForm(instance=item_edicao, condominio=atual) if item_edicao else None),
         "item_edicao": item_edicao,
+        "item_arquivos": item_arquivos,
+        "arquivos_do_documento": (
+            [arquivos.resumo_do_arquivo(item) for item in item_arquivos.arquivos.all()]
+            if item_arquivos
+            else []
+        ),
+        "limite_de_arquivo": arquivos.limite_legivel(),
+        "erro_arquivo": erro_arquivo,
         "modal_aberto": modal,
     }
     return render(request, "pages/governanca/documentos.html", contexto, status=status)
@@ -763,14 +817,19 @@ def _base_da_pagina(request):
     }
 
 
-def _item_em_edicao(request, modelo, condominios):
-    """O registro que o modal de edição deve abrir, quando a tela pede um."""
-    if request.GET.get("abrir") != "editar":
+def _item_pedido(request, modelo, condominios, *, abrir: str):
+    """O registro que um modal deve abrir, quando a tela pede um."""
+    if request.GET.get("abrir") != abrir:
         return None
     pk = request.GET.get("item")
     if not pk or not _eh_uuid(pk):
         return None
     return _obter_ou_404(modelo.objects.filter(condominio__in=condominios), pk)
+
+
+def _item_em_edicao(request, modelo, condominios):
+    """O registro que o modal de edição deve abrir, quando a tela pede um."""
+    return _item_pedido(request, modelo, condominios, abrir="editar")
 
 
 def _obter_ou_404(queryset, pk):
@@ -793,6 +852,14 @@ def _eh_uuid(valor) -> bool:
 def _destino(view_name, condominio) -> str:
     """Volta para a tela preservando o condomínio em vista."""
     return f"{reverse(view_name)}?condominio={condominio.pk}"
+
+
+def _destino_dos_arquivos(condominio, documento) -> str:
+    """Volta para a lista com os arquivos deste documento abertos."""
+    return (
+        f"{_destino('governanca:documentos', condominio)}"
+        f"&abrir=arquivos&item={documento.pk}"
+    )
 
 
 def _alternar(request, objeto, *, destino, nome):
