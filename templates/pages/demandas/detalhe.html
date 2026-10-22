@@ -196,11 +196,11 @@
             </div>
 
             <div class="mb-0">
-              <label class="form-label" for="{{ formulario_demanda.local_contexto.id_for_label }}">
-                {{ formulario_demanda.local_contexto.label }}
+              <label class="form-label" for="{{ formulario_demanda.local.id_for_label }}">
+                {{ formulario_demanda.local.label }}
               </label>
-              {{ formulario_demanda.local_contexto }}
-              {% for erro in formulario_demanda.local_contexto.errors %}
+              {{ formulario_demanda.local }}
+              {% for erro in formulario_demanda.local.errors %}
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>

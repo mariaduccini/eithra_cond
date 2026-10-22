@@ -52,6 +52,13 @@ def _data_por_extenso(valor) -> str:
     return valor.strftime("%d/%m/%Y") if valor else "sem prazo"
 
 
+def _nome_do_local(local) -> str:
+    """O local como a gestão o lê no histórico, ou a ausência dele."""
+    if local is None or not getattr(local, "pk", None):
+        return "sem local"
+    return local.nome
+
+
 def _registrar(
     demanda,
     usuario,
@@ -83,9 +90,14 @@ def criar_demanda(
     prioridade: str = PrioridadeDemanda.NORMAL,
     responsavel=None,
     prazo=None,
+    local=None,
     local_contexto: str = "",
 ) -> Demanda:
-    """Registra a demanda e nasce o primeiro evento do histórico."""
+    """Registra a demanda e nasce o primeiro evento do histórico.
+
+    O local vem do cadastro do condomínio. ``local_contexto`` é o texto legado
+    das demandas antigas: continua aceito, mas não é preenchido por ninguém.
+    """
     demanda = Demanda.objects.create(
         condominio=condominio,
         titulo=_texto(titulo),
@@ -94,6 +106,7 @@ def criar_demanda(
         prioridade=prioridade,
         responsavel=responsavel,
         prazo=prazo,
+        local=local,
         local_contexto=_texto(local_contexto),
         criado_por=criado_por,
     )
@@ -111,16 +124,17 @@ def editar_demanda(
     prioridade: str,
     responsavel=None,
     prazo=None,
-    local_contexto: str = "",
+    local=None,
+    local_contexto=None,
 ) -> Demanda:
     """Atualiza o conteúdo da demanda, guardando cada mudança que importa.
 
     Só o que realmente mudou vira evento — o histórico registra decisão, não o
-    ato de abrir e salvar o formulário.
+    ato de abrir e salvar o formulário. ``local_contexto`` só é tocado quando
+    vem explícito: sem isso, o texto legado das demandas antigas fica intacto.
     """
     titulo = _texto(titulo)
     descricao = _texto_longo(descricao)
-    local_contexto = _texto(local_contexto)
 
     campos = ["atualizado_em"]
 
@@ -148,17 +162,31 @@ def editar_demanda(
         demanda.descricao = descricao
         campos.append("descricao")
 
-    if local_contexto != (demanda.local_contexto or ""):
+    if getattr(local, "pk", None) != demanda.local_id:
         _registrar(
             demanda,
             usuario,
             TipoEventoDemanda.EDICAO,
-            "Local atualizado",
-            anteriores={"local_contexto": demanda.local_contexto},
-            novos={"local_contexto": local_contexto},
+            f"Local: {_nome_do_local(demanda.local)} → {_nome_do_local(local)}",
+            anteriores={"local": str(demanda.local_id) if demanda.local_id else None},
+            novos={"local": str(local.pk) if getattr(local, "pk", None) else None},
         )
-        demanda.local_contexto = local_contexto
-        campos.append("local_contexto")
+        demanda.local = local
+        campos.append("local")
+
+    if local_contexto is not None:
+        local_contexto = _texto(local_contexto)
+        if local_contexto != (demanda.local_contexto or ""):
+            _registrar(
+                demanda,
+                usuario,
+                TipoEventoDemanda.EDICAO,
+                "Local atualizado",
+                anteriores={"local_contexto": demanda.local_contexto},
+                novos={"local_contexto": local_contexto},
+            )
+            demanda.local_contexto = local_contexto
+            campos.append("local_contexto")
 
     if prioridade != demanda.prioridade:
         _registrar(

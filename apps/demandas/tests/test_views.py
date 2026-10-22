@@ -9,7 +9,12 @@ from apps.condominios.constants import Papel
 from apps.demandas.constants import PrioridadeDemanda, StatusDemanda
 from apps.demandas.models import Demanda
 from apps.demandas.services import alterar_status, criar_demanda
-from apps.demandas.tests.apoio import criar_condominio, criar_pessoa, criar_vinculo
+from apps.demandas.tests.apoio import (
+    criar_condominio,
+    criar_local,
+    criar_pessoa,
+    criar_vinculo,
+)
 
 SENHA = "senha-forte-123"
 
@@ -136,6 +141,37 @@ class CriacaoTests(BaseDeTelas):
         resposta = self.client.get(reverse("demandas:criar"))
         self.assertEqual(resposta.status_code, 302)
 
+    def test_cria_com_local_do_condominio(self):
+        local = criar_local(self.condominio, "Garagem")
+        resposta = self.client.post(
+            reverse("demandas:criar"),
+            {
+                "condominio": str(self.condominio.pk),
+                "titulo": "Vazamento na garagem",
+                "prioridade": PrioridadeDemanda.NORMAL,
+                "local": str(local.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        self.assertEqual(Demanda.objects.get().local, local)
+
+    def test_local_de_outro_condominio_e_recusado(self):
+        outro = criar_condominio("Beta")
+        local_alheio = criar_local(outro, "Garagem do Beta")
+
+        resposta = self.client.post(
+            reverse("demandas:criar"),
+            {
+                "condominio": str(self.condominio.pk),
+                "titulo": "Com local de fora",
+                "prioridade": PrioridadeDemanda.NORMAL,
+                "local": str(local_alheio.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(Demanda.objects.count(), 0)
+        self.assertIn("local", resposta.context["formulario_demanda"].errors)
+
 
 class ListagemEFiltrosTests(BaseDeTelas):
     """Filtros essenciais, busca e "minhas demandas" (§23, §24, §25)."""
@@ -186,6 +222,28 @@ class ListagemEFiltrosTests(BaseDeTelas):
         resposta = self.client.get(reverse("demandas:listagem"), {"busca": "piscina"})
         titulos = {linha["titulo"] for linha in resposta.context["demandas"]}
         self.assertEqual(titulos, {"Limpeza", "Pintura"})
+
+    def test_busca_encontra_por_local_cadastrado(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        self._demanda(titulo="Barulho na bomba", local=local)
+        self._demanda(titulo="Outra demanda")
+
+        resposta = self.client.get(reverse("demandas:listagem"), {"busca": "máquinas"})
+        titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
+        self.assertEqual(titulos, ["Barulho na bomba"])
+
+    def test_linha_mostra_o_local_do_cadastro(self):
+        local = criar_local(self.condominio, "Garagem")
+        self._demanda(titulo="Com local", local=local, local_contexto="texto antigo")
+
+        resposta = self.client.get(reverse("demandas:listagem"))
+        self.assertEqual(resposta.context["demandas"][0]["local"], "Garagem")
+
+    def test_linha_cai_no_texto_legado_sem_local(self):
+        self._demanda(titulo="Legada", local_contexto="piscina")
+
+        resposta = self.client.get(reverse("demandas:listagem"))
+        self.assertEqual(resposta.context["demandas"][0]["local"], "piscina")
 
     def test_minhas_demandas(self):
         operacional = criar_pessoa("op@exemplo.test", "Operacional")

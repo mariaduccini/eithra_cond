@@ -102,7 +102,7 @@ def criar(request):
         prioridade=dados["prioridade"],
         responsavel=dados["responsavel"],
         prazo=dados["prazo"],
-        local_contexto=dados["local_contexto"],
+        local=dados["local"],
     )
     messages.success(request, "Demanda registrada.")
     return redirect("demandas:detalhe", pk=demanda.pk)
@@ -135,7 +135,7 @@ def editar(request, pk):
         prioridade=dados["prioridade"],
         responsavel=dados["responsavel"],
         prazo=dados["prazo"],
-        local_contexto=dados["local_contexto"],
+        local=dados["local"],
     )
     messages.success(request, "Demanda atualizada.")
     return redirect("demandas:detalhe", pk=demanda.pk)
@@ -215,9 +215,9 @@ def _demanda_autorizada(request, pk):
     """Resolve a demanda dentro dos condomínios que esta pessoa acompanha, ou 404."""
     condominios = _condominios_para_ver(request)
     return get_object_or_404(
-        Demanda.objects.select_related("condominio", "responsavel", "criado_por").filter(
-            condominio__in=condominios
-        ),
+        Demanda.objects.select_related(
+            "condominio", "responsavel", "criado_por", "local"
+        ).filter(condominio__in=condominios),
         pk=pk,
     )
 
@@ -325,7 +325,7 @@ def _demandas_filtradas(request, condominios, filtros):
     """Aplica os filtros essenciais e devolve a lista na ordem de atenção."""
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
-    ).select_related("condominio", "responsavel")
+    ).select_related("condominio", "responsavel", "local")
 
     if filtros.is_valid():
         dados = filtros.cleaned_data
@@ -353,6 +353,7 @@ def _demandas_filtradas(request, condominios, filtros):
             queryset = queryset.filter(
                 Q(titulo__icontains=busca)
                 | Q(descricao__icontains=busca)
+                | Q(local__nome__icontains=busca)
                 | Q(local_contexto__icontains=busca)
             )
 
@@ -373,7 +374,7 @@ def _iniciais_da_demanda(demanda):
         "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
         "prazo": demanda.prazo,
-        "local_contexto": demanda.local_contexto,
+        "local": demanda.local_id,
     }
 
 
@@ -437,7 +438,7 @@ def _demanda_para_tela(demanda, usuario=None):
         "status": demanda.get_status_display(),
         "status_tom": TOM_POR_STATUS.get(demanda.status, "secondary"),
         "encerrada": demanda.esta_encerrada,
-        "local": demanda.local_contexto,
+        "local": demanda.local_para_exibir,
         "acoes": _acoes_da_linha(demanda, usuario),
     }
 

@@ -19,6 +19,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from apps.cadastros.models import LocalOperacional
 from apps.condominios.models import Condominio
 
 from .constants import (
@@ -190,6 +191,15 @@ class Demanda(models.Model):
     )
     concluido_em = models.DateTimeField("Concluída em", null=True, blank=True)
     cancelado_em = models.DateTimeField("Cancelada em", null=True, blank=True)
+    local = models.ForeignKey(
+        LocalOperacional,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="demandas",
+        verbose_name="Local",
+        help_text="Onde a demanda acontece. Pode ficar sem local definido.",
+    )
     local_contexto = models.CharField(
         "Local",
         max_length=200,
@@ -240,6 +250,8 @@ class Demanda(models.Model):
         erros = {}
         if not (self.titulo or "").strip():
             erros["titulo"] = "Escreva o que a demanda precisa resolver."
+        if self.local_id and self.local.condominio_id != self.condominio_id:
+            erros["local"] = "O local escolhido não é deste condomínio."
         if self.status == StatusDemanda.CONCLUIDA and self.concluido_em is None:
             erros["concluido_em"] = "Uma demanda concluída precisa registrar quando foi concluída."
         if self.status != StatusDemanda.CONCLUIDA and self.concluido_em is not None:
@@ -255,6 +267,18 @@ class Demanda(models.Model):
     def esta_encerrada(self):
         """Concluída ou cancelada: não muda mais de situação."""
         return self.status in (StatusDemanda.CONCLUIDA, StatusDemanda.CANCELADA)
+
+    @property
+    def local_para_exibir(self) -> str:
+        """O local como deve ser lido: o cadastro atual, ou o texto legado.
+
+        Demandas antigas guardaram o local como texto livre em
+        ``local_contexto``. Enquanto não houver um local cadastrado, esse texto
+        continua sendo a resposta — nada é apagado nem preenchido sozinho.
+        """
+        if self.local_id:
+            return self.local.nome
+        return self.local_contexto or ""
 
 
 class HistoricoDemanda(models.Model):

@@ -17,7 +17,7 @@ from apps.demandas.services import (
     editar_demanda,
     registrar_observacao,
 )
-from apps.demandas.tests.apoio import criar_condominio, criar_pessoa
+from apps.demandas.tests.apoio import criar_condominio, criar_local, criar_pessoa
 
 
 class CriarDemandaTests(TestCase):
@@ -57,6 +57,16 @@ class CriarDemandaTests(TestCase):
             descricao="Primeira linha.\n\nSegunda linha.",
         )
         self.assertEqual(demanda.descricao, "Primeira linha.\n\nSegunda linha.")
+
+    def test_local_do_cadastro_e_gravado(self):
+        local = criar_local(self.condominio, "Garagem")
+        demanda = criar_demanda(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Vazamento",
+            local=local,
+        )
+        self.assertEqual(demanda.local, local)
 
 
 class EditarDemandaTests(TestCase):
@@ -114,6 +124,34 @@ class EditarDemandaTests(TestCase):
         )
         # Apenas o evento de criação deve existir.
         self.assertEqual(self.demanda.historico.count(), 1)
+
+    def test_mudanca_de_local_vira_evento(self):
+        local = criar_local(self.condominio, "Garagem")
+        editar_demanda(
+            demanda=self.demanda,
+            usuario=self.gestao,
+            titulo=self.demanda.titulo,
+            prioridade=self.demanda.prioridade,
+            local=local,
+        )
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.local, local)
+        self.assertTrue(
+            self.demanda.historico.filter(tipo_evento=TipoEventoDemanda.EDICAO).exists()
+        )
+
+    def test_edicao_preserva_o_texto_legado_quando_nao_informado(self):
+        self.demanda.local_contexto = "piscina"
+        self.demanda.save(update_fields=["local_contexto"])
+
+        editar_demanda(
+            demanda=self.demanda,
+            usuario=self.gestao,
+            titulo="Título novo",
+            prioridade=self.demanda.prioridade,
+        )
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.local_contexto, "piscina")
 
     def test_mudanca_de_prazo_vira_evento(self):
         novo_prazo = timezone.localdate() + timedelta(days=10)

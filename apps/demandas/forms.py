@@ -10,13 +10,31 @@ domínio aceita, um responsável de outro condomínio é recusado pelo próprio
 formulário, e não por uma checagem solta na view.
 """
 from django import forms
+from django.db.models import Q
 
 from apps.accounts.models import User
+from apps.cadastros.models import LocalOperacional
 from apps.condominios.models import Condominio
 
 from .constants import PrioridadeDemanda, StatusDemanda
 from .permissoes import usuarios_elegiveis_como_responsavel
 from .services import LIMITE_DA_OBSERVACAO
+
+
+def _locais_do_condominio(condominio, atual=None):
+    """Os locais oferecidos numa escolha.
+
+    Só os que estão em uso — mais aquele que a demanda já aponta, para que um
+    cadastro desativado depois continue legível sem voltar a ser oferecido.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return LocalOperacional.objects.none()
+
+    locais = LocalOperacional.objects.do_condominio(condominio)
+    if atual is not None and getattr(atual, "pk", None):
+        return locais.filter(Q(ativo=True) | Q(pk=atual.pk)).order_by("nome")
+    return locais.ativos().order_by("nome")
+
 
 # A ordem em que as situações aparecem para escolha, do começo ao fim do ciclo.
 ORDEM_DOS_STATUS = (
@@ -91,17 +109,12 @@ class DemandaForm(forms.Form):
             format="%Y-%m-%d",
         ),
     )
-    local_contexto = forms.CharField(
+    local = forms.ModelChoiceField(
         label="Local",
+        queryset=LocalOperacional.objects.none(),
         required=False,
-        max_length=200,
-        widget=forms.TextInput(
-            attrs={
-                "class": "form-control",
-                "placeholder": "Ex.: Garagem, elevador social, portaria",
-                "autocomplete": "off",
-            }
-        ),
+        empty_label="Sem local definido",
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
 
     def __init__(self, *args, condominios=None, condominio=None, **kwargs):
@@ -127,6 +140,20 @@ class DemandaForm(forms.Form):
         self.fields["responsavel"].queryset = usuarios_elegiveis_como_responsavel(
             self.condominio_efetivo
         )
+        self.fields["local"].queryset = _locais_do_condominio(
+            self.condominio_efetivo, self._local_atual()
+        )
+
+    def _local_atual(self):
+        """O local que a demanda já aponta, quando o formulário é de edição.
+
+        Serve só para manter o cadastro atual entre as opções, mesmo que tenha
+        sido desativado depois. Não é validação.
+        """
+        local_id = (self.initial or {}).get("local")
+        if not local_id:
+            return None
+        return LocalOperacional.objects.filter(pk=local_id).first()
 
     def _condominio_escolhido(self, permitidos):
         """Qual condomínio vale para montar a lista de responsáveis.
@@ -152,9 +179,6 @@ class DemandaForm(forms.Form):
 
     def clean_descricao(self):
         return (self.cleaned_data["descricao"] or "").strip()
-
-    def clean_local_contexto(self):
-        return " ".join((self.cleaned_data["local_contexto"] or "").split())
 
 
 class AlteracaoDeStatusForm(forms.Form):

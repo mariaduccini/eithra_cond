@@ -13,7 +13,7 @@ from apps.demandas.constants import (
     TipoEventoDemanda,
 )
 from apps.demandas.models import Demanda, HistoricoDemanda
-from apps.demandas.tests.apoio import criar_condominio, criar_pessoa
+from apps.demandas.tests.apoio import criar_condominio, criar_local, criar_pessoa
 
 
 class DemandaModeloTests(TestCase):
@@ -75,6 +75,31 @@ class DemandaModeloTests(TestCase):
     def test_str_e_o_titulo(self):
         demanda = self._criar(titulo="Troca de lâmpada")
         self.assertEqual(str(demanda), "Troca de lâmpada")
+
+    def test_local_e_opcional(self):
+        demanda = self._criar()
+        self.assertIsNone(demanda.local_id)
+
+    def test_local_para_exibir_usa_o_cadastro_quando_existe(self):
+        local = criar_local(self.condominio, "Garagem")
+        demanda = self._criar(local=local, local_contexto="texto antigo")
+        self.assertEqual(demanda.local_para_exibir, "Garagem")
+
+    def test_local_para_exibir_cai_no_texto_legado(self):
+        demanda = self._criar(local_contexto="piscina")
+        self.assertEqual(demanda.local_para_exibir, "piscina")
+
+    def test_clean_recusa_local_de_outro_condominio(self):
+        outro = criar_condominio("Beta")
+        local_alheio = criar_local(outro, "Garagem do Beta")
+        demanda = Demanda(
+            condominio=self.condominio,
+            titulo="Vazamento",
+            criado_por=self.pessoa,
+            local=local_alheio,
+        )
+        with self.assertRaises(ValidationError):
+            demanda.clean()
 
 
 class DemandaQuerySetTests(TestCase):

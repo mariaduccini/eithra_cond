@@ -713,7 +713,8 @@ def abrir_demanda_da_execucao(
 
     Nada é automático: quem encontrou o problema descreve, e a demanda nasce com
     procedência registrada. Uma ocorrência já ligada a uma demanda não gera
-    outra — o vínculo é único.
+    outra — o vínculo é único. Quando a rotina aponta um local, ele já vem
+    preenchido: é o lugar onde a ocorrência aconteceu.
     """
     if execucao.demanda_gerada_id:
         raise ErroDeRotina("Esta ocorrência já tem uma demanda aberta.")
@@ -726,6 +727,7 @@ def abrir_demanda_da_execucao(
         origem=OrigemDemanda.SISTEMA,
         prioridade=prioridade,
         prazo=prazo,
+        local=execucao.rotina.local,
     )
 
     execucao.demanda_gerada = demanda

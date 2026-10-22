@@ -536,6 +536,17 @@ class ConsequenciaTests(BaseDeTelas):
             reverse("demandas:detalhe", args=[execucao.demanda_gerada_id]),
         )
 
+    def test_demanda_da_execucao_herda_o_local_da_rotina(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        rotina = self._rotina(local=local)
+        execucao = self._pendente(rotina)
+        self.client.post(
+            reverse("rotinas:demanda", args=[execucao.pk]),
+            {"titulo": "Vazamento na caixa", "prioridade": Prioridade.ALTA},
+        )
+        execucao.refresh_from_db()
+        self.assertEqual(execucao.demanda_gerada.local, local)
+
     def test_criar_manutencao_a_partir_da_execucao(self):
         rotina = self._rotina()
         execucao = self._pendente(rotina)
