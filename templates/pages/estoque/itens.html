@@ -27,7 +27,7 @@
 
   <div class="card mb-4">
     <div class="card-body">
-      <form method="get" class="row g-3 align-items-end">
+      <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
         {% if mostrar_condominio %}
           <div class="col-6 col-lg-3">
             <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
@@ -49,8 +49,9 @@
           {{ filtros.busca }}
         </div>
         <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
-          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
-          <a href="{% url 'estoque:itens' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+          {% if filtros_ativos %}
+            <a href="{% url 'estoque:itens' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -124,8 +125,15 @@
         {% endfor %}
       </div>
     {% else %}
-      {% include "components/state.html" with state_icon="bx-package" state_title="Nada cadastrado ainda" state_message="Quando houver material a controlar, cadastre o item aqui." %}
+      {% if filtros_ativos %}
+        {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhum item deste condomínio corresponde aos filtros aplicados. Limpe os filtros para ver a lista inteira." %}
+      {% else %}
+        {% include "components/state.html" with state_icon="bx-package" state_title="Nada cadastrado ainda" state_message="Quando houver material a controlar, cadastre o item aqui." %}
+      {% endif %}
     {% endif %}
+    <div class="card-body pt-3">
+      {% include "components/paginacao.html" with page_obj=pagina_itens filtro_ativo=filtros_ativos %}
+    </div>
   </div>
 
   {% if pode_criar and formulario_item %}

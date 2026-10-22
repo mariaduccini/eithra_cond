@@ -5,14 +5,15 @@ Uso:
   {% include "components/busca.html" with busca_id="busca-pessoas" busca_rotulo="Buscar pessoa" busca_exemplo="Nome, telefone, WhatsApp ou e-mail" %}
 
 A lupa fica dentro do campo e um "x" discreto aparece só quando há texto. Não
-existe botão "Buscar": a tecla Enter envia. O que já foi digitado e o condomínio
-em vista vêm do contexto da página; o "x" limpa apenas a busca e devolve a lista
-inteira, sem mexer nos outros filtros.
+existe botão "Buscar": a lista se atualiza sozinha pouco depois da última tecla
+digitada, e a tecla Enter, se vier, adianta o mesmo pedido. O que já foi digitado
+e o condomínio em vista vêm do contexto da página; o "x" limpa apenas a busca e
+devolve a lista inteira, na primeira página, sem mexer nos outros filtros.
 
 Variáveis: busca_id (obrigatória), busca_rotulo (obrigatória), busca_exemplo.
 {% endcomment %}
-{% querystring q=None as busca_sem_termo %}
-<form method="get" class="eithra-busca" role="search">
+{% querystring q=None page=None as busca_sem_termo %}
+<form method="get" class="eithra-busca" role="search" data-eithra-busca>
   <label class="visually-hidden" for="{{ busca_id }}">{{ busca_rotulo }}</label>
   <i class="bx bx-search eithra-busca-icone" aria-hidden="true"></i>
   <input

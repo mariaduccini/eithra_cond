@@ -24,6 +24,8 @@ from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
+from apps.core.filtros import tem_filtros
+from apps.core.paginacao import paginar
 from apps.demandas.models import Demanda
 
 from .constants import StatusManutencao
@@ -54,10 +56,6 @@ from .services import (
     definir_ativo,
     editar_manutencao,
 )
-
-# Quantidade de manutenções mostradas. A lista é de trabalho, não de arquivo: o
-# que importa é o que está de pé, não todo o histórico do condomínio.
-LIMITE_DA_LISTA = 50
 
 # Tom de cada situação e prioridade no badge. Discreto: nada de cor agressiva,
 # porque a lista inteira não pode gritar.
@@ -405,7 +403,9 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         equipamentos=_cadastros_ativos_entre(Equipamento, condominios),
         fornecedores=_cadastros_ativos_entre(Fornecedor, condominios),
     )
-    manutencoes = _manutencoes_filtradas(request, condominios, filtros)
+    pagina_manutencoes = paginar(
+        _manutencoes_filtradas(request, condominios, filtros), request.GET.get("page")
+    )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
     origem = _origem_pedida(request, pode_criar_condominios) if pode_criar else None
@@ -422,9 +422,13 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
             formulario = ManutencaoForm(condominios=pode_criar_condominios)
 
     contexto = {
-        "manutencoes": [_manutencao_para_tela(item, request.user) for item in manutencoes],
+        "manutencoes": [
+            _manutencao_para_tela(item, request.user) for item in pagina_manutencoes
+        ],
+        "pagina_manutencoes": pagina_manutencoes,
         "filtros": filtros,
-        "total": len(manutencoes),
+        "filtros_ativos": tem_filtros(filtros),
+        "total": pagina_manutencoes.paginator.count,
         "pode_criar": pode_criar,
         "formulario_manutencao": formulario,
         "demanda_origem": origem,
@@ -545,7 +549,7 @@ def _manutencoes_filtradas(request, condominios, filtros):
         if dados["minhas"]:
             queryset = queryset.minhas(request.user)
 
-    return queryset.na_ordem_de_atencao()[:LIMITE_DA_LISTA]
+    return queryset.na_ordem_de_atencao()
 
 
 # -- Tradução para a tela -------------------------------------------------------

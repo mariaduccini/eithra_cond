@@ -24,6 +24,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from apps.core.paginacao import paginar
+
 from . import services
 from .forms import (
     PessoaForm,
@@ -43,10 +45,6 @@ from .models import (
     VinculoVeiculoUnidade,
 )
 from .permissoes import condominios_para_ver, pode_operar
-
-# Quantidade de linhas mostradas por listagem. É um cadastro, não um arquivo:
-# a lista serve para encontrar e corrigir, não para varrer o histórico inteiro.
-LIMITE_DA_LISTA = 100
 
 
 # -- Unidades -------------------------------------------------------------------
@@ -206,11 +204,15 @@ def _render_unidades(
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     operar = pode_operar(request.user, atual)
+    pagina_unidades = _unidades_para_tela(
+        atual, base.get("termo", ""), request.GET.get("page")
+    )
 
     contexto = {
         **base,
         "pode_operar": operar,
-        "unidades": _unidades_para_tela(atual, base.get("termo", "")),
+        "unidades": pagina_unidades.itens,
+        "pagina_unidades": pagina_unidades,
         "formulario_unidade": formulario_criacao or UnidadeForm(condominio=atual),
         "modal_aberto": modal,
     }
@@ -429,10 +431,14 @@ def _render_pessoas(request, *, formulario_criacao=None, modal=None, status=200)
     """Monta a lista de pessoas com o formulário que a tela pediu."""
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
+    pagina_pessoas = _pessoas_para_tela(
+        atual, base.get("termo", ""), request.GET.get("page")
+    )
     contexto = {
         **base,
         "pode_operar": pode_operar(request.user, atual),
-        "pessoas": _pessoas_para_tela(atual, base.get("termo", "")),
+        "pessoas": pagina_pessoas.itens,
+        "pagina_pessoas": pagina_pessoas,
         "formulario_pessoa": formulario_criacao or PessoaForm(condominio=atual),
         "modal_aberto": modal,
     }
@@ -651,10 +657,14 @@ def _render_veiculos(request, *, formulario_criacao=None, modal=None, status=200
     """Monta a lista de veículos com o formulário que a tela pediu."""
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
+    pagina_veiculos = _veiculos_para_tela(
+        atual, base.get("termo", ""), request.GET.get("page")
+    )
     contexto = {
         **base,
         "pode_operar": pode_operar(request.user, atual),
-        "veiculos": _veiculos_para_tela(atual, base.get("termo", "")),
+        "veiculos": pagina_veiculos.itens,
+        "pagina_veiculos": pagina_veiculos,
         "formulario_veiculo": formulario_criacao or VeiculoForm(condominio=atual),
         "modal_aberto": modal,
     }
@@ -940,8 +950,8 @@ def _resumo_de_unidades(rotulos: set[str]) -> str:
     return f"Unidades {ordenadas[0]}, {ordenadas[1]} e mais {len(ordenadas) - 2}"
 
 
-def _unidades_para_tela(condominio, termo="") -> list[dict]:
-    """As unidades do condomínio, como a lista precisa delas.
+def _unidades_para_tela(condominio, termo="", numero=1):
+    """A página de unidades do condomínio, como a lista precisa dela.
 
     Quem está ligado à unidade hoje vem no mesmo carregamento da lista — é uma
     conta derivada dos vínculos vigentes, não uma coluna guardada.
@@ -957,9 +967,10 @@ def _unidades_para_tela(condominio, termo="") -> list[dict]:
                 ),
             )
         )
-        .order_by("bloco_torre", "identificador")[:LIMITE_DA_LISTA]
+        .order_by("bloco_torre", "identificador")
     )
-    return [
+    pagina = paginar(unidades, numero)
+    pagina.itens = [
         {
             "pk": unidade.pk,
             "identificador": unidade.identificador,
@@ -971,8 +982,9 @@ def _unidades_para_tela(condominio, termo="") -> list[dict]:
             ),
             **_situacao(unidade.ativa, ativo_texto="Ativa", inativo_texto="Inativa"),
         }
-        for unidade in unidades
+        for unidade in pagina
     ]
+    return pagina
 
 
 def _unidade_para_tela(unidade) -> dict:
@@ -992,8 +1004,8 @@ def _unidade_para_tela(unidade) -> dict:
     }
 
 
-def _pessoas_para_tela(condominio, termo="") -> list[dict]:
-    """As pessoas do condomínio, como a lista precisa delas.
+def _pessoas_para_tela(condominio, termo="", numero=1):
+    """A página de pessoas do condomínio, como a lista precisa dela.
 
     O documento não aparece aqui: ele não identifica a pessoa na lista, e é
     dado protegido.
@@ -1009,9 +1021,10 @@ def _pessoas_para_tela(condominio, termo="") -> list[dict]:
                 ),
             )
         )
-        .order_by("nome")[:LIMITE_DA_LISTA]
+        .order_by("nome")
     )
-    return [
+    pagina = paginar(pessoas, numero)
+    pagina.itens = [
         {
             "pk": pessoa.pk,
             "nome": pessoa.nome,
@@ -1025,8 +1038,9 @@ def _pessoas_para_tela(condominio, termo="") -> list[dict]:
             ),
             **_situacao(pessoa.ativa, ativo_texto="Ativa", inativo_texto="Inativa"),
         }
-        for pessoa in pessoas
+        for pessoa in pagina
     ]
+    return pagina
 
 
 def _pessoa_para_tela(pessoa) -> dict:
@@ -1049,8 +1063,8 @@ def _pessoa_para_tela(pessoa) -> dict:
     }
 
 
-def _veiculos_para_tela(condominio, termo="") -> list[dict]:
-    """Os veículos do condomínio, como a lista precisa deles.
+def _veiculos_para_tela(condominio, termo="", numero=1):
+    """A página de veículos do condomínio, como a lista precisa deles.
 
     Quem usa o veículo e a que unidade ele se relaciona hoje vêm no mesmo
     carregamento — são vínculos vigentes, derivados na hora.
@@ -1072,9 +1086,10 @@ def _veiculos_para_tela(condominio, termo="") -> list[dict]:
                 ),
             ),
         )
-        .order_by("placa")[:LIMITE_DA_LISTA]
+        .order_by("placa")
     )
-    return [
+    pagina = paginar(veiculos, numero)
+    pagina.itens = [
         {
             **_veiculo_para_tela(veiculo),
             "pessoas_resumo": _resumo_de_pessoas(
@@ -1084,8 +1099,9 @@ def _veiculos_para_tela(condominio, termo="") -> list[dict]:
                 {vinculo.unidade.rotulo for vinculo in veiculo.vinculos_unidade.all()}
             ),
         }
-        for veiculo in veiculos
+        for veiculo in pagina
     ]
+    return pagina
 
 
 def _veiculo_para_tela(veiculo) -> dict:

@@ -1,0 +1,100 @@
+{% comment %}
+	Navegação das listagens que podem crescer, junto do total em vista.
+
+	Uso:
+	  {% include "components/paginacao.html" with page_obj=pagina_pessoas filtro_ativo=termo %}
+
+	O que já está na barra de endereços — busca, filtros e condomínio — continua
+	vigorando em cada página, porque cada número de página é um endereço montado
+	a partir do que está lá. Mudar de página não apaga o que a pessoa procurou.
+
+	No desktop aparecem os números, com reticências quando há muitas páginas; no
+	celular, uma faixa curta que não obriga a linha inteira a caber na tela.
+
+	Variáveis: page_obj (obrigatória) — a página devolvida por
+	apps.core.paginacao.paginar, que já traz "faixa" com os números a mostrar,
+	resumidos por reticências quando há muitas páginas; filtro_ativo (opcional)
+	muda só o texto do resumo — "12 resultados" em vez de "Mostrando 1–12 de 12".
+
+	Numa lista curta, que cabe numa página só e não está filtrada, não há nada a
+	dizer nem a navegar: o bloco não aparece.
+{% endcomment %}
+{% if page_obj.paginator.count and filtro_ativo or page_obj.paginator.num_pages > 1 %}
+  <div class="eithra-paginacao">
+    <p class="eithra-paginacao-resumo text-body-secondary small mb-0">
+      {% if filtro_ativo %}
+        {{ page_obj.paginator.count }} resultado{{ page_obj.paginator.count|pluralize }}
+      {% else %}
+        Mostrando {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}
+      {% endif %}
+    </p>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+      <nav aria-label="Paginação da lista">
+        <ul class="pagination eithra-paginacao-lista d-none d-lg-flex mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="{% querystring page=page_obj.previous_page_number %}" aria-label="Página anterior">‹</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled">
+              <span class="page-link" aria-hidden="true">‹</span>
+            </li>
+          {% endif %}
+
+          {% for numero in page_obj.faixa %}
+            {% if numero == page_obj.paginator.ELLIPSIS %}
+              <li class="page-item disabled">
+                <span class="page-link" aria-hidden="true">…</span>
+              </li>
+            {% elif numero == page_obj.number %}
+              <li class="page-item active" aria-current="page">
+                <span class="page-link">{{ numero }}</span>
+              </li>
+            {% else %}
+              <li class="page-item">
+                <a class="page-link" href="{% querystring page=numero %}" aria-label="Página {{ numero }}">{{ numero }}</a>
+              </li>
+            {% endif %}
+          {% endfor %}
+
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="{% querystring page=page_obj.next_page_number %}" aria-label="Próxima página">›</a>
+            </li>
+          {% else %}
+            <li class="page-item disabled">
+              <span class="page-link" aria-hidden="true">›</span>
+            </li>
+          {% endif %}
+        </ul>
+
+        <div class="eithra-paginacao-mobile d-lg-none">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.previous_page_number %}">
+              <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
+            </a>
+          {% else %}
+            <span class="btn btn-sm btn-text-secondary disabled">
+              <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
+            </span>
+          {% endif %}
+
+          <span class="eithra-paginacao-atual">
+            {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+          </span>
+
+          {% if page_obj.has_next %}
+            <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.next_page_number %}">
+              Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
+            </a>
+          {% else %}
+            <span class="btn btn-sm btn-text-secondary disabled">
+              Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
+            </span>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  </div>
+{% endif %}

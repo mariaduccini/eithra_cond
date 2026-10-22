@@ -24,6 +24,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, LocalOperacional
+from apps.core.filtros import tem_filtros
+from apps.core.paginacao import paginar
 
 from .constants import Periodicidade, StatusExecucao, StatusItemChecklist
 from .forms import (
@@ -89,9 +91,9 @@ from .services import (
     tratar_item_checklist,
 )
 
-# Quantidade de linhas mostradas. A lista é de trabalho, não de arquivo: o que
-# importa é o que está de pé, não todo o histórico do condomínio.
-LIMITE_DA_LISTA = 50
+# Quantas ocorrências recentes a ficha da rotina mostra. A ficha é um resumo,
+# não um arquivo: o histórico inteiro vive na lista de ocorrências.
+LIMITE_DE_OCORRENCIAS_NA_FICHA = 50
 
 # Tom de cada situação de execução no badge. Discreto: a lista inteira não
 # pode gritar.
@@ -817,7 +819,9 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         locais=_cadastros_ativos_entre(LocalOperacional, condominios),
         equipamentos=_cadastros_ativos_entre(Equipamento, condominios),
     )
-    rotinas = _rotinas_filtradas(request, condominios, filtros)
+    pagina_rotinas = paginar(
+        _rotinas_filtradas(request, condominios, filtros), request.GET.get("page")
+    )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
 
@@ -825,9 +829,11 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         formulario = RotinaForm(condominios=pode_criar_condominios)
 
     contexto = {
-        "rotinas": [_rotina_para_tela(item, request.user) for item in rotinas],
+        "rotinas": [_rotina_para_tela(item, request.user) for item in pagina_rotinas],
+        "pagina_rotinas": pagina_rotinas,
         "filtros": filtros,
-        "total": len(rotinas),
+        "filtros_ativos": tem_filtros(filtros),
+        "total": pagina_rotinas.paginator.count,
         "pode_criar": pode_criar,
         "formulario_rotina": formulario,
         "modal_aberto": modal,
@@ -872,8 +878,10 @@ def _render_execucoes(request, condominios, *, status=200):
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
-    execucoes = _execucoes_filtradas(request, condominios, filtros)
-    linhas = [_execucao_para_tela(item, request.user) for item in execucoes]
+    pagina_execucoes = paginar(
+        _execucoes_filtradas(request, condominios, filtros), request.GET.get("page")
+    )
+    linhas = [_execucao_para_tela(item, request.user) for item in pagina_execucoes]
 
     # Cada ação da lista abre o mesmo modal, e o modal recebe o endereço da
     # ocorrência no momento em que abre. Assim os modais são poucos — um por
@@ -884,8 +892,9 @@ def _render_execucoes(request, condominios, *, status=200):
 
     contexto = {
         "execucoes": linhas,
+        "pagina_execucoes": pagina_execucoes,
         "filtros": filtros,
-        "total": len(linhas),
+        "total": pagina_execucoes.paginator.count,
         "mostrar_condominio": condominios.count() > 1,
         "filtros_ativos": bool(request.GET),
         # Quem responde ou supervisiona chega ao cadastro das rotinas; a
@@ -957,7 +966,7 @@ def _rotinas_filtradas(request, condominios, filtros):
         if dados["busca"]:
             queryset = queryset.buscar(dados["busca"])
 
-    return queryset.na_ordem_de_atencao()[:LIMITE_DA_LISTA]
+    return queryset.na_ordem_de_atencao()
 
 
 def _execucoes_filtradas(request, condominios, filtros):
@@ -990,7 +999,7 @@ def _execucoes_filtradas(request, condominios, filtros):
         if dados["busca"]:
             queryset = queryset.filter(rotina__titulo__icontains=dados["busca"])
 
-    return queryset.na_ordem_de_atencao()[:LIMITE_DA_LISTA]
+    return queryset.na_ordem_de_atencao()
 
 
 # -- Tradução para a tela -------------------------------------------------------
@@ -1179,7 +1188,7 @@ def _execucoes_da_rotina(rotina) -> list[dict]:
     recentes = (
         rotina.execucoes.select_related("responsavel")
         .prefetch_related("itens")
-        .order_by("-data_prevista")[:LIMITE_DA_LISTA]
+        .order_by("-data_prevista")[:LIMITE_DE_OCORRENCIAS_NA_FICHA]
     )
     return [_execucao_para_tela(item) for item in recentes]
 

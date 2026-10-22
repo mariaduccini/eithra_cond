@@ -112,8 +112,12 @@
           </div>
         {% endfor %}
       </div>
+
+      <div class="card-body pt-3">
+        {% include "components/paginacao.html" with page_obj=pagina_unidades filtro_ativo=termo %}
+      </div>
     {% elif termo %}
-      {% querystring q=None as busca_limpa %}
+      {% querystring q=None page=None as busca_limpa %}
       {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhuma unidade deste condomínio corresponde à busca. Tente outro termo ou limpe a busca." state_action_url=busca_limpa state_action_label="Limpar busca" state_action_tone="discreta" %}
     {% else %}
       {% include "components/state.html" with state_icon="bx-door-open" state_title="Nenhuma unidade cadastrada" state_message="Cadastre a primeira unidade deste condomínio para começar." %}

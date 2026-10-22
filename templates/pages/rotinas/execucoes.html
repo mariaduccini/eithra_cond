@@ -30,7 +30,7 @@
 
   <div class="card mb-4">
     <div class="card-body">
-      <form method="get" class="row g-3 align-items-end">
+      <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
         {% if mostrar_condominio %}
           <div class="col-6 col-lg-3">
             <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
@@ -58,8 +58,9 @@
           {{ filtros.busca }}
         </div>
         <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
-          <button type="submit" class="btn btn-label-primary btn-sm">Filtrar</button>
-          <a href="{% url 'rotinas:execucoes' %}" class="btn btn-text-secondary btn-sm">Limpar</a>
+          {% if filtros_ativos %}
+            <a href="{% url 'rotinas:execucoes' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -213,6 +214,9 @@
         {% include "components/state.html" with state_icon="bx-list-check" state_title="Nada por fazer" state_message="Quando as rotinas tiverem ocorrências, elas aparecem aqui." %}
       {% endif %}
     {% endif %}
+    <div class="card-body pt-3">
+      {% include "components/paginacao.html" with page_obj=pagina_execucoes filtro_ativo=filtros_ativos %}
+    </div>
   </div>
 
   {% comment %}

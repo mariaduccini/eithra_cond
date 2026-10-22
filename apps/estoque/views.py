@@ -25,6 +25,8 @@ from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Fornecedor
+from apps.core.filtros import tem_filtros
+from apps.core.paginacao import paginar
 
 from .constants import (
     DestinoDoItem,
@@ -71,8 +73,9 @@ from .services import (
     remover_item_compra,
 )
 
-# Quantidade de itens e compras mostrados. A lista é de trabalho, não de arquivo.
-LIMITE_DA_LISTA = 50
+# Quantos movimentos a página do item mostra. A página do item é um resumo do
+# saldo, não o arquivo: o histórico inteiro fica onde sempre ficou.
+LIMITE_DE_MOVIMENTOS_NA_FICHA = 50
 
 # Tom de cada leitura do saldo e de cada situação de compra no badge. Discreto:
 # a lista inteira não pode gritar.
@@ -603,7 +606,7 @@ def _obter_ou_404(queryset, pk):
 def _render_itens(request, condominios, *, formulario=None, modal=None, status=200):
     """Monta a lista de itens com os filtros aplicados e o formulário de cadastro."""
     filtros = FiltroDeItensForm(request.GET or None, condominios=condominios)
-    itens = _itens_filtrados(condominios, filtros)
+    pagina_itens = paginar(_itens_filtrados(condominios, filtros), request.GET.get("page"))
     pode_criar = condominios_para_operar_estoque(request.user).exists()
 
     if formulario is None and pode_criar:
@@ -612,9 +615,11 @@ def _render_itens(request, condominios, *, formulario=None, modal=None, status=2
         )
 
     contexto = {
-        "itens": [_item_para_linha(item) for item in itens],
+        "itens": [_item_para_linha(item) for item in pagina_itens],
+        "pagina_itens": pagina_itens,
         "filtros": filtros,
-        "total": len(itens),
+        "filtros_ativos": tem_filtros(filtros),
+        "total": pagina_itens.paginator.count,
         "pode_criar": pode_criar,
         "formulario_item": formulario,
         "modal_aberto": modal,
@@ -677,16 +682,18 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
         condominios=condominios,
         fornecedores=Fornecedor.objects.filter(condominio__in=condominios, ativo=True),
     )
-    compras = _compras_filtradas(condominios, filtros)
+    pagina_compras = paginar(_compras_filtradas(condominios, filtros), request.GET.get("page"))
     pode_criar = condominios_para_criar_compras(request.user).exists()
 
     if formulario is None and pode_criar:
         formulario = CompraForm(condominios=condominios_para_criar_compras(request.user))
 
     contexto = {
-        "compras": [_compra_para_linha(compra) for compra in compras],
+        "compras": [_compra_para_linha(compra) for compra in pagina_compras],
+        "pagina_compras": pagina_compras,
         "filtros": filtros,
-        "total": len(compras),
+        "filtros_ativos": tem_filtros(filtros),
+        "total": pagina_compras.paginator.count,
         "pode_criar": pode_criar,
         "formulario_compra": formulario,
         "modal_aberto": modal,
@@ -762,7 +769,7 @@ def _itens_filtrados(condominios, filtros):
         elif situacao == "criticos":
             queryset = queryset.criticos()
 
-    return queryset.filter(ativo=True).order_by("nome")[:LIMITE_DA_LISTA]
+    return queryset.filter(ativo=True).order_by("nome")
 
 
 def _compras_filtradas(condominios, filtros):
@@ -780,7 +787,7 @@ def _compras_filtradas(condominios, filtros):
         if dados["busca"]:
             queryset = queryset.buscar(dados["busca"])
 
-    return queryset.recentes()[:LIMITE_DA_LISTA]
+    return queryset.recentes()
 
 
 def _pode_retirar_para_alguma(usuario, manutencoes, item) -> bool:
@@ -949,7 +956,7 @@ def _movimentos_para_tela(item) -> list[dict]:
     """Os movimentos do item, do mais recente para o mais antigo."""
     movimentos = (
         item.movimentacoes.select_related("usuario", "manutencao", "compra_item__compra")
-        .order_by("-criado_em")[:LIMITE_DA_LISTA]
+        .order_by("-criado_em")[:LIMITE_DE_MOVIMENTOS_NA_FICHA]
     )
     return [_movimento_para_tela(movimento, item) for movimento in movimentos]
 

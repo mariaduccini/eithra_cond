@@ -20,6 +20,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.core.filtros import tem_filtros
+from apps.core.paginacao import paginar
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
 from .constants import PrioridadeDemanda, StatusDemanda
@@ -46,10 +48,6 @@ from .services import (
     editar_demanda,
     registrar_observacao,
 )
-
-# Quantidade de demandas mostradas. A lista é de trabalho, não de arquivo: o que
-# importa é o que está de pé, não todo o histórico do condomínio.
-LIMITE_DA_LISTA = 50
 
 # Tom de cada situação e prioridade no badge. Discreto: nada de cor agressiva,
 # porque a lista inteira não pode gritar.
@@ -258,14 +256,20 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
-    demandas = _demandas_filtradas(request, condominios, filtros)
+    pagina_demandas = paginar(
+        _demandas_filtradas(request, condominios, filtros), request.GET.get("page")
+    )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
 
     contexto = {
-        "demandas": [_demanda_para_tela(item, request.user) for item in demandas],
+        "demandas": [
+            _demanda_para_tela(item, request.user) for item in pagina_demandas
+        ],
+        "pagina_demandas": pagina_demandas,
         "filtros": filtros,
-        "total": len(demandas),
+        "filtros_ativos": tem_filtros(filtros),
+        "total": pagina_demandas.paginator.count,
         "pode_criar": pode_criar,
         "formulario_demanda": formulario
         or (DemandaForm(condominios=pode_criar_condominios) if pode_criar else None),
@@ -355,7 +359,7 @@ def _demandas_filtradas(request, condominios, filtros):
         if dados["minhas"]:
             queryset = queryset.minhas(request.user)
 
-    return queryset.na_ordem_de_atencao()[:LIMITE_DA_LISTA]
+    return queryset.na_ordem_de_atencao()
 
 
 # -- Tradução para a tela -------------------------------------------------------

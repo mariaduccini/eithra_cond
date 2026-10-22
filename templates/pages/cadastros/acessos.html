@@ -17,6 +17,7 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% include "components/busca.html" with busca_id="busca-acessos" busca_rotulo="Buscar acesso" busca_exemplo="Nome ou e-mail da pessoa" %}
       {% if pode_gerenciar %}
         <button
           type="button"
@@ -92,6 +93,13 @@
           </div>
         {% endfor %}
       </div>
+
+      <div class="card-body pt-3">
+        {% include "components/paginacao.html" with page_obj=pagina_acessos filtro_ativo=termo %}
+      </div>
+    {% elif termo %}
+      {% querystring q=None page=None as busca_limpa %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhum acesso deste condomínio corresponde à busca. Tente outro termo ou limpe a busca." state_action_url=busca_limpa state_action_label="Limpar busca" state_action_tone="discreta" %}
     {% else %}
       {% include "components/state.html" with state_icon="bx-user-check" state_title="Ninguém com acesso ainda" state_message="Quando alguém for vinculado a este condomínio, aparece aqui." %}
     {% endif %}

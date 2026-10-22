@@ -28,6 +28,8 @@ from django.urls import reverse
 from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
+from apps.core.paginacao import paginar
+
 from . import services
 from .constants import SituacaoVigencia
 from .forms import (
@@ -49,11 +51,6 @@ from .permissoes import (
     pode_gerenciar_tipos,
     pode_operar,
 )
-
-# Quantidade de linhas mostradas por listagem. É um cadastro de obrigações, não
-# um arquivo: a lista serve para encontrar o que pede atenção, não para varrer o
-# histórico inteiro.
-LIMITE_DA_LISTA = 50
 
 # Como cada situação de vigência aparece escrita na tela.
 ROTULO_POR_SITUACAO = dict(SituacaoVigencia.choices)
@@ -172,10 +169,15 @@ def _render_contratos(
     elif modal is None:
         modal = "editar"
 
+    pagina_contratos = paginar(
+        _contratos_do_condominio(atual, base["termo"]), request.GET.get("page")
+    )
+
     contexto = {
         **base,
         "pode_operar": pode_operar_aqui,
-        "contratos": _contratos_para_tela(atual),
+        "contratos": [_contrato_para_tela(item) for item in pagina_contratos],
+        "pagina_contratos": pagina_contratos,
         "formulario_contrato": formulario_criacao or ContratoForm(condominio=atual),
         "formulario_edicao": formulario_edicao
         or (ContratoForm(instance=item_edicao, condominio=atual) if item_edicao else None),
@@ -417,10 +419,15 @@ def _render_garantias(
     elif modal is None:
         modal = "editar"
 
+    pagina_garantias = paginar(
+        _garantias_do_condominio(atual, base["termo"]), request.GET.get("page")
+    )
+
     contexto = {
         **base,
         "pode_operar": pode_operar_aqui,
-        "garantias": _garantias_para_tela(atual),
+        "garantias": [_garantia_para_tela(item) for item in pagina_garantias],
+        "pagina_garantias": pagina_garantias,
         "formulario_garantia": formulario_criacao or GarantiaForm(condominio=atual),
         "formulario_edicao": formulario_edicao
         or (GarantiaForm(instance=item_edicao, condominio=atual) if item_edicao else None),
@@ -544,10 +551,15 @@ def _render_documentos(
     elif modal is None:
         modal = "editar"
 
+    pagina_documentos = paginar(
+        _documentos_do_condominio(atual, base["termo"]), request.GET.get("page")
+    )
+
     contexto = {
         **base,
         "pode_operar": pode_operar_aqui,
-        "documentos": _documentos_para_tela(atual),
+        "documentos": [_documento_para_tela(item) for item in pagina_documentos],
+        "pagina_documentos": pagina_documentos,
         "formulario_documento": formulario_criacao or DocumentoForm(condominio=atual),
         "formulario_edicao": formulario_edicao
         or (DocumentoForm(instance=item_edicao, condominio=atual) if item_edicao else None),
@@ -740,12 +752,14 @@ def _condominio_para_gerenciar(request):
 
 
 def _base_da_pagina(request):
-    """O que toda tela da governança precisa: os condomínios e qual está em vista."""
+    """O que toda tela da governança precisa: os condomínios, qual está em vista
+    e o termo já procurado, quando houver."""
     condominios = _condominios_para_ver(request)
     return {
         "condominios": condominios,
         "condominio_atual": _condominio_atual(request, condominios),
         "mostrar_seletor": condominios.count() > 1,
+        "termo": (request.GET.get("q") or "").strip(),
     }
 
 
@@ -875,67 +889,74 @@ def _descricao_da_cobertura(equipamentos: int, locais: int, rotinas: int) -> str
     return ", ".join(partes)
 
 
-def _contratos_para_tela(condominio) -> list[dict]:
-    """Os contratos do condomínio, na ordem em que a atenção é pedida."""
-    contratos = (
+def _contratos_do_condominio(condominio, termo=""):
+    """Os contratos do condomínio, na ordem em que a atenção é pedida.
+
+    O termo estreita o conjunto antes de ordenar e paginar: o que a pessoa
+    procurou vale para o que ela vê, e não para uma página já recortada.
+    """
+    return (
         ContratoFornecedor.objects.filter(condominio=condominio)
+        .buscar(termo)
         .select_related("fornecedor", "tipo_contrato")
         .prefetch_related(
             "equipamentos_vinculados", "locais_vinculados", "rotinas_vinculadas"
         )
-        .na_ordem_de_atencao()[:LIMITE_DA_LISTA]
+        .na_ordem_de_atencao()
     )
-    return [
-        {
-            "pk": contrato.pk,
-            "objeto": contrato.objeto,
-            "fornecedor": contrato.fornecedor.nome_razao_social,
-            "classificacao": _classificacao_do_contrato(contrato),
-            "vigencia": _periodo(contrato.data_inicio, contrato.data_fim),
-            "valor": _moeda(contrato.valor),
-            "periodicidade": (
-                contrato.get_periodicidade_cobranca_display()
-                if contrato.periodicidade_cobranca
-                else ""
-            ),
-            "cobre": _descricao_da_cobertura(
-                len(contrato.equipamentos_vinculados.all()),
-                len(contrato.locais_vinculados.all()),
-                len(contrato.rotinas_vinculadas.all()),
-            ),
-            "decisao_proxima": contrato.prazo_de_decisao_proximo,
-            "ativo": contrato.ativo,
-            **_situacao_para_tela(contrato),
-        }
-        for contrato in contratos
-    ]
 
 
-def _garantias_para_tela(condominio) -> list[dict]:
-    """As garantias do condomínio, com o que cada uma cobre."""
-    garantias = (
+def _contrato_para_tela(contrato) -> dict:
+    """O contrato como a lista o lê: o que foi contratado, com quem e até quando."""
+    return {
+        "pk": contrato.pk,
+        "objeto": contrato.objeto,
+        "fornecedor": contrato.fornecedor.nome_razao_social,
+        "classificacao": _classificacao_do_contrato(contrato),
+        "vigencia": _periodo(contrato.data_inicio, contrato.data_fim),
+        "valor": _moeda(contrato.valor),
+        "periodicidade": (
+            contrato.get_periodicidade_cobranca_display()
+            if contrato.periodicidade_cobranca
+            else ""
+        ),
+        "cobre": _descricao_da_cobertura(
+            len(contrato.equipamentos_vinculados.all()),
+            len(contrato.locais_vinculados.all()),
+            len(contrato.rotinas_vinculadas.all()),
+        ),
+        "decisao_proxima": contrato.prazo_de_decisao_proximo,
+        "ativo": contrato.ativo,
+        **_situacao_para_tela(contrato),
+    }
+
+
+def _garantias_do_condominio(condominio, termo=""):
+    """As garantias do condomínio, da que vence antes à que vence depois."""
+    return (
         Garantia.objects.filter(condominio=condominio)
+        .buscar(termo)
         .select_related("fornecedor")
         .prefetch_related("equipamentos", "manutencoes", "itens_de_compra")
         .order_by("data_fim")
-        [:LIMITE_DA_LISTA]
     )
-    return [
-        {
-            "pk": garantia.pk,
-            "descricao": garantia.descricao,
-            "fornecedor": (
-                garantia.fornecedor.nome_razao_social
-                if garantia.fornecedor_id
-                else "Sem fornecedor definido"
-            ),
-            "vigencia": _periodo(garantia.data_inicio, garantia.data_fim),
-            "cobre": _cobertura_da_garantia_para_tela(garantia),
-            "ativo": garantia.ativo,
-            **_situacao_para_tela(garantia),
-        }
-        for garantia in garantias
-    ]
+
+
+def _garantia_para_tela(garantia) -> dict:
+    """A garantia como a lista a lê: o que ela assegura e por quanto tempo."""
+    return {
+        "pk": garantia.pk,
+        "descricao": garantia.descricao,
+        "fornecedor": (
+            garantia.fornecedor.nome_razao_social
+            if garantia.fornecedor_id
+            else "Sem fornecedor definido"
+        ),
+        "vigencia": _periodo(garantia.data_inicio, garantia.data_fim),
+        "cobre": _cobertura_da_garantia_para_tela(garantia),
+        "ativo": garantia.ativo,
+        **_situacao_para_tela(garantia),
+    }
 
 
 def _cobertura_da_garantia_para_tela(garantia) -> str:
@@ -956,10 +977,11 @@ def _cobertura_da_garantia_para_tela(garantia) -> str:
     return ", ".join(partes)
 
 
-def _documentos_para_tela(condominio) -> list[dict]:
-    """Os documentos do condomínio, com validade e contexto de cada um."""
-    documentos = (
+def _documentos_do_condominio(condominio, termo=""):
+    """Os documentos do condomínio, do que vence antes ao que não vence."""
+    return (
         DocumentoOperacional.objects.filter(condominio=condominio)
+        .buscar(termo)
         .select_related("tipo_documento")
         .prefetch_related(
             "contratos_vinculados",
@@ -968,24 +990,24 @@ def _documentos_para_tela(condominio) -> list[dict]:
             "fornecedores_vinculados",
         )
         .order_by("data_validade")
-        [:LIMITE_DA_LISTA]
     )
-    return [
-        {
-            "pk": documento.pk,
-            "titulo": documento.titulo,
-            "tipo": documento.tipo_documento.nome,
-            "relacionado": documento.relacionado_a,
-            "validade": (
-                documento.data_validade.strftime("%d/%m/%Y")
-                if documento.data_validade
-                else "Sem validade"
-            ),
-            "ativo": documento.ativo,
-            **_situacao_para_tela(documento),
-        }
-        for documento in documentos
-    ]
+
+
+def _documento_para_tela(documento) -> dict:
+    """O documento como a lista o lê: o que é, de que tipo e até quando vale."""
+    return {
+        "pk": documento.pk,
+        "titulo": documento.titulo,
+        "tipo": documento.tipo_documento.nome,
+        "relacionado": documento.relacionado_a,
+        "validade": (
+            documento.data_validade.strftime("%d/%m/%Y")
+            if documento.data_validade
+            else "Sem validade"
+        ),
+        "ativo": documento.ativo,
+        **_situacao_para_tela(documento),
+    }
 
 
 def _tipos_para_tela(tipos) -> list[dict]:

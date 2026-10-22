@@ -14,6 +14,7 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% include "components/busca.html" with busca_id="busca-contratos" busca_rotulo="Buscar contrato" busca_exemplo="Buscar objeto, fornecedor ou referência" %}
       {% if pode_operar %}
         <button
           type="button"
@@ -159,9 +160,15 @@
           </div>
         {% endfor %}
       </div>
+    {% elif termo %}
+      {% querystring q=None page=None as busca_limpa %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhum contrato deste condomínio corresponde à busca. Tente outro termo ou limpe a busca." state_action_url=busca_limpa state_action_label="Limpar busca" state_action_tone="discreta" %}
     {% else %}
       {% include "components/state.html" with state_icon="bx-file" state_title="Nenhum contrato registrado" state_message="Contratos de manutenção, seguro, locação e outros aparecem aqui quando forem registrados." %}
     {% endif %}
+    <div class="card-body pt-3">
+      {% include "components/paginacao.html" with page_obj=pagina_contratos filtro_ativo=termo %}
+    </div>
   </div>
 
   {% if pode_operar %}

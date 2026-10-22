@@ -20,6 +20,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -32,6 +33,7 @@ from apps.comunidade.permissoes import (
 )
 from apps.condominios import services as servicos_de_acesso
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
+from apps.core.paginacao import paginar
 from apps.governanca.permissoes import (
     pode_gerenciar_tipos as pode_gerenciar_tipos_de_governanca,
     pode_ver_governanca,
@@ -62,10 +64,6 @@ from .permissoes import (
     pode_criar_condominios,
     pode_gerenciar_cadastros,
 )
-
-# Quantidade de linhas mostradas por listagem. É um cadastro, não um arquivo:
-# a lista serve para encontrar e corrigir, não para varrer o histórico inteiro.
-LIMITE_DA_LISTA = 100
 
 
 # -- Cadastro do condomínio -----------------------------------------------------
@@ -550,12 +548,23 @@ def _render_acessos(
     vinculos = (
         AcessoUsuarioCondominio.objects.filter(condominio=atual)
         .select_related("usuario")
-        .order_by("usuario__full_name", "usuario__email")[:LIMITE_DA_LISTA]
+        .order_by("usuario__full_name", "usuario__email")
     )
+    if base["termo"]:
+        # Quem tem acesso se procura por quem é: o nome da pessoa ou o e-mail
+        # com que ela entra.
+        vinculos = vinculos.filter(
+            Q(usuario__full_name__icontains=base["termo"])
+            | Q(usuario__email__icontains=base["termo"])
+        )
+    pagina_acessos = paginar(vinculos, request.GET.get("page"))
+    pagina_acessos.itens = [_acesso_para_tela(item) for item in pagina_acessos]
+
     contexto = {
         **base,
         "pode_gerenciar": pode_gerenciar,
-        "acessos": [_acesso_para_tela(item) for item in vinculos],
+        "acessos": pagina_acessos.itens,
+        "pagina_acessos": pagina_acessos,
         "formulario_acesso": formulario_acesso or AdicionarAcessoForm(),
         "formulario_papel": formulario_papel
         or (PapelForm(initial={"papel": item_edicao.papel}) if item_edicao else None),
@@ -644,10 +653,13 @@ def _render_locais(
     elif modal is None:
         modal = "editar"
 
+    pagina_locais = _locais_para_tela(atual, base["termo"], request.GET.get("page"))
+
     contexto = {
         **base,
         "pode_gerenciar": pode_gerenciar,
-        "locais": _locais_para_tela(atual),
+        "locais": pagina_locais.itens,
+        "pagina_locais": pagina_locais,
         "formulario_local": formulario_criacao or LocalForm(condominio=atual),
         "formulario_edicao": formulario_edicao
         or (LocalForm(instance=item_edicao, condominio=atual) if item_edicao else None),
@@ -866,10 +878,15 @@ def _render_equipamentos(
     elif modal is None:
         modal = "editar"
 
+    pagina_equipamentos = _equipamentos_para_tela(
+        atual, base["termo"], request.GET.get("page")
+    )
+
     contexto = {
         **base,
         "pode_gerenciar": pode_gerenciar,
-        "equipamentos": _equipamentos_para_tela(atual),
+        "equipamentos": pagina_equipamentos.itens,
+        "pagina_equipamentos": pagina_equipamentos,
         "formulario_equipamento": formulario_criacao
         or EquipamentoForm(condominio=atual),
         "formulario_edicao": formulario_edicao
@@ -1093,10 +1110,15 @@ def _render_fornecedores(
     elif modal is None:
         modal = "editar"
 
+    pagina_fornecedores = _fornecedores_para_tela(
+        atual, base["termo"], request.GET.get("page")
+    )
+
     contexto = {
         **base,
         "pode_gerenciar": pode_gerenciar,
-        "fornecedores": _fornecedores_para_tela(atual),
+        "fornecedores": pagina_fornecedores.itens,
+        "pagina_fornecedores": pagina_fornecedores,
         "formulario_fornecedor": formulario_criacao or FornecedorForm(condominio=atual),
         "formulario_edicao": formulario_edicao
         or (FornecedorForm(instance=item_edicao, condominio=atual) if item_edicao else None),
@@ -1288,6 +1310,7 @@ def _base_da_pagina(request):
         "condominios": condominios,
         "condominio_atual": _condominio_atual(request, condominios),
         "mostrar_seletor": condominios.count() > 1,
+        "termo": (request.GET.get("q") or "").strip(),
     }
 
 
@@ -1478,8 +1501,8 @@ def _tipos_para_tela(tipos) -> list[dict]:
     ]
 
 
-def _locais_para_tela(condominio) -> list[dict]:
-    """Os locais do condomínio, como a lista precisa deles.
+def _locais_para_tela(condominio, termo="", numero=1):
+    """A página de locais do condomínio, como a lista precisa dela.
 
     A leitura prefere a classificação nova. O texto antigo só aparece enquanto
     o local que veio da fase anterior não tiver sido classificado — nada é
@@ -1487,10 +1510,12 @@ def _locais_para_tela(condominio) -> list[dict]:
     """
     locais = (
         LocalOperacional.objects.filter(condominio=condominio)
+        .buscar(termo)
         .select_related("tipo_local")
-        .order_by("nome")[:LIMITE_DA_LISTA]
+        .order_by("nome")
     )
-    return [
+    pagina = paginar(locais, numero)
+    pagina.itens = [
         {
             "pk": local.pk,
             "nome": local.nome,
@@ -1500,22 +1525,25 @@ def _locais_para_tela(condominio) -> list[dict]:
             "descricao": local.descricao,
             **_situacao_do_cadastro(local.ativo),
         }
-        for local in locais
+        for local in pagina
     ]
+    return pagina
 
 
-def _equipamentos_para_tela(condominio) -> list[dict]:
-    """Os equipamentos do condomínio, como a lista precisa deles.
+def _equipamentos_para_tela(condominio, termo="", numero=1):
+    """A página de equipamentos do condomínio, como a lista precisa dela.
 
     Como no local, a classificação nova vem primeiro e o texto antigo só
     permanece enquanto o equipamento não for classificado.
     """
     equipamentos = (
         Equipamento.objects.filter(condominio=condominio)
+        .buscar(termo)
         .select_related("local", "tipo_equipamento")
-        .order_by("nome")[:LIMITE_DA_LISTA]
+        .order_by("nome")
     )
-    return [
+    pagina = paginar(equipamentos, numero)
+    pagina.itens = [
         {
             "pk": equipamento.pk,
             "nome": equipamento.nome,
@@ -1529,18 +1557,21 @@ def _equipamentos_para_tela(condominio) -> list[dict]:
             "modelo": equipamento.modelo,
             **_situacao_do_cadastro(equipamento.ativo),
         }
-        for equipamento in equipamentos
+        for equipamento in pagina
     ]
+    return pagina
 
 
-def _fornecedores_para_tela(condominio) -> list[dict]:
-    """Os fornecedores do condomínio, como a lista precisa deles."""
+def _fornecedores_para_tela(condominio, termo="", numero=1):
+    """A página de fornecedores do condomínio, como a lista precisa dela."""
     fornecedores = (
         Fornecedor.objects.filter(condominio=condominio)
+        .buscar(termo)
         .prefetch_related("especialidades__especialidade")
-        .order_by("nome_razao_social")[:LIMITE_DA_LISTA]
+        .order_by("nome_razao_social")
     )
-    return [
+    pagina = paginar(fornecedores, numero)
+    pagina.itens = [
         {
             "pk": fornecedor.pk,
             "nome": fornecedor.nome_razao_social,
@@ -1556,5 +1587,6 @@ def _fornecedores_para_tela(condominio) -> list[dict]:
             "disponivel_para_moradores": fornecedor.disponivel_para_moradores,
             **_situacao_do_cadastro(fornecedor.ativo),
         }
-        for fornecedor in fornecedores
+        for fornecedor in pagina
     ]
+    return pagina
