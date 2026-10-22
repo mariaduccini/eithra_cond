@@ -27,6 +27,9 @@ class AcessoAsTelasTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.telas = (
+            "cadastros:condominios",
+            "cadastros:pessoas_e_unidades",
+            "cadastros:tipos_e_categorias",
             "cadastros:condominio",
             "cadastros:acessos",
             "cadastros:locais",
@@ -58,25 +61,26 @@ class AcessoAsTelasTests(TestCase):
 
 
 class CondominioTests(TestCase):
-    """O cadastro do condomínio: leitura para a supervisão, escrita para a gestão."""
+    """A ficha do condomínio agora abre em modal dentro da lista."""
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:condominio")
 
-    def test_gestao_ve_os_dados_do_condominio(self):
+    def test_gestao_ve_o_modal_do_condominio_atual(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         resposta = self.client.get(self.url)
         self.assertEqual(resposta.status_code, 200)
-        self.assertTrue(resposta.context["pode_gerenciar"])
+        self.assertEqual(resposta.context["modal_aberto"], "editar")
+        self.assertEqual(resposta.context["item_edicao"], self.condominio)
+        self.assertTrue(resposta.context["pode_gerenciar_item_edicao"])
         self.assertContains(resposta, "Alpha")
 
     def test_gestao_salva_o_cadastro_normalizado(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         resposta = self.client.post(
-            self.url,
+            reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
             {
-                "condominio": str(self.condominio.pk),
                 "nome": "  Residencial   Alpha ",
                 "cnpj": "12.345.678/0001-95",
                 "logradouro": "Rua das Acácias",
@@ -90,9 +94,7 @@ class CondominioTests(TestCase):
                 "quantidade_unidades": "120",
             },
         )
-        self.assertRedirects(
-            resposta, f"{self.url}?condominio={self.condominio.pk}"
-        )
+        self.assertRedirects(resposta, reverse("cadastros:condominios"))
         self.condominio.refresh_from_db()
         self.assertEqual(self.condominio.nome, "Residencial Alpha")
         self.assertEqual(self.condominio.cnpj, "12345678000195")
@@ -105,8 +107,8 @@ class CondominioTests(TestCase):
     def test_cnpj_invalido_e_recusado_sem_salvar(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         resposta = self.client.post(
-            self.url,
-            {"condominio": str(self.condominio.pk), "nome": "Alpha", "cnpj": "123"},
+            reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
+            {"nome": "Alpha", "cnpj": "123"},
         )
         self.assertEqual(resposta.status_code, 400)
         self.condominio.refresh_from_db()
@@ -118,15 +120,16 @@ class CondominioTests(TestCase):
         )
         resposta = self.client.get(self.url)
         self.assertEqual(resposta.status_code, 200)
-        self.assertFalse(resposta.context["pode_gerenciar"])
-        self.assertTrue(resposta.context["formulario"].fields["nome"].disabled)
+        self.assertFalse(resposta.context["pode_gerenciar_item_edicao"])
+        self.assertTrue(resposta.context["formulario_edicao"].fields["nome"].disabled)
 
     def test_supervisora_nao_salva(self):
         entrar_como(
             self.client, Papel.SUPERVISORA, self.condominio, "supervisora2@exemplo.test"
         )
         resposta = self.client.post(
-            self.url, {"condominio": str(self.condominio.pk), "nome": "Invadido"}
+            reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
+            {"nome": "Invadido"},
         )
         self.assertEqual(resposta.status_code, 403)
         self.condominio.refresh_from_db()
@@ -138,6 +141,94 @@ class CondominioTests(TestCase):
         )
         resposta = self.client.get(self.url)
         self.assertNotContains(resposta, "Salvar")
+
+
+class ListaDeCondominiosTests(TestCase):
+    """A grade inicial mostra só os condomínios autorizados para esta pessoa."""
+
+    def setUp(self):
+        self.alpha = criar_condominio("Alpha", cidade="Salvador", uf="BA")
+        self.beta = criar_condominio("Beta", quantidade_unidades=48)
+        self.gama = criar_condominio("Gama")
+        self.url = reverse("cadastros:condominios")
+        self.pessoa = criar_pessoa("gestora@exemplo.test", "Gestora")
+        criar_vinculo(self.pessoa, self.alpha, papel=Papel.SINDICA)
+        criar_vinculo(self.pessoa, self.beta, papel=Papel.SUPERVISORA)
+        self.client.force_login(self.pessoa)
+
+    def test_lista_mostra_so_os_condominios_autorizados(self):
+        resposta = self.client.get(self.url)
+        self.assertEqual(resposta.status_code, 200)
+        nomes = [item["nome"] for item in resposta.context["condominios_lista"]]
+        self.assertEqual(nomes, ["Alpha", "Beta"])
+        self.assertNotContains(resposta, "Gama")
+
+    def test_lista_indica_papel_e_nivel_de_acesso(self):
+        resposta = self.client.get(self.url)
+        self.assertContains(resposta, "Síndico(a)")
+        self.assertContains(resposta, "Supervisão")
+        self.assertContains(resposta, "Pode gerenciar")
+        self.assertContains(resposta, "Somente leitura")
+
+    def test_lista_monta_link_para_abrir_o_modal_do_condominio(self):
+        resposta = self.client.get(self.url)
+        links = {item["nome"]: item["url"] for item in resposta.context["condominios_lista"]}
+        self.assertEqual(
+            links["Alpha"],
+            f"{reverse('cadastros:condominios')}?abrir=editar&item={self.alpha.pk}",
+        )
+        self.assertEqual(
+            links["Beta"],
+            f"{reverse('cadastros:condominios')}?abrir=editar&item={self.beta.pk}",
+        )
+
+    def test_gestao_ve_botao_novo_condominio(self):
+        resposta = self.client.get(self.url)
+        self.assertContains(resposta, "Novo condomínio")
+
+    def test_supervisora_nao_ve_botao_novo_condominio(self):
+        supervisora = criar_pessoa("supervisora@exemplo.test", "Supervisora")
+        criar_vinculo(supervisora, self.alpha, papel=Papel.SUPERVISORA)
+        self.client.force_login(supervisora)
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, "Novo condomínio")
+
+    def test_cadastra_condominio_e_cria_acesso_para_quem_cadastrou(self):
+        resposta = self.client.post(
+            reverse("cadastros:criar_condominio"),
+            {
+                "nome": "  Residencial   Delta ",
+                "cnpj": "12.345.678/0001-95",
+                "cidade": "Salvador",
+                "uf": "ba",
+            },
+        )
+        self.assertRedirects(resposta, reverse("cadastros:condominios"))
+        condominio = Condominio.objects.get(nome="Residencial Delta")
+        self.assertEqual(condominio.cnpj, "12345678000195")
+        self.assertEqual(condominio.uf, "BA")
+        vinculo = AcessoUsuarioCondominio.objects.get(
+            usuario=self.pessoa,
+            condominio=condominio,
+        )
+        self.assertEqual(vinculo.papel, Papel.ADMIN)
+
+    def test_supervisora_recebe_403_ao_tentar_cadastrar_condominio(self):
+        supervisora = criar_pessoa("supervisora@exemplo.test", "Supervisora")
+        criar_vinculo(supervisora, self.alpha, papel=Papel.SUPERVISORA)
+        self.client.force_login(supervisora)
+        resposta = self.client.post(
+            reverse("cadastros:criar_condominio"),
+            {"nome": "Novo condomínio"},
+        )
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(Condominio.objects.filter(nome="Novo condomínio").exists())
+
+    def test_modal_edicao_abre_o_condominio_pedido(self):
+        resposta = self.client.get(f"{self.url}?abrir=editar&item={self.beta.pk}")
+        self.assertEqual(resposta.context["modal_aberto"], "editar")
+        self.assertEqual(resposta.context["item_edicao"], self.beta)
+        self.assertFalse(resposta.context["pode_gerenciar_item_edicao"])
 
 
 class ContextoDoCondominioTests(TestCase):
@@ -176,6 +267,30 @@ class ContextoDoCondominioTests(TestCase):
             f"{self.url}?condominio=00000000-0000-4000-8000-000000000000"
         )
         self.assertEqual(resposta.status_code, 404)
+
+
+class AgrupadoresDeNavegacaoTests(TestCase):
+    """O menu resume contextos sem esconder o que ja existe no sistema."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+
+    def test_pessoas_e_unidades_reune_os_atalhos_da_comunidade(self):
+        resposta = self.client.get(reverse("cadastros:pessoas_e_unidades"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Unidades")
+        self.assertContains(resposta, "Pessoas")
+        self.assertContains(resposta, "Veículos")
+
+    def test_tipos_e_categorias_reune_os_catalogos_existentes(self):
+        resposta = self.client.get(reverse("cadastros:tipos_e_categorias"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "Tipos de local")
+        self.assertContains(resposta, "Tipos de equipamento")
+        self.assertContains(resposta, "Especialidades de fornecedor")
+        self.assertContains(resposta, "Tipos de contrato")
+        self.assertContains(resposta, "Tipos de documento")
 
 
 class LocaisTests(TestCase):
@@ -287,6 +402,10 @@ class LocaisTests(TestCase):
         resposta = self.client.get(self.url)
         self.assertNotContains(resposta, "Novo local")
 
+    def test_lista_nao_traz_o_atalho_de_tipos_como_acao_principal(self):
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, reverse("cadastros:tipos_de_local"))
+
 
 class EquipamentosTests(TestCase):
     """O local oferecido é sempre do condomínio em vista."""
@@ -339,6 +458,10 @@ class EquipamentosTests(TestCase):
         equipamento.refresh_from_db()
         self.assertFalse(equipamento.ativo)
 
+    def test_lista_nao_traz_o_atalho_de_tipos_como_acao_principal(self):
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, reverse("cadastros:tipos_de_equipamento"))
+
 
 class FornecedoresTests(TestCase):
     """O documento identifica o fornecedor dentro do condomínio."""
@@ -390,6 +513,10 @@ class FornecedoresTests(TestCase):
         resposta = self.client.get(self.url)
         self.assertContains(resposta, "12.345.678/0001-95")
 
+    def test_lista_nao_traz_especialidades_como_acao_principal(self):
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, reverse("cadastros:especialidades"))
+
 
 class MenuTests(TestCase):
     """O grupo Cadastros existe para quem enxerga o módulo, e some para o resto."""
@@ -401,24 +528,36 @@ class MenuTests(TestCase):
         resposta = self.client.get(reverse("core:home"))
         return resposta.context["navigation"]
 
-    def test_grupo_cadastros_traz_os_onze_cadastros(self):
+    def test_grupo_cadastros_traz_os_dez_itens_contextuais(self):
         entrar_como(self.client, Papel.SINDICA, self.condominio)
         grupo = next(item for item in self._menu() if item["label"] == "Cadastros")
         self.assertEqual(
             [filho["label"] for filho in grupo["filhos"]],
             [
-                "Condomínio",
+                "Condomínios",
+                "Pessoas e unidades",
                 "Usuários e acessos",
                 "Áreas e locais",
                 "Equipamentos",
                 "Fornecedores",
-                "Unidades",
-                "Pessoas",
-                "Veículos",
                 "Contratos",
                 "Garantias",
                 "Documentos",
+                "Tipos e categorias",
             ],
+        )
+
+    def test_grupo_abre_na_lista_de_condominios(self):
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        resposta = self.client.get(reverse("cadastros:condominios"))
+        grupo = next(
+            item for item in resposta.context["navigation"] if item["label"] == "Cadastros"
+        )
+        self.assertTrue(grupo["ativo"])
+        self.assertTrue(
+            next(filho for filho in grupo["filhos"] if filho["label"] == "Condomínios")[
+                "ativo"
+            ]
         )
 
     def test_grupo_abre_quando_uma_tela_dele_esta_a_vista(self):
@@ -432,6 +571,34 @@ class MenuTests(TestCase):
             next(filho for filho in grupo["filhos"] if filho["label"] == "Áreas e locais")[
                 "ativo"
             ]
+        )
+
+    def test_grupo_marca_pessoas_e_unidades_quando_a_comunidade_esta_aberta(self):
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        resposta = self.client.get(reverse("comunidade:pessoas"))
+        grupo = next(
+            item for item in resposta.context["navigation"] if item["label"] == "Cadastros"
+        )
+        self.assertTrue(
+            next(
+                filho
+                for filho in grupo["filhos"]
+                if filho["label"] == "Pessoas e unidades"
+            )["ativo"]
+        )
+
+    def test_grupo_marca_tipos_e_categorias_quando_um_catalogo_esta_aberto(self):
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        resposta = self.client.get(reverse("cadastros:tipos_de_local"))
+        grupo = next(
+            item for item in resposta.context["navigation"] if item["label"] == "Cadastros"
+        )
+        self.assertTrue(
+            next(
+                filho
+                for filho in grupo["filhos"]
+                if filho["label"] == "Tipos e categorias"
+            )["ativo"]
         )
 
     def test_operacional_nao_recebe_o_grupo(self):

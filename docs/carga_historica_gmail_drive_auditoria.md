@@ -61,7 +61,19 @@ ordens de serviço, e os temas de Gmail — estão registradas adiante como
 2. **Acesso autenticado de leitura** — escopo somente-leitura em Drive e Gmail.
 
 Sem uma das duas, os itens acima permanecem bloqueados. Nenhuma tentativa indireta
-foi feita — nem busca automatizada, nem inferência a partir de nomes de arquivo.
+foi feita — nem busca automatizada, nem inferência a partir de nome de arquivo.
+
+**Decisão adotada:** a fonte real será fornecida por leitor externo autorizado, em
+formato estruturado local. O Gmail e o Google Drive são analisados em ambiente
+autorizado, fora do Eithra, que produz um pacote de migração em JSON. O Eithra não
+cria integração Google, não pede OAuth nem service account, e não guarda dependência
+de runtime das duas fontes — a leitura das fontes não acontece dentro do Eithra.
+
+O pacote **preserva a fonte**; a normalização para os models do Eithra continua
+sendo responsabilidade do importador/dry-run. Os arquivos podem conter dados reais e
+por isso ficam em diretório local ignorado pelo Git, nunca em documentação versionada
+nem em fixture permanente. **Nada será implementado enquanto o pacote não estiver
+disponível.**
 
 ---
 
@@ -852,8 +864,9 @@ feito. Nenhuma variável de ambiente ou credencial foi alterada.
 
 ## Decisões pendentes da proprietária do produto
 
-1. **Como as fontes chegam** — exportação para disco (recomendado) ou acesso de
-   leitura autenticado. Sem isso, esta etapa permanece bloqueada em §4–§19.
+1. **Como as fontes chegam** — **decidido:** por leitor externo autorizado, em
+   pacote JSON local (§0). Os itens de §4–§19 seguem pendentes até o pacote existir;
+   a normalização para o domínio é do importador/dry-run do Eithra.
 2. **Vaga de garagem — qual conceito adotar, quando (e se) for implementado:**
    alocação de vagas por unidade e nível; direito/quantidade de vagas; ou
    `VagaGaragem` individual, caso uma fonte futura traga identificação física.

@@ -25,6 +25,11 @@ substitui a contabilidade.
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.core.constants import (
+    EntidadeImportacaoHistorica,
+    ResultadoImportacaoHistorica,
+)
+from apps.core.models import ItemImportacaoHistorica, VinculoImportacaoHistorica
 from apps.estoque.models import ItemCompra
 
 from .models import (
@@ -82,6 +87,17 @@ def _exigir_condominio(condominio) -> None:
     """Sem condomínio resolvido não há operação: a fronteira é o condomínio."""
     if condominio is None or not getattr(condominio, "pk", None):
         raise ErroDeGovernanca("Não foi possível saber de qual condomínio é isto.")
+
+
+def _exigir_autor(criado_por) -> None:
+    """Sem autor identificado não há cadastro operacional.
+
+    Quem registra um contrato dentro do Eithra é uma pessoa autenticada, e o
+    registro guarda quem foi. O único caminho que dispensa autor é a
+    incorporação de contrato que já existia antes do sistema.
+    """
+    if criado_por is None or not getattr(criado_por, "pk", None):
+        raise ErroDeGovernanca("Não foi possível saber quem está cadastrando.")
 
 
 def _condominio_id_do_alvo(alvo):
@@ -167,8 +183,7 @@ def definir_ativo_tipo(*, tipo, ativo: bool):
 # -- Contratos ------------------------------------------------------------------
 
 
-@transaction.atomic
-def criar_contrato(
+def _gravar_contrato(
     *,
     condominio,
     criado_por,
@@ -177,7 +192,12 @@ def criar_contrato(
     locais=(),
     rotinas=(),
 ) -> ContratoFornecedor:
-    """Registra um contrato novo com o que ele cobre, numa transação só."""
+    """Grava o contrato com o que ele cobre, numa transação só.
+
+    O trabalho é o mesmo venha o contrato do cadastro comum ou do histórico do
+    condomínio. Quem decide se o autor é obrigatório é quem chama: o cadastro
+    comum exige, a incorporação histórica não tem autor para exigir.
+    """
     _exigir_condominio(condominio)
     equipamentos = _conferir_mesmo_condominio(
         equipamentos,
@@ -217,6 +237,82 @@ def criar_contrato(
         pai=contrato,
         campo_alvo="rotina",
         alvos=rotinas,
+    )
+    return contrato
+
+
+@transaction.atomic
+def criar_contrato(
+    *,
+    condominio,
+    criado_por,
+    dados: dict,
+    equipamentos=(),
+    locais=(),
+    rotinas=(),
+) -> ContratoFornecedor:
+    """Registra um contrato novo com o que ele cobre, numa transação só.
+
+    Quem cadastra é quem responde pelo registro: sem autor identificado o
+    cadastro é recusado. Contrato que já existia antes do Eithra não entra por
+    aqui — para esse caso existe a incorporação histórica, que registra a fonte.
+    """
+    _exigir_autor(criado_por)
+    return _gravar_contrato(
+        condominio=condominio,
+        criado_por=criado_por,
+        dados=dados,
+        equipamentos=equipamentos,
+        locais=locais,
+        rotinas=rotinas,
+    )
+
+
+@transaction.atomic
+def criar_contrato_historico_importado(
+    *,
+    condominio,
+    item: ItemImportacaoHistorica,
+    dados: dict,
+    equipamentos=(),
+    locais=(),
+    rotinas=(),
+) -> ContratoFornecedor:
+    """Incorpora um contrato que já existia antes de o condomínio usar o Eithra.
+
+    É o único caminho que grava um contrato sem autor, e ele existe porque a
+    situação é real: o contrato é anterior ao sistema, e não houve pessoa
+    autenticada que o tivesse cadastrado aqui. Inventar um autor seria mentir
+    sobre quem fez o quê.
+
+    O que sustenta o registro no lugar do autor é a fonte: o item da carga diz
+    de onde o contrato veio, e o vínculo gravado na mesma transação liga os
+    dois. Sem item não há incorporação — um contrato sem autor e sem fonte
+    ficaria sem explicação nenhuma.
+
+    Nada mais é relaxado: condomínio, fornecedor, prazo e cobertura continuam
+    sendo conferidos como no cadastro comum.
+    """
+    _exigir_condominio(condominio)
+    if item is None or not getattr(item, "pk", None):
+        raise ErroDeGovernanca("Diga de qual registro do histórico o contrato veio.")
+    _conferir_mesmo_condominio(
+        [item], condominio.pk, "O registro do histórico não é deste condomínio."
+    )
+
+    contrato = _gravar_contrato(
+        condominio=condominio,
+        criado_por=None,
+        dados=dados,
+        equipamentos=equipamentos,
+        locais=locais,
+        rotinas=rotinas,
+    )
+    VinculoImportacaoHistorica.objects.registrar_vinculo(
+        item=item,
+        entidade_destino=EntidadeImportacaoHistorica.CONTRATO_FORNECEDOR,
+        destino_id=contrato.pk,
+        resultado=ResultadoImportacaoHistorica.CRIADO,
     )
     return contrato
 

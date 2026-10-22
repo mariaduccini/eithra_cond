@@ -38,7 +38,7 @@
       {% if pode_editar %}
         <button
           type="button"
-          class="btn btn-icon btn-text-secondary rounded-pill"
+          class="btn btn-icon btn-text-primary rounded-pill"
           data-bs-toggle="modal"
           data-bs-target="#editar-rotina"
           title="Editar rotina"
@@ -188,199 +188,197 @@
       aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:editar' rotina.pk %}" novalidate>
-            {% csrf_token %}
-            {{ formulario_rotina.condominio }}
-            <div class="modal-header">
-              <h5 class="modal-title" id="editar-rotina-titulo">Editar rotina</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        <form class="modal-content" method="post" action="{% url 'rotinas:editar' rotina.pk %}" novalidate>
+          {% csrf_token %}
+          {{ formulario_rotina.condominio }}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-rotina-titulo">Editar rotina</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_rotina.titulo.id_for_label }}">
+                {{ formulario_rotina.titulo.label }}
+              </label>
+              {{ formulario_rotina.titulo }}
+              {% for erro in formulario_rotina.titulo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
 
-            <div class="modal-body">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.titulo.id_for_label }}">
-                  {{ formulario_rotina.titulo.label }}
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_rotina.descricao.id_for_label }}">
+                {{ formulario_rotina.descricao.label }}
+              </label>
+              {{ formulario_rotina.descricao }}
+              {% for erro in formulario_rotina.descricao.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-6">
+                <label class="form-label" for="{{ formulario_rotina.tipo.id_for_label }}">
+                  {{ formulario_rotina.tipo.label }}
                 </label>
-                {{ formulario_rotina.titulo }}
-                {% for erro in formulario_rotina.titulo.errors %}
+                {{ formulario_rotina.tipo }}
+                {% for erro in formulario_rotina.tipo.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.descricao.id_for_label }}">
-                  {{ formulario_rotina.descricao.label }}
+              <div class="col-6">
+                <label class="form-label" for="{{ formulario_rotina.prioridade.id_for_label }}">
+                  {{ formulario_rotina.prioridade.label }}
                 </label>
-                {{ formulario_rotina.descricao }}
-                {% for erro in formulario_rotina.descricao.errors %}
+                {{ formulario_rotina.prioridade }}
+                {% for erro in formulario_rotina.prioridade.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_rotina.tipo.id_for_label }}">
-                    {{ formulario_rotina.tipo.label }}
-                  </label>
-                  {{ formulario_rotina.tipo }}
-                  {% for erro in formulario_rotina.tipo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_rotina.prioridade.id_for_label }}">
-                    {{ formulario_rotina.prioridade.label }}
-                  </label>
-                  {{ formulario_rotina.prioridade }}
-                  {% for erro in formulario_rotina.prioridade.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.periodicidade_tipo.id_for_label }}">
-                    {{ formulario_rotina.periodicidade_tipo.label }}
-                  </label>
-                  {{ formulario_rotina.periodicidade_tipo }}
-                  {% for erro in formulario_rotina.periodicidade_tipo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.intervalo.id_for_label }}">
-                    {{ formulario_rotina.intervalo.label }}
-                  </label>
-                  {{ formulario_rotina.intervalo }}
-                  {% for erro in formulario_rotina.intervalo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.dia_semana.id_for_label }}">
-                    {{ formulario_rotina.dia_semana.label }}
-                  </label>
-                  {{ formulario_rotina.dia_semana }}
-                  {% for erro in formulario_rotina.dia_semana.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.dia_mes.id_for_label }}">
-                    {{ formulario_rotina.dia_mes.label }}
-                  </label>
-                  {{ formulario_rotina.dia_mes }}
-                  {% for erro in formulario_rotina.dia_mes.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.mes_ano.id_for_label }}">
-                    {{ formulario_rotina.mes_ano.label }}
-                  </label>
-                  {{ formulario_rotina.mes_ano }}
-                  {% for erro in formulario_rotina.mes_ano.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.data_inicio.id_for_label }}">
-                    {{ formulario_rotina.data_inicio.label }}
-                  </label>
-                  {{ formulario_rotina.data_inicio }}
-                  {% for erro in formulario_rotina.data_inicio.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.data_fim.id_for_label }}">
-                    {{ formulario_rotina.data_fim.label }}
-                  </label>
-                  {{ formulario_rotina.data_fim }}
-                  {% for erro in formulario_rotina.data_fim.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.responsavel.id_for_label }}">
-                  {{ formulario_rotina.responsavel.label }}
-                </label>
-                {{ formulario_rotina.responsavel }}
-                {% for erro in formulario_rotina.responsavel.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.local.id_for_label }}">
-                    {{ formulario_rotina.local.label }}
-                  </label>
-                  {{ formulario_rotina.local }}
-                  {% for erro in formulario_rotina.local.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.equipamento.id_for_label }}">
-                    {{ formulario_rotina.equipamento.label }}
-                  </label>
-                  {{ formulario_rotina.equipamento }}
-                  {% for erro in formulario_rotina.equipamento.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.fornecedor.id_for_label }}">
-                  {{ formulario_rotina.fornecedor.label }}
-                </label>
-                {{ formulario_rotina.fornecedor }}
-                {% for erro in formulario_rotina.fornecedor.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.checklist_modelo.id_for_label }}">
-                  {{ formulario_rotina.checklist_modelo.label }}
-                </label>
-                {{ formulario_rotina.checklist_modelo }}
-                {% for erro in formulario_rotina.checklist_modelo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-                <div class="form-text">
-                  A lista é copiada para cada ocorrência nova. Mudar aqui não altera o que já foi feito.
-                </div>
-              </div>
-
-              <div class="form-check">
-                {{ formulario_rotina.gera_manutencao }}
-                <label class="form-check-label" for="{{ formulario_rotina.gera_manutencao.id_for_label }}">
-                  {{ formulario_rotina.gera_manutencao.label }}
-                </label>
               </div>
             </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar</button>
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.periodicidade_tipo.id_for_label }}">
+                  {{ formulario_rotina.periodicidade_tipo.label }}
+                </label>
+                {{ formulario_rotina.periodicidade_tipo }}
+                {% for erro in formulario_rotina.periodicidade_tipo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.intervalo.id_for_label }}">
+                  {{ formulario_rotina.intervalo.label }}
+                </label>
+                {{ formulario_rotina.intervalo }}
+                {% for erro in formulario_rotina.intervalo.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
             </div>
-          </form>
-        </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-4">
+                <label class="form-label" for="{{ formulario_rotina.dia_semana.id_for_label }}">
+                  {{ formulario_rotina.dia_semana.label }}
+                </label>
+                {{ formulario_rotina.dia_semana }}
+                {% for erro in formulario_rotina.dia_semana.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-6 col-sm-4">
+                <label class="form-label" for="{{ formulario_rotina.dia_mes.id_for_label }}">
+                  {{ formulario_rotina.dia_mes.label }}
+                </label>
+                {{ formulario_rotina.dia_mes }}
+                {% for erro in formulario_rotina.dia_mes.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-6 col-sm-4">
+                <label class="form-label" for="{{ formulario_rotina.mes_ano.id_for_label }}">
+                  {{ formulario_rotina.mes_ano.label }}
+                </label>
+                {{ formulario_rotina.mes_ano }}
+                {% for erro in formulario_rotina.mes_ano.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.data_inicio.id_for_label }}">
+                  {{ formulario_rotina.data_inicio.label }}
+                </label>
+                {{ formulario_rotina.data_inicio }}
+                {% for erro in formulario_rotina.data_inicio.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.data_fim.id_for_label }}">
+                  {{ formulario_rotina.data_fim.label }}
+                </label>
+                {{ formulario_rotina.data_fim }}
+                {% for erro in formulario_rotina.data_fim.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_rotina.responsavel.id_for_label }}">
+                {{ formulario_rotina.responsavel.label }}
+              </label>
+              {{ formulario_rotina.responsavel }}
+              {% for erro in formulario_rotina.responsavel.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.local.id_for_label }}">
+                  {{ formulario_rotina.local.label }}
+                </label>
+                {{ formulario_rotina.local }}
+                {% for erro in formulario_rotina.local.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_rotina.equipamento.id_for_label }}">
+                  {{ formulario_rotina.equipamento.label }}
+                </label>
+                {{ formulario_rotina.equipamento }}
+                {% for erro in formulario_rotina.equipamento.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_rotina.fornecedor.id_for_label }}">
+                {{ formulario_rotina.fornecedor.label }}
+              </label>
+              {{ formulario_rotina.fornecedor }}
+              {% for erro in formulario_rotina.fornecedor.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_rotina.checklist_modelo.id_for_label }}">
+                {{ formulario_rotina.checklist_modelo.label }}
+              </label>
+              {{ formulario_rotina.checklist_modelo }}
+              {% for erro in formulario_rotina.checklist_modelo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+              <div class="form-text">
+                A lista é copiada para cada ocorrência nova. Mudar aqui não altera o que já foi feito.
+              </div>
+            </div>
+
+            <div class="form-check">
+              {{ formulario_rotina.gera_manutencao }}
+              <label class="form-check-label" for="{{ formulario_rotina.gera_manutencao.id_for_label }}">
+                {{ formulario_rotina.gera_manutencao.label }}
+              </label>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

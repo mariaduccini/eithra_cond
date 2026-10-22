@@ -13,18 +13,7 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
-      <form method="get" class="d-flex align-items-center gap-2" role="search">
-        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-        <label class="visually-hidden" for="busca-unidades">Buscar unidade</label>
-        <input
-          type="search"
-          class="form-control form-control-sm"
-          id="busca-unidades"
-          name="q"
-          value="{{ termo }}"
-          placeholder="Buscar unidade">
-        <button type="submit" class="btn btn-sm btn-label-secondary">Buscar</button>
-      </form>
+      {% include "components/busca.html" with busca_id="busca-unidades" busca_rotulo="Buscar unidade" busca_exemplo="Identificador, bloco ou torre" %}
       {% if pode_operar %}
         <button
           type="button"
@@ -77,7 +66,7 @@
                       <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        class="btn btn-icon btn-text-warning rounded-pill"
                         title="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}"
                         aria-label="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %} a unidade {{ unidade.identificador }}">
                         <i class="bx {% if unidade.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
@@ -124,7 +113,8 @@
         {% endfor %}
       </div>
     {% elif termo %}
-      {% include "components/state.html" with state_icon="bx-search" state_title="Nada encontrado" state_message="Nenhuma unidade deste condomínio corresponde à busca." %}
+      {% querystring q=None as busca_limpa %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhuma unidade deste condomínio corresponde à busca. Tente outro termo ou limpe a busca." state_action_url=busca_limpa state_action_label="Limpar busca" state_action_tone="discreta" %}
     {% else %}
       {% include "components/state.html" with state_icon="bx-door-open" state_title="Nenhuma unidade cadastrada" state_message="Cadastre a primeira unidade deste condomínio para começar." %}
     {% endif %}
@@ -139,42 +129,40 @@
       aria-labelledby="nova-unidade-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'comunidade:criar_unidade' %}" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="nova-unidade-titulo">Nova unidade</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.identificador %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.bloco_torre %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.andar %}
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'comunidade:criar_unidade' %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="nova-unidade-titulo">Nova unidade</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.identificador %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.bloco_torre %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.andar %}
 
-              <a
-                class="small text-decoration-none d-inline-block mb-6"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-unidade"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-unidade">
-                Mais detalhes
-              </a>
-              <div class="collapse" id="mais-detalhes-unidade">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.complemento %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao_interna %}
-              </div>
+            <a
+              class="small text-decoration-none d-inline-block mb-6"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-unidade"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-unidade">
+              Mais detalhes
+            </a>
+            <div class="collapse" id="mais-detalhes-unidade">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.complemento %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao_interna %}
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Cadastrar</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Cadastrar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

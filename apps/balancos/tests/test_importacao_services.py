@@ -5,14 +5,16 @@ unitário conversa com o Supabase real.
 """
 from unittest.mock import patch
 
+from django.db import DatabaseError
 from django.test import TestCase, override_settings
 
 from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
 from apps.balancos.services import (
+    ErroDeExclusao,
     ErroDeValidacaoDeArquivo,
     calcular_hash,
-    descartar_importacao,
+    excluir_importacao,
     formatar_tamanho,
     gerar_acesso_temporario,
     montar_chave,
@@ -268,8 +270,13 @@ class AcessoTemporarioTests(TestCase):
             gerar_acesso_temporario(self.importacao)
 
 
-class DescarteTests(TestCase):
-    """Descartar preserva a memória do recebimento e libera o arquivo."""
+class ExclusaoTests(TestCase):
+    """Excluir apaga o registro e libera o arquivo do bucket.
+
+    A ordem é o que se verifica aqui: primeiro o banco, depois o bucket. O
+    ``captureOnCommitCallbacks`` é como se observa o segundo passo, porque a
+    remoção do objeto só é disparada quando a transação confirma de verdade.
+    """
 
     def setUp(self):
         self.usuario = criar_pessoa("sindica@exemplo.com.br", "Síndica Teste")
@@ -290,32 +297,53 @@ class DescarteTests(TestCase):
             condominio=self.condominio, usuario=self.usuario, arquivo=pdf()
         ).importacao
 
-    def test_descarte_marca_a_importacao_e_libera_o_arquivo(self):
+    def test_exclui_o_registro_e_libera_o_arquivo(self):
         chave = self.importacao.storage_key
-        descartar_importacao(self.importacao)
+        identificador = self.importacao.pk
 
-        self.importacao.refresh_from_db()
-        self.assertEqual(self.importacao.status, StatusImportacao.DESCARTADO)
-        self.assertIsNotNone(self.importacao.descartado_em)
+        with self.captureOnCommitCallbacks(execute=True):
+            excluir_importacao(self.importacao)
+
         self.assertIn(chave, self.provider.removidos)
         self.assertEqual(self.provider.objetos, {})
-        self.assertTrue(ImportacaoBalanco.objects.filter(pk=self.importacao.pk).exists())
+        self.assertFalse(ImportacaoBalanco.objects.filter(pk=identificador).exists())
 
-    def test_importacao_confirmada_nao_e_descartada(self):
+    def test_importacao_confirmada_nao_e_excluida(self):
         from django.utils import timezone
 
         self.importacao.confirmado_em = timezone.now()
         self.importacao.save(update_fields=["confirmado_em"])
 
-        with self.assertRaises(ErroDeStorage):
-            descartar_importacao(self.importacao)
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(ErroDeExclusao):
+                excluir_importacao(self.importacao)
 
-    def test_falha_ao_liberar_o_arquivo_nao_desfaz_o_descarte(self):
+        self.assertTrue(ImportacaoBalanco.objects.filter(pk=self.importacao.pk).exists())
+        self.assertEqual(self.provider.removidos, [])
+
+    def test_falha_ao_liberar_o_arquivo_nao_impede_a_exclusao(self):
         def falhar(*, key):
             raise ErroDeStorage("Não foi possível falar com o armazenamento.")
 
         self.provider.remover = falhar
-        descartar_importacao(self.importacao)
+        identificador = self.importacao.pk
 
-        self.importacao.refresh_from_db()
-        self.assertEqual(self.importacao.status, StatusImportacao.DESCARTADO)
+        with self.captureOnCommitCallbacks(execute=True):
+            excluir_importacao(self.importacao)
+
+        self.assertFalse(ImportacaoBalanco.objects.filter(pk=identificador).exists())
+
+    def test_falha_ao_gravar_nao_toca_no_arquivo(self):
+        """O bucket só é tocado depois do commit: gravação frustrada não remove nada."""
+        chave = self.importacao.storage_key
+
+        with patch.object(
+            ImportacaoBalanco, "delete", side_effect=DatabaseError("gravação recusada")
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                with self.assertRaises(DatabaseError):
+                    excluir_importacao(self.importacao)
+
+        self.assertEqual(self.provider.removidos, [])
+        self.assertIn(chave, self.provider.objetos)
+        self.assertTrue(ImportacaoBalanco.objects.filter(pk=self.importacao.pk).exists())

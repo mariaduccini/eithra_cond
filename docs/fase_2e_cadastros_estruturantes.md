@@ -633,10 +633,11 @@ há possibilidade de importação circular. O risco está eliminado.
 - Nome da funcionalidade: **"Adicionar acesso"** — não "convite".
 - Fluxo A: o e-mail já existe como `User` → criar o vínculo com o condomínio.
 - Fluxo B: o e-mail não existe → criar a identidade com senha inutilizável
-  (`set_unusable_password()`), criar o vínculo, e a pessoa permanece sem
-  autenticação utilizável até existir mecanismo seguro de ativação/recuperação.
-- Não se gera senha, não se exibe senha, não se define senha para outra pessoa e
-  não se envia credencial em texto aberto.
+  (`set_unusable_password()`), criar o vínculo e entregar à gestão o **endereço de
+  primeiro acesso** (`accounts:primeiro_acesso`): a própria pessoa define a senha.
+- Não se gera senha, não se exibe senha e não se define senha para outra pessoa. O
+  único endereço que circula é o de primeiro acesso — de uso único e com prazo —, e
+  quem o entrega é a gestão, pelo canal que já usa com a pessoa.
 - Pode-se: adicionar acesso, escolher papel, ativar/desativar o vínculo, alterar
   papel e consultar vínculos.
 - `User.is_active` ≠ `AcessoUsuarioCondominio.ativo`. Desativar acesso ao condomínio
@@ -860,9 +861,10 @@ não pertence a esta fase.
 4. **Duas fontes de verdade enquanto dura a coexistência**: `tipo` e `tipo_local`
    podem divergir. Mitigação: leitura prioriza `tipo_local`, com queda para o
    legado; a escrita nova usa só o FK.
-5. **Adicionar acesso cria identidade sem senha utilizável**: a pessoa não entra até
-   existir fluxo de ativação. Mitigação: aceito nesta fase — não há envio de e-mail;
-   o fluxo de primeiro acesso é fase própria.
+5. **Adicionar acesso cria identidade sem senha utilizável**: quem entra é a própria
+   pessoa, pelo endereço de primeiro acesso. Resolvido depois desta fase: a gestão
+   entrega o endereço, ele vale por `PASSWORD_RESET_TIMEOUT` e deixa de funcionar
+   assim que a senha é definida. Sem depender de e-mail configurado.
 6. **Último administrador**: inativar ou rebaixar o último ADMIN/SÍNDICA deixaria o
    condomínio sem gestão. Mitigação: regra no service, com mensagem humana.
 7. **`HistoricoAcessoCondominio.acesso` com `PROTECT`**: impede apagar o vínculo

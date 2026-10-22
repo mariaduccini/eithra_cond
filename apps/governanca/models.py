@@ -562,12 +562,21 @@ class ContratoFornecedor(models.Model):
         default=True,
         help_text="Desativar encerra o acompanhamento sem apagar o histórico.",
     )
+    # A autoria é do cadastro feito no Eithra, e por isso acompanha o usuário
+    # que o fez. Um contrato que já existia antes do registro — incorporado do
+    # histórico do condomínio — não teve autor aqui: fica vazio, e quem sustenta
+    # o registro é a proveniência da carga, não este campo.
     criado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="contratos_cadastrados",
         verbose_name="Cadastrado por",
-        help_text="Quem cadastrou. Preservado para rastreabilidade.",
+        help_text=(
+            "Quem cadastrou. Preservado para rastreabilidade. Fica sem "
+            "preenchimento quando o contrato vem do histórico do condomínio."
+        ),
     )
     criado_em = models.DateTimeField("Criado em", auto_now_add=True)
     atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)

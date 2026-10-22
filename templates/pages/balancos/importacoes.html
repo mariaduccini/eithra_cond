@@ -45,9 +45,11 @@
                 <td><span class="badge bg-label-success">{{ balanco.status }}</span></td>
                 <td class="text-center">
                   <a
-                    class="btn btn-sm btn-label-primary"
-                    href="{% url 'balancos:balanco' balanco.pk %}">
-                    Ver balanço
+                    class="btn btn-icon btn-text-secondary rounded-pill"
+                    href="{% url 'balancos:balanco' balanco.pk %}"
+                    title="Ver balanço"
+                    aria-label="Ver balanço">
+                    <i class="bx bx-bar-chart-alt-2" aria-hidden="true"></i>
                   </a>
                 </td>
               </tr>
@@ -102,9 +104,11 @@
 
                   {% if importacao.balanco_confirmado %}
                     <a
-                      class="btn btn-sm btn-label-primary"
-                      href="{% url 'balancos:balanco' importacao.balanco_confirmado.pk %}">
-                      Ver balanço
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      href="{% url 'balancos:balanco' importacao.balanco_confirmado.pk %}"
+                      title="Ver balanço"
+                      aria-label="Ver balanço">
+                      <i class="bx bx-bar-chart-alt-2" aria-hidden="true"></i>
                     </a>
                   {% elif importacao.resultado_extraido %}
                     <a
@@ -114,18 +118,23 @@
                     </a>
                   {% endif %}
 
-                  {% if not importacao.balanco_confirmado and not importacao.descartada and not importacao.confirmado_em %}
+                  {% if not importacao.balanco_confirmado and not importacao.confirmado_em %}
                     <form
                       class="d-inline"
                       method="post"
-                      action="{% url 'balancos:descartar' importacao.pk %}"
-                      onsubmit="return confirm('Descartar esta importação? O arquivo será removido.');">
+                      action="{% url 'balancos:excluir' importacao.pk %}"
+                      data-eithra-confirm
+                      data-eithra-confirm-title="Excluir importação"
+                      data-eithra-confirm-message="Excluir esta importação? O arquivo e o registro serão apagados."
+                      data-eithra-confirm-label="Excluir"
+                      data-eithra-cancel-label="Cancelar"
+                      data-eithra-confirm-class="btn-danger">
                       {% csrf_token %}
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
-                        title="Descartar"
-                        aria-label="Descartar importação">
+                        class="btn btn-icon btn-text-danger rounded-pill"
+                        title="Excluir"
+                        aria-label="Excluir importação">
                         <i class="bx bx-trash" aria-hidden="true"></i>
                       </button>
                     </form>
@@ -149,54 +158,53 @@
     aria-labelledby="importar-balanco-titulo"
     aria-hidden="{% if formulario_importacao.errors %}false{% else %}true{% endif %}"
     {% if formulario_importacao.errors %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <form
-          method="post"
-          action="{% url 'balancos:importar' %}"
-          enctype="multipart/form-data"
-          novalidate>
-          {% csrf_token %}
-          <div class="modal-header">
-            <h5 class="modal-title" id="importar-balanco-titulo">Importar balanço</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <form
+        class="modal-content"
+        method="post"
+        action="{% url 'balancos:importar' %}"
+        enctype="multipart/form-data"
+        novalidate>
+        {% csrf_token %}
+        <div class="modal-header">
+          <h5 class="modal-title" id="importar-balanco-titulo">Importar balanço</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
 
-          <div class="modal-body">
-            {% if formulario_importacao.condominio.is_hidden %}
-              {{ formulario_importacao.condominio }}
-            {% else %}
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_importacao.condominio.id_for_label }}">
-                  {{ formulario_importacao.condominio.label }}
-                </label>
-                {{ formulario_importacao.condominio }}
-                {% for erro in formulario_importacao.condominio.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-            {% endif %}
-
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_importacao.arquivo.id_for_label }}">
-                {{ formulario_importacao.arquivo.label }}
+        <div class="modal-body">
+          {% if formulario_importacao.condominio.is_hidden %}
+            {{ formulario_importacao.condominio }}
+          {% else %}
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_importacao.condominio.id_for_label }}">
+                {{ formulario_importacao.condominio.label }}
               </label>
-              {{ formulario_importacao.arquivo }}
-              <div class="form-text">Um arquivo em PDF, até {{ limite_de_upload }}.</div>
-              {% for erro in formulario_importacao.arquivo.errors %}
+              {{ formulario_importacao.condominio }}
+              {% for erro in formulario_importacao.condominio.errors %}
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>
-          </div>
+          {% endif %}
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
-            <button type="submit" class="btn btn-primary">Receber arquivo</button>
+          <div class="mb-0">
+            <label class="form-label" for="{{ formulario_importacao.arquivo.id_for_label }}">
+              {{ formulario_importacao.arquivo.label }}
+            </label>
+            {{ formulario_importacao.arquivo }}
+            <div class="form-text">Um arquivo em PDF, até {{ limite_de_upload }}.</div>
+            {% for erro in formulario_importacao.arquivo.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
           </div>
-        </form>
-      </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+            Cancelar
+          </button>
+          <button type="submit" class="btn btn-primary">Receber arquivo</button>
+        </div>
+      </form>
     </div>
   </div>
 {% endblock %}

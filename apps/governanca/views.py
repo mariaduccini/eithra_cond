@@ -5,10 +5,10 @@ perguntas: o que o condomínio assumiu, o que disso está para vencer e o que ca
 obrigação cobre. Nada é guardado como estado — vencido, vencendo e em vigor são
 lidos do prazo na hora, e por isso a lista nunca mostra uma situação atrasada.
 
-O catálogo de tipos fica ao lado de quem o usa: os tipos de contrato abrem a
-partir da lista de contratos, os tipos de documento a partir da lista de
-documentos. Não é item de menu, e a razão é simples — o tipo não tem vida
-própria; ele serve para nomear o que se registra.
+Os catálogos de tipos continuam ligados a quem os usa, mas a navegação até eles
+agora passa por "Tipos e categorias". O tipo não ganhou vida própria; ele só
+deixou de disputar atenção com a ação principal das listas de contratos e
+documentos.
 
 A autorização é decidida no backend, sempre a partir do vínculo ativo da pessoa
 com o condomínio. Quem não enxerga o módulo não é avisado de que a tela existe:
@@ -823,12 +823,17 @@ def _situacao_para_tela(objeto) -> dict:
 
 
 def _periodo(inicio, fim) -> str:
-    """O prazo do registro como a lista o mostra."""
+    """O prazo do registro como a lista o mostra, em uma linha.
+
+    Prazo indeterminado é uma resposta legítima, e não um dado faltando: a
+    lista diz que não há término informado em vez de deixar a célula pela
+    metade.
+    """
     if not inicio:
         return ""
     if fim is None:
-        return f"Desde {inicio.strftime('%d/%m/%Y')}"
-    return f"{inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')}"
+        return f"Desde {inicio.strftime('%d/%m/%Y')} · sem término informado"
+    return f"{inicio.strftime('%d/%m/%Y')} → {fim.strftime('%d/%m/%Y')}"
 
 
 def _moeda(valor) -> str:
@@ -836,6 +841,21 @@ def _moeda(valor) -> str:
     if valor is None:
         return ""
     return f"R$ {number_format(valor, decimal_pos=2, force_grouping=True)}"
+
+
+def _classificacao_do_contrato(contrato) -> str:
+    """Como o contrato se identifica além do objeto: tipo e número, se houver.
+
+    Os dois são informação de apoio da linha, e não colunas: o tipo sozinho
+    raramente decide algo na lista, e o número serve para achar o documento
+    quando alguém já sabe qual procura.
+    """
+    partes = []
+    if contrato.tipo_contrato_id:
+        partes.append(contrato.tipo_contrato.nome)
+    if contrato.numero_referencia:
+        partes.append(f"Ref. {contrato.numero_referencia}")
+    return " · ".join(partes)
 
 
 def _contagem(quantidade: int, singular: str, plural: str) -> str:
@@ -870,9 +890,14 @@ def _contratos_para_tela(condominio) -> list[dict]:
             "pk": contrato.pk,
             "objeto": contrato.objeto,
             "fornecedor": contrato.fornecedor.nome_razao_social,
-            "tipo": contrato.tipo_contrato.nome if contrato.tipo_contrato_id else "",
+            "classificacao": _classificacao_do_contrato(contrato),
             "vigencia": _periodo(contrato.data_inicio, contrato.data_fim),
             "valor": _moeda(contrato.valor),
+            "periodicidade": (
+                contrato.get_periodicidade_cobranca_display()
+                if contrato.periodicidade_cobranca
+                else ""
+            ),
             "cobre": _descricao_da_cobertura(
                 len(contrato.equipamentos_vinculados.all()),
                 len(contrato.locais_vinculados.all()),

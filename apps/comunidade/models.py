@@ -542,11 +542,11 @@ class VinculoTemporalQuerySet(models.QuerySet):
         return self.filter(condominio_id=condominio.pk)
 
     def vigentes(self, hoje=None):
-        """Vínculos que já começaram e ainda não terminaram."""
+        """Vínculos em vigor na data: início conhecido ou desconhecido, sem fim vencido."""
         referencia = _hoje(hoje)
-        return self.filter(data_inicio__lte=referencia).filter(
-            Q(data_fim__isnull=True) | Q(data_fim__gte=referencia)
-        )
+        return self.filter(
+            Q(data_inicio__isnull=True) | Q(data_inicio__lte=referencia)
+        ).filter(Q(data_fim__isnull=True) | Q(data_fim__gte=referencia))
 
     def encerrados(self, hoje=None):
         """Vínculos cujo fim já chegou."""
@@ -619,7 +619,13 @@ class VinculoPessoaUnidade(models.Model):
         help_text="Texto original do papel na fonte, quando houver importação histórica.",
     )
     data_inicio = models.DateField(
-        "Início", help_text="Desde quando este vínculo vale."
+        "Início",
+        null=True,
+        blank=True,
+        help_text=(
+            "Desde quando este vínculo vale. Deixe em branco se a data "
+            "histórica de início não for conhecida."
+        ),
     )
     data_fim = models.DateField(
         "Fim",
@@ -655,8 +661,15 @@ class VinculoPessoaUnidade(models.Model):
                 fields=["pessoa", "unidade", "tipo_vinculo", "data_inicio"],
                 name="vinculo_pessoa_unidade_sem_repeticao",
             ),
+            models.UniqueConstraint(
+                fields=["pessoa", "unidade", "tipo_vinculo"],
+                condition=Q(data_inicio__isnull=True),
+                name="vinculo_pessoa_unidade_sem_repeticao_inicio_desconhecido",
+            ),
             models.CheckConstraint(
-                condition=Q(data_fim__isnull=True) | Q(data_fim__gte=models.F("data_inicio")),
+                condition=Q(data_inicio__isnull=True)
+                | Q(data_fim__isnull=True)
+                | Q(data_fim__gte=models.F("data_inicio")),
                 name="vinculo_pessoa_unidade_fim_apos_inicio",
             ),
         ]
@@ -705,10 +718,9 @@ class VinculoPessoaUnidade(models.Model):
 
     @property
     def vigente(self) -> bool:
-        """Se o vínculo vale hoje."""
+        """Se o vínculo vale hoje, inclusive quando o início histórico é desconhecido."""
         return bool(
-            self.data_inicio
-            and self.data_inicio <= _hoje()
+            (self.data_inicio is None or self.data_inicio <= _hoje())
             and (self.data_fim is None or self.data_fim >= _hoje())
         )
 
@@ -912,7 +924,15 @@ class VinculoVeiculoPessoa(models.Model):
         related_name="vinculos_veiculo",
         verbose_name="Pessoa",
     )
-    data_inicio = models.DateField("Início", help_text="Desde quando este vínculo vale.")
+    data_inicio = models.DateField(
+        "Início",
+        null=True,
+        blank=True,
+        help_text=(
+            "Desde quando este vínculo vale. Deixe em branco se a data "
+            "histórica de início não for conhecida."
+        ),
+    )
     data_fim = models.DateField(
         "Fim",
         null=True,
@@ -943,8 +963,18 @@ class VinculoVeiculoPessoa(models.Model):
                 fields=["veiculo", "pessoa", "data_inicio"],
                 name="vinculo_veiculo_pessoa_sem_repeticao",
             ),
+            # Um vínculo com início histórico desconhecido não tem data que o
+            # distinga de outro igual. O PostgreSQL trata NULL como distinto em
+            # índice único, e sem esta proteção o mesmo uso entraria duas vezes.
+            models.UniqueConstraint(
+                fields=["veiculo", "pessoa"],
+                condition=Q(data_inicio__isnull=True),
+                name="vinculo_veiculo_pessoa_sem_repeticao_inicio_desconhecido",
+            ),
             models.CheckConstraint(
-                condition=Q(data_fim__isnull=True) | Q(data_fim__gte=models.F("data_inicio")),
+                condition=Q(data_inicio__isnull=True)
+                | Q(data_fim__isnull=True)
+                | Q(data_fim__gte=models.F("data_inicio")),
                 name="vinculo_veiculo_pessoa_fim_apos_inicio",
             ),
         ]
@@ -986,10 +1016,9 @@ class VinculoVeiculoPessoa(models.Model):
 
     @property
     def vigente(self) -> bool:
-        """Se o vínculo vale hoje."""
+        """Se o vínculo vale hoje, inclusive quando o início histórico é desconhecido."""
         return bool(
-            self.data_inicio
-            and self.data_inicio <= _hoje()
+            (self.data_inicio is None or self.data_inicio <= _hoje())
             and (self.data_fim is None or self.data_fim >= _hoje())
         )
 
@@ -1042,7 +1071,15 @@ class VinculoVeiculoUnidade(models.Model):
         related_name="vinculos_veiculo",
         verbose_name="Unidade",
     )
-    data_inicio = models.DateField("Início", help_text="Desde quando este vínculo vale.")
+    data_inicio = models.DateField(
+        "Início",
+        null=True,
+        blank=True,
+        help_text=(
+            "Desde quando este vínculo vale. Deixe em branco se a data "
+            "histórica de início não for conhecida."
+        ),
+    )
     data_fim = models.DateField(
         "Fim",
         null=True,
@@ -1073,8 +1110,18 @@ class VinculoVeiculoUnidade(models.Model):
                 fields=["veiculo", "unidade", "data_inicio"],
                 name="vinculo_veiculo_unidade_sem_repeticao",
             ),
+            # Mesma proteção do vínculo com pessoa: sem data de início, NULL não
+            # distingue um registro do outro em índice único, e a mesma relação
+            # entraria duas vezes.
+            models.UniqueConstraint(
+                fields=["veiculo", "unidade"],
+                condition=Q(data_inicio__isnull=True),
+                name="vinculo_veiculo_unidade_sem_repeticao_inicio_desconhecido",
+            ),
             models.CheckConstraint(
-                condition=Q(data_fim__isnull=True) | Q(data_fim__gte=models.F("data_inicio")),
+                condition=Q(data_inicio__isnull=True)
+                | Q(data_fim__isnull=True)
+                | Q(data_fim__gte=models.F("data_inicio")),
                 name="vinculo_veiculo_unidade_fim_apos_inicio",
             ),
         ]
@@ -1116,9 +1163,8 @@ class VinculoVeiculoUnidade(models.Model):
 
     @property
     def vigente(self) -> bool:
-        """Se o vínculo vale hoje."""
+        """Se o vínculo vale hoje, inclusive quando o início histórico é desconhecido."""
         return bool(
-            self.data_inicio
-            and self.data_inicio <= _hoje()
+            (self.data_inicio is None or self.data_inicio <= _hoje())
             and (self.data_fim is None or self.data_fim >= _hoje())
         )

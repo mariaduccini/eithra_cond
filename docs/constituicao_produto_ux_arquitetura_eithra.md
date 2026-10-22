@@ -127,6 +127,13 @@ Padrão de UX, sem exceção:
 
 Evitar fileiras de botões.
 
+**A cor comunica significado; não serve para ornamentar.** Cada tipo de ação tem
+um tom estável — editar, adicionar, encerrar/inativar e excluir não se confundem
+pela cor. Ícone sem texto nunca depende só da cor: leva `title` e `aria-label`.
+
+**Ação relevante deve parecer ação.** Ação importante de seção não se apresenta
+como texto quase invisível.
+
 ---
 
 ## 8. Menu não é banco de dados
@@ -510,6 +517,19 @@ Poucos campos. Poucos cliques. Botões claros. Sem tabela horizontal.
 
 A gestão pode ter tabela, filtros, histórico e análise — ainda assim, **sem
 poluição visual**.
+
+**Grid.** Uma grid mostra o suficiente para identificar, comparar e agir.
+Detalhes completos ficam fora da linha — no title, na dica, no modal ou na tela
+de detalhe. Cada linha tem informação principal, contexto secundário abaixo, e
+estado e ações separados. Texto longo não define a altura da lista: trunca-se na
+apresentação, nunca no dado.
+
+**Modal de formulário.** A ação principal fica sempre visível: o cabeçalho e o
+rodapé param, e só o corpo rola. O formulário é o próprio conteúdo do modal.
+
+**Card não é estrutura padrão de página.** Ficha e detalhe se organizam em
+seções contínuas — títulos, divisores, espaço em branco e ações contextuais.
+Card fica reservado para indicador, resumo independente, exceção e painel.
 
 ---
 

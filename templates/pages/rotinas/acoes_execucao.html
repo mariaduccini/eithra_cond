@@ -1,8 +1,8 @@
-{# Ações de uma ocorrência na lista. Um ou dois ícones sem borda; três ou mais
+{% comment %}Ações de uma ocorrência na lista. Um ou dois ícones sem borda; três ou mais
    vão para um menu de três pontos, para a linha não virar uma fileira de
    botões. Cada ação abre um modal curto — o mesmo para todas as linhas —, e o
    modal aprende a ocorrência ao abrir, pelo endereço que confirma a decisão.
-   Usa `alvo`, o dicionário da ocorrência montado pela view. #}
+   Usa `alvo`, o dicionário da ocorrência montado pela view.{% endcomment %}
 {% if alvo.acoes|length > 2 %}
   <button
     type="button"

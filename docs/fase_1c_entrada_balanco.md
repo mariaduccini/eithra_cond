@@ -2,7 +2,7 @@
 
 > Registro do que foi efetivamente implementado nesta fase: a entidade
 > transitória `ImportacaoBalanco`, o storage externo privado, o upload validado,
-> a listagem mínima e o descarte.
+> a listagem mínima e a exclusão.
 >
 > **Nada de leitura do documento entrou aqui**: sem parser, sem OCR, sem IA, sem
 > detecção de layout, sem validação matemática, sem conferência e sem criação
@@ -50,7 +50,7 @@ implementada aqui.
 | Tem competência | não | sim (primeiro dia do mês) |
 | Tem situação financeira | não | sim (`VALIDADO`/`PUBLICADO`/`SUBSTITUIDO`) |
 | Tem versão | não | sim (`versao`, `substitui`) |
-| É temporário | sim (expira ou é descartado) | não (histórico) |
+| É temporário | sim (expira ou é recusada) | não (histórico) |
 | Aparece ao morador | nunca | apenas se publicado |
 
 As duas listagens **não** se misturam: a tela de Balanços desta fase mostra
@@ -79,10 +79,10 @@ somente importações.
 | `erro_processamento` | TextField | Texto humano e curto; nunca segredo, URL assinada ou resposta bruta. |
 | `expira_em` | DateTimeField, opcional | Reservado para a retenção futura. |
 | `confirmado_em` | DateTimeField, opcional | Preenchido só na fase da confirmação. |
-| `descartado_em` | DateTimeField, opcional | Preenchido no descarte. |
+| `descartado_em` | DateTimeField, opcional | Legado: era preenchido no descarte, quando a recusa preservava a memória. Hoje a importação recusada é excluída, e o registro não fica. |
 
 Constraints: `importacao_tamanho_nao_negativo` e
-`importacao_um_unico_desfecho` (confirmação e descarte não coexistem).
+`importacao_um_unico_desfecho` (confirmação e descarte legado não coexistem).
 Índices: `importacao_condominio_sha_idx` e `importacao_cond_status_idx`.
 **Não há unicidade** de `sha256`: a repetição é sinalizada, não impedida pelo
 banco.
@@ -96,6 +96,17 @@ Nesta fase o fluxo termina em `PRONTO` — "o arquivo está disponível para a
 próxima etapa do pipeline". `PROCESSANDO` descreve a leitura futura e
 `CONFIRMADO` o desfecho futuro; nenhum dos dois é produzido agora. Não existe
 workflow de revisão, e `EM_REVISAO` não voltou.
+
+`DESCARTADO` é valor **legado**: nasceu quando a recusa gravava o arquivo
+recebido e recusado. Hoje recusar uma importação a exclui, e o valor permanece
+no schema apenas para o que já foi gravado assim.
+
+> `DESCARTADO` permanece apenas por compatibilidade com registros/schema legados
+> e não é mais produzido pela interface atual.
+
+Por isso `descartado_em` e a constraint `importacao_um_unico_desfecho` também
+continuam: descrevem o mesmo desfecho legado, e removê-los exigiria migration
+de limpeza histórica — o que esta etapa não faz. Não há migration nova aqui.
 
 ## 5. Storage privado
 
@@ -184,8 +195,8 @@ O limite é configurável porque balanços reais podem ter muitas páginas — 5
 - SHA-256 calculado sobre o conteúdo antes do envio, gravado em hexadecimal
   minúsculo.
 - Duplicidade considerada **por `condominio` + `sha256`**, sem constraint global.
-- Não contam como repetição: importações `DESCARTADO` (já recusadas pela gestão)
-  e `ERRO` (o arquivo nem chegou; a pessoa vai querer tentar de novo).
+- Não contam como repetição: importações recusadas pela gestão (excluídas) e
+  `ERRO` (o arquivo nem chegou; a pessoa vai querer tentar de novo).
 - O mesmo hash em outro condomínio é outro documento.
 - Ao detectar repetição: nada novo é gravado, nenhum objeto novo é enviado, a
   tela informa a repetição e aponta a importação existente.
@@ -239,19 +250,30 @@ explícita, e não finge atomicidade:
 O comportamento é idempotente na repetição: reenviar o mesmo conteúdo encontra a
 importação existente e não cria uma segunda.
 
-## 11. Acesso temporário e descarte
+## 11. Acesso temporário e exclusão
 
 - **Ver o arquivo**: rota autenticada, resolvida dentro dos condomínios
   autorizados, que gera um acesso curto sob demanda (`BALANCOS_URL_ACESSO_SEGUNDOS`,
   60 s por padrão) e redireciona. Nada é persistido; a próxima visita gera
   outro acesso.
-- **Descartar**: `status = DESCARTADO` e `descartado_em`, com remoção
-  *best-effort* do objeto. Se a remoção falhar, o descarte permanece gravado e o
-  objeto pode ser limpo depois — o descarte não fica refém do storage.
-  O registro **não** é apagado: fica a memória de que aquele arquivo foi
-  recebido e recusado. Importação já confirmada não é descartada.
+- **Excluir**: o registro sai do banco e o objeto é liberado do bucket. Enquanto
+  a importação não virou balanço, nada do mês dependia dela — recusar o arquivo
+  é apagá-lo. A ordem é **banco primeiro, bucket depois**, porque não existe
+  transação que cubra os dois:
+  1. confere-se antes se a importação pode sair (confirmada, não pode);
+  2. a chave do objeto é guardada antes do `delete()`, que é o que a contém;
+  3. `importacao.delete()` roda em `transaction.atomic()`;
+  4. a remoção no bucket é registrada com `transaction.on_commit()`, e só
+     dispara **depois do commit bem-sucedido**;
+  5. a remoção continua *best-effort*: se o storage falhar depois do commit,
+     resta um objeto órfão, que ninguém alcança e a limpeza recolhe depois.
+  Assim o pior caso é um arquivo sem dono, e nunca um registro apontando para
+  um arquivo que não existe. Falha de storage não mantém registro canônico vivo
+  nem prende a operação da gestão. Importação já confirmada **não** é excluída,
+  e nenhum cascade remove o balanço do mês: o balanço existe, e o recebimento é
+  o seu comprovante.
 - Ações na tela: `Importar balanço` (principal), `visualizar arquivo` e
-  `descartar` (ícones). Não existem validar, publicar, substituir, reprocessar
+  `excluir` (ícones). Não existem validar, publicar, substituir, reprocessar
   ou editar dados — pertencem a fases futuras.
 
 ## 12. Migration
@@ -268,13 +290,13 @@ foi usado. Fluxo executado: `makemigrations` → `migrate --plan` → `migrate`.
   recusa de URL persistida, desfechos exclusivos, repetição permitida;
 - `tests/test_importacao_services.py` — validação de arquivo, hash, metadados,
   chave sem dado sensível, duplicidade, falha de storage, acesso temporário,
-  descarte;
+  exclusão;
 - `tests/test_storage.py` — contrato HTTP do provedor (envio, conflito,
   remoção, acesso assinado), tempo limite em toda chamada, falhas de rede e
   ausência de credencial na mensagem, e escolha do provedor com falha explícita;
 - `tests/test_importacao_views.py` — entrada, papéis autorizados e não
   autorizados, isolamento entre condomínios, listagem, acesso ao arquivo,
-  descarte, ausência de segredo na resposta e a navegação contextual.
+  exclusão, ausência de segredo na resposta e a navegação contextual.
 
 Fechamento operacional (1C.1) acrescentou regressão para: Balanços
 administrativo ausente para MORADOR, PORTEIRO, OPERACIONAL e SUPERVISORA;
@@ -321,7 +343,7 @@ Checklist a executar quando o ambiente estiver completo:
 A importação é transitória. Ficam projetadas, para uma fase de limpeza:
 
 - expiração pelo campo `expira_em`;
-- limpeza de importações `DESCARTADO` antigas;
+- limpeza de registros legados `DESCARTADO` (a recusa, hoje, já exclui);
 - limpeza de importações `ERRO` antigas.
 
 Nenhum job foi implementado nesta fase. Um arquivo ligado a um balanço

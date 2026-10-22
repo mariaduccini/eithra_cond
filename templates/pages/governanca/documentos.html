@@ -14,9 +14,6 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
-      <a class="btn btn-label-secondary" href="{% url 'governanca:tipos_de_documento' %}?condominio={{ condominio_atual.pk }}">
-        <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i> Tipos de documento
-      </a>
       {% if pode_operar %}
         <button
           type="button"
@@ -55,7 +52,7 @@
                 {% if pode_operar %}
                   <td class="text-end text-nowrap">
                     <a
-                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      class="btn btn-icon btn-text-primary rounded-pill"
                       href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ documento.pk }}"
                       data-acao
                       title="Editar"
@@ -70,7 +67,7 @@
                       <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        class="btn btn-icon btn-text-warning rounded-pill"
                         title="{% if documento.ativo %}Desativar{% else %}Ativar{% endif %}"
                         aria-label="{% if documento.ativo %}Desativar{% else %}Ativar{% endif %} {{ documento.titulo }}">
                         <i class="bx {% if documento.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
@@ -130,52 +127,50 @@
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="post" action="{% url 'governanca:criar_documento' %}" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="novo-documento-titulo">Novo documento</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.titulo %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.tipo_documento %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.numero_referencia %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_emissao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_validade %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.emissor %}
+        <form class="modal-content" method="post" action="{% url 'governanca:criar_documento' %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="novo-documento-titulo">Novo documento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.titulo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.tipo_documento %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.numero_referencia %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_emissao %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.data_validade %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.emissor %}
 
-              <p class="text-body-secondary small mb-3">
-                Um documento pode valer para mais de um contexto. Deixar tudo em
-                branco também vale: uma ata pertence só ao condomínio.
-              </p>
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.contratos %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.equipamentos %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.garantias %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.fornecedores %}
+            <p class="text-body-secondary small mb-3">
+              Um documento pode valer para mais de um contexto. Deixar tudo em
+              branco também vale: uma ata pertence só ao condomínio.
+            </p>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.contratos %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.equipamentos %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.garantias %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_documento.fornecedores %}
 
-              <a
-                class="small text-decoration-none d-inline-block"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-documento-novo"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-documento-novo">
-                Mais detalhes
-              </a>
-              <div class="collapse mt-3" id="mais-detalhes-documento-novo">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_documento.observacao %}
-              </div>
+            <a
+              class="small text-decoration-none d-inline-block"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-documento-novo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-documento-novo">
+              Mais detalhes
+            </a>
+            <div class="collapse mt-3" id="mais-detalhes-documento-novo">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_documento.observacao %}
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Registrar</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Registrar</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -189,55 +184,54 @@
         aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
         {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
         <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
-          <div class="modal-content">
-            <form
-              method="post"
-              action="{% url 'governanca:editar_documento' item_edicao.pk %}"
-              novalidate>
-              {% csrf_token %}
-              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-              <div class="modal-header">
-                <h5 class="modal-title" id="editar-documento-titulo">Editar documento</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-              </div>
-              <div class="modal-body">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.titulo %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_documento %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.numero_referencia %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_emissao %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_validade %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.emissor %}
+          <form
+            class="modal-content"
+            method="post"
+            action="{% url 'governanca:editar_documento' item_edicao.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-documento-titulo">Editar documento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.titulo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_documento %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.numero_referencia %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_emissao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.data_validade %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.emissor %}
 
-                <p class="text-body-secondary small mb-3">
-                  Um documento pode valer para mais de um contexto. Deixar tudo em
-                  branco também vale: uma ata pertence só ao condomínio.
-                </p>
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.contratos %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.equipamentos %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.garantias %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.fornecedores %}
+              <p class="text-body-secondary small mb-3">
+                Um documento pode valer para mais de um contexto. Deixar tudo em
+                branco também vale: uma ata pertence só ao condomínio.
+              </p>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.contratos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.equipamentos %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.garantias %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.fornecedores %}
 
-                <a
-                  class="small text-decoration-none d-inline-block"
-                  data-bs-toggle="collapse"
-                  href="#mais-detalhes-documento-edicao"
-                  role="button"
-                  aria-expanded="false"
-                  aria-controls="mais-detalhes-documento-edicao">
-                  Mais detalhes
-                </a>
-                <div class="collapse mt-3" id="mais-detalhes-documento-edicao">
-                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.observacao %}
-                </div>
+              <a
+                class="small text-decoration-none d-inline-block"
+                data-bs-toggle="collapse"
+                href="#mais-detalhes-documento-edicao"
+                role="button"
+                aria-expanded="false"
+                aria-controls="mais-detalhes-documento-edicao">
+                Mais detalhes
+              </a>
+              <div class="collapse mt-3" id="mais-detalhes-documento-edicao">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.observacao %}
               </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                  Cancelar
-                </button>
-                <button type="submit" class="btn btn-primary">Salvar</button>
-              </div>
-            </form>
-          </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
         </div>
       </div>
     {% endif %}

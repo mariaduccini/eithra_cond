@@ -138,7 +138,7 @@ pessoal no caminho do objeto.
 
 ### D5 — Duplicidade por `condominio` + `sha256` — APROVADA
 Sem constraint global de hash. O mesmo arquivo pode existir legitimamente em
-condomínios distintos. Importações descartadas e com falha de recebimento não
+condomínios distintos. Importações recusadas e com falha de recebimento não
 contam como repetição.
 
 ### D6 — Limite de upload configurável — APROVADA
@@ -155,9 +155,20 @@ Não existe transação ACID entre banco e storage externo. O registro é gravad
 antes do envio; falha de envio resulta em `ERRO` (nunca falso sucesso); falha de
 gravação após o envio dispara remoção compensatória do objeto.
 
-### D9 — Descarte preserva a memória e libera o arquivo — APROVADA
-Descartar marca `DESCARTADO` com `descartado_em` em vez de apagar o registro. A
-remoção do objeto é *best-effort*: o descarte não fica refém do storage.
+### D9 — A importação recusada é excluída — APROVADA (revista)
+Recusar uma importação a exclui: o registro sai do banco e o objeto é liberado do
+bucket. Enquanto não virou balanço, nada do mês dependia dela — guardar o
+comprovante de um arquivo que ninguém aceitou só deixava a lista cheia de linhas
+que não se resolvem. A remoção do objeto continua *best-effort*: se o storage
+falhar, o objeto fica órfão e a exclusão não fica refém dele.
+
+Importação **já confirmada** não se exclui: o balanço daquele mês existe, e o
+registro do recebimento é o comprovante dele.
+
+> Revisão de 20/10/2026. A redação anterior preservava a memória do descarte
+> (`DESCARTADO` + `descartado_em`) em vez de apagar. As colunas continuam no
+> schema, e os registros gravados naquele formato seguem legíveis; o que mudou é
+> o desfecho da recusa.
 
 ### D10 — Acesso ao arquivo por signed URL curta, sob demanda — APROVADA
 Nenhum endereço fixo: cada visita autorizada gera um acesso temporário

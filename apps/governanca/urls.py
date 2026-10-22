@@ -2,9 +2,9 @@
 
 Contratos, garantias e documentos são obrigações que o condomínio assumiu. Cada
 um tem sua lista, e as decisões — registrar, corrigir, ativar, desativar —
-chegam sempre por POST, nunca por link. O catálogo de tipos de contrato e de
-documento abre ao lado da lista a que pertence, porque o tipo não tem vida
-própria: ele existe para nomear o que se registra.
+chegam sempre por POST, nunca por link. Os catálogos de tipos continuam
+amarrados ao domínio de governança, mas a navegação até eles agora passa pelo
+agrupador ``Tipos e categorias``.
 """
 from django.urls import path
 

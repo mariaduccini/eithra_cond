@@ -15,7 +15,14 @@ from django.urls import reverse
 
 from apps.cadastros.tests.apoio import criar_condominio, criar_pessoa, criar_vinculo, entrar_como
 from apps.comunidade.constants import TipoVinculoPessoaUnidade
-from apps.comunidade.models import Pessoa, Unidade, Veiculo, VinculoPessoaUnidade
+from apps.comunidade.models import (
+    Pessoa,
+    Unidade,
+    Veiculo,
+    VinculoPessoaUnidade,
+    VinculoVeiculoPessoa,
+    VinculoVeiculoUnidade,
+)
 from apps.comunidade.tests import apoio
 from apps.condominios.constants import Papel
 
@@ -175,7 +182,7 @@ class ListaDeUnidadesTests(TestCase):
         conteudo = self.client.get(
             reverse("comunidade:unidades"), {"q": "inventado"}
         ).content.decode()
-        self.assertIn("Nada encontrado", conteudo)
+        self.assertIn("Nenhum resultado encontrado", conteudo)
 
     def test_lista_vazia_convida_a_cadastrar(self):
         Unidade.objects.all().delete()
@@ -234,6 +241,17 @@ class TelasDeUnidadeTests(TestCase):
         self.assertIn("Histórico de pessoas (1)", conteudo)
         self.assertIn("Pessoa Exemplo 02", conteudo)
 
+    def test_ficha_da_unidade_mostra_inicio_nao_informado(self):
+        unidade = apoio.criar_unidade(self.condominio)
+        pessoa = apoio.criar_pessoa_da_comunidade(self.condominio, "Pessoa Exemplo 03")
+        apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, pessoa, unidade, data_inicio=None
+        )
+        conteudo = self.client.get(
+            reverse("comunidade:unidade", args=[unidade.pk])
+        ).content.decode()
+        self.assertIn("Início não informado", conteudo)
+
     def test_corrige_os_dados_da_unidade(self):
         unidade = apoio.criar_unidade(self.condominio)
         resposta = self.client.post(
@@ -287,6 +305,26 @@ class TelasDeUnidadeTests(TestCase):
             f"{reverse('comunidade:unidade', args=[unidade.pk])}?condominio={self.condominio.pk}",
         )
         self.assertTrue(VinculoPessoaUnidade.objects.vigentes().exists())
+
+    def test_vincular_pessoa_a_unidade_sem_data_inicio_pela_ficha(self):
+        unidade = apoio.criar_unidade(self.condominio)
+        pessoa = apoio.criar_pessoa_da_comunidade(self.condominio)
+        resposta = self.client.post(
+            reverse("comunidade:vincular_pessoa", args=[unidade.pk]),
+            {
+                "condominio": str(self.condominio.pk),
+                "pessoa": str(pessoa.pk),
+                "tipo_vinculo": TipoVinculoPessoaUnidade.MORADOR,
+                "data_inicio": "",
+            },
+        )
+        self.assertRedirects(
+            resposta,
+            f"{reverse('comunidade:unidade', args=[unidade.pk])}?condominio={self.condominio.pk}",
+        )
+        vinculo = VinculoPessoaUnidade.objects.get()
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
 
     def test_vincular_pessoa_de_outro_condominio_volta_com_erro(self):
         unidade = apoio.criar_unidade(self.condominio)
@@ -456,6 +494,16 @@ class TelasDePessoaTests(TestCase):
         vinculo = VinculoPessoaUnidade.objects.get()
         self.assertEqual(vinculo.tipo_vinculo, TipoVinculoPessoaUnidade.PROPRIETARIO)
 
+    def test_formulario_de_vinculo_mostra_ajuda_para_inicio_desconhecido(self):
+        pessoa = apoio.criar_pessoa_da_comunidade(self.condominio)
+        conteudo = self.client.get(
+            reverse("comunidade:pessoa", args=[pessoa.pk])
+        ).content.decode()
+        self.assertIn(
+            "Deixe em branco se a data histórica de início não for conhecida.",
+            conteudo,
+        )
+
 
 class ListaDeVeiculosTests(TestCase):
     """A lista responde quem usa o veículo e a que unidade ele se relaciona."""
@@ -608,6 +656,41 @@ class TelasDeVeiculoTests(TestCase):
         )
         self.assertEqual(resposta.status_code, 302)
         self.assertEqual(list(veiculo.unidades_atuais()), [unidade])
+
+    def test_registra_quem_utiliza_o_veiculo_sem_data_inicio(self):
+        veiculo = apoio.criar_veiculo(self.condominio)
+        pessoa = apoio.criar_pessoa_da_comunidade(self.condominio)
+        resposta = self.client.post(
+            reverse("comunidade:vincular_pessoa_veiculo", args=[veiculo.pk]),
+            {
+                "condominio": str(self.condominio.pk),
+                "pessoa": str(pessoa.pk),
+                "data_inicio": "",
+            },
+        )
+        self.assertRedirects(
+            resposta,
+            f"{reverse('comunidade:veiculo', args=[veiculo.pk])}?condominio={self.condominio.pk}",
+        )
+        vinculo = VinculoVeiculoPessoa.objects.get()
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+
+    def test_relaciona_o_veiculo_a_unidade_sem_data_inicio(self):
+        veiculo = apoio.criar_veiculo(self.condominio)
+        unidade = apoio.criar_unidade(self.condominio, "101")
+        resposta = self.client.post(
+            reverse("comunidade:vincular_unidade_veiculo", args=[veiculo.pk]),
+            {
+                "condominio": str(self.condominio.pk),
+                "unidade": str(unidade.pk),
+                "data_inicio": "",
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        vinculo = VinculoVeiculoUnidade.objects.get()
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
 
 
 class EncerrarVinculoTests(TestCase):

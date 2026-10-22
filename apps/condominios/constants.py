@@ -35,3 +35,10 @@ class EventoAcesso(models.TextChoices):
     PAPEL_ALTERADO = "papel_alterado", "Papel alterado"
     ATIVADO = "ativado", "Acesso ativado"
     INATIVADO = "inativado", "Acesso inativado"
+    # A gestão pediu que as instruções de senha fossem entregues à pessoa. O
+    # fato registrado é o pedido, e não a senha: nenhuma senha, endereço ou
+    # token entra no histórico.
+    INSTRUCOES_DE_SENHA_ENVIADAS = (
+        "instrucoes_enviadas",
+        "Instruções de senha enviadas",
+    )

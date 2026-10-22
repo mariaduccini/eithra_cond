@@ -76,6 +76,15 @@ def pode_ver_cadastros_em_algum(usuario) -> bool:
     return condominios_para_ver(usuario).exists()
 
 
+def pode_criar_condominios(usuario) -> bool:
+    """Diz se a pessoa pode abrir novos condomínios no módulo de cadastros.
+
+    A mesma responsabilidade de responder pela gestão em algum condomínio é o
+    mínimo exigido para iniciar um novo cadastro estrutural.
+    """
+    return condominios_para_gerenciar(usuario).exists()
+
+
 def pode_gerenciar_cadastros(usuario, condominio) -> bool:
     """Diz se a pessoa pode manter os cadastros deste condomínio agora.
 

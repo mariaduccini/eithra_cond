@@ -246,3 +246,27 @@ def definir_ativo_acesso(
         novos=_retrato(vinculo),
     )
     return vinculo
+
+
+@transaction.atomic
+def registrar_instrucoes_de_senha_enviadas(
+    *, acesso: AcessoUsuarioCondominio, executor, primeiro_acesso: bool
+) -> HistoricoAcessoCondominio:
+    """Registra que a gestão pediu a entrega das instruções de senha.
+
+    O que fica guardado é o pedido e o momento — primeiro acesso ou
+    redefinição —, e nada mais. Senha, endereço e token não entram aqui: o
+    histórico responde "quem pediu, para quem e quando", sem carregar
+    credencial nenhuma.
+
+    Quem pede é sempre alguém identificado: uma ação sobre o acesso de outra
+    pessoa não pode ficar sem autor.
+    """
+    momento = "primeiro_acesso" if primeiro_acesso else "redefinicao"
+    return _registrar(
+        acesso=acesso,
+        executor=executor,
+        evento=EventoAcesso.INSTRUCOES_DE_SENHA_ENVIADAS,
+        anteriores=None,
+        novos={**_retrato(acesso), "momento": momento},
+    )

@@ -14,7 +14,6 @@ vem por parâmetro, fica desabilitada no formulário e é preenchida pelo domín
 só a outra ponta é escolhida.
 """
 from django import forms
-from django.utils import timezone
 
 from apps.cadastros.constants import TipoPessoa
 
@@ -197,7 +196,7 @@ class VeiculoForm(forms.ModelForm):
 
 
 class VinculoPessoaUnidadeForm(forms.ModelForm):
-    """Liga uma pessoa a uma unidade, com o papel e a data de início.
+    """Liga uma pessoa a uma unidade, com o papel e a data de início quando conhecida.
 
     Uma das pontas já é conhecida pela tela e chega por parâmetro; a outra é
     escolhida entre os cadastros ativos do condomínio.
@@ -226,9 +225,11 @@ class VinculoPessoaUnidadeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["pessoa"].queryset = _pessoas_ativas(condominio)
         self.fields["unidade"].queryset = _unidades_ativas(condominio)
+        self.fields["data_inicio"].required = False
+        self.fields["data_inicio"].help_text = (
+            "Deixe em branco se a data histórica de início não for conhecida."
+        )
         self.fields["data_fim"].required = False
-        if not self.is_bound and not self.instance.pk:
-            self.fields["data_inicio"].initial = timezone.localdate()
         if pessoa is not None:
             _fixar(self.fields["pessoa"], pessoa)
         if unidade is not None:
@@ -281,9 +282,11 @@ class VinculoVeiculoPessoaForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["veiculo"].queryset = _veiculos_ativos(condominio)
         self.fields["pessoa"].queryset = _pessoas_ativas(condominio)
+        self.fields["data_inicio"].required = False
+        self.fields["data_inicio"].help_text = (
+            "Deixe em branco se a data histórica de início não for conhecida."
+        )
         self.fields["data_fim"].required = False
-        if not self.is_bound and not self.instance.pk:
-            self.fields["data_inicio"].initial = timezone.localdate()
         if veiculo is not None:
             _fixar(self.fields["veiculo"], veiculo)
         if pessoa is not None:
@@ -314,9 +317,11 @@ class VinculoVeiculoUnidadeForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["veiculo"].queryset = _veiculos_ativos(condominio)
         self.fields["unidade"].queryset = _unidades_ativas(condominio)
+        self.fields["data_inicio"].required = False
+        self.fields["data_inicio"].help_text = (
+            "Deixe em branco se a data histórica de início não for conhecida."
+        )
         self.fields["data_fim"].required = False
-        if not self.is_bound and not self.instance.pk:
-            self.fields["data_inicio"].initial = timezone.localdate()
         if veiculo is not None:
             _fixar(self.fields["veiculo"], veiculo)
         if unidade is not None:

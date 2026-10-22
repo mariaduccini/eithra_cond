@@ -459,9 +459,10 @@ class ImportacaoBalanco(models.Model):
     balanço. Confundir os dois faria o sistema aceitar como oficial um arquivo
     que ninguém conferiu.
 
-    A importação é transitória: pode expirar ou ser descartada. Quando
-    descartada, o registro permanece, com a data do descarte, para não apagar
-    histórico técnico em silêncio.
+    A importação é transitória: pode expirar ou ser recusada. Recusada, ela é
+    excluída — enquanto não virou balanço, nada do mês dependia dela. O que já
+    foi confirmado não se exclui: o mês existe, e o recebimento é o seu
+    comprovante.
 
     O arquivo vive em storage externo privado. Aqui ficam apenas a referência
     do objeto e os metadados que ajudam a reconhecê-lo — nunca URL pública,

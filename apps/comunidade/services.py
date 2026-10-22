@@ -152,21 +152,24 @@ def _recusar_sobreposicao(ja_registrados, *, data_inicio, data_fim, recado: str)
     impedir. Períodos vizinhos, um terminando em 30/03 e o outro começando em
     31/03, não se tocam.
 
+    `data_inicio=None` significa que o vínculo existia, mas a data histórica em
+    que ele começou não é conhecida. Na prática, isso abre o intervalo para trás:
+    ele se sobrepõe com qualquer período que não fique comprovadamente depois do
+    seu fim conhecido.
+
     O conjunto recebido já chega restrito ao fato em questão — mesma pessoa e
     mesma unidade, por exemplo. Papéis diferentes na mesma unidade, unidades
     diferentes da mesma pessoa e pessoas diferentes na mesma unidade são fatos
     distintos, e é por isso que não aparecem aqui.
     """
-    if data_inicio is None:
-        return
-
     candidatos = ja_registrados
+    if data_inicio is not None:
+        # Quem terminou antes do novo começo ficou provadamente para trás.
+        candidatos = candidatos.exclude(data_fim__lt=data_inicio)
     if data_fim is not None:
-        # Um vínculo que só começa depois do fim procurado não pode cruzar.
-        candidatos = candidatos.filter(data_inicio__lte=data_fim)
-    conflito = candidatos.filter(
-        Q(data_fim__isnull=True) | Q(data_fim__gte=data_inicio)
-    ).exists()
+        # Quem só começou depois do novo fim ficou provadamente para a frente.
+        candidatos = candidatos.exclude(data_inicio__gt=data_fim)
+    conflito = candidatos.exists()
     if conflito:
         raise ErroDeComunidade(recado)
 
@@ -332,7 +335,7 @@ def criar_vinculo_pessoa_unidade(
     pessoa: Pessoa,
     unidade: Unidade,
     tipo_vinculo: str = TipoVinculoPessoaUnidade.MORADOR,
-    data_inicio,
+    data_inicio=None,
     data_fim=None,
     rotulo_origem: str = "",
     observacao_interna: str = "",
@@ -441,7 +444,7 @@ def vincular_veiculo_pessoa(
     criado_por,
     veiculo: Veiculo,
     pessoa: Pessoa,
-    data_inicio,
+    data_inicio=None,
     data_fim=None,
     observacao: str = "",
 ) -> VinculoVeiculoPessoa:
@@ -450,6 +453,10 @@ def vincular_veiculo_pessoa(
     O mesmo veículo pode ser utilizado por várias pessoas ao mesmo tempo — o
     carro da casa é dirigido por quem mora nela. O que não se registra duas
     vezes é o mesmo uso, pela mesma pessoa, em períodos que se cruzam.
+
+    Sem data de início, o vínculo existia mas não se sabe desde quando — é o
+    caso dos registros históricos cuja data se perdeu. Nada é inventado no
+    lugar dela.
     """
     _conferir_mesmo_condominio(
         (veiculo, pessoa),
@@ -498,7 +505,7 @@ def vincular_veiculo_unidade(
     criado_por,
     veiculo: Veiculo,
     unidade: Unidade,
-    data_inicio,
+    data_inicio=None,
     data_fim=None,
     observacao: str = "",
 ) -> VinculoVeiculoUnidade:
@@ -510,6 +517,9 @@ def vincular_veiculo_unidade(
     Um veículo pode estar relacionado a mais de uma unidade ao mesmo tempo — o
     carro fica em uma garagem e é usado por quem mora em outra. O que não se
     registra duas vezes é a mesma relação, em períodos que se cruzam.
+
+    Sem data de início, a relação existia mas não se sabe desde quando — o
+    registro histórico fica sem uma data que não se conhece.
     """
     _conferir_mesmo_condominio(
         (veiculo, unidade),

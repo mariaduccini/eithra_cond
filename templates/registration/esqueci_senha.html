@@ -1,0 +1,31 @@
+{% extends "layouts/public.html" %}
+
+{# Quem esqueceu a senha pede um novo endereço por aqui. A tela responde a
+   mesma frase exista ou não a conta: é isso que impede alguém de descobrir
+   quem está no Eithra sondando endereços. A senha continua sendo escolhida
+   pela própria pessoa, no endereço que ela recebe. #}
+
+{% block title %}Esqueci minha senha · Eithra{% endblock %}
+
+{% block public_content %}
+  <h4 class="mb-1">Esqueci minha senha</h4>
+  <p class="mb-6">Informe o seu e-mail para receber as instruções.</p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <div class="mb-6">
+      <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+      {{ form.email }}
+      {% for error in form.email.errors %}
+        <div class="text-danger small mt-1">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <button class="btn btn-primary d-grid w-100" type="submit">Enviar instruções</button>
+  </form>
+
+  <p class="text-center mb-0 mt-6">
+    <a href="{% url 'accounts:login' %}">Voltar para a entrada</a>
+  </p>
+{% endblock %}

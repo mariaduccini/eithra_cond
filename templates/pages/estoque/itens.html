@@ -138,124 +138,122 @@
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="post" action="{% url 'estoque:criar_item' %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="cadastrar-item-titulo">Cadastrar item</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
+        <form class="modal-content" method="post" action="{% url 'estoque:criar_item' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="cadastrar-item-titulo">Cadastrar item</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              {% if formulario_item.condominio.is_hidden %}
-                {{ formulario_item.condominio }}
-              {% else %}
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_item.condominio.id_for_label }}">
-                    {{ formulario_item.condominio.label }}
-                  </label>
-                  {{ formulario_item.condominio }}
-                  {% for erro in formulario_item.condominio.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              {% endif %}
-
+          <div class="modal-body">
+            {% if formulario_item.condominio.is_hidden %}
+              {{ formulario_item.condominio }}
+            {% else %}
               <div class="mb-6">
-                <label class="form-label" for="{{ formulario_item.nome.id_for_label }}">
-                  {{ formulario_item.nome.label }}
+                <label class="form-label" for="{{ formulario_item.condominio.id_for_label }}">
+                  {{ formulario_item.condominio.label }}
                 </label>
-                {{ formulario_item.nome }}
-                {% for erro in formulario_item.nome.errors %}
+                {{ formulario_item.condominio }}
+                {% for erro in formulario_item.condominio.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
+            {% endif %}
 
-              <a
-                class="small text-decoration-none d-inline-block"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-item"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-item">
-                Mais detalhes
-              </a>
-              <div class="collapse mt-3" id="mais-detalhes-item">
-                <div class="row g-3 mb-6">
-                  <div class="col-12 col-sm-6">
-                    <label class="form-label" for="{{ formulario_item.categoria_texto.id_for_label }}">
-                      {{ formulario_item.categoria_texto.label }}
-                    </label>
-                    {{ formulario_item.categoria_texto }}
-                    {% for erro in formulario_item.categoria_texto.errors %}
-                      <div class="text-danger small mt-1">{{ erro }}</div>
-                    {% endfor %}
-                  </div>
-                  <div class="col-12 col-sm-6">
-                    <label class="form-label" for="{{ formulario_item.unidade.id_for_label }}">
-                      {{ formulario_item.unidade.label }}
-                    </label>
-                    {{ formulario_item.unidade }}
-                    {% for erro in formulario_item.unidade.errors %}
-                      <div class="text-danger small mt-1">{{ erro }}</div>
-                    {% endfor %}
-                  </div>
-                </div>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_item.nome.id_for_label }}">
+                {{ formulario_item.nome.label }}
+              </label>
+              {{ formulario_item.nome }}
+              {% for erro in formulario_item.nome.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
 
-                <div class="row g-3 mb-6">
-                  <div class="col-12 col-sm-6">
-                    <label class="form-label" for="{{ formulario_item.local_armazenamento.id_for_label }}">
-                      {{ formulario_item.local_armazenamento.label }}
-                    </label>
-                    {{ formulario_item.local_armazenamento }}
-                    {% for erro in formulario_item.local_armazenamento.errors %}
-                      <div class="text-danger small mt-1">{{ erro }}</div>
-                    {% endfor %}
-                  </div>
-                  <div class="col-12 col-sm-6">
-                    <label class="form-label" for="{{ formulario_item.estoque_minimo.id_for_label }}">
-                      {{ formulario_item.estoque_minimo.label }}
-                    </label>
-                    {{ formulario_item.estoque_minimo }}
-                    {% for erro in formulario_item.estoque_minimo.errors %}
-                      <div class="text-danger small mt-1">{{ erro }}</div>
-                    {% endfor %}
-                  </div>
-                </div>
-
-                <div class="form-check mb-2">
-                  {{ formulario_item.item_critico }}
-                  <label class="form-check-label" for="{{ formulario_item.item_critico.id_for_label }}">
-                    {{ formulario_item.item_critico.label }}
+            <a
+              class="small text-decoration-none d-inline-block"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-item"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-item">
+              Mais detalhes
+            </a>
+            <div class="collapse mt-3" id="mais-detalhes-item">
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.categoria_texto.id_for_label }}">
+                    {{ formulario_item.categoria_texto.label }}
                   </label>
+                  {{ formulario_item.categoria_texto }}
+                  {% for erro in formulario_item.categoria_texto.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
                 </div>
-                <div class="form-check mb-6">
-                  {{ formulario_item.controla_validade }}
-                  <label class="form-check-label" for="{{ formulario_item.controla_validade.id_for_label }}">
-                    {{ formulario_item.controla_validade.label }}
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.unidade.id_for_label }}">
+                    {{ formulario_item.unidade.label }}
                   </label>
-                </div>
-
-                <div class="mb-0">
-                  <label class="form-label" for="{{ formulario_item.descricao.id_for_label }}">
-                    {{ formulario_item.descricao.label }}
-                  </label>
-                  {{ formulario_item.descricao }}
-                  {% for erro in formulario_item.descricao.errors %}
+                  {{ formulario_item.unidade }}
+                  {% for erro in formulario_item.unidade.errors %}
                     <div class="text-danger small mt-1">{{ erro }}</div>
                   {% endfor %}
                 </div>
               </div>
-            </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Cadastrar</button>
+              <div class="row g-3 mb-6">
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.local_armazenamento.id_for_label }}">
+                    {{ formulario_item.local_armazenamento.label }}
+                  </label>
+                  {{ formulario_item.local_armazenamento }}
+                  {% for erro in formulario_item.local_armazenamento.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+                <div class="col-12 col-sm-6">
+                  <label class="form-label" for="{{ formulario_item.estoque_minimo.id_for_label }}">
+                    {{ formulario_item.estoque_minimo.label }}
+                  </label>
+                  {{ formulario_item.estoque_minimo }}
+                  {% for erro in formulario_item.estoque_minimo.errors %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="form-check mb-2">
+                {{ formulario_item.item_critico }}
+                <label class="form-check-label" for="{{ formulario_item.item_critico.id_for_label }}">
+                  {{ formulario_item.item_critico.label }}
+                </label>
+              </div>
+              <div class="form-check mb-6">
+                {{ formulario_item.controla_validade }}
+                <label class="form-check-label" for="{{ formulario_item.controla_validade.id_for_label }}">
+                  {{ formulario_item.controla_validade.label }}
+                </label>
+              </div>
+
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_item.descricao.id_for_label }}">
+                  {{ formulario_item.descricao.label }}
+                </label>
+                {{ formulario_item.descricao }}
+                {% for erro in formulario_item.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
             </div>
-          </form>
-        </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Cadastrar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

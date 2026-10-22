@@ -72,26 +72,26 @@ NAVIGATION = [
         # Quem não enxerga os cadastros em nenhum condomínio não recebe o grupo.
         "visivel_para": pode_ver_cadastros_em_algum,
         "filhos": [
-            {"label": "Condomínio", "view_name": "cadastros:condominio"},
+            {
+                "label": "Condomínios",
+                "view_name": "cadastros:condominios",
+                "active_view_names": {
+                    "cadastros:condominios",
+                    "cadastros:condominio",
+                    "cadastros:criar_condominio",
+                    "cadastros:editar_condominio",
+                },
+            },
+            {
+                "label": "Pessoas e unidades",
+                "view_name": "cadastros:pessoas_e_unidades",
+                "visivel_para": pode_ver_comunidade_em_algum,
+                "active_prefixes": ("comunidade:", "cadastros:pessoas_e_unidades"),
+            },
             {"label": "Usuários e acessos", "view_name": "cadastros:acessos"},
             {"label": "Áreas e locais", "view_name": "cadastros:locais"},
             {"label": "Equipamentos", "view_name": "cadastros:equipamentos"},
             {"label": "Fornecedores", "view_name": "cadastros:fornecedores"},
-            {
-                "label": "Unidades",
-                "view_name": "comunidade:unidades",
-                "visivel_para": pode_ver_comunidade_em_algum,
-            },
-            {
-                "label": "Pessoas",
-                "view_name": "comunidade:pessoas",
-                "visivel_para": pode_ver_comunidade_em_algum,
-            },
-            {
-                "label": "Veículos",
-                "view_name": "comunidade:veiculos",
-                "visivel_para": pode_ver_comunidade_em_algum,
-            },
             {
                 "label": "Contratos",
                 "view_name": "governanca:contratos",
@@ -106,6 +106,33 @@ NAVIGATION = [
                 "label": "Documentos",
                 "view_name": "governanca:documentos",
                 "visivel_para": pode_ver_governanca_em_algum,
+            },
+            {
+                "label": "Tipos e categorias",
+                "view_name": "cadastros:tipos_e_categorias",
+                "active_prefixes": (
+                    "cadastros:tipos_e_categorias",
+                    "cadastros:tipos_de_local",
+                    "cadastros:criar_tipo_local",
+                    "cadastros:editar_tipo_local",
+                    "cadastros:alternar_tipo_local",
+                    "cadastros:tipos_de_equipamento",
+                    "cadastros:criar_tipo_equipamento",
+                    "cadastros:editar_tipo_equipamento",
+                    "cadastros:alternar_tipo_equipamento",
+                    "cadastros:especialidades",
+                    "cadastros:criar_especialidade",
+                    "cadastros:editar_especialidade",
+                    "cadastros:alternar_especialidade",
+                    "governanca:tipos_de_contrato",
+                    "governanca:criar_tipo_contrato",
+                    "governanca:editar_tipo_contrato",
+                    "governanca:alternar_tipo_contrato",
+                    "governanca:tipos_de_documento",
+                    "governanca:criar_tipo_documento",
+                    "governanca:editar_tipo_documento",
+                    "governanca:alternar_tipo_documento",
+                ),
             },
         ],
     },
@@ -141,11 +168,11 @@ def _preparar(item, usuario, aberta):
     requisições.
     """
     filhos = [
-        {**filho, "ativo": filho.get("view_name") == aberta}
+        {**filho, "ativo": _esta_ativo(filho, aberta)}
         for filho in item.get("filhos", ())
         if _aparece_para(filho, usuario)
     ]
-    ativo = item.get("view_name") == aberta or any(filho["ativo"] for filho in filhos)
+    ativo = _esta_ativo(item, aberta) or any(filho["ativo"] for filho in filhos)
     return {**item, "filhos": filhos, "ativo": ativo}
 
 
@@ -155,3 +182,18 @@ def _aparece_para(item, usuario) -> bool:
     if exigencia is None:
         return True
     return bool(exigencia(usuario))
+
+
+def _esta_ativo(item, aberta) -> bool:
+    """Diz se o item corresponde a esta tela aberta.
+
+    Alguns itens de navegação representam um contexto maior que uma única rota.
+    A pergunta continua simples: a tela em vista pertence a este contexto?
+    """
+    if not aberta:
+        return False
+    if item.get("view_name") == aberta:
+        return True
+    if aberta in item.get("active_view_names", ()):
+        return True
+    return any(aberta.startswith(prefixo) for prefixo in item.get("active_prefixes", ()))

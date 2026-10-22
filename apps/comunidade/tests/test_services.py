@@ -7,6 +7,7 @@ condomínio, e cadastro com vínculo em vigor não é desativado em silêncio.
 from datetime import timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.cadastros.tests.apoio import criar_condominio, criar_pessoa
 from apps.comunidade import services
@@ -192,6 +193,17 @@ class VinculoPessoaUnidadeTests(TestCase):
         self.assertTrue(vinculo.vigente)
         self.assertEqual(vinculo.tipo_vinculo, TipoVinculoPessoaUnidade.MORADOR)
 
+    def test_liga_a_pessoa_a_unidade_sem_data_de_inicio_conhecida(self):
+        vinculo = services.criar_vinculo_pessoa_unidade(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            pessoa=self.pessoa,
+            unidade=self.unidade,
+            data_inicio=None,
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+
     def test_pessoa_de_outro_condominio_e_recusada(self):
         alheia = apoio.criar_pessoa_da_comunidade(criar_condominio("Beta"))
         with self.assertRaises(services.ErroDeComunidade):
@@ -280,6 +292,32 @@ class VinculoPessoaUnidadeTests(TestCase):
         self.assertEqual(novo.tipo_vinculo, TipoVinculoPessoaUnidade.FAMILIAR)
         self.assertEqual(novo.rotulo_origem, "ESPOSA")
 
+    def test_transferencia_de_inicio_desconhecido_preserva_historia_e_abre_novo_conhecido(self):
+        antiga = apoio.criar_unidade(self.condominio, "303")
+        nova = apoio.criar_unidade(self.condominio, "404")
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio,
+            self.pessoa,
+            antiga,
+            tipo_vinculo=TipoVinculoPessoaUnidade.FAMILIAR,
+            rotulo_origem="ESPOSA",
+            data_inicio=None,
+        )
+
+        novo = services.transferir_pessoa_unidade(
+            vinculo=vinculo,
+            para_unidade=nova,
+            data=apoio.HOJE,
+            criado_por=self.gestao,
+        )
+
+        vinculo.refresh_from_db()
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertEqual(vinculo.data_fim, apoio.HOJE)
+        self.assertEqual(novo.data_inicio, apoio.HOJE)
+        self.assertEqual(novo.rotulo_origem, "ESPOSA")
+        self.assertEqual(novo.tipo_vinculo, TipoVinculoPessoaUnidade.FAMILIAR)
+
 
 class SobreposicaoDeVinculosTests(TestCase):
     """O mesmo fato não se registra duas vezes no mesmo período.
@@ -320,6 +358,22 @@ class SobreposicaoDeVinculosTests(TestCase):
         self._abrir(inicio=self._dia(-30))
         with self.assertRaises(services.ErroDeComunidade):
             self._abrir(inicio=self._dia(-10))
+
+    def test_inicio_desconhecido_aberto_recusa_novo_periodo_aberto(self):
+        self._abrir(inicio=None)
+        with self.assertRaises(services.ErroDeComunidade):
+            self._abrir(inicio=self._dia(10))
+
+    def test_inicio_desconhecido_encerrado_antes_permite_novo_periodo_depois(self):
+        antigo = self._abrir(inicio=None, fim=self._dia(-1))
+        novo = self._abrir(inicio=self._dia(0))
+        self.assertEqual(antigo.data_fim, self._dia(-1))
+        self.assertEqual(novo.data_inicio, self._dia(0))
+
+    def test_inicio_desconhecido_conflita_com_outro_inicio_desconhecido(self):
+        self._abrir(inicio=None, fim=self._dia(-1))
+        with self.assertRaises(services.ErroDeComunidade):
+            self._abrir(inicio=None)
 
     def test_mesmo_papel_em_periodos_vizinhos_e_permitido(self):
         """B. Um papel que acaba e outro que começa logo depois são dois períodos."""
@@ -544,3 +598,110 @@ class VinculosDoVeiculoTests(TestCase):
             data_inicio=apoio.HOJE,
         )
         self.assertEqual(segundo.unidade_id, outra.pk)
+
+    # -- Início histórico desconhecido ---------------------------------------
+
+    def test_registra_uso_do_veiculo_sem_data_de_inicio(self):
+        vinculo = services.vincular_veiculo_pessoa(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            veiculo=self.veiculo,
+            pessoa=self.pessoa,
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+
+    def test_relaciona_veiculo_a_unidade_sem_data_de_inicio(self):
+        vinculo = services.vincular_veiculo_unidade(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            veiculo=self.veiculo,
+            unidade=self.unidade,
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+
+    def test_encerrar_hoje_preserva_o_inicio_desconhecido(self):
+        vinculo = apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=None
+        )
+        services.encerrar_vinculo_veiculo_pessoa(vinculo=vinculo)
+        vinculo.refresh_from_db()
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertEqual(vinculo.data_fim, timezone.localdate())
+
+    def test_inicio_desconhecido_bloqueia_uso_em_aberto_da_mesma_pessoa(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=None
+        )
+        with self.assertRaises(services.ErroDeComunidade):
+            services.vincular_veiculo_pessoa(
+                condominio=self.condominio,
+                criado_por=self.gestao,
+                veiculo=self.veiculo,
+                pessoa=self.pessoa,
+                data_inicio=apoio.HOJE,
+            )
+
+    def test_inicio_desconhecido_com_fim_anterior_permite_novo_uso(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio,
+            self.veiculo,
+            self.pessoa,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        novo = services.vincular_veiculo_pessoa(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            veiculo=self.veiculo,
+            pessoa=self.pessoa,
+            data_inicio=apoio.HOJE,
+        )
+        self.assertEqual(novo.data_inicio, apoio.HOJE)
+
+    def test_uso_aberto_sem_inicio_conflita_com_uso_encerrado_anterior(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio,
+            self.veiculo,
+            self.pessoa,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        with self.assertRaises(services.ErroDeComunidade):
+            services.vincular_veiculo_pessoa(
+                condominio=self.condominio,
+                criado_por=self.gestao,
+                veiculo=self.veiculo,
+                pessoa=self.pessoa,
+            )
+
+    def test_inicio_desconhecido_bloqueia_relacao_em_aberto_da_mesma_unidade(self):
+        apoio.criar_vinculo_veiculo_unidade(
+            self.condominio, self.veiculo, self.unidade, data_inicio=None
+        )
+        with self.assertRaises(services.ErroDeComunidade):
+            services.vincular_veiculo_unidade(
+                condominio=self.condominio,
+                criado_por=self.gestao,
+                veiculo=self.veiculo,
+                unidade=self.unidade,
+                data_inicio=apoio.HOJE,
+            )
+
+    def test_inicio_desconhecido_com_fim_anterior_permite_nova_relacao(self):
+        apoio.criar_vinculo_veiculo_unidade(
+            self.condominio,
+            self.veiculo,
+            self.unidade,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        nova = services.vincular_veiculo_unidade(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            veiculo=self.veiculo,
+            unidade=self.unidade,
+            data_inicio=apoio.HOJE,
+        )
+        self.assertEqual(nova.data_inicio, apoio.HOJE)

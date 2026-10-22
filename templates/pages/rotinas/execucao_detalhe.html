@@ -295,8 +295,10 @@
     </div>
   </div>
 
-  {# Ações sobre uma tarefa: um modal por desfecho, reusado por todas as tarefas.
-     Ao abrir, o modal aprende de qual tarefa se trata. #}
+  {% comment %}
+  Ações sobre uma tarefa: um modal por desfecho, reusado por todas as tarefas.
+  Ao abrir, o modal aprende de qual tarefa se trata.
+  {% endcomment %}
   {% if pode_tratar %}
     <div
       class="modal fade"
@@ -305,35 +307,33 @@
       role="dialog"
       aria-labelledby="modal-item-concluir-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="status" value="concluido">
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-item-concluir-titulo">Concluir tarefa</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="status" value="concluido">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-item-concluir-titulo">Concluir tarefa</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              <span class="fw-medium" data-item-descricao>Esta tarefa</span> foi feita.
+            </p>
+            <div class="mb-0">
+              <label class="form-label" for="item-concluir-observacao">Observação</label>
+              <textarea
+                class="form-control"
+                id="item-concluir-observacao"
+                name="observacao"
+                rows="3"
+                placeholder="O que vale registrar sobre esta tarefa"></textarea>
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                <span class="fw-medium" data-item-descricao>Esta tarefa</span> foi feita.
-              </p>
-              <div class="mb-0">
-                <label class="form-label" for="item-concluir-observacao">Observação</label>
-                <textarea
-                  class="form-control"
-                  id="item-concluir-observacao"
-                  name="observacao"
-                  rows="3"
-                  placeholder="O que vale registrar sobre esta tarefa"></textarea>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-primary">Concluir</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-primary">Concluir</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -344,35 +344,33 @@
       role="dialog"
       aria-labelledby="modal-item-nao-aplicavel-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="status" value="nao_aplicavel">
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-item-nao-aplicavel-titulo">Tarefa não aplicável</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="status" value="nao_aplicavel">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-item-nao-aplicavel-titulo">Tarefa não aplicável</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              <span class="fw-medium" data-item-descricao>Esta tarefa</span> não se aplicava nesta ocorrência.
+            </p>
+            <div class="mb-0">
+              <label class="form-label" for="item-nao-aplicavel-observacao">Observação</label>
+              <textarea
+                class="form-control"
+                id="item-nao-aplicavel-observacao"
+                name="observacao"
+                rows="3"
+                placeholder="O que vale registrar sobre esta tarefa"></textarea>
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                <span class="fw-medium" data-item-descricao>Esta tarefa</span> não se aplicava nesta ocorrência.
-              </p>
-              <div class="mb-0">
-                <label class="form-label" for="item-nao-aplicavel-observacao">Observação</label>
-                <textarea
-                  class="form-control"
-                  id="item-nao-aplicavel-observacao"
-                  name="observacao"
-                  rows="3"
-                  placeholder="O que vale registrar sobre esta tarefa"></textarea>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-label-secondary">Marcar não aplicável</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-label-secondary">Marcar não aplicável</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -385,35 +383,33 @@
       role="dialog"
       aria-labelledby="modal-execucao-concluir-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:concluir' execucao.pk %}">
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'rotinas:concluir' execucao.pk %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">A ocorrência foi feita. Diga o que se encontrou.</p>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
+                {{ formulario_conclusao.resultado.label }}
+              </label>
+              {{ formulario_conclusao.resultado }}
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">A ocorrência foi feita. Diga o que se encontrou.</p>
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
-                  {{ formulario_conclusao.resultado.label }}
-                </label>
-                {{ formulario_conclusao.resultado }}
-              </div>
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
-                  {{ formulario_conclusao.observacao.label }}
-                </label>
-                {{ formulario_conclusao.observacao }}
-              </div>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
+                {{ formulario_conclusao.observacao.label }}
+              </label>
+              {{ formulario_conclusao.observacao }}
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-primary">Concluir</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-primary">Concluir</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -426,31 +422,29 @@
       role="dialog"
       aria-labelledby="modal-execucao-ignorar-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:ignorar' execucao.pk %}">
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-execucao-ignorar-titulo">Ignorar ocorrência</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'rotinas:ignorar' execucao.pk %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-execucao-ignorar-titulo">Ignorar ocorrência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              A atividade não se aplicava neste período. A rotina segue adiante.
+            </p>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_ignorar.justificativa.id_for_label }}">
+                {{ formulario_ignorar.justificativa.label }}
+              </label>
+              {{ formulario_ignorar.justificativa }}
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                A atividade não se aplicava neste período. A rotina segue adiante.
-              </p>
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_ignorar.justificativa.id_for_label }}">
-                  {{ formulario_ignorar.justificativa.label }}
-                </label>
-                {{ formulario_ignorar.justificativa }}
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-label-warning">Ignorar</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-label-warning">Ignorar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -463,31 +457,29 @@
       role="dialog"
       aria-labelledby="modal-execucao-cancelar-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:cancelar' execucao.pk %}">
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-execucao-cancelar-titulo">Cancelar ocorrência</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'rotinas:cancelar' execucao.pk %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-execucao-cancelar-titulo">Cancelar ocorrência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              Esta data não vai acontecer. A rotina não é cancelada — só esta ocorrência.
+            </p>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_cancelar.justificativa.id_for_label }}">
+                {{ formulario_cancelar.justificativa.label }}
+              </label>
+              {{ formulario_cancelar.justificativa }}
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                Esta data não vai acontecer. A rotina não é cancelada — só esta ocorrência.
-              </p>
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_cancelar.justificativa.id_for_label }}">
-                  {{ formulario_cancelar.justificativa.label }}
-                </label>
-                {{ formulario_cancelar.justificativa }}
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-label-danger">Cancelar ocorrência</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-label-danger">Cancelar ocorrência</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -500,51 +492,49 @@
       role="dialog"
       aria-labelledby="modal-execucao-demanda-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:demanda' execucao.pk %}">
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-execucao-demanda-titulo">Abrir demanda</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'rotinas:demanda' execucao.pk %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-execucao-demanda-titulo">Abrir demanda</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              O que esta ocorrência encontrou vira uma demanda para acompanhar. Revise antes de confirmar.
+            </p>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                {{ formulario_demanda.titulo.label }}
+              </label>
+              {{ formulario_demanda.titulo }}
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                O que esta ocorrência encontrou vira uma demanda para acompanhar. Revise antes de confirmar.
-              </p>
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
-                  {{ formulario_demanda.titulo.label }}
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                {{ formulario_demanda.descricao.label }}
+              </label>
+              {{ formulario_demanda.descricao }}
+            </div>
+            <div class="row g-3">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                  {{ formulario_demanda.prioridade.label }}
                 </label>
-                {{ formulario_demanda.titulo }}
+                {{ formulario_demanda.prioridade }}
               </div>
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
-                  {{ formulario_demanda.descricao.label }}
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                  {{ formulario_demanda.prazo.label }}
                 </label>
-                {{ formulario_demanda.descricao }}
-              </div>
-              <div class="row g-3">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
-                    {{ formulario_demanda.prioridade.label }}
-                  </label>
-                  {{ formulario_demanda.prioridade }}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
-                    {{ formulario_demanda.prazo.label }}
-                  </label>
-                  {{ formulario_demanda.prazo }}
-                </div>
+                {{ formulario_demanda.prazo }}
               </div>
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-primary">Abrir demanda</button>
-            </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-primary">Abrir demanda</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -557,43 +547,41 @@
       role="dialog"
       aria-labelledby="modal-execucao-manutencao-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:manutencao' execucao.pk %}">
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="modal-execucao-manutencao-titulo">Criar manutenção</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'rotinas:manutencao' execucao.pk %}">
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="modal-execucao-manutencao-titulo">Criar manutenção</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              A partir desta ocorrência, cria-se uma manutenção preventiva. Revise antes de confirmar.
+            </p>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                {{ formulario_manutencao.titulo.label }}
+              </label>
+              {{ formulario_manutencao.titulo }}
             </div>
-            <div class="modal-body">
-              <p class="text-body-secondary small">
-                A partir desta ocorrência, cria-se uma manutenção preventiva. Revise antes de confirmar.
-              </p>
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
-                  {{ formulario_manutencao.titulo.label }}
-                </label>
-                {{ formulario_manutencao.titulo }}
-              </div>
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
-                  {{ formulario_manutencao.descricao_problema.label }}
-                </label>
-                {{ formulario_manutencao.descricao_problema }}
-              </div>
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
-                  {{ formulario_manutencao.data_prevista.label }}
-                </label>
-                {{ formulario_manutencao.data_prevista }}
-              </div>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                {{ formulario_manutencao.descricao_problema.label }}
+              </label>
+              {{ formulario_manutencao.descricao_problema }}
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-              <button type="submit" class="btn btn-primary">Criar manutenção</button>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                {{ formulario_manutencao.data_prevista.label }}
+              </label>
+              {{ formulario_manutencao.data_prevista }}
             </div>
-          </form>
-        </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+            <button type="submit" class="btn btn-primary">Criar manutenção</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

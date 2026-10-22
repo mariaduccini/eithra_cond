@@ -261,9 +261,28 @@ class VinculoPessoaUnidadeTests(TestCase):
         self.assertTrue(vinculo.vigente)
         self.assertFalse(vinculo.encerrado)
 
+    def test_vinculo_sem_inicio_informado_e_sem_fim_esta_vigente(self):
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, self.pessoa, self.unidade, data_inicio=None
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+        self.assertFalse(vinculo.encerrado)
+
     def test_vinculo_com_fim_passado_esta_encerrado(self):
         vinculo = apoio.criar_vinculo_pessoa_unidade(
             self.condominio, self.pessoa, self.unidade, data_fim=apoio.ontem()
+        )
+        self.assertTrue(vinculo.encerrado)
+        self.assertFalse(vinculo.vigente)
+
+    def test_vinculo_sem_inicio_informado_e_fim_passado_esta_encerrado(self):
+        vinculo = apoio.criar_vinculo_pessoa_unidade(
+            self.condominio,
+            self.pessoa,
+            self.unidade,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
         )
         self.assertTrue(vinculo.encerrado)
         self.assertFalse(vinculo.vigente)
@@ -281,6 +300,16 @@ class VinculoPessoaUnidadeTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             self._vinculo().full_clean()
+
+    def test_registrar_duas_vezes_inicio_desconhecido_e_recusado_no_banco(self):
+        apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, self.pessoa, self.unidade, data_inicio=None
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                apoio.criar_vinculo_pessoa_unidade(
+                    self.condominio, self.pessoa, self.unidade, data_inicio=None
+                )
 
     def test_o_mesmo_dia_com_papeis_diferentes_e_outro_vinculo(self):
         apoio.criar_vinculo_pessoa_unidade(self.condominio, self.pessoa, self.unidade)
@@ -314,6 +343,22 @@ class VinculoPessoaUnidadeTests(TestCase):
         self.assertEqual(
             VinculoPessoaUnidade.objects.da_unidade(self.unidade).vigentes().count(), 2
         )
+
+    def test_queryset_vigentes_inclui_inicio_desconhecido(self):
+        apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, self.pessoa, self.unidade, data_inicio=None
+        )
+        self.assertTrue(VinculoPessoaUnidade.objects.vigentes().exists())
+
+    def test_queryset_encerrados_inclui_inicio_desconhecido(self):
+        apoio.criar_vinculo_pessoa_unidade(
+            self.condominio,
+            self.pessoa,
+            self.unidade,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        self.assertTrue(VinculoPessoaUnidade.objects.encerrados().exists())
 
 
 class VinculosDoVeiculoTests(TestCase):
@@ -358,3 +403,102 @@ class VinculosDoVeiculoTests(TestCase):
         self.assertTrue(vinculo.encerrado)
         self.assertFalse(VinculoVeiculoUnidade.objects.vigentes().exists())
         self.assertTrue(VinculoVeiculoUnidade.objects.encerrados().exists())
+
+    # -- Início histórico desconhecido ---------------------------------------
+
+    def test_uso_do_veiculo_sem_inicio_informado_e_sem_fim_esta_vigente(self):
+        vinculo = apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=None
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+        self.assertFalse(vinculo.encerrado)
+
+    def test_uso_do_veiculo_sem_inicio_informado_e_fim_passado_esta_encerrado(self):
+        vinculo = apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio,
+            self.veiculo,
+            self.pessoa,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        self.assertTrue(vinculo.encerrado)
+        self.assertFalse(vinculo.vigente)
+
+    def test_relacao_do_veiculo_sem_inicio_informado_e_sem_fim_esta_vigente(self):
+        vinculo = apoio.criar_vinculo_veiculo_unidade(
+            self.condominio, self.veiculo, self.unidade, data_inicio=None
+        )
+        self.assertIsNone(vinculo.data_inicio)
+        self.assertTrue(vinculo.vigente)
+        self.assertFalse(vinculo.encerrado)
+
+    def test_relacao_do_veiculo_sem_inicio_informado_e_fim_passado_esta_encerrada(self):
+        vinculo = apoio.criar_vinculo_veiculo_unidade(
+            self.condominio,
+            self.veiculo,
+            self.unidade,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        self.assertTrue(vinculo.encerrado)
+        self.assertFalse(vinculo.vigente)
+
+    def test_queryset_vigentes_inclui_uso_do_veiculo_sem_inicio(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=None
+        )
+        self.assertTrue(VinculoVeiculoPessoa.objects.vigentes().exists())
+
+    def test_queryset_encerrados_inclui_uso_do_veiculo_sem_inicio(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio,
+            self.veiculo,
+            self.pessoa,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        self.assertTrue(VinculoVeiculoPessoa.objects.encerrados().exists())
+
+    def test_queryset_vigentes_inclui_relacao_do_veiculo_sem_inicio(self):
+        apoio.criar_vinculo_veiculo_unidade(
+            self.condominio, self.veiculo, self.unidade, data_inicio=None
+        )
+        self.assertTrue(VinculoVeiculoUnidade.objects.vigentes().exists())
+
+    def test_queryset_encerrados_inclui_relacao_do_veiculo_sem_inicio(self):
+        apoio.criar_vinculo_veiculo_unidade(
+            self.condominio,
+            self.veiculo,
+            self.unidade,
+            data_inicio=None,
+            data_fim=apoio.ontem(),
+        )
+        self.assertTrue(VinculoVeiculoUnidade.objects.encerrados().exists())
+
+    def test_uso_do_veiculo_duas_vezes_sem_inicio_e_recusado_no_banco(self):
+        apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=None
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                apoio.criar_vinculo_veiculo_pessoa(
+                    self.condominio, self.veiculo, self.pessoa, data_inicio=None
+                )
+
+    def test_relacao_do_veiculo_duas_vezes_sem_inicio_e_recusada_no_banco(self):
+        apoio.criar_vinculo_veiculo_unidade(
+            self.condominio, self.veiculo, self.unidade, data_inicio=None
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                apoio.criar_vinculo_veiculo_unidade(
+                    self.condominio, self.veiculo, self.unidade, data_inicio=None
+                )
+
+    def test_uso_do_veiculo_com_inicio_conhecido_continua_valendo(self):
+        vinculo = apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, self.veiculo, self.pessoa, data_inicio=apoio.HOJE
+        )
+        self.assertEqual(vinculo.data_inicio, apoio.HOJE)
+        self.assertTrue(vinculo.vigente)

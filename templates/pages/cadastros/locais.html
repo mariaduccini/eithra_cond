@@ -14,9 +14,6 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
-      <a class="btn btn-label-secondary" href="{% url 'cadastros:tipos_de_local' %}?condominio={{ condominio_atual.pk }}">
-        <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i> Tipos de local
-      </a>
       {% if pode_gerenciar %}
         <button
           type="button"
@@ -56,7 +53,7 @@
                 {% if pode_gerenciar %}
                   <td class="text-end text-nowrap">
                     <a
-                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      class="btn btn-icon btn-text-primary rounded-pill"
                       href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ local.pk }}"
                       data-acao
                       title="Editar"
@@ -71,7 +68,7 @@
                       <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        class="btn btn-icon btn-text-warning rounded-pill"
                         title="{% if local.ativo %}Desativar{% else %}Ativar{% endif %}"
                         aria-label="{% if local.ativo %}Desativar{% else %}Ativar{% endif %} {{ local.nome }}">
                         <i class="bx {% if local.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
@@ -132,28 +129,26 @@
       aria-labelledby="novo-local-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'cadastros:criar_local' %}" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="novo-local-titulo">Novo local</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_local.nome %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_local.tipo_local %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_local.descricao %}
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Cadastrar</button>
-            </div>
-          </form>
-        </div>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'cadastros:criar_local' %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="novo-local-titulo">Novo local</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_local.nome %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_local.tipo_local %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_local.descricao %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Cadastrar</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -166,31 +161,30 @@
         aria-labelledby="editar-local-titulo"
         aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
         {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-        <div class="modal-dialog modal-dialog-centered">
-          <div class="modal-content">
-            <form
-              method="post"
-              action="{% url 'cadastros:editar_local' item_edicao.pk %}"
-              novalidate>
-              {% csrf_token %}
-              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-              <div class="modal-header">
-                <h5 class="modal-title" id="editar-local-titulo">Editar local</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-              </div>
-              <div class="modal-body">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.nome %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_local %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                  Cancelar
-                </button>
-                <button type="submit" class="btn btn-primary">Salvar</button>
-              </div>
-            </form>
-          </div>
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+          <form
+            class="modal-content"
+            method="post"
+            action="{% url 'cadastros:editar_local' item_edicao.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="editar-local-titulo">Editar local</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.nome %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.tipo_local %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.descricao %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+          </form>
         </div>
       </div>
     {% endif %}

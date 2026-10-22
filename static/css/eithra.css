@@ -58,6 +58,161 @@
   --bs-link-hover-color-rgb: 14, 46, 51;
 }
 
+/* Ações -------------------------------------------------------------------
+   A cor no Eithra comunica significado; não serve apenas para ornamentar.
+   Editar é principal, encerrar é âmbar, excluir é vermelho, ver e "mais ações"
+   são neutros — e a mesma ação tem a mesma leitura em qualquer tela.
+
+   O Sneat vendorizado não traz as primitivas `btn-text-*` e `btn-label-*`,
+   embora elas já sejam usadas nos templates. São definidas aqui uma única vez,
+   a partir dos tokens que o Bootstrap já publica, sem paleta paralela:
+
+   - `btn-text-*` é a ação de ícone: sem fundo em repouso, com um fundo suave e
+     arredondado ao passar o mouse;
+   - `btn-label-*` é o botão de seção: fundo tingido, texto na cor que significa. */
+
+.btn-text-primary,
+.btn-text-secondary,
+.btn-text-success,
+.btn-text-info,
+.btn-text-warning,
+.btn-text-danger {
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-border-color: transparent;
+  --bs-btn-active-border-color: transparent;
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: transparent;
+  --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
+  cursor: pointer;
+}
+
+.btn-text-primary {
+  --bs-btn-color: var(--eithra-primary);
+  --bs-btn-hover-color: var(--eithra-primary-dark);
+  --bs-btn-active-color: var(--eithra-primary-dark);
+  --bs-btn-hover-bg: rgba(var(--eithra-primary-rgb), 0.08);
+  --bs-btn-active-bg: rgba(var(--eithra-primary-rgb), 0.16);
+}
+
+.btn-text-secondary {
+  --bs-btn-color: var(--bs-secondary-text-emphasis);
+  --bs-btn-hover-color: var(--bs-secondary-text-emphasis);
+  --bs-btn-active-color: var(--bs-secondary-text-emphasis);
+  --bs-btn-hover-bg: rgba(var(--bs-secondary-rgb), 0.12);
+  --bs-btn-active-bg: rgba(var(--bs-secondary-rgb), 0.2);
+}
+
+.btn-text-success {
+  --bs-btn-color: var(--bs-success-text-emphasis);
+  --bs-btn-hover-color: var(--bs-success-text-emphasis);
+  --bs-btn-active-color: var(--bs-success-text-emphasis);
+  --bs-btn-hover-bg: rgba(var(--bs-success-rgb), 0.16);
+  --bs-btn-active-bg: rgba(var(--bs-success-rgb), 0.26);
+}
+
+.btn-text-info {
+  --bs-btn-color: var(--bs-info-text-emphasis);
+  --bs-btn-hover-color: var(--bs-info-text-emphasis);
+  --bs-btn-active-color: var(--bs-info-text-emphasis);
+  --bs-btn-hover-bg: rgba(var(--bs-info-rgb), 0.14);
+  --bs-btn-active-bg: rgba(var(--bs-info-rgb), 0.24);
+}
+
+.btn-text-warning {
+  --bs-btn-color: var(--bs-warning-text-emphasis);
+  --bs-btn-hover-color: var(--bs-warning-text-emphasis);
+  --bs-btn-active-color: var(--bs-warning-text-emphasis);
+  --bs-btn-hover-bg: rgba(var(--bs-warning-rgb), 0.18);
+  --bs-btn-active-bg: rgba(var(--bs-warning-rgb), 0.28);
+}
+
+.btn-text-danger {
+  --bs-btn-color: var(--bs-danger-text-emphasis);
+  --bs-btn-hover-color: var(--bs-danger-text-emphasis);
+  --bs-btn-active-color: var(--bs-danger-text-emphasis);
+  --bs-btn-hover-bg: rgba(var(--bs-danger-rgb), 0.14);
+  --bs-btn-active-bg: rgba(var(--bs-danger-rgb), 0.24);
+}
+
+.btn-label-primary,
+.btn-label-secondary,
+.btn-label-success,
+.btn-label-info,
+.btn-label-warning,
+.btn-label-danger {
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-border-color: transparent;
+  --bs-btn-active-border-color: transparent;
+  --bs-btn-disabled-border-color: transparent;
+  --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
+}
+
+.btn-label-primary {
+  --bs-btn-color: var(--eithra-primary);
+  --bs-btn-bg: var(--bs-primary-bg-subtle);
+  --bs-btn-hover-color: var(--eithra-primary-dark);
+  --bs-btn-hover-bg: var(--bs-primary-border-subtle);
+  --bs-btn-active-color: var(--eithra-primary-dark);
+  --bs-btn-active-bg: var(--bs-primary-border-subtle);
+}
+
+.btn-label-secondary {
+  --bs-btn-color: var(--bs-secondary-text-emphasis);
+  --bs-btn-bg: var(--bs-secondary-bg-subtle);
+  --bs-btn-hover-bg: #dfe4e8;
+  --bs-btn-hover-color: var(--bs-secondary-text-emphasis);
+  --bs-btn-active-bg: #dfe4e8;
+  --bs-btn-active-color: var(--bs-secondary-text-emphasis);
+}
+
+.btn-label-success {
+  --bs-btn-color: var(--bs-success-text-emphasis);
+  --bs-btn-bg: var(--bs-success-bg-subtle);
+  --bs-btn-hover-bg: #d5f2c3;
+  --bs-btn-hover-color: var(--bs-success-text-emphasis);
+  --bs-btn-active-bg: #d5f2c3;
+  --bs-btn-active-color: var(--bs-success-text-emphasis);
+}
+
+.btn-label-info {
+  --bs-btn-color: var(--bs-info-text-emphasis);
+  --bs-btn-bg: var(--bs-info-bg-subtle);
+  --bs-btn-hover-bg: #bfeaf5;
+  --bs-btn-hover-color: var(--bs-info-text-emphasis);
+  --bs-btn-active-bg: #bfeaf5;
+  --bs-btn-active-color: var(--bs-info-text-emphasis);
+}
+
+.btn-label-warning {
+  --bs-btn-color: var(--bs-warning-text-emphasis);
+  --bs-btn-bg: var(--bs-warning-bg-subtle);
+  --bs-btn-hover-bg: #ffe6a8;
+  --bs-btn-hover-color: var(--bs-warning-text-emphasis);
+  --bs-btn-active-bg: #ffe6a8;
+  --bs-btn-active-color: var(--bs-warning-text-emphasis);
+}
+
+.btn-label-danger {
+  --bs-btn-color: var(--bs-danger-text-emphasis);
+  --bs-btn-bg: var(--bs-danger-bg-subtle);
+  --bs-btn-hover-bg: #ffc9c0;
+  --bs-btn-hover-color: var(--bs-danger-text-emphasis);
+  --bs-btn-active-bg: #ffc9c0;
+  --bs-btn-active-color: var(--bs-danger-text-emphasis);
+}
+
+/* Dentro das grids o Sneat pinta o ícone com a cor do texto da tabela, o que
+   apagaria a semântica da ação. A ação volta a ter a cor que significa. */
+.table .btn-icon.btn-text-primary,
+.table .btn-icon.btn-text-secondary,
+.table .btn-icon.btn-text-success,
+.table .btn-icon.btn-text-info,
+.table .btn-icon.btn-text-warning,
+.table .btn-icon.btn-text-danger {
+  color: var(--bs-btn-color);
+}
+
 /* Botões e barra de progresso trazem a cor primária fixada no tema.
    Reapontamos para os tokens do Eithra sem reescrever o componente. */
 .btn-primary {
@@ -91,6 +246,9 @@
 /* Marca na sidebar e nas telas públicas ---------------------------------- */
 .eithra-brand-logo img {
   display: block;
+  inline-size: 28px;
+  block-size: 28px;
+  object-fit: contain;
 }
 
 /* Altura do cabeçalho do menu. O tema só define isso no CSS de demonstração,
@@ -98,6 +256,32 @@
 .menu .app-brand {
   block-size: 64px;
   margin-block-start: 12px;
+}
+
+.app-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-inline-size: 0;
+}
+
+.eithra-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.eithra-brand-text {
+  white-space: nowrap;
+}
+
+.layout-menu-collapsed .eithra-brand-text {
+  display: none;
+}
+
+.layout-menu-collapsed .app-brand-link {
+  justify-content: center;
 }
 
 /* Estados de tela ------------------------------------------------------- */
@@ -188,6 +372,114 @@
   object-fit: contain;
   border-radius: 0.5rem;
   background-color: var(--bs-secondary-bg-subtle);
+}
+
+/* Mensagens e tabelas ---------------------------------------------------- */
+/* Alertas com links longos não podem empurrar a página inteira para o lado. */
+.alert .flex-grow-1 {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A lista de acessos tem textos variáveis (nome, e-mail, papel e links longos).
+   A tabela precisa continuar legível sem depender de rolagem horizontal. */
+.eithra-acessos-table {
+  table-layout: fixed;
+  inline-size: 100%;
+}
+
+.eithra-acessos-table .eithra-col-pessoa {
+  inline-size: 36%;
+}
+
+.eithra-acessos-table .eithra-col-papel {
+  inline-size: 23%;
+}
+
+.eithra-acessos-table .eithra-col-situacao {
+  inline-size: 12%;
+}
+
+.eithra-acessos-table .eithra-col-desde {
+  inline-size: 10%;
+}
+
+.eithra-acessos-table .eithra-col-acoes {
+  inline-size: 19%;
+}
+
+.eithra-acessos-table .eithra-cell-break {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Grids ------------------------------------------------------------------ */
+/* Uma grid mostra o suficiente para identificar, comparar e agir. O que é
+   longo demais para a linha fica no title, na dica ou na tela de detalhe —
+   nunca empurrando a altura da lista inteira. */
+.eithra-duas-linhas {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* A linha responde ao mouse com um realce discreto, para o olho não perder a
+   linha em listas longas. Só a linha que de fato abre um registro recebe o
+   cursor de link: a lista não vira uma fileira de botões. */
+.table tbody tr:hover > * {
+  --bs-table-bg-state: var(--bs-table-hover-bg);
+}
+
+.table tbody tr[data-href] {
+  cursor: pointer;
+}
+
+/* Busca contextual ------------------------------------------------------- */
+/* A lupa fica dentro do campo e um "x" discreto limpa a busca quando há
+   texto. Não existe botão "Buscar": a tecla Enter já envia. O "x" nativo do
+   navegador é escondido para não aparecerem dois. */
+.eithra-busca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 16rem;
+  max-width: 22rem;
+  min-width: 12rem;
+}
+
+.eithra-busca-icone {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--bs-secondary-color);
+  pointer-events: none;
+}
+
+.eithra-busca .form-control {
+  padding-left: 2.25rem;
+}
+
+.eithra-busca input[type="search"]::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.eithra-busca-limpar {
+  position: absolute;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+.eithra-busca-limpar:hover {
+  background-color: rgba(var(--bs-secondary-rgb), 0.12);
+  color: var(--bs-body-color);
 }
 
 /* Acessibilidade básica -------------------------------------------------- */

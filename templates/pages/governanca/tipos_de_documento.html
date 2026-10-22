@@ -57,7 +57,7 @@
                 {% if pode_gerenciar %}
                   <td class="text-end text-nowrap">
                     <a
-                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      class="btn btn-icon btn-text-primary rounded-pill"
                       href="?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ tipo.pk }}"
                       data-acao
                       title="Editar"
@@ -72,7 +72,7 @@
                       <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        class="btn btn-icon btn-text-warning rounded-pill"
                         title="{% if tipo.ativo %}Desativar{% else %}Ativar{% endif %}"
                         aria-label="{% if tipo.ativo %}Desativar{% else %}Ativar{% endif %} {{ tipo.nome }}">
                         <i class="bx {% if tipo.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>

@@ -14,18 +14,7 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
-      <form method="get" class="d-flex align-items-center gap-2" role="search">
-        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-        <label class="visually-hidden" for="busca-veiculos">Buscar veículo</label>
-        <input
-          type="search"
-          class="form-control form-control-sm"
-          id="busca-veiculos"
-          name="q"
-          value="{{ termo }}"
-          placeholder="Placa, marca ou modelo">
-        <button type="submit" class="btn btn-sm btn-label-secondary">Buscar</button>
-      </form>
+      {% include "components/busca.html" with busca_id="busca-veiculos" busca_rotulo="Buscar veículo" busca_exemplo="Placa, marca ou modelo" %}
       {% if pode_operar %}
         <button
           type="button"
@@ -80,7 +69,7 @@
                       <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
                       <button
                         type="submit"
-                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        class="btn btn-icon btn-text-warning rounded-pill"
                         title="{% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %}"
                         aria-label="{% if veiculo.ativo %}Desativar{% else %}Ativar{% endif %} o veículo {{ veiculo.placa }}">
                         <i class="bx {% if veiculo.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
@@ -131,7 +120,8 @@
         {% endfor %}
       </div>
     {% elif termo %}
-      {% include "components/state.html" with state_icon="bx-search" state_title="Nada encontrado" state_message="Nenhum veículo deste condomínio corresponde à busca." %}
+      {% querystring q=None as busca_limpa %}
+      {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhum veículo deste condomínio corresponde à busca. Tente outro termo ou limpe a busca." state_action_url=busca_limpa state_action_label="Limpar busca" state_action_tone="discreta" %}
     {% else %}
       {% include "components/state.html" with state_icon="bx-car" state_title="Nenhum veículo cadastrado" state_message="Cadastre o primeiro veículo deste condomínio para começar." %}
     {% endif %}
@@ -146,45 +136,43 @@
       aria-labelledby="novo-veiculo-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'comunidade:criar_veiculo' %}" novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="novo-veiculo-titulo">Novo veículo</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'comunidade:criar_veiculo' %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="novo-veiculo-titulo">Novo veículo</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
 
-              <a
-                class="small text-decoration-none d-inline-block mb-6"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-veiculo"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-veiculo">
-                Mais detalhes
-              </a>
-              <div class="collapse" id="mais-detalhes-veiculo">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
-              </div>
-              {% for erro in formulario_veiculo.non_field_errors %}
-                <div class="text-danger small mb-2">{{ erro }}</div>
-              {% endfor %}
+            <a
+              class="small text-decoration-none d-inline-block mb-6"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-veiculo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-veiculo">
+              Mais detalhes
+            </a>
+            <div class="collapse" id="mais-detalhes-veiculo">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
             </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Cadastrar</button>
-            </div>
-          </form>
-        </div>
+            {% for erro in formulario_veiculo.non_field_errors %}
+              <div class="text-danger small mb-2">{{ erro }}</div>
+            {% endfor %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Cadastrar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

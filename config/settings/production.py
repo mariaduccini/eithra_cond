@@ -40,3 +40,7 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 STORAGES["staticfiles"]["BACKEND"] = (  # noqa: F405
     "whitenoise.storage.CompressedManifestStaticFilesStorage"
 )
+
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend"
+)

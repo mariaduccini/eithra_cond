@@ -61,9 +61,10 @@ from apps.balancos.permissoes import (
 )
 from apps.balancos.services import (
     ErroDeConfirmacao,
+    ErroDeExclusao,
     confirmar_importacao,
     corrigir_balanco,
-    descartar_importacao,
+    excluir_importacao,
     formatar_tamanho,
     gerar_acesso_temporario,
     limite_de_upload,
@@ -341,11 +342,16 @@ def acessar_arquivo(request, pk):
 
 @login_required
 @require_POST
-def descartar(request, pk):
-    """Recusa a importação, guardando a memória do descarte."""
+def excluir(request, pk):
+    """Exclui a importação: o registro sai e o arquivo é liberado do bucket."""
     importacao = _importacao_autorizada(request, pk)
-    descartar_importacao(importacao)
-    messages.success(request, "Importação descartada.")
+    try:
+        excluir_importacao(importacao)
+    except ErroDeExclusao as erro:
+        messages.error(request, str(erro))
+        return redirect("balancos:importacoes")
+
+    messages.success(request, "Importação excluída.")
     return redirect("balancos:importacoes")
 
 

@@ -194,11 +194,10 @@ def montar_chave(*, condominio, importacao) -> str:
 def verificar_duplicidade(condominio, sha256: str) -> ImportacaoBalanco | None:
     """Procura o mesmo arquivo já recebido para o mesmo condomínio.
 
-    Duas situações não contam como repetição: uma importação descartada (a
-    gestão já recusou aquele arquivo) e uma que nem chegou (falha de
-    recebimento, que a pessoa vai querer tentar de novo). E o mesmo arquivo em
-    outro condomínio é outro documento — repetição só vale dentro do
-    condomínio.
+    Duas situações não contam como repetição: uma importação recusada pela
+    gestão e uma que nem chegou (falha de recebimento, que a pessoa vai querer
+    tentar de novo). E o mesmo arquivo em outro condomínio é outro documento —
+    repetição só vale dentro do condomínio.
     """
     return (
         ImportacaoBalanco.objects.filter(condominio=condominio, sha256=sha256)
@@ -306,35 +305,55 @@ def gerar_acesso_temporario(importacao, *, validade_segundos: int | None = None)
     )
 
 
-def descartar_importacao(importacao) -> None:
-    """Recusa a importação e libera o arquivo do bucket.
+class ErroDeExclusao(Exception):
+    """A importação não pode ser excluída. A mensagem é para a gestão."""
 
-    O registro não é apagado: fica a memória de que aquele arquivo foi recebido
-    e recusado, com a data. O que sai é o objeto, para um descarte não continuar
-    ocupando espaço.
+
+def excluir_importacao(importacao) -> None:
+    """Exclui a importação: o registro sai e o arquivo é liberado do bucket.
+
+    Enquanto a importação não virou balanço, nada do mês depende dela — recusar
+    o arquivo é apagá-lo. O que não se exclui é uma importação já confirmada: o
+    balanço daquele mês existe, e apagar o comprovante do recebimento não
+    desfaria o mês.
+
+    O banco decide, e o bucket obedece depois. A ordem importa porque não
+    existe transação que cubra os dois: se o objeto fosse removido primeiro e a
+    gravação falhasse, sobraria um registro apontando para um arquivo que já
+    não existe — e nada mais o alcançaria. Adiando a remoção para depois do
+    commit, o pior caso se inverte: sobra um objeto órfão no bucket, que
+    ninguém consulta e a limpeza recolhe quando quiser. Por isso a remoção é
+    *best-effort*: falha de storage nunca mantém vivo um registro canônico nem
+    prende a operação da gestão.
     """
     if importacao.confirmado_em:
-        raise ErroDeStorage("Uma importação já confirmada não é descartada.")
+        raise ErroDeExclusao(
+            "Esta importação já virou balanço e não pode ser excluída."
+        )
 
-    importacao.status = StatusImportacao.DESCARTADO
-    importacao.descartado_em = timezone.now()
-    importacao.save(update_fields=["status", "descartado_em", "atualizado_em"])
+    # A chave guarda-se antes: depois do delete o registro não existe mais, e é
+    # dela — e não da linha — que a remoção no bucket depende.
+    chave = importacao.storage_key
 
-    _remover_objeto(importacao)
+    with transaction.atomic():
+        importacao.delete()
+        # Registrada dentro da transação de propósito: assim ela só dispara
+        # quando o commit realmente acontece, e não quando este bloco fecha.
+        transaction.on_commit(lambda: _remover_objeto(chave))
 
 
-def _remover_objeto(importacao) -> None:
+def _remover_objeto(chave: str) -> None:
     """Remove o arquivo do bucket sem tornar a operação refém do storage.
 
-    Se a remoção — ou a própria configuração — falhar, a referência continua no
-    registro e o objeto pode ser limpo depois. O descarte em si já está gravado.
-    Nada disso vira erro para a gestão.
+    Se a remoção — ou a própria configuração — falhar, o objeto fica órfão e
+    pode ser limpo depois. A exclusão da importação não espera por isso: nada
+    aqui vira erro para a gestão.
     """
-    if not importacao.storage_key:
+    if not chave:
         return
 
     try:
-        obter_provider().remover(key=importacao.storage_key)
+        obter_provider().remover(key=chave)
     except (ErroDeStorage, ImproperlyConfigured):
         return
 

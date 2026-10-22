@@ -177,110 +177,108 @@
       aria-labelledby="registrar-demanda-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'demandas:criar' %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="registrar-demanda-titulo">Registrar demanda</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'demandas:criar' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="registrar-demanda-titulo">Registrar demanda</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            {% if formulario_demanda.condominio.is_hidden %}
+              {{ formulario_demanda.condominio }}
+            {% else %}
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.condominio.id_for_label }}">
+                  {{ formulario_demanda.condominio.label }}
+                </label>
+                {{ formulario_demanda.condominio }}
+                {% for erro in formulario_demanda.condominio.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
+                {{ formulario_demanda.titulo.label }}
+              </label>
+              {{ formulario_demanda.titulo }}
+              {% for erro in formulario_demanda.titulo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
 
-            <div class="modal-body">
-              {% if formulario_demanda.condominio.is_hidden %}
-                {{ formulario_demanda.condominio }}
-              {% else %}
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_demanda.condominio.id_for_label }}">
-                    {{ formulario_demanda.condominio.label }}
-                  </label>
-                  {{ formulario_demanda.condominio }}
-                  {% for erro in formulario_demanda.condominio.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              {% endif %}
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
+                {{ formulario_demanda.prioridade.label }}
+              </label>
+              {{ formulario_demanda.prioridade }}
+              {% for erro in formulario_demanda.prioridade.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <a
+              class="small text-decoration-none d-inline-block mt-3"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes">
+              Mais detalhes
+            </a>
+            <div class="collapse mt-3" id="mais-detalhes">
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
+                  {{ formulario_demanda.descricao.label }}
+                </label>
+                {{ formulario_demanda.descricao }}
+                {% for erro in formulario_demanda.descricao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
 
               <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
-                  {{ formulario_demanda.titulo.label }}
+                <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
+                  {{ formulario_demanda.responsavel.label }}
                 </label>
-                {{ formulario_demanda.titulo }}
-                {% for erro in formulario_demanda.titulo.errors %}
+                {{ formulario_demanda.responsavel }}
+                {% for erro in formulario_demanda.responsavel.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
+                  {{ formulario_demanda.prazo.label }}
+                </label>
+                {{ formulario_demanda.prazo }}
+                {% for erro in formulario_demanda.prazo.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
 
               <div class="mb-0">
-                <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
-                  {{ formulario_demanda.prioridade.label }}
+                <label class="form-label" for="{{ formulario_demanda.local_contexto.id_for_label }}">
+                  {{ formulario_demanda.local_contexto.label }}
                 </label>
-                {{ formulario_demanda.prioridade }}
-                {% for erro in formulario_demanda.prioridade.errors %}
+                {{ formulario_demanda.local_contexto }}
+                {% for erro in formulario_demanda.local_contexto.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
-
-              <a
-                class="small text-decoration-none d-inline-block mt-3"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes">
-                Mais detalhes
-              </a>
-              <div class="collapse mt-3" id="mais-detalhes">
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
-                    {{ formulario_demanda.descricao.label }}
-                  </label>
-                  {{ formulario_demanda.descricao }}
-                  {% for erro in formulario_demanda.descricao.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
-                    {{ formulario_demanda.responsavel.label }}
-                  </label>
-                  {{ formulario_demanda.responsavel }}
-                  {% for erro in formulario_demanda.responsavel.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
-                    {{ formulario_demanda.prazo.label }}
-                  </label>
-                  {{ formulario_demanda.prazo }}
-                  {% for erro in formulario_demanda.prazo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-
-                <div class="mb-0">
-                  <label class="form-label" for="{{ formulario_demanda.local_contexto.id_for_label }}">
-                    {{ formulario_demanda.local_contexto.label }}
-                  </label>
-                  {{ formulario_demanda.local_contexto }}
-                  {% for erro in formulario_demanda.local_contexto.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Registrar</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Registrar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

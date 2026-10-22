@@ -1,0 +1,54 @@
+{% extends "layouts/public.html" %}
+
+{# Onde a pessoa escolhe a própria senha. Quem chega aqui veio por um endereço
+   entregue por quem cuida do condomínio, ou pedido em "Esqueci minha senha", e
+   não por uma sessão. O mesmo endereço atende aos dois casos: o texto muda,
+   porque quem já tinha senha está criando outra, e não definindo a primeira.
+   Quando o endereço não vale mais — usado ou vencido — a tela diz isso e não
+   abre formulário: a pessoa precisa pedir outro. #}
+
+{% block title %}{% if endereco_invalido %}Endereço expirado{% elif primeira_senha %}Defina sua senha{% else %}Crie uma nova senha{% endif %} · Eithra{% endblock %}
+
+{% block public_content %}
+  {% if endereco_invalido %}
+    <h4 class="mb-1">Este endereço não vale mais</h4>
+    <p class="mb-6">
+      Ele já foi usado ou o prazo terminou. Peça um novo em "Esqueci minha
+      senha" ou a quem cuida do condomínio — a senha é definida aqui, e ninguém
+      a escolhe por você.
+    </p>
+    <div class="d-grid gap-2">
+      <a class="btn btn-primary" href="{% url 'accounts:esqueci_senha' %}">Pedir um novo endereço</a>
+      <a class="btn btn-label-secondary" href="{% url 'accounts:login' %}">Ir para a entrada</a>
+    </div>
+  {% else %}
+    <h4 class="mb-1">{% if primeira_senha %}Defina sua senha{% else %}Crie uma nova senha{% endif %}</h4>
+    <p class="mb-6">Você vai entrar no Eithra com {{ conta.email }}.</p>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {% for error in form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+      {% endfor %}
+
+      <div class="mb-6">
+        <label class="form-label" for="{{ form.senha.id_for_label }}">{{ form.senha.label }}</label>
+        {{ form.senha }}
+        {% for error in form.senha.errors %}
+          <div class="text-danger small mt-1">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <div class="mb-6">
+        <label class="form-label" for="{{ form.confirmacao.id_for_label }}">{{ form.confirmacao.label }}</label>
+        {{ form.confirmacao }}
+        {% for error in form.confirmacao.errors %}
+          <div class="text-danger small mt-1">{{ error }}</div>
+        {% endfor %}
+      </div>
+
+      <button class="btn btn-primary d-grid w-100" type="submit">{% if primeira_senha %}Definir senha{% else %}Salvar nova senha{% endif %}</button>
+    </form>
+  {% endif %}
+{% endblock %}

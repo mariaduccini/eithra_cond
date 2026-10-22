@@ -1,37 +1,33 @@
-"""Administração de pessoas do condomínio."""
+"""Administração de pessoas do condomínio.
+
+O admin do Django é uma bancada de manutenção técnica, e nem aqui a senha de
+alguém é escolhida por outra pessoa: o cadastro cria a conta sem senha, e quem
+define a sua é sempre o dono dela, pelo fluxo de primeiro acesso. Também não há
+tela de troca de senha — a regra vale igual dos dois lados.
+"""
 from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
-from django.core.exceptions import ValidationError
 
 from apps.accounts.models import User
 
 
 class UserCreationForm(forms.ModelForm):
-    """Cria uma pessoa definindo a senha no momento do cadastro."""
+    """Cria uma pessoa sem senha utilizável.
 
-    password1 = forms.CharField(
-        label="Senha", strip=False, widget=forms.PasswordInput
-    )
-    password2 = forms.CharField(
-        label="Confirmação da senha", strip=False, widget=forms.PasswordInput
-    )
+    A conta nasce como nasce na tela de acessos: sem senha. O operador informa
+    quem é a pessoa, e não o que ela vai usar para entrar — quem escolhe a senha
+    é ela mesma, pelo endereço de primeiro acesso.
+    """
 
     class Meta:
         model = User
         fields = ("email", "full_name")
 
-    def clean_password2(self):
-        password1 = self.cleaned_data.get("password1")
-        password2 = self.cleaned_data.get("password2")
-        if password1 and password2 and password1 != password2:
-            raise ValidationError("As duas senhas não são iguais.")
-        return password2
-
     def save(self, commit=True):
         user = super().save(commit=False)
-        user.set_password(self.cleaned_data["password1"])
+        user.set_unusable_password()
         if commit:
             user.save()
         return user
@@ -84,9 +80,24 @@ class UserAdmin(DjangoUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "full_name", "password1", "password2"),
+                "fields": ("email", "full_name"),
             },
         ),
     )
 
     filter_horizontal = ("groups", "user_permissions")
+
+    def get_urls(self):
+        """Sem tela de troca de senha neste admin.
+
+        A regra do Eithra é uma só: ninguém define a senha de outra pessoa. A
+        tela que o Django traria aqui faria exatamente isso — o operador
+        escolhendo a senha de quem não é ele —, então ela não é registrada. Quem
+        precisa de senha nova pede por "esqueci minha senha", ou recebe o
+        endereço de primeiro acesso de quem cuida do condomínio.
+        """
+        return [
+            url
+            for url in super().get_urls()
+            if url.name != "auth_user_password_change"
+        ]

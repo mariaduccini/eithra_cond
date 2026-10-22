@@ -154,6 +154,28 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Quanto tempo vale o endereço de primeiro acesso: tempo de a gestão entregar e
+# a pessoa usar, sem ficar aberto para sempre. O endereço também deixa de valer
+# assim que a senha é definida, e ninguém define senha por outra pessoa.
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24 * 3
+
+# ---------------------------------------------------------------------------
+# E-mail transacional
+# ---------------------------------------------------------------------------
+# O backend de envio varia por ambiente. Aqui ficam apenas os parâmetros comuns
+# aos backends reais: o ambiente local pode continuar imprimindo no console, e
+# produção pode apontar para SMTP ou outro backend equivalente.
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default="Eithra <nao-responda@localhost>"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+
 # ---------------------------------------------------------------------------
 # Internacionalização
 # ---------------------------------------------------------------------------

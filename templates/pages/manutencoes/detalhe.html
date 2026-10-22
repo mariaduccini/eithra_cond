@@ -45,7 +45,7 @@
       {% if pode_editar %}
         <button
           type="button"
-          class="btn btn-icon btn-text-secondary rounded-pill"
+          class="btn btn-icon btn-text-primary rounded-pill"
           data-bs-toggle="modal"
           data-bs-target="#editar-manutencao"
           title="Editar manutenção"
@@ -203,148 +203,146 @@
       aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="post" action="{% url 'manutencoes:editar' manutencao.pk %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="editar-manutencao-titulo">Editar manutenção</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        <form class="modal-content" method="post" action="{% url 'manutencoes:editar' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-manutencao-titulo">Editar manutenção</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
+                {{ formulario_manutencao.titulo.label }}
+              </label>
+              {{ formulario_manutencao.titulo }}
+              {% for erro in formulario_manutencao.titulo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
 
-            <div class="modal-body">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.titulo.id_for_label }}">
-                  {{ formulario_manutencao.titulo.label }}
+            <div class="row g-3 mb-6">
+              <div class="col-6">
+                <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
+                  {{ formulario_manutencao.tipo.label }}
                 </label>
-                {{ formulario_manutencao.titulo }}
-                {% for erro in formulario_manutencao.titulo.errors %}
+                {{ formulario_manutencao.tipo }}
+                {% for erro in formulario_manutencao.tipo.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
-                    {{ formulario_manutencao.tipo.label }}
-                  </label>
-                  {{ formulario_manutencao.tipo }}
-                  {% for erro in formulario_manutencao.tipo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
-                    {{ formulario_manutencao.prioridade.label }}
-                  </label>
-                  {{ formulario_manutencao.prioridade }}
-                  {% for erro in formulario_manutencao.prioridade.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
-                  {{ formulario_manutencao.descricao_problema.label }}
+              <div class="col-6">
+                <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
+                  {{ formulario_manutencao.prioridade.label }}
                 </label>
-                {{ formulario_manutencao.descricao_problema }}
-                {% for erro in formulario_manutencao.descricao_problema.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.responsavel.id_for_label }}">
-                  {{ formulario_manutencao.responsavel.label }}
-                </label>
-                {{ formulario_manutencao.responsavel }}
-                {% for erro in formulario_manutencao.responsavel.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.local.id_for_label }}">
-                    {{ formulario_manutencao.local.label }}
-                  </label>
-                  {{ formulario_manutencao.local }}
-                  {% for erro in formulario_manutencao.local.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.equipamento.id_for_label }}">
-                    {{ formulario_manutencao.equipamento.label }}
-                  </label>
-                  {{ formulario_manutencao.equipamento }}
-                  {% for erro in formulario_manutencao.equipamento.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.fornecedor.id_for_label }}">
-                    {{ formulario_manutencao.fornecedor.label }}
-                  </label>
-                  {{ formulario_manutencao.fornecedor }}
-                  {% for erro in formulario_manutencao.fornecedor.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
-                    {{ formulario_manutencao.data_prevista.label }}
-                  </label>
-                  {{ formulario_manutencao.data_prevista }}
-                  {% for erro in formulario_manutencao.data_prevista.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.custo_previsto.id_for_label }}">
-                    {{ formulario_manutencao.custo_previsto.label }}
-                  </label>
-                  {{ formulario_manutencao.custo_previsto }}
-                  {% for erro in formulario_manutencao.custo_previsto.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_manutencao.custo_real.id_for_label }}">
-                    {{ formulario_manutencao.custo_real.label }}
-                  </label>
-                  {{ formulario_manutencao.custo_real }}
-                  {% for erro in formulario_manutencao.custo_real.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              </div>
-
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_manutencao.descricao_servico.id_for_label }}">
-                  {{ formulario_manutencao.descricao_servico.label }}
-                </label>
-                {{ formulario_manutencao.descricao_servico }}
-                {% for erro in formulario_manutencao.descricao_servico.errors %}
+                {{ formulario_manutencao.prioridade }}
+                {% for erro in formulario_manutencao.prioridade.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
             </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar</button>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
+                {{ formulario_manutencao.descricao_problema.label }}
+              </label>
+              {{ formulario_manutencao.descricao_problema }}
+              {% for erro in formulario_manutencao.descricao_problema.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
-          </form>
-        </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_manutencao.responsavel.id_for_label }}">
+                {{ formulario_manutencao.responsavel.label }}
+              </label>
+              {{ formulario_manutencao.responsavel }}
+              {% for erro in formulario_manutencao.responsavel.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.local.id_for_label }}">
+                  {{ formulario_manutencao.local.label }}
+                </label>
+                {{ formulario_manutencao.local }}
+                {% for erro in formulario_manutencao.local.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.equipamento.id_for_label }}">
+                  {{ formulario_manutencao.equipamento.label }}
+                </label>
+                {{ formulario_manutencao.equipamento }}
+                {% for erro in formulario_manutencao.equipamento.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.fornecedor.id_for_label }}">
+                  {{ formulario_manutencao.fornecedor.label }}
+                </label>
+                {{ formulario_manutencao.fornecedor }}
+                {% for erro in formulario_manutencao.fornecedor.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.data_prevista.id_for_label }}">
+                  {{ formulario_manutencao.data_prevista.label }}
+                </label>
+                {{ formulario_manutencao.data_prevista }}
+                {% for erro in formulario_manutencao.data_prevista.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="row g-3 mb-6">
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.custo_previsto.id_for_label }}">
+                  {{ formulario_manutencao.custo_previsto.label }}
+                </label>
+                {{ formulario_manutencao.custo_previsto }}
+                {% for erro in formulario_manutencao.custo_previsto.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div class="col-12 col-sm-6">
+                <label class="form-label" for="{{ formulario_manutencao.custo_real.id_for_label }}">
+                  {{ formulario_manutencao.custo_real.label }}
+                </label>
+                {{ formulario_manutencao.custo_real }}
+                {% for erro in formulario_manutencao.custo_real.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_manutencao.descricao_servico.id_for_label }}">
+                {{ formulario_manutencao.descricao_servico.label }}
+              </label>
+              {{ formulario_manutencao.descricao_servico }}
+              {% for erro in formulario_manutencao.descricao_servico.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -358,35 +356,33 @@
       aria-labelledby="mudar-situacao-titulo"
       aria-hidden="{% if modal_aberto == 'status' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'status' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'manutencoes:mudar_status' manutencao.pk %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="mudar-situacao-titulo">Mudar situação</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:mudar_status' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="mudar-situacao-titulo">Mudar situação</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
-                  {{ formulario_status.status.label }}
-                </label>
-                {{ formulario_status.status }}
-                {% for erro in formulario_status.status.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
+          <div class="modal-body">
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
+                {{ formulario_status.status.label }}
+              </label>
+              {{ formulario_status.status }}
+              {% for erro in formulario_status.status.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Atualizar situação</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Atualizar situação</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -400,45 +396,43 @@
       aria-labelledby="concluir-manutencao-titulo"
       aria-hidden="{% if modal_aberto == 'concluir' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'concluir' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'manutencoes:concluir' manutencao.pk %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="concluir-manutencao-titulo">Concluir manutenção</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:concluir' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="concluir-manutencao-titulo">Concluir manutenção</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_conclusao.descricao_servico.id_for_label }}">
+                {{ formulario_conclusao.descricao_servico.label }}
+              </label>
+              {{ formulario_conclusao.descricao_servico }}
+              {% for erro in formulario_conclusao.descricao_servico.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
 
-            <div class="modal-body">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_conclusao.descricao_servico.id_for_label }}">
-                  {{ formulario_conclusao.descricao_servico.label }}
-                </label>
-                {{ formulario_conclusao.descricao_servico }}
-                {% for erro in formulario_conclusao.descricao_servico.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_conclusao.custo_real.id_for_label }}">
-                  {{ formulario_conclusao.custo_real.label }}
-                </label>
-                {{ formulario_conclusao.custo_real }}
-                {% for erro in formulario_conclusao.custo_real.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_conclusao.custo_real.id_for_label }}">
+                {{ formulario_conclusao.custo_real.label }}
+              </label>
+              {{ formulario_conclusao.custo_real }}
+              {% for erro in formulario_conclusao.custo_real.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Concluir</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Concluir</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -452,38 +446,36 @@
       aria-labelledby="cancelar-manutencao-titulo"
       aria-hidden="{% if modal_aberto == 'cancelar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'cancelar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'manutencoes:cancelar' manutencao.pk %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="cancelar-manutencao-titulo">Cancelar manutenção</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:cancelar' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="cancelar-manutencao-titulo">Cancelar manutenção</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              <p class="text-body-secondary">
-                Cancelar encerra esta manutenção sem que o serviço aconteça. O motivo fica guardado no histórico.
-              </p>
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_cancelamento.motivo.id_for_label }}">
-                  {{ formulario_cancelamento.motivo.label }}
-                </label>
-                {{ formulario_cancelamento.motivo }}
-                {% for erro in formulario_cancelamento.motivo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
+          <div class="modal-body">
+            <p class="text-body-secondary">
+              Cancelar encerra esta manutenção sem que o serviço aconteça. O motivo fica guardado no histórico.
+            </p>
+            <div class="mb-0">
+              <label class="form-label" for="{{ formulario_cancelamento.motivo.id_for_label }}">
+                {{ formulario_cancelamento.motivo.label }}
+              </label>
+              {{ formulario_cancelamento.motivo }}
+              {% for erro in formulario_cancelamento.motivo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Voltar
-              </button>
-              <button type="submit" class="btn btn-danger">Cancelar manutenção</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Voltar
+            </button>
+            <button type="submit" class="btn btn-danger">Cancelar manutenção</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

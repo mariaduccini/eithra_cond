@@ -5,11 +5,18 @@ Uso:
   {% include "components/state.html" with state_icon="bx-info-circle" state_title="Nada por aqui ainda" state_message="..." %}
 
 Variáveis opcionais: state_icon, state_message, state_role, state_tone,
-state_busy, state_action_view, state_action_label.
+state_busy, state_action_view, state_action_url, state_action_label,
+state_action_tone.
 
 state_tone: "danger", "warning", "success" ou "info". Sem valor, o bloco
 fica neutro. O estado nunca depende só da cor: o ícone e o texto dizem o
 que está acontecendo.
+
+Ação: use state_action_view (nome de rota) ou state_action_url (endereço já
+montado). O botão só aparece com um rótulo definido, e quem inclui decide se
+há permissão para agir. state_action_tone="discreta" deixa a ação em segundo
+plano — para quando a ação principal da tela já está à vista (limpar uma
+busca, por exemplo).
 {% endcomment %}
 <div
   class="eithra-state text-center{% if state_tone %} eithra-state-{{ state_tone }}{% endif %}"
@@ -22,7 +29,11 @@ que está acontecendo.
   {% if state_message %}
     <p class="eithra-state-message text-body-secondary mb-0">{{ state_message }}</p>
   {% endif %}
-  {% if state_action_view %}
-    <a class="btn btn-primary mt-4" href="{% url state_action_view %}">{{ state_action_label }}</a>
+  {% if state_action_label %}
+    <a
+      class="btn mt-4 {% if state_action_tone == 'discreta' %}btn-label-secondary{% else %}btn-primary{% endif %}"
+      href="{% if state_action_url %}{{ state_action_url }}{% else %}{% url state_action_view %}{% endif %}">
+      {{ state_action_label }}
+    </a>
   {% endif %}
 </div>

@@ -131,100 +131,98 @@
       aria-labelledby="registrar-compra-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'compras:criar' %}" novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="registrar-compra-titulo">Registrar compra</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'compras:criar' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="registrar-compra-titulo">Registrar compra</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              {% if formulario_compra.condominio.is_hidden %}
+          <div class="modal-body">
+            {% if formulario_compra.condominio.is_hidden %}
+              {{ formulario_compra.condominio }}
+            {% else %}
+              <div class="mb-6">
+                <label class="form-label" for="{{ formulario_compra.condominio.id_for_label }}">
+                  {{ formulario_compra.condominio.label }}
+                </label>
                 {{ formulario_compra.condominio }}
-              {% else %}
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_compra.condominio.id_for_label }}">
-                    {{ formulario_compra.condominio.label }}
-                  </label>
-                  {{ formulario_compra.condominio }}
-                  {% for erro in formulario_compra.condominio.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-              {% endif %}
+                {% for erro in formulario_compra.condominio.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            {% endif %}
 
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_compra.data_compra.id_for_label }}">
+                {{ formulario_compra.data_compra.label }}
+              </label>
+              {{ formulario_compra.data_compra }}
+              {% for erro in formulario_compra.data_compra.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_compra.fornecedor.id_for_label }}">
+                {{ formulario_compra.fornecedor.label }}
+              </label>
+              {{ formulario_compra.fornecedor }}
+              {% for erro in formulario_compra.fornecedor.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <a
+              class="small text-decoration-none d-inline-block"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-compra"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-compra">
+              Mais detalhes
+            </a>
+            <div class="collapse mt-3" id="mais-detalhes-compra">
               <div class="mb-6">
-                <label class="form-label" for="{{ formulario_compra.data_compra.id_for_label }}">
-                  {{ formulario_compra.data_compra.label }}
+                <label class="form-label" for="{{ formulario_compra.numero_documento.id_for_label }}">
+                  {{ formulario_compra.numero_documento.label }}
                 </label>
-                {{ formulario_compra.data_compra }}
-                {% for erro in formulario_compra.data_compra.errors %}
+                {{ formulario_compra.numero_documento }}
+                {% for erro in formulario_compra.numero_documento.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
 
               <div class="mb-6">
-                <label class="form-label" for="{{ formulario_compra.fornecedor.id_for_label }}">
-                  {{ formulario_compra.fornecedor.label }}
+                <label class="form-label" for="{{ formulario_compra.manutencao_origem.id_for_label }}">
+                  {{ formulario_compra.manutencao_origem.label }}
                 </label>
-                {{ formulario_compra.fornecedor }}
-                {% for erro in formulario_compra.fornecedor.errors %}
+                {{ formulario_compra.manutencao_origem }}
+                {% for erro in formulario_compra.manutencao_origem.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
 
-              <a
-                class="small text-decoration-none d-inline-block"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-compra"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-compra">
-                Mais detalhes
-              </a>
-              <div class="collapse mt-3" id="mais-detalhes-compra">
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_compra.numero_documento.id_for_label }}">
-                    {{ formulario_compra.numero_documento.label }}
-                  </label>
-                  {{ formulario_compra.numero_documento }}
-                  {% for erro in formulario_compra.numero_documento.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-
-                <div class="mb-6">
-                  <label class="form-label" for="{{ formulario_compra.manutencao_origem.id_for_label }}">
-                    {{ formulario_compra.manutencao_origem.label }}
-                  </label>
-                  {{ formulario_compra.manutencao_origem }}
-                  {% for erro in formulario_compra.manutencao_origem.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-
-                <div class="mb-0">
-                  <label class="form-label" for="{{ formulario_compra.observacao.id_for_label }}">
-                    {{ formulario_compra.observacao.label }}
-                  </label>
-                  {{ formulario_compra.observacao }}
-                  {% for erro in formulario_compra.observacao.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
+              <div class="mb-0">
+                <label class="form-label" for="{{ formulario_compra.observacao.id_for_label }}">
+                  {{ formulario_compra.observacao.label }}
+                </label>
+                {{ formulario_compra.observacao }}
+                {% for erro in formulario_compra.observacao.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
               </div>
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Abrir compra</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Abrir compra</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

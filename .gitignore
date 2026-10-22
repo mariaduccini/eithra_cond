@@ -31,6 +31,7 @@ media/
 
 # Artefatos de execução de testes e verificação (saída redirecionada)
 .suite_out.txt
+/local_data/carga_historica/
 
 # Sistema operacional / editores
 .DS_Store

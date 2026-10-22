@@ -39,8 +39,10 @@ class StatusImportacao(models.TextChoices):
 
     Agora o fluxo passa por ``PROCESSANDO`` para identificar o layout do PDF e
     termina em ``PRONTO`` quando o formato foi classificado, ainda sem extrair
-    informação financeira nenhuma. ``ERRO`` descreve falha técnica; e
-    ``CONFIRMADO`` e ``DESCARTADO`` são o desfecho da importação.
+    informação financeira nenhuma. ``ERRO`` descreve falha técnica, e
+    ``CONFIRMADO`` é o desfecho: a importação virou balanço. ``DESCARTADO`` é a
+    recusa de antes — quando o arquivo recusado era registrado, e não excluído —
+    e continua existindo para o que já foi gravado assim.
     """
 
     RECEBIDO = "recebido", "Recebido"

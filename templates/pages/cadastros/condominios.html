@@ -1,0 +1,224 @@
+{% extends "layouts/app.html" %}
+
+{# A porta de entrada dos cadastros mostra os condomínios que esta pessoa pode
+   enxergar. A própria lista abre a ficha em modal, sem duplicar menu. #}
+
+{% block title %}Condomínios · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Condomínios</h1>
+      <p class="text-body-secondary mb-0">Os condomínios cujos cadastros você pode consultar agora.</p>
+    </div>
+    {% if pode_criar_condominio %}
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#novo-condominio">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo condomínio
+      </button>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    {% if condominios_lista %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table table-hover align-middle mb-0">
+          <caption class="visually-hidden">Condomínios autorizados para esta pessoa</caption>
+          <thead>
+            <tr>
+              <th scope="col">Condomínio</th>
+              <th scope="col">Localização</th>
+              <th scope="col">Unidades</th>
+              <th scope="col">Seu papel</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in condominios_lista %}
+              <tr
+                class="position-relative"
+                data-href="{{ item.url }}"
+                style="cursor: pointer;">
+                <td>
+                  <a href="{{ item.url }}" class="fw-medium text-body">
+                    {{ item.nome }}
+                  </a>
+                  {% if item.cnpj %}
+                    <div class="text-body-secondary small">CNPJ {{ item.cnpj }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ item.localizacao }}</td>
+                <td>
+                  {% if item.quantidade_unidades is not None %}
+                    {{ item.quantidade_unidades }}
+                  {% else %}
+                    <span class="text-body-secondary">Não informada</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {{ item.papel }}
+                  <div class="text-body-secondary small">
+                    {% if item.pode_gerenciar %}
+                      Pode gerenciar
+                    {% else %}
+                      Somente leitura
+                    {% endif %}
+                  </div>
+                </td>
+                <td><span class="badge bg-label-{{ item.tom }}">{{ item.texto }}</span></td>
+                <td class="text-end text-nowrap">
+                  <a
+                    class="btn btn-icon btn-text-secondary rounded-pill position-relative"
+                    href="{{ item.url }}"
+                    title="{{ item.acao_label }}"
+                    aria-label="{{ item.acao_label }} {{ item.nome }}">
+                    <i class="bx {{ item.acao_icone }}" aria-hidden="true"></i>
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for item in condominios_lista %}
+          <a href="{{ item.url }}" class="list-group-item list-group-item-action">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ item.nome }}</span>
+              <span class="badge bg-label-{{ item.tom }} flex-shrink-0">{{ item.texto }}</span>
+            </div>
+            {% if item.cnpj %}
+              <div class="text-body-secondary small mt-1">CNPJ {{ item.cnpj }}</div>
+            {% endif %}
+            <div class="text-body-secondary small mt-1">{{ item.localizacao }}</div>
+            <div class="text-body-secondary small mt-1">
+              {{ item.papel }} ·
+              {% if item.pode_gerenciar %}
+                Pode gerenciar
+              {% else %}
+                Somente leitura
+              {% endif %}
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {% if item.quantidade_unidades is not None %}
+                {{ item.quantidade_unidades }} unidades
+              {% else %}
+                Quantidade de unidades não informada
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-buildings" state_title="Nenhum condomínio disponível" state_message="Os condomínios que você puder consultar vão aparecer aqui." %}
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll("tr[data-href]").forEach(function (linha) {
+        linha.addEventListener("click", function (event) {
+          if (event.target.closest("a, button, form")) {
+            return;
+          }
+          window.location.assign(linha.dataset.href);
+        });
+      });
+    });
+  </script>
+{% endblock %}
+
+{% block modals %}
+  {{ block.super }}
+  {% if pode_criar_condominio %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="novo-condominio"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="novo-condominio-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <form method="post" action="{% url 'cadastros:criar_condominio' %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="novo-condominio-titulo">Novo condomínio</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              {% include "pages/cadastros/_form_condominio.html" with formulario=formulario_condominio %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if item_edicao %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-condominio"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-condominio-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <form
+            method="post"
+            action="{% url 'cadastros:editar_condominio' item_edicao.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <div>
+                <h5 class="modal-title" id="editar-condominio-titulo">{{ item_edicao.nome }}</h5>
+                <p class="text-body-secondary small mb-0">
+                  {% if pode_gerenciar_item_edicao %}
+                    Corrija os dados institucionais deste condomínio.
+                  {% else %}
+                    Os dados deste condomínio, em leitura.
+                  {% endif %}
+                </p>
+              </div>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <span class="form-label d-block">Situação</span>
+                <span class="badge bg-label-{% if item_edicao.ativo %}success{% else %}secondary{% endif %}">
+                  {% if item_edicao.ativo %}Ativo{% else %}Inativo{% endif %}
+                </span>
+              </div>
+              {% include "pages/cadastros/_form_condominio.html" with formulario=formulario_edicao %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Fechar
+              </button>
+              {% if pode_gerenciar_item_edicao %}
+                <button type="submit" class="btn btn-primary">Salvar</button>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

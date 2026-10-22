@@ -25,6 +25,7 @@ from apps.balancos.contratos import SCHEMA_VALIDADO, SCHEMA_VERSAO, de_dicionari
 from apps.balancos.extrator_atual import extrair_balanco_atual
 from apps.balancos.models import BalancoMensal, EvidenciaVisualBalanco, ImportacaoBalanco
 from apps.balancos.services import ErroDeConfirmacao, confirmar_importacao
+from apps.balancos.storage import ErroDeStorage
 from apps.balancos.tests.apoio import (
     CONTEUDO_PDF,
     CONTEUDO_PNG,
@@ -527,7 +528,7 @@ class ListagemTests(BaseTelasTests):
 
         Também não se oferece uma ação de leitura: não existe operação segura de
         reprocessamento exposta, e um botão que não lê nada seria promessa vazia.
-        O que sobra é o arquivo original e o descarte.
+        O que sobra é o arquivo original e a exclusão.
         """
         importacao = self.importacao_em(self.condominio_a)
         resposta = self._lista()
@@ -535,7 +536,7 @@ class ListagemTests(BaseTelasTests):
         self.assertContains(resposta, "Dados ainda não lidos")
         self.assertContains(resposta, "Ver o PDF original")
         self.assertContains(
-            resposta, reverse("balancos:descartar", args=[importacao.pk])
+            resposta, reverse("balancos:excluir", args=[importacao.pk])
         )
         self.assertNotContains(resposta, "Ver dados")
         self.assertNotContains(resposta, "Ler dados")
@@ -601,37 +602,87 @@ class ArquivoTests(BaseTelasTests):
         self.assertIn(reverse("accounts:login"), resposta["Location"])
 
 
-class DescarteTests(BaseTelasTests):
-    """Descartar é uma recusa explícita, com memória."""
+class ExclusaoTests(BaseTelasTests):
+    """Excluir apaga a importação: o registro sai e o arquivo é liberado.
 
-    def test_descarte_marca_a_importacao(self):
+    O banco primeiro, o bucket depois: a remoção do objeto só é disparada
+    quando a transação confirma, e é por isso que os testes que a observam
+    passam por ``captureOnCommitCallbacks``.
+    """
+
+    def test_exclui_a_importacao_e_libera_o_arquivo(self):
+        importacao = self.importacao_em(self.condominio_a)
+        chave = importacao.storage_key
+        self.client.force_login(self.sindica)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            resposta = self.client.post(
+                reverse("balancos:excluir", args=[importacao.pk]), follow=True
+            )
+
+        self.assertContains(resposta, "Importação excluída.")
+        self.assertFalse(ImportacaoBalanco.objects.filter(pk=importacao.pk).exists())
+        self.assertIn(chave, self.provider.removidos)
+
+    def test_falha_ao_liberar_o_arquivo_nao_impede_a_exclusao(self):
+        importacao = self.importacao_em(self.condominio_a)
+
+        def falhar(*, key):
+            raise ErroDeStorage("Não foi possível falar com o armazenamento.")
+
+        self.provider.remover = falhar
+        self.client.force_login(self.sindica)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            resposta = self.client.post(
+                reverse("balancos:excluir", args=[importacao.pk]), follow=True
+            )
+
+        self.assertContains(resposta, "Importação excluída.")
+        self.assertFalse(ImportacaoBalanco.objects.filter(pk=importacao.pk).exists())
+
+    def test_a_importacao_excluida_sai_da_lista(self):
         importacao = self.importacao_em(self.condominio_a)
         self.client.force_login(self.sindica)
+
         resposta = self.client.post(
-            reverse("balancos:descartar", args=[importacao.pk]), follow=True
+            reverse("balancos:excluir", args=[importacao.pk]), follow=True
         )
 
-        self.assertContains(resposta, "Importação descartada.")
-        importacao.refresh_from_db()
-        self.assertEqual(importacao.status, StatusImportacao.DESCARTADO)
-        self.assertIsNotNone(importacao.descartado_em)
+        self.assertNotContains(resposta, "balanco-do-mes.pdf")
+        self.assertContains(resposta, "Nenhum arquivo recebido ainda")
+
+    def test_importacao_confirmada_nao_e_excluida(self):
+        from django.utils import timezone
+
+        importacao = self.importacao_em(self.condominio_a)
+        importacao.status = StatusImportacao.CONFIRMADO
+        importacao.confirmado_em = timezone.now()
+        importacao.save(update_fields=["status", "confirmado_em", "atualizado_em"])
+        self.client.force_login(self.sindica)
+
+        resposta = self.client.post(
+            reverse("balancos:excluir", args=[importacao.pk]), follow=True
+        )
+
+        self.assertContains(resposta, "já virou balanço e não pode ser excluída")
         self.assertTrue(ImportacaoBalanco.objects.filter(pk=importacao.pk).exists())
 
-    def test_descarte_de_outro_condominio_e_negado(self):
+    def test_exclusao_de_outro_condominio_e_negada(self):
         importacao = self.importacao_em(self.condominio_b, criado_por=self.admin)
         self.client.force_login(self.sindica)
-        resposta = self.client.post(reverse("balancos:descartar", args=[importacao.pk]))
+        resposta = self.client.post(reverse("balancos:excluir", args=[importacao.pk]))
         self.assertEqual(resposta.status_code, 404)
 
-    def test_descarte_exige_post(self):
+    def test_exclusao_exige_post(self):
         importacao = self.importacao_em(self.condominio_a)
         self.client.force_login(self.sindica)
-        resposta = self.client.get(reverse("balancos:descartar", args=[importacao.pk]))
+        resposta = self.client.get(reverse("balancos:excluir", args=[importacao.pk]))
         self.assertEqual(resposta.status_code, 405)
 
-    def test_descarte_exige_entrada(self):
+    def test_exclusao_exige_entrada(self):
         importacao = self.importacao_em(self.condominio_a)
-        resposta = self.client.post(reverse("balancos:descartar", args=[importacao.pk]))
+        resposta = self.client.post(reverse("balancos:excluir", args=[importacao.pk]))
         self.assertEqual(resposta.status_code, 302)
         self.assertIn(reverse("accounts:login"), resposta["Location"])
 
@@ -1320,7 +1371,7 @@ class BalancoConfirmadoTests(BaseConfirmacaoTests):
         self.assertContains(resposta, "Balanço confirmado")
         self.assertContains(resposta, reverse("balancos:balanco", args=[balanco.pk]))
 
-    def test_a_lista_nao_oferece_confirmar_nem_descartar_de_novo(self):
+    def test_a_lista_nao_oferece_confirmar_nem_excluir_de_novo(self):
         importacao = self._importacao_lida()
         self._confirmar(importacao)
 
@@ -1329,7 +1380,7 @@ class BalancoConfirmadoTests(BaseConfirmacaoTests):
 
         self.assertNotContains(resposta, "Confirmar balanço")
         self.assertNotContains(
-            resposta, reverse("balancos:descartar", args=[importacao.pk])
+            resposta, reverse("balancos:excluir", args=[importacao.pk])
         )
 
     @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)

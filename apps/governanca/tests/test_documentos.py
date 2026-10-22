@@ -129,6 +129,10 @@ class DocumentoNaTelaTests(TestCase):
         self.assertFalse(DocumentoOperacional.objects.exists())
         self.assertFalse(DocumentoFornecedor.objects.exists())
 
+    def test_lista_nao_traz_tipo_de_documento_como_acao_principal(self):
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, reverse("governanca:tipos_de_documento"))
+
 
 class VigenciaDoDocumentoTests(TestCase):
     """A validade do documento, lida do prazo e da regra do tipo."""

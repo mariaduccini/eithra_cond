@@ -12,6 +12,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.condominios import services as servicos_de_acesso
+from apps.condominios.constants import Papel
+
 from .models import (
     Condominio,
     Equipamento,
@@ -60,6 +63,26 @@ def _conferir_mesmo_condominio(alvos, condominio_id, recado: str) -> list:
 def salvar_condominio(*, condominio: Condominio, dados: dict) -> Condominio:
     """Grava o cadastro do condomínio já validado."""
     return _aplicar(condominio, dados)
+
+
+@transaction.atomic
+def criar_condominio(*, dados: dict, criado_por) -> Condominio:
+    """Cria um condomínio e já entrega ao criador o primeiro acesso de gestão.
+
+    O condomínio não pode nascer órfão: quem o criou precisa continuar
+    enxergando e mantendo esse cadastro na sequência. O primeiro vínculo nasce
+    como administração, usando a própria identidade já autenticada.
+    """
+    condominio = Condominio()
+    _aplicar(condominio, dados, validar=True)
+    servicos_de_acesso.adicionar_acesso(
+        condominio=condominio,
+        email=criado_por.email,
+        nome_completo=criado_por.full_name,
+        papel=Papel.ADMIN,
+        executor=criado_por,
+    )
+    return condominio
 
 
 # -- Tipos: as listas que a gestão mantém ---------------------------------------

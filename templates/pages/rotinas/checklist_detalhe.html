@@ -25,7 +25,7 @@
       {% if pode_editar %}
         <button
           type="button"
-          class="btn btn-icon btn-text-secondary rounded-pill"
+          class="btn btn-icon btn-text-primary rounded-pill"
           data-bs-toggle="modal"
           data-bs-target="#editar-checklist"
           title="Renomear checklist"
@@ -172,45 +172,43 @@
       aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="post" action="{% url 'rotinas:checklist_editar' checklist.pk %}" novalidate>
-            {% csrf_token %}
-            {{ formulario_checklist.condominio }}
-            <div class="modal-header">
-              <h5 class="modal-title" id="editar-checklist-titulo">Renomear checklist</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        <form class="modal-content" method="post" action="{% url 'rotinas:checklist_editar' checklist.pk %}" novalidate>
+          {% csrf_token %}
+          {{ formulario_checklist.condominio }}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-checklist-titulo">Renomear checklist</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_checklist.nome.id_for_label }}">
+                {{ formulario_checklist.nome.label }}
+              </label>
+              {{ formulario_checklist.nome }}
+              {% for erro in formulario_checklist.nome.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
 
-            <div class="modal-body">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_checklist.nome.id_for_label }}">
-                  {{ formulario_checklist.nome.label }}
-                </label>
-                {{ formulario_checklist.nome }}
-                {% for erro in formulario_checklist.nome.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_checklist.descricao.id_for_label }}">
-                  {{ formulario_checklist.descricao.label }}
-                </label>
-                {{ formulario_checklist.descricao }}
-                {% for erro in formulario_checklist.descricao.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_checklist.descricao.id_for_label }}">
+                {{ formulario_checklist.descricao.label }}
+              </label>
+              {{ formulario_checklist.descricao }}
+              {% for erro in formulario_checklist.descricao.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -225,66 +223,65 @@
       aria-hidden="false"
       style="display: block; background-color: rgba(0, 0, 0, 0.5);">
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-          <form
-            method="post"
-            action="{% url 'rotinas:checklist_item_editar' checklist.pk item_em_edicao.pk %}"
-            novalidate>
-            {% csrf_token %}
-            <div class="modal-header">
-              <h5 class="modal-title" id="editar-item-titulo">Editar tarefa</h5>
-              <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn-close" aria-label="Fechar"></a>
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'rotinas:checklist_item_editar' checklist.pk item_em_edicao.pk %}"
+          novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-item-titulo">Editar tarefa</h5>
+            <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn-close" aria-label="Fechar"></a>
+          </div>
+
+          <div class="modal-body">
+            <div class="mb-6">
+              <label class="form-label" for="id_item_descricao">{{ formulario_item.descricao.label }}</label>
+              <input
+                type="text"
+                name="descricao"
+                id="id_item_descricao"
+                class="form-control"
+                maxlength="200"
+                value="{{ item_em_edicao.descricao }}"
+                autocomplete="off"
+                required>
             </div>
 
-            <div class="modal-body">
-              <div class="mb-6">
-                <label class="form-label" for="id_item_descricao">{{ formulario_item.descricao.label }}</label>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="id_item_ordem">{{ formulario_item.ordem.label }}</label>
                 <input
-                  type="text"
-                  name="descricao"
-                  id="id_item_descricao"
+                  type="number"
+                  name="ordem"
+                  id="id_item_ordem"
                   class="form-control"
-                  maxlength="200"
-                  value="{{ item_em_edicao.descricao }}"
-                  autocomplete="off"
-                  required>
+                  min="0"
+                  value="{{ item_em_edicao.ordem }}">
               </div>
-
-              <div class="row g-3">
-                <div class="col-6">
-                  <label class="form-label" for="id_item_ordem">{{ formulario_item.ordem.label }}</label>
+              <div class="col-6 d-flex align-items-end">
+                <div class="form-check">
                   <input
-                    type="number"
-                    name="ordem"
-                    id="id_item_ordem"
-                    class="form-control"
-                    min="0"
-                    value="{{ item_em_edicao.ordem }}">
-                </div>
-                <div class="col-6 d-flex align-items-end">
-                  <div class="form-check">
-                    <input
-                      type="checkbox"
-                      name="obrigatorio"
-                      id="id_item_obrigatorio"
-                      class="form-check-input"
-                      {% if item_em_edicao.obrigatorio %}checked{% endif %}>
-                    <label class="form-check-label" for="id_item_obrigatorio">
-                      {{ formulario_item.obrigatorio.label }}
-                    </label>
-                  </div>
+                    type="checkbox"
+                    name="obrigatorio"
+                    id="id_item_obrigatorio"
+                    class="form-check-input"
+                    {% if item_em_edicao.obrigatorio %}checked{% endif %}>
+                  <label class="form-check-label" for="id_item_obrigatorio">
+                    {{ formulario_item.obrigatorio.label }}
+                  </label>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="modal-footer">
-              <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn btn-label-secondary">
-                Cancelar
-              </a>
-              <button type="submit" class="btn btn-primary">Salvar</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <a href="{% url 'rotinas:checklist' checklist.pk %}" class="btn btn-label-secondary">
+              Cancelar
+            </a>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

@@ -25,8 +25,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from apps.accounts import primeiro_acesso
+from apps.comunidade.permissoes import (
+    condominios_para_ver as condominios_da_comunidade_para_ver,
+    pode_operar as pode_operar_comunidade,
+)
 from apps.condominios import services as servicos_de_acesso
-from apps.condominios.models import AcessoUsuarioCondominio
+from apps.condominios.models import AcessoUsuarioCondominio, Condominio
+from apps.governanca.permissoes import (
+    pode_gerenciar_tipos as pode_gerenciar_tipos_de_governanca,
+    pode_ver_governanca,
+)
 
 from . import services
 from .forms import (
@@ -49,8 +58,8 @@ from .models import (
     TipoLocalOperacional,
 )
 from .permissoes import (
-    condominios_para_gerenciar,
     condominios_para_ver,
+    pode_criar_condominios,
     pode_gerenciar_cadastros,
 )
 
@@ -63,8 +72,18 @@ LIMITE_DA_LISTA = 100
 
 
 @login_required
+def condominios(request):
+    """A carteira de condomínios cujos cadastros esta pessoa pode consultar."""
+    return _render_condominios(request)
+
+
+@login_required
 def condominio(request):
-    """O cadastro do condomínio em vista, para ler ou corrigir."""
+    """Compatibilidade com o endereço antigo do cadastro do condomínio.
+
+    O módulo agora abre a ficha em modal dentro da lista de condomínios, mas o
+    endereço antigo continua apontando para esse mesmo fluxo.
+    """
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
@@ -75,28 +94,263 @@ def condominio(request):
 
         formulario = CondominioForm(request.POST, instance=atual)
         if not formulario.is_valid():
-            return _render_condominio(
-                request, base, pode_gerenciar, formulario=formulario, status=400
+            return _render_condominios(
+                request,
+                formulario_edicao=formulario,
+                item_edicao=atual,
+                modal="editar",
+                status=400,
             )
 
         services.salvar_condominio(condominio=atual, dados=formulario.cleaned_data)
         messages.success(request, "Cadastro do condomínio atualizado.")
-        return redirect(_destino("cadastros:condominio", atual))
+        return redirect(reverse("cadastros:condominios"))
 
-    return _render_condominio(request, base, pode_gerenciar)
+    return _render_condominios(
+        request,
+        item_edicao=atual,
+        modal="editar",
+    )
 
 
-def _render_condominio(request, base, pode_gerenciar, *, formulario=None, status=200):
-    """Monta a tela do cadastro: em leitura, os campos vêm desabilitados."""
+@login_required
+@require_POST
+def criar_condominio(request):
+    """Registra um condomínio novo e já entrega à pessoa criadora o acesso inicial."""
+    if not pode_criar_condominios(request.user):
+        raise PermissionDenied("Esta pessoa não pode abrir novos condomínios.")
+
+    formulario = CondominioForm(request.POST)
+    if not formulario.is_valid():
+        return _render_condominios(
+            request,
+            formulario_criacao=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    try:
+        condominio = services.criar_condominio(
+            dados=formulario.cleaned_data,
+            criado_por=request.user,
+        )
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_condominios(
+            request,
+            formulario_criacao=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    messages.success(request, "Condomínio cadastrado.")
+    return redirect(reverse("cadastros:condominios"))
+
+
+@login_required
+@require_POST
+def editar_condominio(request, pk):
+    """Corrige o cadastro de um condomínio já visível para esta pessoa."""
+    condominios = _condominios_para_ver(request)
+    condominio = _obter_ou_404(condominios, pk)
+    if not pode_gerenciar_cadastros(request.user, condominio):
+        raise PermissionDenied("Esta pessoa não mantém o cadastro deste condomínio.")
+
+    formulario = CondominioForm(request.POST, instance=condominio)
+    if not formulario.is_valid():
+        return _render_condominios(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=condominio,
+            modal="editar",
+            status=400,
+        )
+
+    try:
+        services.salvar_condominio(condominio=condominio, dados=formulario.cleaned_data)
+    except services.ErroDeCadastro as erro:
+        messages.error(request, str(erro))
+        return _render_condominios(
+            request,
+            formulario_edicao=formulario,
+            item_edicao=condominio,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Cadastro do condomínio atualizado.")
+    return redirect(reverse("cadastros:condominios"))
+
+
+@login_required
+def pessoas_e_unidades(request):
+    """Atalhos do contexto humano do condomínio: unidades, pessoas e veículos."""
+    condominios = condominios_da_comunidade_para_ver(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum condomínio disponível.")
+
+    atual = _condominio_atual(request, condominios)
+    contexto = {
+        "condominios": condominios,
+        "condominio_atual": atual,
+        "mostrar_seletor": condominios.count() > 1,
+        "atalhos": [
+            {
+                "nome": "Unidades",
+                "descricao": "Apartamentos, ocupação e vínculos operacionais.",
+                "icone": "bx-building-house",
+                "url": _destino("comunidade:unidades", atual),
+            },
+            {
+                "nome": "Pessoas",
+                "descricao": "Moradores, contatos e relações com as unidades.",
+                "icone": "bx-user",
+                "url": _destino("comunidade:pessoas", atual),
+            },
+            {
+                "nome": "Veículos",
+                "descricao": "Placas e vínculos com pessoas e unidades.",
+                "icone": "bx-car",
+                "url": _destino("comunidade:veiculos", atual),
+            },
+        ],
+        "pode_operar": pode_operar_comunidade(request.user, atual),
+    }
+    return render(
+        request,
+        "pages/cadastros/pessoas_e_unidades.html",
+        contexto,
+    )
+
+
+@login_required
+def tipos_e_categorias(request):
+    """Agrupa os catálogos auxiliares sem competir com as ações principais."""
+    base = _base_da_pagina(request)
+    atual = base["condominio_atual"]
+    pode_ver_governanca_no_condominio = pode_ver_governanca(request.user, atual)
+    pode_gerenciar_governanca_no_condominio = pode_gerenciar_tipos_de_governanca(
+        request.user, atual
+    )
+
     contexto = {
         **base,
-        "pode_gerenciar": pode_gerenciar,
-        "formulario": formulario
-        or CondominioForm(
-            instance=base["condominio_atual"], somente_leitura=not pode_gerenciar
-        ),
+        "grupos": [
+            {
+                "titulo": "Cadastros estruturais",
+                "itens": [
+                    {
+                        "nome": "Tipos de local",
+                        "descricao": "Nomeiam os lugares usados em areas, equipamentos e manutencoes.",
+                        "url": _destino("cadastros:tipos_de_local", atual),
+                        "modo": (
+                            "Pode gerenciar"
+                            if pode_gerenciar_cadastros(request.user, atual)
+                            else "Somente leitura"
+                        ),
+                    },
+                    {
+                        "nome": "Tipos de equipamento",
+                        "descricao": "Classificam o que existe no condominio e precisa de manutencao.",
+                        "url": _destino("cadastros:tipos_de_equipamento", atual),
+                        "modo": (
+                            "Pode gerenciar"
+                            if pode_gerenciar_cadastros(request.user, atual)
+                            else "Somente leitura"
+                        ),
+                    },
+                    {
+                        "nome": "Especialidades de fornecedor",
+                        "descricao": "Organizam o que cada fornecedor atende.",
+                        "url": _destino("cadastros:especialidades", atual),
+                        "modo": (
+                            "Pode gerenciar"
+                            if pode_gerenciar_cadastros(request.user, atual)
+                            else "Somente leitura"
+                        ),
+                    },
+                ],
+            },
+            {
+                "titulo": "Governanca documental",
+                "itens": [
+                    {
+                        "nome": "Tipos de contrato",
+                        "descricao": "Definem o vocabulario usado no cadastro de contratos.",
+                        "url": _destino("governanca:tipos_de_contrato", atual),
+                        "modo": (
+                            "Pode gerenciar"
+                            if pode_gerenciar_governanca_no_condominio
+                            else "Somente leitura"
+                        ),
+                    },
+                    {
+                        "nome": "Tipos de documento",
+                        "descricao": "Definem validade e alerta dos documentos operacionais.",
+                        "url": _destino("governanca:tipos_de_documento", atual),
+                        "modo": (
+                            "Pode gerenciar"
+                            if pode_gerenciar_governanca_no_condominio
+                            else "Somente leitura"
+                        ),
+                    },
+                ]
+                if pode_ver_governanca_no_condominio
+                else [],
+            },
+        ],
     }
-    return render(request, "pages/cadastros/condominio.html", contexto, status=status)
+    return render(
+        request,
+        "pages/cadastros/tipos_e_categorias.html",
+        contexto,
+    )
+
+
+def _render_condominios(
+    request,
+    *,
+    formulario_criacao=None,
+    formulario_edicao=None,
+    item_edicao=None,
+    modal=None,
+    status=200,
+):
+    """Monta a carteira de condomínios e, quando pedido, a ficha em modal."""
+    base = _base_da_pagina(request)
+    pode_criar = pode_criar_condominios(request.user)
+
+    if item_edicao is None:
+        item_edicao = _item_em_edicao(request, Condominio, base["condominios"])
+    if item_edicao is None:
+        if modal == "editar":
+            modal = None
+    elif modal is None:
+        modal = "editar"
+
+    pode_gerenciar_item = bool(
+        item_edicao and pode_gerenciar_cadastros(request.user, item_edicao)
+    )
+
+    contexto = {
+        **base,
+        "condominios_lista": _condominios_para_tela(request, base["condominios"]),
+        "pode_criar_condominio": pode_criar,
+        "formulario_condominio": formulario_criacao or CondominioForm(),
+        "formulario_edicao": formulario_edicao
+        or (
+            CondominioForm(
+                instance=item_edicao,
+                somente_leitura=not pode_gerenciar_item,
+            )
+            if item_edicao
+            else None
+        ),
+        "item_edicao": item_edicao,
+        "pode_gerenciar_item_edicao": pode_gerenciar_item,
+        "modal_aberto": modal,
+    }
+    return render(request, "pages/cadastros/condominios.html", contexto, status=status)
 
 
 # -- Usuários e acessos ---------------------------------------------------------
@@ -127,7 +381,7 @@ def adicionar_acesso(request):
         )
 
     try:
-        servicos_de_acesso.adicionar_acesso(
+        vinculo = servicos_de_acesso.adicionar_acesso(
             condominio=atual,
             email=formulario.cleaned_data["email"],
             nome_completo=formulario.cleaned_data["nome_completo"],
@@ -140,7 +394,72 @@ def adicionar_acesso(request):
             request, formulario_acesso=formulario, modal="adicionar", status=400
         )
 
-    messages.success(request, "Acesso concedido.")
+    if primeiro_acesso.precisa_definir_senha(vinculo.usuario):
+        try:
+            primeiro_acesso.enviar_endereco_por_email(
+                conta=vinculo.usuario,
+                request=request,
+                condominio_nome=atual.nome,
+            )
+        except primeiro_acesso.ErroDeEntregaDoPrimeiroAcesso:
+            messages.warning(
+                request,
+                (
+                    "Acesso concedido, mas não foi possível preparar as instruções "
+                    "de senha agora. Use a ação 'Reenviar primeiro acesso' para "
+                    "tentar novamente."
+                ),
+            )
+        else:
+            servicos_de_acesso.registrar_instrucoes_de_senha_enviadas(
+                acesso=vinculo, executor=request.user, primeiro_acesso=True
+            )
+            messages.success(
+                request,
+                f"Acesso concedido. {primeiro_acesso.recado_de_entrega(vinculo.usuario.email)}",
+            )
+    else:
+        messages.success(request, "Acesso concedido.")
+    return redirect(_destino("cadastros:acessos", atual))
+
+
+@login_required
+@require_POST
+def gerar_link_primeiro_acesso(request, pk):
+    """Pede que as instruções de senha sejam enviadas para a própria pessoa.
+
+    A gestão não escolhe senha de ninguém: ela apenas dispara o envio, e a
+    própria pessoa usa o endereço recebido para definir a primeira senha ou
+    criar uma nova. A ação muda de nome conforme o estado da conta — reenviar o
+    primeiro acesso ou enviar uma redefinição — mas o que ela faz é sempre a
+    mesma coisa. O endereço não fica guardado: ele é calculado na hora.
+    """
+    atual = _condominio_para_gestao(request)
+    vinculo = _obter_ou_404(
+        AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
+    )
+    primeira_senha = primeiro_acesso.precisa_definir_senha(vinculo.usuario)
+    try:
+        primeiro_acesso.enviar_endereco_por_email(
+            conta=vinculo.usuario,
+            request=request,
+            condominio_nome=atual.nome,
+        )
+    except primeiro_acesso.ErroDeEntregaDoPrimeiroAcesso:
+        messages.error(
+            request,
+            (
+                "Não foi possível preparar as instruções agora. Confira a "
+                "configuração de entrega e tente novamente."
+            ),
+        )
+    else:
+        servicos_de_acesso.registrar_instrucoes_de_senha_enviadas(
+            acesso=vinculo, executor=request.user, primeiro_acesso=primeira_senha
+        )
+        messages.success(
+            request, primeiro_acesso.recado_de_entrega(vinculo.usuario.email)
+        )
     return redirect(_destino("cadastros:acessos", atual))
 
 
@@ -340,10 +659,10 @@ def _render_locais(
 
 # -- Tipos de local -------------------------------------------------------------
 #
-# O catálogo abre ao lado de quem o usa: os tipos de local a partir da lista de
-# locais, os de equipamento a partir da lista de equipamentos, as especialidades
-# a partir dos fornecedores. Não é item de menu, e a razão é simples — o tipo
-# não tem vida própria; ele serve para nomear o que se cadastra.
+# O catálogo continua ligado a quem o usa: os tipos de local nomeiam os locais,
+# os de equipamento nomeiam os equipamentos, e as especialidades organizam os
+# fornecedores. O que mudou foi a navegação: o catálogo agora entra pelo
+# agrupador "Tipos e categorias", sem competir com a ação principal da lista.
 
 
 @login_required
@@ -979,6 +1298,8 @@ def _item_em_edicao(request, modelo, condominios):
     pk = request.GET.get("item")
     if not pk or not _eh_uuid(pk):
         return None
+    if modelo is Condominio:
+        return _obter_ou_404(condominios, pk)
     return _obter_ou_404(modelo.objects.filter(condominio__in=condominios), pk)
 
 
@@ -1002,6 +1323,16 @@ def _eh_uuid(valor) -> bool:
 def _destino(view_name, condominio) -> str:
     """Volta para a tela preservando o condomínio em vista."""
     return f"{reverse(view_name)}?condominio={condominio.pk}"
+
+
+def _endereco_de_acao(view_name, vinculo) -> str:
+    """O endereço de uma ação sobre um vínculo, com o condomínio em vista.
+
+    As ações da lista chegam por POST, e o POST não carrega o condomínio
+    escolhido: sem ele no endereço, a ação cairia no primeiro condomínio da
+    lista de quem tem mais de um.
+    """
+    return f"{reverse(view_name, args=[vinculo.pk])}?condominio={vinculo.condominio_id}"
 
 
 def _alternar(request, objeto, *, destino, nome):
@@ -1028,10 +1359,45 @@ def _campos_do_modelo(modelo, dados: dict) -> dict:
 
 # -- Tradução para a tela -------------------------------------------------------
 
-
 def _acesso_para_tela(vinculo) -> dict:
-    """O vínculo como a lista de acessos precisa dele."""
+    """O vínculo como a lista de acessos precisa dele.
+
+    As ações são montadas aqui, e não no template: é esta função que sabe que
+    a senha continua sendo escolha da própria pessoa. A lista só desenha a ação
+    que pede o envio das instruções, nomeada conforme a conta já tenha senha ou
+    ainda espere a primeira.
+    """
     usuario = vinculo.usuario
+    acoes = [
+        {
+            "label": "Mudar papel",
+            "icon": "bx-transfer",
+            "url": f"?condominio={vinculo.condominio_id}&abrir=editar&item={vinculo.pk}",
+            "post": False,
+        },
+    ]
+    acoes.append(
+        {
+            "label": (
+                "Reenviar primeiro acesso"
+                if primeiro_acesso.precisa_definir_senha(usuario)
+                else "Enviar redefinição de senha"
+            ),
+            "icon": "bx-envelope",
+            "url": _endereco_de_acao(
+                "cadastros:gerar_link_primeiro_acesso", vinculo
+            ),
+            "post": True,
+        }
+    )
+    acoes.append(
+        {
+            "label": "Retirar acesso" if vinculo.ativo else "Devolver acesso",
+            "icon": "bx-block" if vinculo.ativo else "bx-check-circle",
+            "url": _endereco_de_acao("cadastros:alternar_acesso", vinculo),
+            "post": True,
+        }
+    )
     return {
         "pk": vinculo.pk,
         "nome": usuario.full_name or usuario.email,
@@ -1040,6 +1406,53 @@ def _acesso_para_tela(vinculo) -> dict:
         "situacao": "Ativo" if vinculo.ativo else "Inativo",
         "tom": "success" if vinculo.ativo else "secondary",
         "desde": vinculo.criado_em.strftime("%d/%m/%Y"),
+        "acoes": acoes,
+    }
+
+
+def _condominios_para_tela(request, condominios):
+    """Traduz os condomínios autorizados para a grade inicial do módulo."""
+    vinculos = (
+        AcessoUsuarioCondominio.objects.filter(
+            usuario=request.user,
+            ativo=True,
+            condominio__in=condominios,
+        )
+        .select_related("condominio")
+        .order_by("condominio__nome")
+    )
+    return [_condominio_para_tela(item) for item in vinculos]
+
+
+def _condominio_para_tela(vinculo) -> dict:
+    """O condomínio como a grade de cadastros precisa ler."""
+    condominio = vinculo.condominio
+    localizacao = ", ".join(
+        trecho
+        for trecho in [condominio.cidade, condominio.uf]
+        if trecho
+    ) or "Localização não informada"
+    return {
+        "pk": condominio.pk,
+        "nome": condominio.nome,
+        "cnpj": condominio.cnpj or "",
+        "localizacao": localizacao,
+        "quantidade_unidades": condominio.quantidade_unidades,
+        "papel": vinculo.get_papel_display(),
+        "pode_gerenciar": pode_gerenciar_cadastros(vinculo.usuario, condominio),
+        "texto": "Ativo" if condominio.ativo else "Inativo",
+        "tom": "success" if condominio.ativo else "secondary",
+        "acao_label": (
+            "Editar"
+            if pode_gerenciar_cadastros(vinculo.usuario, condominio)
+            else "Visualizar"
+        ),
+        "acao_icone": (
+            "bx-edit"
+            if pode_gerenciar_cadastros(vinculo.usuario, condominio)
+            else "bx-show"
+        ),
+        "url": f"{reverse('cadastros:condominios')}?abrir=editar&item={condominio.pk}",
     }
 
 

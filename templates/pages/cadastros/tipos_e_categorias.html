@@ -1,0 +1,50 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Tipos e categorias · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Tipos e categorias</h1>
+      <p class="text-body-secondary mb-0">
+        Os catalogos auxiliares do condominio, agrupados fora das acoes principais.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+    {% for grupo in grupos %}
+      {% if grupo.itens %}
+        <div class="col-12 col-xl-6">
+          <div class="card h-100">
+            <div class="card-body pb-0">
+              <h2 class="h5 mb-1">{{ grupo.titulo }}</h2>
+              <p class="text-body-secondary mb-0">
+                Catalogos que organizam o cadastro sem competir com a acao principal.
+              </p>
+            </div>
+            <div class="list-group list-group-flush mt-3">
+              {% for item in grupo.itens %}
+                <a href="{{ item.url }}" class="list-group-item list-group-item-action px-4 py-3">
+                  <div class="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                      <div class="fw-medium">{{ item.nome }}</div>
+                      <div class="text-body-secondary small mt-1">{{ item.descricao }}</div>
+                    </div>
+                    <div class="text-end">
+                      <div class="small text-body-secondary">{{ item.modo }}</div>
+                      <i class="bx bx-chevron-right text-body-secondary fs-5" aria-hidden="true"></i>
+                    </div>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endblock %}

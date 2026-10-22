@@ -236,7 +236,7 @@
                             {% if pode_corrigir %}
                               <button
                                 type="button"
-                                class="btn btn-sm btn-icon btn-text-secondary rounded-pill"
+                                class="btn btn-sm btn-icon btn-text-primary rounded-pill"
                                 data-bs-toggle="modal"
                                 data-bs-target="#ajustar-lancamento"
                                 data-lancamento-id="{{ lancamento.id }}"
@@ -316,7 +316,7 @@
                         {% if pode_corrigir %}
                           <button
                             type="button"
-                            class="btn btn-sm btn-icon btn-text-secondary rounded-pill"
+                            class="btn btn-sm btn-icon btn-text-primary rounded-pill"
                             data-bs-toggle="modal"
                             data-bs-target="#ajustar-lancamento"
                             data-lancamento-id="{{ lancamento.id }}"
@@ -480,67 +480,66 @@
       tabindex="-1"
       aria-labelledby="ajustar-lancamento-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form
-            method="post"
-            id="form-corrigir"
-            action="{% url 'balancos:corrigir_lancamento' balanco.pk %}">
-            {% csrf_token %}
-            {{ form_correcao.versao }}
-            {{ form_correcao.lancamento_id }}
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form
+          class="modal-content"
+          method="post"
+          id="form-corrigir"
+          action="{% url 'balancos:corrigir_lancamento' balanco.pk %}">
+          {% csrf_token %}
+          {{ form_correcao.versao }}
+          {{ form_correcao.lancamento_id }}
 
-            <div class="modal-header">
-              <h5 class="modal-title" id="ajustar-lancamento-titulo">Ajustar lançamento</h5>
-              <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="Fechar"></button>
-            </div>
+          <div class="modal-header">
+            <h5 class="modal-title" id="ajustar-lancamento-titulo">Ajustar lançamento</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_correcao.descricao.id_for_label }}">Descrição</label>
-                {{ form_correcao.descricao }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_correcao.valor.id_for_label }}">Valor</label>
-                {{ form_correcao.valor }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_correcao.categoria.id_for_label }}">Categoria</label>
-                {{ form_correcao.categoria }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_correcao.natureza.id_for_label }}">Natureza</label>
-                {{ form_correcao.natureza }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_correcao.grupo.id_for_label }}">Grupo</label>
-                {{ form_correcao.grupo }}
-              </div>
-              <div>
-                <label class="form-label" for="{{ form_correcao.justificativa.id_for_label }}">Justificativa</label>
-                {{ form_correcao.justificativa }}
-                <div class="form-text">O que mudou e por quê. Fica no histórico do balanço.</div>
-              </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_correcao.descricao.id_for_label }}">Descrição</label>
+              {{ form_correcao.descricao }}
             </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_correcao.valor.id_for_label }}">Valor</label>
+              {{ form_correcao.valor }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_correcao.categoria.id_for_label }}">Categoria</label>
+              {{ form_correcao.categoria }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_correcao.natureza.id_for_label }}">Natureza</label>
+              {{ form_correcao.natureza }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_correcao.grupo.id_for_label }}">Grupo</label>
+              {{ form_correcao.grupo }}
+            </div>
+            <div>
+              <label class="form-label" for="{{ form_correcao.justificativa.id_for_label }}">Justificativa</label>
+              {{ form_correcao.justificativa }}
+              <div class="form-text">O que mudou e por quê. Fica no histórico do balanço.</div>
+            </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                class="btn btn-label-danger"
-                formaction="{% url 'balancos:marcar_nao_despesa' balanco.pk %}">
-                Não é despesa
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar ajuste</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="btn btn-label-danger"
+              formaction="{% url 'balancos:marcar_nao_despesa' balanco.pk %}">
+              Não é despesa
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar ajuste</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -550,60 +549,58 @@
       tabindex="-1"
       aria-labelledby="adicionar-lancamento-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form method="post" action="{% url 'balancos:adicionar_lancamento' balanco.pk %}">
-            {% csrf_token %}
-            {{ form_adicionar.versao }}
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'balancos:adicionar_lancamento' balanco.pk %}">
+          {% csrf_token %}
+          {{ form_adicionar.versao }}
 
-            <div class="modal-header">
-              <h5 class="modal-title" id="adicionar-lancamento-titulo">Adicionar lançamento</h5>
-              <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="Fechar"></button>
-            </div>
+          <div class="modal-header">
+            <h5 class="modal-title" id="adicionar-lancamento-titulo">Adicionar lançamento</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              <p class="text-body-secondary small mb-3">
-                Para o que o documento não trouxe e precisa constar no mês.
-              </p>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_adicionar.descricao.id_for_label }}">Descrição</label>
-                {{ form_adicionar.descricao }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_adicionar.valor.id_for_label }}">Valor</label>
-                {{ form_adicionar.valor }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_adicionar.categoria.id_for_label }}">Categoria</label>
-                {{ form_adicionar.categoria }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_adicionar.natureza.id_for_label }}">Natureza</label>
-                {{ form_adicionar.natureza }}
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_adicionar.grupo.id_for_label }}">Grupo</label>
-                {{ form_adicionar.grupo }}
-              </div>
-              <div>
-                <label class="form-label" for="{{ form_adicionar.justificativa.id_for_label }}">Justificativa</label>
-                {{ form_adicionar.justificativa }}
-                <div class="form-text">Por que este lançamento entra no mês.</div>
-              </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small mb-3">
+              Para o que o documento não trouxe e precisa constar no mês.
+            </p>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_adicionar.descricao.id_for_label }}">Descrição</label>
+              {{ form_adicionar.descricao }}
             </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_adicionar.valor.id_for_label }}">Valor</label>
+              {{ form_adicionar.valor }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_adicionar.categoria.id_for_label }}">Categoria</label>
+              {{ form_adicionar.categoria }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_adicionar.natureza.id_for_label }}">Natureza</label>
+              {{ form_adicionar.natureza }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_adicionar.grupo.id_for_label }}">Grupo</label>
+              {{ form_adicionar.grupo }}
+            </div>
+            <div>
+              <label class="form-label" for="{{ form_adicionar.justificativa.id_for_label }}">Justificativa</label>
+              {{ form_adicionar.justificativa }}
+              <div class="form-text">Por que este lançamento entra no mês.</div>
+            </div>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Adicionar lançamento</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Adicionar lançamento</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
@@ -663,58 +660,57 @@
       tabindex="-1"
       aria-labelledby="adicionar-evidencia-titulo"
       aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form
-            method="post"
-            enctype="multipart/form-data"
-            id="form-anexar-evidencia"
-            action="{% url 'balancos:evidencia_adicionar' balanco.pk %}">
-            {% csrf_token %}
-            {{ form_evidencia.tipo_vinculo }}
-            {{ form_evidencia.referencia }}
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form
+          class="modal-content"
+          method="post"
+          enctype="multipart/form-data"
+          id="form-anexar-evidencia"
+          action="{% url 'balancos:evidencia_adicionar' balanco.pk %}">
+          {% csrf_token %}
+          {{ form_evidencia.tipo_vinculo }}
+          {{ form_evidencia.referencia }}
 
-            <div class="modal-header">
-              <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar foto</h5>
-              <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="Fechar"></button>
-            </div>
+          <div class="modal-header">
+            <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar foto</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Fechar"></button>
+          </div>
 
-            <div class="modal-body">
-              <p class="text-body-secondary small mb-3" id="evidencia-vinculo"></p>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_evidencia.imagem.id_for_label }}">Foto</label>
-                {{ form_evidencia.imagem }}
-                <div class="form-text">JPG, PNG ou WEBP, até {{ limite_da_foto }}.</div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="{{ form_evidencia.legenda.id_for_label }}">Legenda</label>
-                {{ form_evidencia.legenda }}
-              </div>
-              <div class="form-check">
-                {{ form_evidencia.exibir_aos_moradores }}
-                <label
-                  class="form-check-label"
-                  for="{{ form_evidencia.exibir_aos_moradores.id_for_label }}">
-                  Exibir aos moradores
-                </label>
-              </div>
-              <p class="text-body-secondary small mb-0 mt-2 d-none" data-aviso-moradores>
-                Confirme que a imagem não contém dados pessoais ou informações restritas.
-              </p>
+          <div class="modal-body">
+            <p class="text-body-secondary small mb-3" id="evidencia-vinculo"></p>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_evidencia.imagem.id_for_label }}">Foto</label>
+              {{ form_evidencia.imagem }}
+              <div class="form-text">JPG, PNG ou WEBP, até {{ limite_da_foto }}.</div>
             </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ form_evidencia.legenda.id_for_label }}">Legenda</label>
+              {{ form_evidencia.legenda }}
+            </div>
+            <div class="form-check">
+              {{ form_evidencia.exibir_aos_moradores }}
+              <label
+                class="form-check-label"
+                for="{{ form_evidencia.exibir_aos_moradores.id_for_label }}">
+                Exibir aos moradores
+              </label>
+            </div>
+            <p class="text-body-secondary small mb-0 mt-2 d-none" data-aviso-moradores>
+              Confirme que a imagem não contém dados pessoais ou informações restritas.
+            </p>
+          </div>
 
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar foto</button>
-            </div>
-          </form>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar foto</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}

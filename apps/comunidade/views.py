@@ -18,7 +18,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Prefetch
+from django.db.models import F, Prefetch
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -234,7 +234,7 @@ def _render_unidade(
     vinculos = list(
         VinculoPessoaUnidade.objects.da_unidade(registro)
         .select_related("pessoa")
-        .order_by("-data_inicio", "-criado_em")
+        .order_by(F("data_inicio").desc(nulls_last=True), "-criado_em")
     )
     contexto = {
         **base,
@@ -455,7 +455,7 @@ def _render_pessoa(
     vinculos = list(
         VinculoPessoaUnidade.objects.da_pessoa(registro)
         .select_related("unidade")
-        .order_by("-data_inicio", "-criado_em")
+        .order_by(F("data_inicio").desc(nulls_last=True), "-criado_em")
     )
     vinculos_veiculo = list(
         VinculoVeiculoPessoa.objects.da_pessoa(registro)

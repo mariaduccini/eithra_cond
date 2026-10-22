@@ -89,6 +89,12 @@
                   </li>
                   <li><div class="dropdown-divider my-1"></div></li>
                   <li>
+                    <a class="dropdown-item" href="{% url 'accounts:alterar_senha' %}">
+                      <i class="icon-base bx bx-lock-alt icon-md me-3" aria-hidden="true"></i>
+                      <span>Alterar minha senha</span>
+                    </a>
+                  </li>
+                  <li>
                     <form method="post" action="{% url 'accounts:logout' %}">
                       {% csrf_token %}
                       <button type="submit" class="dropdown-item">
@@ -125,6 +131,44 @@
 
     <div class="layout-overlay layout-menu-toggle"></div>
   </div>
+
+  {% block modals %}{% endblock %}
+
+  <div
+    class="modal fade"
+    id="eithra-confirm-modal"
+    tabindex="-1"
+    aria-labelledby="eithra-confirm-modal-title"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="eithra-confirm-modal-title">Confirmar ação</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0" id="eithra-confirm-modal-message">
+            Confirme se você quer seguir com esta ação.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-label-secondary"
+            data-bs-dismiss="modal"
+            id="eithra-confirm-modal-cancel">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            class="btn btn-danger"
+            id="eithra-confirm-modal-confirm">
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 {% endblock %}
 
 {% block scripts %}
@@ -141,6 +185,124 @@
       var menu = document.getElementById("layout-menu");
       if (menu && window.Menu) {
         new window.Menu(menu);
+      }
+
+      // Campos obrigatórios precisam aparecer como obrigatórios na própria
+      // leitura da tela. O backend continua mandando na regra; aqui a interface
+      // só marca com asterisco vermelho o que já veio como required.
+      document.querySelectorAll("label[for]").forEach(function (label) {
+        var campo = document.getElementById(label.getAttribute("for"));
+        if (!campo || !campo.required) {
+          return;
+        }
+        if (label.querySelector("[data-eithra-required-marker]")) {
+          return;
+        }
+        var marcador = document.createElement("span");
+        marcador.className = "text-danger ms-1";
+        marcador.setAttribute("aria-hidden", "true");
+        marcador.setAttribute("data-eithra-required-marker", "true");
+        marcador.textContent = "*";
+        label.appendChild(marcador);
+      });
+
+      // Nos modais, os campos do formulário devem aparecer abertos de saída.
+      // "Mais detalhes" só escondia parte do que a pessoa precisava preencher.
+      document.querySelectorAll(".modal .collapse").forEach(function (bloco) {
+        bloco.classList.add("show");
+      });
+      document
+        .querySelectorAll(".modal [data-bs-toggle=\"collapse\"]")
+        .forEach(function (gatilho) {
+          gatilho.classList.add("d-none");
+          gatilho.setAttribute("aria-hidden", "true");
+          gatilho.setAttribute("tabindex", "-1");
+        });
+
+      // Alguns modais desta base são reabertos pelo servidor via ?abrir=...,
+      // para manter erros e contexto no mesmo lugar. Nesses casos, o Bootstrap
+      // não tem uma instância viva para "dismiss"; então fechar o modal é
+      // voltar à mesma tela sem os parâmetros que o mantêm aberto.
+      document.addEventListener("click", function (event) {
+        var dismiss = event.target.closest("[data-bs-dismiss=\"modal\"]");
+        if (!dismiss) {
+          return;
+        }
+
+        var modal = dismiss.closest(".modal.show");
+        if (!modal) {
+          return;
+        }
+
+        var url = new URL(window.location.href);
+        if (!url.searchParams.has("abrir")) {
+          return;
+        }
+
+        event.preventDefault();
+        url.searchParams.delete("abrir");
+        url.searchParams.delete("item");
+        window.location.assign(url.toString());
+      });
+
+      var confirmModalElement = document.getElementById("eithra-confirm-modal");
+      var confirmTitle = document.getElementById("eithra-confirm-modal-title");
+      var confirmMessage = document.getElementById("eithra-confirm-modal-message");
+      var confirmButton = document.getElementById("eithra-confirm-modal-confirm");
+      var cancelButton = document.getElementById("eithra-confirm-modal-cancel");
+      var confirmModal =
+        confirmModalElement && window.bootstrap
+          ? new window.bootstrap.Modal(confirmModalElement)
+          : null;
+      var confirmTargetForm = null;
+
+      document.addEventListener("submit", function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement)) {
+          return;
+        }
+        if (!form.matches("[data-eithra-confirm]")) {
+          return;
+        }
+        if (form.dataset.eithraConfirmed === "true") {
+          delete form.dataset.eithraConfirmed;
+          return;
+        }
+        if (!confirmModal) {
+          return;
+        }
+
+        event.preventDefault();
+        confirmTargetForm = form;
+        confirmTitle.textContent =
+          form.dataset.eithraConfirmTitle || "Confirmar ação";
+        confirmMessage.textContent =
+          form.dataset.eithraConfirmMessage ||
+          "Confirme se você quer seguir com esta ação.";
+        confirmButton.textContent =
+          form.dataset.eithraConfirmLabel || "Confirmar";
+        cancelButton.textContent =
+          form.dataset.eithraCancelLabel || "Cancelar";
+        confirmButton.className =
+          "btn " + (form.dataset.eithraConfirmClass || "btn-danger");
+        confirmModal.show();
+      });
+
+      if (confirmButton) {
+        confirmButton.addEventListener("click", function () {
+          if (!confirmTargetForm) {
+            return;
+          }
+          confirmTargetForm.dataset.eithraConfirmed = "true";
+          confirmModal.hide();
+          confirmTargetForm.requestSubmit();
+        });
+      }
+
+      if (confirmModalElement) {
+        confirmModalElement.addEventListener("hidden.bs.modal", function () {
+          confirmTargetForm = null;
+        });
       }
     });
   </script>

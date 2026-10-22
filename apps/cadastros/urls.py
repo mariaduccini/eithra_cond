@@ -4,8 +4,9 @@ O cadastro do condomínio é a porta de entrada do módulo: é ele que dá nome 
 tudo o mais. Cada cadastro tem sua lista, e as ações — registrar, corrigir,
 ativar, desativar — chegam sempre por POST, nunca por link.
 
-O catálogo de tipos de cada cadastro abre ao lado da lista a que pertence,
-porque o tipo não tem vida própria: ele existe para nomear o que se cadastra.
+Os catálogos auxiliares continuam existindo por perto, mas agora entram por uma
+porta comum de navegação: ``Tipos e categorias``. O tipo não ganhou vida
+própria; só deixou de competir com a ação principal da tela consumidora.
 """
 from django.urls import path
 
@@ -14,6 +15,23 @@ from apps.cadastros import views
 app_name = "cadastros"
 
 urlpatterns = [
+    path("condominios/", views.condominios, name="condominios"),
+    path("condominios/registrar/", views.criar_condominio, name="criar_condominio"),
+    path(
+        "condominios/<uuid:pk>/editar/",
+        views.editar_condominio,
+        name="editar_condominio",
+    ),
+    path(
+        "pessoas-e-unidades/",
+        views.pessoas_e_unidades,
+        name="pessoas_e_unidades",
+    ),
+    path(
+        "tipos-e-categorias/",
+        views.tipos_e_categorias,
+        name="tipos_e_categorias",
+    ),
     path("", views.condominio, name="condominio"),
     path("acessos/", views.acessos, name="acessos"),
     path("acessos/registrar/", views.adicionar_acesso, name="adicionar_acesso"),
@@ -21,6 +39,11 @@ urlpatterns = [
         "acessos/<uuid:pk>/papel/",
         views.alterar_papel_acesso,
         name="alterar_papel_acesso",
+    ),
+    path(
+        "acessos/<uuid:pk>/primeiro-acesso/",
+        views.gerar_link_primeiro_acesso,
+        name="gerar_link_primeiro_acesso",
     ),
     path(
         "acessos/<uuid:pk>/alternar/",

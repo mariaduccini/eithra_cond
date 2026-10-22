@@ -27,7 +27,7 @@
       <div class="d-flex flex-wrap align-items-center gap-2">
         <button
           type="button"
-          class="btn btn-icon btn-text-secondary rounded-pill"
+          class="btn btn-icon btn-text-primary rounded-pill"
           data-bs-toggle="modal"
           data-bs-target="#editar-veiculo"
           title="Editar veículo"
@@ -113,7 +113,13 @@
                   <a
                     href="{% url 'comunidade:pessoa' vinculo.pessoa_pk %}?condominio={{ condominio_atual.pk }}"
                     class="fw-medium text-decoration-none">{{ vinculo.pessoa }}</a>
-                  <div class="text-body-secondary small">desde {{ vinculo.inicio|date:"d/m/Y" }}</div>
+                  <div class="text-body-secondary small">
+                    {% if vinculo.inicio %}
+                      desde {{ vinculo.inicio|date:"d/m/Y" }}
+                    {% else %}
+                      Início não informado
+                    {% endif %}
+                  </div>
                 </div>
                 {% if pode_operar %}
                   <form
@@ -124,7 +130,7 @@
                     <input type="hidden" name="voltar" value="veiculo">
                     <button
                       type="submit"
-                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      class="btn btn-icon btn-text-warning rounded-pill"
                       title="Encerrar vínculo"
                       aria-label="Encerrar vínculo de {{ vinculo.pessoa }} com este veículo">
                       <i class="bx bx-unlink" aria-hidden="true"></i>
@@ -155,7 +161,12 @@
                 <div class="d-flex flex-wrap justify-content-between gap-2 py-1 border-top">
                   <span>{{ vinculo.pessoa }}</span>
                   <span class="text-body-secondary small">
-                    {{ vinculo.inicio|date:"d/m/Y" }} a {{ vinculo.fim|date:"d/m/Y" }}
+                    {% if vinculo.inicio %}
+                      {{ vinculo.inicio|date:"d/m/Y" }}
+                    {% else %}
+                      Início não informado
+                    {% endif %}
+                    a {{ vinculo.fim|date:"d/m/Y" }}
                   </span>
                 </div>
               {% endfor %}
@@ -185,7 +196,13 @@
                   <a
                     href="{% url 'comunidade:unidade' vinculo.unidade_pk %}?condominio={{ condominio_atual.pk }}"
                     class="fw-medium text-decoration-none">{{ vinculo.unidade }}</a>
-                  <div class="text-body-secondary small">desde {{ vinculo.inicio|date:"d/m/Y" }}</div>
+                  <div class="text-body-secondary small">
+                    {% if vinculo.inicio %}
+                      desde {{ vinculo.inicio|date:"d/m/Y" }}
+                    {% else %}
+                      Início não informado
+                    {% endif %}
+                  </div>
                 </div>
                 {% if pode_operar %}
                   <form
@@ -196,7 +213,7 @@
                     <input type="hidden" name="voltar" value="veiculo">
                     <button
                       type="submit"
-                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      class="btn btn-icon btn-text-warning rounded-pill"
                       title="Encerrar vínculo"
                       aria-label="Encerrar a relação deste veículo com a unidade {{ vinculo.unidade }}">
                       <i class="bx bx-unlink" aria-hidden="true"></i>
@@ -227,7 +244,12 @@
                 <div class="d-flex flex-wrap justify-content-between gap-2 py-1 border-top">
                   <span>{{ vinculo.unidade }}</span>
                   <span class="text-body-secondary small">
-                    {{ vinculo.inicio|date:"d/m/Y" }} a {{ vinculo.fim|date:"d/m/Y" }}
+                    {% if vinculo.inicio %}
+                      {{ vinculo.inicio|date:"d/m/Y" }}
+                    {% else %}
+                      Início não informado
+                    {% endif %}
+                    a {{ vinculo.fim|date:"d/m/Y" }}
                   </span>
                 </div>
               {% endfor %}
@@ -247,36 +269,35 @@
       aria-labelledby="editar-veiculo-titulo"
       aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form
-            method="post"
-            action="{% url 'comunidade:editar_veiculo' veiculo.pk %}"
-            novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="editar-veiculo-titulo">Editar veículo</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
-              {% for erro in formulario_veiculo.non_field_errors %}
-                <div class="text-danger small mb-2">{{ erro }}</div>
-              {% endfor %}
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Salvar</button>
-            </div>
-          </form>
-        </div>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'comunidade:editar_veiculo' veiculo.pk %}"
+          novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-veiculo-titulo">Editar veículo</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.placa %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.marca %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.modelo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.cor %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_veiculo.observacao_interna %}
+            {% for erro in formulario_veiculo.non_field_errors %}
+              <div class="text-danger small mb-2">{{ erro }}</div>
+            {% endfor %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -288,46 +309,45 @@
       aria-labelledby="vincular-pessoa-titulo"
       aria-hidden="{% if modal_aberto == 'vincular-pessoa' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'vincular-pessoa' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form
-            method="post"
-            action="{% url 'comunidade:vincular_pessoa_veiculo' veiculo.pk %}"
-            novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="vincular-pessoa-titulo">Vincular pessoa</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'comunidade:vincular_pessoa_veiculo' veiculo.pk %}"
+          novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="vincular-pessoa-titulo">Vincular pessoa</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.pessoa %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_inicio %}
+            <a
+              class="small text-decoration-none d-inline-block mb-6"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-pessoa-veiculo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-pessoa-veiculo">
+              Mais detalhes
+            </a>
+            <div class="collapse" id="mais-detalhes-pessoa-veiculo">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_fim %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.observacao %}
             </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.pessoa %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_inicio %}
-              <a
-                class="small text-decoration-none d-inline-block mb-6"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-pessoa-veiculo"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-pessoa-veiculo">
-                Mais detalhes
-              </a>
-              <div class="collapse" id="mais-detalhes-pessoa-veiculo">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.data_fim %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_pessoa.observacao %}
-              </div>
-              {% for erro in formulario_pessoa.non_field_errors %}
-                <div class="text-danger small mb-2">{{ erro }}</div>
-              {% endfor %}
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Vincular</button>
-            </div>
-          </form>
-        </div>
+            {% for erro in formulario_pessoa.non_field_errors %}
+              <div class="text-danger small mb-2">{{ erro }}</div>
+            {% endfor %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Vincular</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -339,46 +359,45 @@
       aria-labelledby="vincular-unidade-titulo"
       aria-hidden="{% if modal_aberto == 'vincular-unidade' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'vincular-unidade' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <form
-            method="post"
-            action="{% url 'comunidade:vincular_unidade_veiculo' veiculo.pk %}"
-            novalidate>
-            {% csrf_token %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-            <div class="modal-header">
-              <h5 class="modal-title" id="vincular-unidade-titulo">Relacionar unidade</h5>
-              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'comunidade:vincular_unidade_veiculo' veiculo.pk %}"
+          novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          <div class="modal-header">
+            <h5 class="modal-title" id="vincular-unidade-titulo">Relacionar unidade</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.unidade %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_inicio %}
+            <a
+              class="small text-decoration-none d-inline-block mb-6"
+              data-bs-toggle="collapse"
+              href="#mais-detalhes-unidade-veiculo"
+              role="button"
+              aria-expanded="false"
+              aria-controls="mais-detalhes-unidade-veiculo">
+              Mais detalhes
+            </a>
+            <div class="collapse" id="mais-detalhes-unidade-veiculo">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_fim %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao %}
             </div>
-            <div class="modal-body">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.unidade %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_inicio %}
-              <a
-                class="small text-decoration-none d-inline-block mb-6"
-                data-bs-toggle="collapse"
-                href="#mais-detalhes-unidade-veiculo"
-                role="button"
-                aria-expanded="false"
-                aria-controls="mais-detalhes-unidade-veiculo">
-                Mais detalhes
-              </a>
-              <div class="collapse" id="mais-detalhes-unidade-veiculo">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.data_fim %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_unidade.observacao %}
-              </div>
-              {% for erro in formulario_unidade.non_field_errors %}
-                <div class="text-danger small mb-2">{{ erro }}</div>
-              {% endfor %}
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-                Cancelar
-              </button>
-              <button type="submit" class="btn btn-primary">Relacionar</button>
-            </div>
-          </form>
-        </div>
+            {% for erro in formulario_unidade.non_field_errors %}
+              <div class="text-danger small mb-2">{{ erro }}</div>
+            {% endfor %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Relacionar</button>
+          </div>
+        </form>
       </div>
     </div>
   {% endif %}
