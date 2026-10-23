@@ -1,215 +1,210 @@
 {% extends "layouts/app.html" %}
 
-{# A demanda como ela é hoje e o que já aconteceu com ela. As ações ficam no
-   alto e cada uma abre um modal curto: mudar a situação é o caminho principal,
-   editar e observar são apoio. #}
-
 {% block title %}{{ demanda.titulo }} · Demandas · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
-    <div>
-      <a
-        href="{% url 'demandas:listagem' %}"
-        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
-        <i class="bx bx-chevron-left" aria-hidden="true"></i> Demandas
-      </a>
-      <h1 class="h4 mb-1">{{ demanda.titulo }}</h1>
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
-        <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
-        <span class="text-body-secondary small">{{ demanda.condominio }}</span>
-      </div>
-    </div>
-
-    <div class="d-flex align-items-center gap-2">
-      {% if pode_criar_manutencao %}
-        <a
-          href="{% url 'manutencoes:listagem' %}?demanda={{ demanda.pk }}"
-          class="btn btn-label-primary">
-          <i class="bx bx-wrench me-1" aria-hidden="true"></i> Criar manutenção
-        </a>
-      {% endif %}
-      {% if pode_alterar_status %}
-        <button
-          type="button"
-          class="btn btn-primary"
-          data-bs-toggle="modal"
-          data-bs-target="#mudar-situacao">
-          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
-        </button>
-      {% endif %}
-      {% if pode_editar %}
-        <button
-          type="button"
-          class="btn btn-icon btn-text-primary rounded-pill"
-          data-bs-toggle="modal"
-          data-bs-target="#editar-demanda"
-          title="Editar demanda"
-          aria-label="Editar demanda">
-          <i class="bx bx-pencil" aria-hidden="true"></i>
-        </button>
-      {% endif %}
-      {% if pode_observar %}
-        <button
-          type="button"
-          class="btn btn-icon btn-text-success rounded-pill"
-          data-bs-toggle="modal"
-          data-bs-target="#observar-demanda"
-          title="Registrar observação"
-          aria-label="Registrar observação">
-          <i class="bx bx-message-square-add" aria-hidden="true"></i>
-        </button>
-      {% endif %}
+  <div class="eithra-detail-header mb-3">
+    <a href="{% url 'demandas:listagem' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+      <i class="bx bx-chevron-left" aria-hidden="true"></i> Demandas
+    </a>
+    <div class="text-body-secondary small">Detalhe da demanda{% if demanda.referencia %} <span aria-hidden="true">·</span> {{ demanda.referencia }}{% endif %}</div>
+    {% comment %}
+      O assunto curto é o que a tela mostra; o guardado aparece por inteiro no
+      título da aba e ao passar o mouse, sem que nada seja reescrito.
+    {% endcomment %}
+    <h1 class="h4 mb-1"{% if demanda.assunto_curto != demanda.titulo %} title="{{ demanda.titulo }}"{% endif %}>{{ demanda.assunto_curto }}</h1>
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
+      <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
     </div>
   </div>
 
-  <div class="row g-4">
-    <div class="col-12 col-lg-5">
-      <div class="card h-100">
-        <div class="card-header">
-          <h2 class="h6 mb-0">A demanda</h2>
-        </div>
-        <div class="card-body">
-          {% if demanda.descricao %}
-            <p class="mb-4">{{ demanda.descricao|linebreaksbr }}</p>
-          {% endif %}
-
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Responsável</span>
-            <span class="fw-medium text-end">{{ demanda.responsavel }}</span>
-          </div>
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Prazo</span>
-            <span class="text-end">
-              {{ demanda.prazo }}
-              {% if demanda.prazo_situacao %}
-                <span class="badge bg-label-{{ demanda.prazo_tom }} ms-1">{{ demanda.prazo_situacao }}</span>
-              {% endif %}
-            </span>
-          </div>
-          {% if demanda.local %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Local</span>
-              <span class="text-end">{{ demanda.local }}</span>
-            </div>
-          {% endif %}
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Registrada em</span>
-            <span class="text-end">{{ demanda.criada_em }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-lg-7">
-      <div class="card h-100">
-        <div class="card-header">
-          <h2 class="h6 mb-0">Histórico</h2>
-        </div>
-        {% if historico %}
-          <ul class="list-group list-group-flush">
-            {% for evento in historico %}
-              <li class="list-group-item">
-                <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
-                  <span class="fw-medium">{{ evento.tipo }}</span>
-                  <span class="text-body-secondary small">{{ evento.momento }}</span>
-                </div>
-                <p class="mb-0">{{ evento.descricao }}</p>
-                <div class="text-body-secondary small">{{ evento.quem }}</div>
-              </li>
-            {% endfor %}
-          </ul>
+  <ul class="nav nav-tabs eithra-detail-tabs mb-3" role="tablist">
+    {% for item in abas %}
+      <li class="nav-item" role="presentation">
+        {% if item.inativa %}
+          <span class="nav-link disabled">{{ item.titulo }}</span>
         {% else %}
-          {% include "components/state.html" with state_icon="bx-history" state_title="Sem histórico ainda" state_message="O que acontecer com esta demanda aparece aqui." %}
+          <a
+            class="nav-link{% if item.ativa %} active{% endif %}"
+            href="{% url 'demandas:detalhe' demanda.pk %}?aba={{ item.chave }}"
+            {% if item.ativa %}aria-current="page"{% endif %}>
+            {{ item.titulo }}
+          </a>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if aba == "visao_geral" %}
+    {% comment %}
+      A demanda é uma leitura só: as seções se separam por um fio, não por uma
+      superfície. Nada de card por bloco, nem card dentro de card.
+    {% endcomment %}
+    <section class="eithra-detail-section">
+      <div class="d-flex align-items-start justify-content-between gap-3">
+        <h2 class="h6 mb-0">Descrição</h2>
+        {% if pode_editar %}
+          <a class="btn btn-sm btn-text-primary" href="{% url 'demandas:detalhe' demanda.pk %}?abrir=editar&aba=visao_geral">
+            <i class="bx bx-pencil me-1" aria-hidden="true"></i>Editar
+          </a>
         {% endif %}
       </div>
-    </div>
-  </div>
+      <p class="eithra-detail-leitura mb-0 mt-3">{{ demanda.descricao|linebreaksbr }}</p>
+    </section>
+
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Informações</h2>
+      <dl class="eithra-detail-meta">
+        <dt>Local</dt>
+        <dd>{{ demanda.local }}</dd>
+        <dt>Prioridade</dt>
+        <dd>
+          {{ demanda.prioridade }}
+          {% if motivo_prioridade %}
+            <div class="small text-body-secondary">{{ motivo_prioridade }}</div>
+          {% endif %}
+        </dd>
+        <dt>Prazo</dt>
+        <dd>
+          {{ demanda.prazo }}{% if demanda.prazo_destaque %} <span class="text-body-secondary" aria-hidden="true">·</span> <span class="text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</span>{% endif %}
+        </dd>
+        <dt>Quem acompanha</dt>
+        <dd>{{ demanda.responsavel }}</dd>
+        <dt>Registrado por</dt>
+        <dd>{{ demanda.criado_por }}</dd>
+        <dt>Data de registro</dt>
+        <dd>{{ demanda.criada_em }}</dd>
+        <dt>Situação</dt>
+        <dd>{{ demanda.status }}</dd>
+      </dl>
+    </section>
+
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-1">Próxima ação</h2>
+      <p class="text-body-secondary small mb-0">
+        {% if proximo_passo %}
+          {{ proximo_passo.detalhe }}
+        {% elif demanda.encerrada %}
+          Esta demanda está encerrada. O que aconteceu ficou no histórico.
+        {% else %}
+          Use a atualização para registrar andamento e conclusão.
+        {% endif %}
+      </p>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        {% if proximo_passo %}
+          <a href="{{ proximo_passo.url }}" class="btn btn-primary">
+            <i class="bx {{ proximo_passo.icon }} me-1" aria-hidden="true"></i>{{ proximo_passo.label }}
+          </a>
+        {% elif pode_atualizar %}
+          <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn btn-primary">
+            <i class="bx bx-refresh me-1" aria-hidden="true"></i>Atualizar demanda
+          </a>
+        {% endif %}
+
+        {% if pode_concluir %}
+          <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn btn-label-success">
+            <i class="bx bx-check-circle me-1" aria-hidden="true"></i>Concluir demanda
+          </a>
+        {% endif %}
+
+        {% if mais_acoes %}
+          <div class="dropdown">
+            <button class="btn btn-label-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              Mais ações
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              {% for acao in mais_acoes %}
+                <li><a class="dropdown-item" href="{{ acao.url }}">{{ acao.label }}</a></li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  {% elif aba == "historico" %}
+    {% comment %}
+      Histórico é leitura da mesma demanda, não um bloco à parte: entra na
+      mesma superfície contínua da aba, separado por um fio.
+    {% endcomment %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Histórico</h2>
+      {% if historico %}
+        <ul class="eithra-lista">
+          {% for evento in historico %}
+            <li class="eithra-linha">
+              <div class="eithra-linha-corpo">
+                <div class="eithra-linha-nome">{{ evento.tipo }}</div>
+                <div class="eithra-linha-contexto">{{ evento.momento }} · {{ evento.quem }}</div>
+                {% if evento.descricao %}
+                  <div class="eithra-linha-contexto text-body-secondary">{{ evento.descricao }}</div>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="eithra-vazio mb-0"><i class="bx bx-history" aria-hidden="true"></i>O que acontecer com esta demanda aparece aqui.</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Relacionadas</h2>
+      {% if relacionadas %}
+        <ul class="eithra-lista">
+          {% for item in relacionadas %}
+            <li class="eithra-linha">
+              <div class="eithra-linha-corpo">
+                <div class="eithra-linha-nome">{{ item.titulo }}</div>
+                <div class="eithra-linha-contexto">{{ item.tipo }} · {{ item.status }}</div>
+              </div>
+              <div class="eithra-linha-acao">
+                <a class="btn btn-sm btn-label-secondary" href="{{ item.url }}">Abrir</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="eithra-vazio mb-0"><i class="bx bx-link-alt" aria-hidden="true"></i>Nenhuma relação operacional disponível.</p>
+      {% endif %}
+    </section>
+  {% endif %}
 
   {% if pode_editar %}
     <div
-      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      class="modal fade{% if modal_aberto == 'editar' %} show eithra-modal-reaberto{% endif %}"
       id="editar-demanda"
       tabindex="-1"
       role="dialog"
       aria-labelledby="editar-demanda-titulo"
-      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
-      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered">
         <form class="modal-content" method="post" action="{% url 'demandas:editar' demanda.pk %}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
             <h5 class="modal-title" id="editar-demanda-titulo">Editar demanda</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
-
           <div class="modal-body">
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
-                {{ formulario_demanda.titulo.label }}
-              </label>
-              {{ formulario_demanda.titulo }}
-              {% for erro in formulario_demanda.titulo.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
+            {% comment %}
+              Editar corrige os dados da demanda. O que aconteceu com ela no
+              tempo — situação, observação, conclusão — é outra coisa, e
+              acontece no Atualizar demanda.
+            {% endcomment %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.titulo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.relato %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.local_texto %}
+            <datalist id="id_local_texto_lista">
+              {% for local in formulario_demanda.local.field.queryset %}
+                <option value="{{ local.nome }}"></option>
               {% endfor %}
-            </div>
-
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
-                {{ formulario_demanda.descricao.label }}
-              </label>
-              {{ formulario_demanda.descricao }}
-              {% for erro in formulario_demanda.descricao.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
-                {{ formulario_demanda.prioridade.label }}
-              </label>
-              {{ formulario_demanda.prioridade }}
-              {% for erro in formulario_demanda.prioridade.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
-                {{ formulario_demanda.responsavel.label }}
-              </label>
-              {{ formulario_demanda.responsavel }}
-              {% for erro in formulario_demanda.responsavel.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
-                {{ formulario_demanda.prazo.label }}
-              </label>
-              {{ formulario_demanda.prazo }}
-              {% for erro in formulario_demanda.prazo.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_demanda.local.id_for_label }}">
-                {{ formulario_demanda.local.label }}
-              </label>
-              {{ formulario_demanda.local }}
-              {% for erro in formulario_demanda.local.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
+            </datalist>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
           </div>
-
           <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-primary">Salvar</button>
           </div>
         </form>
@@ -217,81 +212,67 @@
     </div>
   {% endif %}
 
-  {% if pode_alterar_status %}
+  {% if pode_atualizar %}
     <div
-      class="modal fade{% if modal_aberto == 'status' %} show{% endif %}"
-      id="mudar-situacao"
+      class="modal fade{% if modal_aberto == 'atualizar' %} show eithra-modal-reaberto{% endif %}"
+      id="atualizar-demanda"
       tabindex="-1"
       role="dialog"
-      aria-labelledby="mudar-situacao-titulo"
-      aria-hidden="{% if modal_aberto == 'status' %}false{% else %}true{% endif %}"
-      {% if modal_aberto == 'status' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'demandas:mudar_status' demanda.pk %}" novalidate>
+      aria-labelledby="atualizar-demanda-titulo"
+      aria-hidden="{% if modal_aberto == 'atualizar' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered modal-lg eithra-modal-wizard">
+        <form class="modal-content" method="post" action="{% url 'demandas:atualizar' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="mudar-situacao-titulo">Mudar situação</h5>
+            <div>
+              <h5 class="modal-title" id="atualizar-demanda-titulo">Atualizar demanda</h5>
+              <div class="eithra-step-wizard mt-3">
+                {% for etapa in etapas_da_atualizacao %}
+                  <div class="eithra-step{% if etapa.ativa %} is-active{% elif etapa.concluida %} is-complete{% endif %}">
+                    <span class="eithra-step-number">{{ etapa.numero }}</span>
+                    <span class="eithra-step-label">{{ etapa.titulo }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
 
-          <div class="modal-body">
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
-                {{ formulario_status.status.label }}
-              </label>
-              {{ formulario_status.status }}
-              {% for erro in formulario_status.status.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
+          {% if etapa_atualizacao == "informacoes" %}
+            <div class="modal-body">
+              {% if formulario_status.fields.status.choices %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_status.status %}
+              {% endif %}
+              {% if pode_observar %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
+              {% endif %}
             </div>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
-            <button type="submit" class="btn btn-primary">Atualizar situação</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if pode_observar %}
-    <div
-      class="modal fade{% if modal_aberto == 'observacao' %} show{% endif %}"
-      id="observar-demanda"
-      tabindex="-1"
-      role="dialog"
-      aria-labelledby="observar-demanda-titulo"
-      aria-hidden="{% if modal_aberto == 'observacao' %}false{% else %}true{% endif %}"
-      {% if modal_aberto == 'observacao' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'demandas:observar' demanda.pk %}" novalidate>
-          {% csrf_token %}
-          <div class="modal-header">
-            <h5 class="modal-title" id="observar-demanda-titulo">Registrar observação</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-
-          <div class="modal-body">
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_observacao.texto.id_for_label }}">
-                {{ formulario_observacao.texto.label }}
-              </label>
-              {{ formulario_observacao.texto }}
-              {% for erro in formulario_observacao.texto.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn btn-primary">Continuar</button>
             </div>
-          </div>
-
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
-            <button type="submit" class="btn btn-primary">Registrar</button>
-          </div>
+          {% else %}
+            {% if formulario_status.fields.status.choices %}{{ formulario_status.status.as_hidden }}{% endif %}
+            {% if pode_observar %}{{ formulario_observacao.texto.as_hidden }}{% endif %}
+            <div class="modal-body">
+              <div class="eithra-review-card">
+                <div class="row g-3">
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Situação</div>
+                    <div class="fw-medium">{{ resumo_atualizacao.situacao }}</div>
+                  </div>
+                  <div class="col-12">
+                    <div class="text-body-secondary small">Observação</div>
+                    <div>{{ resumo_atualizacao.observacao }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn btn-primary">Salvar</button>
+            </div>
+          {% endif %}
         </form>
       </div>
     </div>

@@ -1,17 +1,12 @@
 {% extends "layouts/app.html" %}
 
-{# A lista é de trabalho, não de arquivo: o que está de pé, na ordem em que
-   merece atenção. Cada linha leva à demanda; não há botão "visualizar". #}
-
 {% block title %}Demandas · Eithra{% endblock %}
 
 {% block content %}
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
     <div>
       <h1 class="h4 mb-1">Demandas</h1>
-      <p class="text-body-secondary mb-0">
-        O que precisa de acompanhamento{% if total %} · {{ total }} em vista{% endif %}.
-      </p>
+      <p class="text-body-secondary mb-0">Acompanhe e gerencie o que precisa ser resolvido.</p>
     </div>
     {% if pode_criar %}
       <button
@@ -24,116 +19,145 @@
     {% endif %}
   </div>
 
-  <div class="card mb-4">
-    <div class="card-body">
-      <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
-        {% if mostrar_condominio %}
-          <div class="col-6 col-lg-3">
-            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
-              {{ filtros.condominio.label }}
-            </label>
-            {{ filtros.condominio }}
+  <div class="row g-3 mb-3">
+    {% for indicador in indicadores %}
+      <div class="col-6 col-xl-3">
+        <div class="card eithra-summary-indicator h-100">
+          <div class="card-body d-flex align-items-center gap-3">
+            <span class="eithra-summary-indicator-icon text-{{ indicador.tom }}">
+              <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
+            </span>
+            <div>
+              <div class="eithra-summary-indicator-value">{{ indicador.valor }}</div>
+              <div class="eithra-summary-indicator-label">{{ indicador.titulo }}</div>
+            </div>
           </div>
-        {% endif %}
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.status.id_for_label }}">
-            {{ filtros.status.label }}
-          </label>
-          {{ filtros.status }}
         </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.prioridade.id_for_label }}">
-            {{ filtros.prioridade.label }}
-          </label>
-          {{ filtros.prioridade }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.prazo.id_for_label }}">
-            {{ filtros.prazo.label }}
-          </label>
-          {{ filtros.prazo }}
-        </div>
-        <div class="col-6 col-lg-3">
-          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
-            {{ filtros.responsavel.label }}
-          </label>
-          {{ filtros.responsavel }}
-        </div>
-        <div class="col-12 col-lg-4">
-          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
-            {{ filtros.busca.label }}
-          </label>
-          {{ filtros.busca }}
-        </div>
-        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
-          <div class="form-check mb-0">
-            {{ filtros.minhas }}
-            <label class="form-check-label small" for="{{ filtros.minhas.id_for_label }}">
-              {{ filtros.minhas.label }}
-            </label>
-          </div>
-          {% if filtros_ativos %}
-            <a href="{% url 'demandas:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
-          {% endif %}
-        </div>
-      </form>
-    </div>
+      </div>
+    {% endfor %}
   </div>
 
-  <div class="card">
+  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row align-items-stretch gap-2">
+        <div class="eithra-search-field flex-grow-1">
+          <i class="bx bx-search" aria-hidden="true"></i>
+          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
+          {{ filtros.busca }}
+        </div>
+        <button
+          type="button"
+          class="btn btn-label-secondary eithra-filter-button"
+          data-bs-toggle="collapse"
+          data-bs-target="#demandas-filtros"
+          aria-expanded="{% if filtros_ativos %}true{% else %}false{% endif %}"
+          aria-controls="demandas-filtros">
+          <i class="bx bx-slider-alt me-1" aria-hidden="true"></i> Filtros
+        </button>
+      </div>
+
+      {# A faixa só ocupa espaço quando serve: abre sozinha se já há filtro valendo. #}
+      <div class="collapse{% if filtros_ativos %} show{% endif %}" id="demandas-filtros">
+        <div class="row g-2 align-items-end mt-3">
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.status.id_for_label }}">Situação</label>
+            {{ filtros.status }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.prioridade.id_for_label }}">Prioridade</label>
+            {{ filtros.prioridade }}
+          </div>
+          {% if mostrar_condominio %}
+            <div class="col-12 col-lg-2">
+              <label class="form-label small text-body-secondary" for="{{ filtros.condominio.id_for_label }}">Condomínio</label>
+              {{ filtros.condominio }}
+            </div>
+          {% endif %}
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.local.id_for_label }}">Local</label>
+            {{ filtros.local }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.responsavel.id_for_label }}">Responsável</label>
+            {{ filtros.responsavel }}
+          </div>
+          <div class="col-8 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.prazo.id_for_label }}">Prazo</label>
+            {{ filtros.prazo }}
+          </div>
+          <div class="col-4 col-lg-auto">
+            {% if filtros_ativos %}
+              {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None minhas=None page=None as filtros_limpos %}
+              <a class="btn btn-sm btn-text-secondary w-100" href="{{ filtros_limpos }}">Limpar filtros</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="card eithra-operational-table-shell">
     {% if demandas %}
       <div class="table-responsive d-none d-lg-block">
-        <table class="table align-middle mb-0">
-          <caption class="visually-hidden">Demandas em acompanhamento</caption>
+        <table class="table align-middle mb-0 eithra-operational-table">
+          <caption class="visually-hidden">Demandas operacionais em acompanhamento</caption>
           <thead>
             <tr>
+              <th scope="col">#</th>
               <th scope="col">Demanda</th>
-              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
-              <th scope="col">Responsável</th>
-              <th scope="col">Prazo</th>
+              <th scope="col">Local</th>
               <th scope="col">Prioridade</th>
+              <th scope="col">Prazo</th>
+              <th scope="col">Responsável</th>
               <th scope="col">Situação</th>
               <th scope="col" class="text-end">Ações</th>
             </tr>
           </thead>
           <tbody>
             {% for demanda in demandas %}
-              <tr
-                data-href="{% url 'demandas:detalhe' demanda.pk %}"
-                style="cursor: pointer;">
+              <tr>
+                <td class="text-body-secondary small">{{ demanda.referencia }}</td>
                 <td>
-                  <a
-                    href="{% url 'demandas:detalhe' demanda.pk %}"
-                    class="fw-medium text-decoration-none">{{ demanda.titulo }}</a>
-                  {% if demanda.local %}
-                    <div class="text-body-secondary small">{{ demanda.local }}</div>
+                  <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">
+                    {{ demanda.titulo }}
+                  </a>
+                  <div class="text-body-secondary small eithra-duas-linhas">{{ demanda.descricao_curta }}</div>
+                </td>
+                <td class="small">{{ demanda.local }}</td>
+                <td><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
+                <td>
+                  <div class="small">{{ demanda.prazo }}</div>
+                  {% if demanda.prazo_destaque %}
+                    <div class="small text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</div>
                   {% endif %}
                 </td>
-                {% if mostrar_condominio %}<td>{{ demanda.condominio }}</td>{% endif %}
-                <td>{{ demanda.responsavel }}</td>
-                <td>
-                  {{ demanda.prazo }}
-                  {% if demanda.prazo_situacao %}
-                    <span class="badge bg-label-{{ demanda.prazo_tom }} ms-1">{{ demanda.prazo_situacao }}</span>
-                  {% endif %}
-                </td>
-                <td>
-                  <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
-                </td>
-                <td>
-                  <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
-                </td>
+                <td class="small">{{ demanda.responsavel }}</td>
+                <td><span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span></td>
                 <td class="text-end text-nowrap">
-                  {% for acao in demanda.acoes %}
-                    <a
-                      class="btn btn-icon btn-text-secondary rounded-pill"
-                      href="{{ acao.url }}"
-                      data-acao
-                      title="{{ acao.label }}"
-                      aria-label="{{ acao.label }}">
-                      <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                    </a>
-                  {% endfor %}
+                  {% if demanda.acoes|length == 1 %}
+                    {% with acao=demanda.acoes.0 %}
+                      <a class="btn btn-icon btn-text-primary rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
+                        <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                      </a>
+                    {% endwith %}
+                  {% elif demanda.acoes|length == 2 %}
+                    {% for acao in demanda.acoes %}
+                      <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
+                        <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                      </a>
+                    {% endfor %}
+                  {% elif demanda.acoes %}
+                    <div class="dropdown d-inline-block">
+                      <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
+                        <i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        {% for acao in demanda.acoes %}
+                          <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -143,166 +167,221 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for demanda in demandas %}
-          <a href="{% url 'demandas:detalhe' demanda.pk %}" class="list-group-item list-group-item-action">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-              <span class="fw-medium">{{ demanda.titulo }}</span>
-              <span class="badge bg-label-{{ demanda.status_tom }} flex-shrink-0">{{ demanda.status }}</span>
+          <div class="list-group-item">
+            <div class="d-flex align-items-start justify-content-between gap-2">
+              <div class="min-w-0">
+                <div class="text-body-secondary small">{{ demanda.referencia }}</div>
+                <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
+                <div class="text-body-secondary small eithra-duas-linhas">{{ demanda.descricao_curta }}</div>
+              </div>
+              <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
             </div>
-            {% if demanda.local %}
-              <div class="text-body-secondary small mt-1">{{ demanda.local }}</div>
+            <div class="row g-2 mt-2 small">
+              <div class="col-6"><span class="text-body-secondary">Local</span><br>{{ demanda.local }}</div>
+              <div class="col-6"><span class="text-body-secondary">Prazo</span><br>{{ demanda.prazo }}</div>
+              <div class="col-6"><span class="text-body-secondary">Prioridade</span><br>{{ demanda.prioridade }}</div>
+              <div class="col-6"><span class="text-body-secondary">Responsável</span><br>{{ demanda.responsavel }}</div>
+            </div>
+            {% if demanda.acoes %}
+              <div class="d-flex justify-content-end gap-1 mt-2">
+                {% for acao in demanda.acoes %}
+                  <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
+                    <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                  </a>
+                {% endfor %}
+              </div>
             {% endif %}
-            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-              <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
-              {% if demanda.prazo_situacao %}
-                <span class="badge bg-label-{{ demanda.prazo_tom }}">{{ demanda.prazo_situacao }}</span>
-              {% endif %}
-              <span class="text-body-secondary small">{{ demanda.prazo }}</span>
-            </div>
-            <div class="text-body-secondary small mt-2">
-              {% if mostrar_condominio %}{{ demanda.condominio }} · {% endif %}{{ demanda.responsavel }}
-            </div>
-          </a>
+          </div>
         {% endfor %}
       </div>
-
-      <div class="card-body pt-3">
-        {% include "components/paginacao.html" with page_obj=pagina_demandas filtro_ativo=filtros_ativos %}
-      </div>
-    {% elif filtros_ativos %}
-      {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhuma demanda deste condomínio corresponde aos filtros aplicados. Limpe os filtros para ver a lista inteira." %}
     {% else %}
-      {% include "components/state.html" with state_icon="bx-list-check" state_title="Nada em acompanhamento" state_message="Quando algo precisar de acompanhamento, registre aqui." %}
+      <div class="card-body">
+        {% if filtros_ativos %}
+          {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None minhas=None page=None as filtros_limpos %}
+          {% include "components/state.html" with state_icon="bx-search" state_title="Nenhuma demanda encontrada" state_message="Nenhuma demanda corresponde aos filtros atuais. Ajuste os filtros ou limpe a busca." state_action_url=filtros_limpos state_action_label="Limpar busca" state_action_tone="discreta" %}
+        {% else %}
+          {% include "components/state.html" with state_icon="bx-clipboard" state_title="Nenhuma demanda registrada" state_message="Demandas operacionais aparecem aqui quando forem registradas." %}
+        {% endif %}
+      </div>
     {% endif %}
+    <div class="card-body pt-3">
+      {% include "components/paginacao.html" with page_obj=pagina_demandas filtro_ativo=filtros_ativos %}
+    </div>
   </div>
 
   {% if pode_criar %}
     <div
-      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      class="modal fade{% if modal_aberto == 'criar' %} show eithra-modal-reaberto{% endif %}"
       id="registrar-demanda"
       tabindex="-1"
       role="dialog"
       aria-labelledby="registrar-demanda-titulo"
-      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
-      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered modal-lg eithra-modal-wizard">
         <form class="modal-content" method="post" action="{% url 'demandas:criar' %}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="registrar-demanda-titulo">Registrar demanda</h5>
+            <div>
+              <h5 class="modal-title" id="registrar-demanda-titulo">Registrar demanda</h5>
+              <div class="eithra-step-wizard mt-3">
+                {% for etapa in etapas_do_registro %}
+                  <div class="eithra-step{% if etapa.ativa %} is-active{% elif etapa.concluida %} is-complete{% endif %}">
+                    <span class="eithra-step-number">{{ etapa.numero }}</span>
+                    <span class="eithra-step-label">{{ etapa.titulo }}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
 
-          <div class="modal-body">
-            {% if formulario_demanda.condominio.is_hidden %}
-              {{ formulario_demanda.condominio }}
-            {% else %}
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.condominio.id_for_label }}">
-                  {{ formulario_demanda.condominio.label }}
-                </label>
-                {{ formulario_demanda.condominio }}
-                {% for erro in formulario_demanda.condominio.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-            {% endif %}
-
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_demanda.titulo.id_for_label }}">
-                {{ formulario_demanda.titulo.label }}
-              </label>
-              {{ formulario_demanda.titulo }}
-              {% for erro in formulario_demanda.titulo.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
-                {{ formulario_demanda.prioridade.label }}
-              </label>
-              {{ formulario_demanda.prioridade }}
-              {% for erro in formulario_demanda.prioridade.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-
-            <a
-              class="small text-decoration-none d-inline-block mt-3"
-              data-bs-toggle="collapse"
-              href="#mais-detalhes"
-              role="button"
-              aria-expanded="false"
-              aria-controls="mais-detalhes">
-              Mais detalhes
-            </a>
-            <div class="collapse mt-3" id="mais-detalhes">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.descricao.id_for_label }}">
-                  {{ formulario_demanda.descricao.label }}
-                </label>
-                {{ formulario_demanda.descricao }}
-                {% for erro in formulario_demanda.descricao.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.responsavel.id_for_label }}">
-                  {{ formulario_demanda.responsavel.label }}
-                </label>
-                {{ formulario_demanda.responsavel }}
-                {% for erro in formulario_demanda.responsavel.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
-                  {{ formulario_demanda.prazo.label }}
-                </label>
-                {{ formulario_demanda.prazo }}
-                {% for erro in formulario_demanda.prazo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="mb-0">
-                <label class="form-label" for="{{ formulario_demanda.local.id_for_label }}">
-                  {{ formulario_demanda.local.label }}
-                </label>
-                {{ formulario_demanda.local }}
-                {% for erro in formulario_demanda.local.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
+          {% if registro_etapa == "descricao" %}
+            <div class="modal-body">
+              {% if mostrar_condominio %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.condominio %}
+              {% else %}
+                {{ formulario_demanda.condominio.as_hidden }}
+              {% endif %}
+              <h6 class="mb-1">Descreva o que aconteceu</h6>
+              <p class="text-body-secondary small mb-3">Você pode escrever com suas próprias palavras.</p>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.relato %}
+              <div class="eithra-review-card eithra-tips-box mt-3">
+                <div class="fw-medium mb-2"><i class="bx bx-bulb me-1" aria-hidden="true"></i>Dicas para uma boa descrição</div>
+                <ul class="small text-body-secondary mb-0 ps-3">
+                  <li>Informe o local, se souber.</li>
+                  <li>Descreva o que está acontecendo.</li>
+                  <li>Mencione urgência ou risco se houver.</li>
+                  <li>Você poderá adicionar evidências depois.</li>
+                </ul>
               </div>
             </div>
-          </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="wizard" value="descricao" class="btn btn-primary">Continuar</button>
+            </div>
+          {% elif registro_etapa == "informacoes" %}
+            <div class="modal-body">
+              {{ formulario_demanda.condominio.as_hidden }}
+              {{ formulario_demanda.relato.as_hidden }}
+              <h6 class="mb-1">Informações sugeridas pelo EITHRA</h6>
+              <p class="text-body-secondary small mb-3">Revise e ajuste o que for necessário antes de seguir.</p>
+              <div class="row g-3">
+                <div class="col-12 col-lg-7">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.titulo %}
+                  <div class="eithra-field-help">{{ sugestoes.assunto.origem }}{% if sugestoes.assunto.motivo %} · {{ sugestoes.assunto.motivo }}{% endif %}</div>
+                </div>
+                <div class="col-12 col-lg-5">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.local_texto %}
+                  <datalist id="id_local_texto_lista">
+                    {% for escolha in formulario_demanda.local.field.queryset %}
+                      <option value="{{ escolha.nome }}"></option>
+                    {% endfor %}
+                  </datalist>
+                  <div class="eithra-field-help">{{ sugestoes.local.origem }}{% if sugestoes.local.motivo %} · {{ sugestoes.local.motivo }}{% endif %}</div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
+                  <div class="eithra-field-help">
+                    {% if sugestoes.prioridade.valor %}
+                      {{ sugestoes.prioridade.origem }}{% if sugestoes.prioridade.motivo %} · {{ sugestoes.prioridade.motivo }}{% endif %}
+                    {% else %}
+                      Não identificada no relato.
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo %}
+                  <div class="eithra-field-help">
+                    {% if sugestoes.prazo.valor %}
+                      {{ sugestoes.prazo.origem }}
+                    {% else %}
+                      Sem prazo automático: só é preenchido com base objetiva.
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
+                  <div class="eithra-field-help">{{ sugestoes.responsavel.origem }}{% if sugestoes.responsavel.motivo %} · {{ sugestoes.responsavel.motivo }}{% endif %}</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="wizard" value="informacoes" class="btn btn-primary">Continuar</button>
+            </div>
+          {% else %}
+            {{ formulario_demanda.condominio.as_hidden }}
+            {{ formulario_demanda.relato.as_hidden }}
+            {{ formulario_demanda.titulo.as_hidden }}
+            {{ formulario_demanda.prioridade.as_hidden }}
+            {{ formulario_demanda.prazo.as_hidden }}
+            {{ formulario_demanda.responsavel.as_hidden }}
+            {{ formulario_demanda.local.as_hidden }}
+            {{ formulario_demanda.local_texto.as_hidden }}
+            <div class="modal-body">
+              <h6 class="mb-3">Revisar e registrar</h6>
+              <div class="eithra-review-card">
+                <div class="row g-3">
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Assunto</div>
+                    <div class="fw-medium">{{ revisao.assunto }}</div>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Situação inicial</div>
+                    <div class="fw-medium">{{ revisao.situacao_inicial }}</div>
+                  </div>
+                  <div class="col-12">
+                    <div class="text-body-secondary small">Descrição original</div>
+                    <div>{{ revisao.descricao_original }}</div>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Local</div>
+                    <div>{{ revisao.local }}</div>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Responsável</div>
+                    <div>{{ revisao.responsavel }}</div>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Prioridade</div>
+                    <div class="fw-medium">{{ revisao.prioridade.valor }}</div>
+                    <div class="small text-body-secondary">{{ revisao.prioridade.origem }}{% if revisao.prioridade.motivo %} · {{ revisao.prioridade.motivo }}{% endif %}</div>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <div class="text-body-secondary small">Prazo</div>
+                    <div>{{ revisao.prazo.valor }}</div>
+                    <div class="small text-body-secondary">{{ revisao.prazo.origem }}</div>
+                  </div>
+                </div>
+              </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
-            <button type="submit" class="btn btn-primary">Registrar</button>
-          </div>
+              <div class="mt-3">
+                <div class="fw-medium mb-2">Origem e evidências</div>
+                <div class="eithra-review-card">
+                  <div class="row g-3 small">
+                    <div class="col-12 col-lg-4">
+                      <div class="text-body-secondary">Registrado por</div>
+                      <div>{{ revisao.registrado_por }}</div>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <div class="text-body-secondary">Data e hora</div>
+                      <div>{{ revisao.registrado_em }}</div>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                      <div class="text-body-secondary">Origem</div>
+                      <div>{{ revisao.origem }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="wizard" value="revisao" class="btn btn-primary">Registrar demanda</button>
+            </div>
+          {% endif %}
         </form>
       </div>
     </div>
   {% endif %}
-{% endblock %}
-
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre a demanda. A navegação por teclado continua pelo
-    // link do título, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
 {% endblock %}

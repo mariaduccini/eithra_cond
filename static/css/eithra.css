@@ -38,24 +38,169 @@
 }
 
 /* Identidade ------------------------------------------------------------- */
+/* Paleta oficial do Eithra. Cada cor tem um papel, e nenhuma tela inventa a
+   sua: o que muda de significado muda de token, não de valor. */
 :root {
-  --eithra-primary: #153f46;
-  --eithra-primary-dark: #0e2e33;
-  --eithra-primary-rgb: 21, 63, 70;
+  /* Os três planos da tela, na ordem em que ela os empilha: o menu tem tom
+     próprio, o fundo é o plano neutro e o papel é o que se apoia nele. Toda
+     superfície do sistema sai daqui — nenhuma tela escolhe um branco, um
+     cinza ou um fio por conta própria. */
+  --eithra-fundo: #f7f6f9;        /* fundo geral da aplicação */
+  --eithra-papel: #ffffff;        /* cartões, modais, tabelas */
+  --eithra-menu-fundo: #f3f0f6;   /* menu lateral */
+  --eithra-divisor: #e7e3eb;      /* bordas e divisores */
+
+  --eithra-lilas: #8e7ab5;          /* ação principal, marca */
+  --eithra-lilas-escuro: #6f5d94;   /* preenchimento da ação principal */
+  --eithra-lilas-profundo: #58487c; /* texto sobre fundo lilás claro */
+  --eithra-lilas-claro: #eee9f6;    /* fundo lilás suave */
+  /* O fio lilás é a marca assinando um divisor: nasce do próprio lilás, então
+     acompanha a cor se ela mudar. Fino e raso de propósito — é um fio, não uma
+     moldura. */
+  --eithra-lilas-fio: color-mix(in sRGB, var(--eithra-lilas) 28%, transparent);
+  --eithra-petroleo: #36545b;       /* estrutura, títulos, links */
+  --eithra-verde: #6f9188;          /* operação confirmada */
+  --eithra-ambar: #b89252;          /* atenção */
+  --eithra-atencao-fundo: #f6f0e4;  /* fundo de atenção */
+  --eithra-vermelho: #b76868;       /* erro, risco, ação destrutiva */
+  --eithra-texto: #2f4146;
+
+  /* O texto de apoio é o tom mais claro da paleta e vale para rótulo e nota de
+     campo. É o piso: um passo mais claro que isto não se lê em corpo pequeno.
+     O tom é medido contra os planos em que ele realmente aparece — papel
+     (#ffffff), fundo (#f7f6f9) e menu (#f3f0f6) — e mantém contraste AA de
+     texto pequeno nos três. Não é o peso da fonte que compensa o contraste:
+     é o próprio tom. */
+  --eithra-texto-suave: #637075;
+
+  /* O cabeçalho da tabela é da família do texto de apoio, um passo mais fundo:
+     a coluna é lida de relance e vem em corpo pequeno, então pede mais
+     contraste que uma nota de campo. O ganho vem do tom — o peso e o tamanho
+     seguem leves. */
+  --eithra-tabela-cabecalho: #526068;
+
+  /* A cortina dos modais que o servidor devolve já abertos. O tema traz o seu
+     próprio azul-acinzentado (#22303e); aqui o véu sai do tom do texto, para
+     pertencer à mesma família do resto da tela. */
+  --eithra-modal-backdrop: rgba(47, 65, 70, 0.5);
+
+  /* A cor de marca dá o significado; o preenchimento do botão usa o tom mais
+     fundo da mesma família, porque a cor de marca com texto branco por cima
+     não alcança contraste de leitura. Vale para o lilás, para o verde e para
+     o vermelho — e nenhuma tela escolhe o seu. */
+  --eithra-verde-escuro: #4f6e66;
+  --eithra-vermelho-escuro: #8e4b4b;
 
   /* A marca entra nos tokens que o Bootstrap já usa. Nada de sistema paralelo:
-     CTA primário, item ativo do menu, links, foco e destaques de navegação
-     passam a herdar a cor do Eithra automaticamente. */
+     CTA primário, item ativo do menu, foco e destaques de navegação passam a
+     herdar a cor do Eithra automaticamente. O lilás puro é a marca; o
+     preenchimento dos botões usa o tom escuro da mesma família, porque o lilás
+     claro com texto branco não alcança o contraste mínimo de leitura. */
+  --eithra-primary: var(--eithra-lilas);
+  --eithra-primary-dark: var(--eithra-lilas-escuro);
+  --eithra-primary-rgb: 142, 122, 181;
+
   --bs-primary: var(--eithra-primary);
   --bs-primary-rgb: var(--eithra-primary-rgb);
-  --bs-primary-text-emphasis: var(--eithra-primary-dark);
-  --bs-primary-bg-subtle: #e7eff0;
-  --bs-primary-border-subtle: #c9dcde;
+  --bs-primary-text-emphasis: var(--eithra-lilas-profundo);
+  --bs-primary-bg-subtle: var(--eithra-lilas-claro);
+  --bs-primary-border-subtle: #ddd5ec;
 
-  --bs-link-color: var(--eithra-primary);
-  --bs-link-color-rgb: var(--eithra-primary-rgb);
-  --bs-link-hover-color: var(--eithra-primary-dark);
-  --bs-link-hover-color-rgb: 14, 46, 51;
+  /* O lilás não serve para texto de link: sobre o papel claro ele fica abaixo
+     do contraste mínimo. Link e título ficam com o petróleo, que é estrutural. */
+  --bs-link-color: var(--eithra-petroleo);
+  --bs-link-color-rgb: 54, 84, 91;
+  --bs-link-hover-color: var(--eithra-texto);
+  --bs-link-hover-color-rgb: 47, 65, 70;
+
+  --bs-body-color: var(--eithra-texto);
+  --bs-body-color-rgb: 47, 65, 70;
+  --bs-heading-color: var(--eithra-petroleo);
+  --bs-secondary-color: var(--eithra-texto-suave);
+
+  /* Os planos entram nos tokens que o tema já usa, em vez de virarem regras
+     paralelas: o fundo do corpo, o papel das superfícies e o tom do menu
+     deixam de ser escolha de cada tela. */
+  --bs-body-bg: var(--eithra-fundo);
+  --bs-body-bg-rgb: 247, 246, 249;
+  --bs-paper-bg: var(--eithra-papel);
+  --bs-paper-bg-rgb: 255, 255, 255;
+  --bs-border-color: var(--eithra-divisor);
+  --bs-menu-bg: var(--eithra-menu-fundo);
+  --bs-menu-bg-rgb: 243, 240, 246;
+  --bs-menu-divider-color: var(--eithra-divisor);
+  /* O grupo aberto acende num lilás mais raso que o do item ativo: o menu tem
+     cor, não fundo colorido. */
+  --bs-menu-active-toggle-bg: color-mix(in sRGB, var(--eithra-lilas) 12%, var(--eithra-menu-fundo));
+
+  /* A barra superior flutua sobre o fundo: em vez do cinza fixo do tema, ela
+     se separa pelo fio do divisor e por uma sombra que sai do tom do texto. */
+  --bs-navbar-border-color: var(--eithra-divisor);
+  --bs-navbar-box-shadow: 0 0.125rem 0.5rem 0 rgba(47, 65, 70, 0.05);
+
+  /* Profundidade é para o que flutua — modal, menu suspenso, aviso — e leve.
+     O tema trazia sombras azuladas mais densas; aqui elas nascem do mesmo tom
+     do texto e ficam só o bastante para destacar o plano. */
+  --bs-box-shadow: 0 0.25rem 0.75rem 0 rgba(47, 65, 70, 0.07);
+  --bs-box-shadow-sm: 0 0.125rem 0.375rem 0 rgba(47, 65, 70, 0.06);
+  --bs-box-shadow-lg: 0 0.5rem 1rem 0 rgba(47, 65, 70, 0.1);
+
+  /* As camadas neutras do tema são cinzas de outro matiz. Elas passam a sair
+     do mesmo tom do divisor, para que o que é levemente destacado — cabeçalho
+     de tabela, ícone de resumo, nota de apoio — pertença à mesma família do
+     resto da tela em vez de puxar para o azulado. */
+  --bs-secondary-bg: #eae7ef;
+  --bs-secondary-bg-subtle: #f2eff6;
+  --bs-tertiary-bg: #f2eff6;
+
+  /* Semântica operacional: verde para o que foi confirmado, âmbar para o que
+     pede atenção, vermelho só para risco. Os fundos suaves e as bordas são a
+     mesma cor em outra intensidade — nenhuma tela precisa repetir o valor. */
+  --bs-success: var(--eithra-verde);
+  --bs-success-rgb: 111, 145, 136;
+  --bs-success-text-emphasis: var(--eithra-verde-escuro);
+  --bs-success-bg-subtle: #e8efec;
+  --bs-success-border-subtle: #c9d8d3;
+
+  --bs-warning: var(--eithra-ambar);
+  --bs-warning-rgb: 184, 146, 82;
+  --bs-warning-text-emphasis: #7d6134;
+  --bs-warning-bg-subtle: var(--eithra-atencao-fundo);
+  --bs-warning-border-subtle: #e6d7be;
+
+  --bs-danger: var(--eithra-vermelho);
+  --bs-danger-rgb: 183, 104, 104;
+  --bs-danger-text-emphasis: var(--eithra-vermelho-escuro);
+  --bs-danger-bg-subtle: #f6e4e4;
+  --bs-danger-border-subtle: #e4c6c6;
+
+  /* O informativo não tem cor própria na paleta: assume o petróleo. */
+  --bs-info: var(--eithra-petroleo);
+  --bs-info-rgb: 54, 84, 91;
+  --bs-info-text-emphasis: #2b464c;
+  --bs-info-bg-subtle: #e7eef0;
+  --bs-info-border-subtle: #c9d8dc;
+
+  /* Cantos um pouco mais suaves que o padrão do tema. */
+  --bs-border-radius: 0.5rem;
+
+  /* O menu descansa na cor de texto do app. O item aberto acende em lilás. */
+  --bs-menu-color: var(--bs-body-color);
+  --bs-menu-color-rgb: 47, 65, 70;
+}
+
+/* Superfícies -------------------------------------------------------------
+   O tema entrega o cartão sem borda e apoiado numa sombra. Aqui ele passa a se
+   ler pelo fio: borda discreta sobre o papel, sem sombra. Sombra é profundidade
+   — fica para o que de fato flutua (modal, menu suspenso, aviso), e não para
+   cada bloco da página, que sem ela deixa de parecer uma pilha solta.
+
+   O cartão continua existindo onde há agrupamento real. Onde a informação é
+   contínua, quem separa é o espaçamento e um divisor. */
+.card {
+  --bs-card-border-width: 1px;
+  --bs-card-border-color: var(--eithra-divisor);
+  --bs-card-box-shadow: none;
 }
 
 /* Ações -------------------------------------------------------------------
@@ -88,7 +233,7 @@
 }
 
 .btn-text-primary {
-  --bs-btn-color: var(--eithra-primary);
+  --bs-btn-color: var(--eithra-primary-dark);
   --bs-btn-hover-color: var(--eithra-primary-dark);
   --bs-btn-active-color: var(--eithra-primary-dark);
   --bs-btn-hover-bg: rgba(var(--eithra-primary-rgb), 0.08);
@@ -149,56 +294,56 @@
 }
 
 .btn-label-primary {
-  --bs-btn-color: var(--eithra-primary);
+  --bs-btn-color: var(--bs-primary-text-emphasis);
   --bs-btn-bg: var(--bs-primary-bg-subtle);
-  --bs-btn-hover-color: var(--eithra-primary-dark);
+  --bs-btn-hover-color: var(--bs-primary-text-emphasis);
   --bs-btn-hover-bg: var(--bs-primary-border-subtle);
-  --bs-btn-active-color: var(--eithra-primary-dark);
+  --bs-btn-active-color: var(--bs-primary-text-emphasis);
   --bs-btn-active-bg: var(--bs-primary-border-subtle);
 }
 
 .btn-label-secondary {
   --bs-btn-color: var(--bs-secondary-text-emphasis);
   --bs-btn-bg: var(--bs-secondary-bg-subtle);
-  --bs-btn-hover-bg: #dfe4e8;
+  --bs-btn-hover-bg: var(--bs-secondary-bg);
   --bs-btn-hover-color: var(--bs-secondary-text-emphasis);
-  --bs-btn-active-bg: #dfe4e8;
+  --bs-btn-active-bg: var(--bs-secondary-bg);
   --bs-btn-active-color: var(--bs-secondary-text-emphasis);
 }
 
 .btn-label-success {
   --bs-btn-color: var(--bs-success-text-emphasis);
   --bs-btn-bg: var(--bs-success-bg-subtle);
-  --bs-btn-hover-bg: #d5f2c3;
+  --bs-btn-hover-bg: var(--bs-success-border-subtle);
   --bs-btn-hover-color: var(--bs-success-text-emphasis);
-  --bs-btn-active-bg: #d5f2c3;
+  --bs-btn-active-bg: var(--bs-success-border-subtle);
   --bs-btn-active-color: var(--bs-success-text-emphasis);
 }
 
 .btn-label-info {
   --bs-btn-color: var(--bs-info-text-emphasis);
   --bs-btn-bg: var(--bs-info-bg-subtle);
-  --bs-btn-hover-bg: #bfeaf5;
+  --bs-btn-hover-bg: var(--bs-info-border-subtle);
   --bs-btn-hover-color: var(--bs-info-text-emphasis);
-  --bs-btn-active-bg: #bfeaf5;
+  --bs-btn-active-bg: var(--bs-info-border-subtle);
   --bs-btn-active-color: var(--bs-info-text-emphasis);
 }
 
 .btn-label-warning {
   --bs-btn-color: var(--bs-warning-text-emphasis);
   --bs-btn-bg: var(--bs-warning-bg-subtle);
-  --bs-btn-hover-bg: #ffe6a8;
+  --bs-btn-hover-bg: var(--bs-warning-border-subtle);
   --bs-btn-hover-color: var(--bs-warning-text-emphasis);
-  --bs-btn-active-bg: #ffe6a8;
+  --bs-btn-active-bg: var(--bs-warning-border-subtle);
   --bs-btn-active-color: var(--bs-warning-text-emphasis);
 }
 
 .btn-label-danger {
   --bs-btn-color: var(--bs-danger-text-emphasis);
   --bs-btn-bg: var(--bs-danger-bg-subtle);
-  --bs-btn-hover-bg: #ffc9c0;
+  --bs-btn-hover-bg: var(--bs-danger-border-subtle);
   --bs-btn-hover-color: var(--bs-danger-text-emphasis);
-  --bs-btn-active-bg: #ffc9c0;
+  --bs-btn-active-bg: var(--bs-danger-border-subtle);
   --bs-btn-active-color: var(--bs-danger-text-emphasis);
 }
 
@@ -213,30 +358,91 @@
   color: var(--bs-btn-color);
 }
 
+/* Selo tingido. O tema escreve o texto do selo com a cor cheia sobre um fundo
+   da mesma família: bonito no mostruário, apagado no balcão — o âmbar sobre o
+   âmbar claro fica em 2,5:1. O texto passa ao tom fundo da mesma cor, o mesmo
+   raciocínio dos botões: a cor dá o significado, o tom dá a leitura. O fundo
+   tingido continua sendo o do tema. */
+.bg-label-primary {
+  color: var(--bs-primary-text-emphasis);
+}
+
+.bg-label-secondary {
+  color: var(--bs-secondary-text-emphasis);
+}
+
+.bg-label-success {
+  color: var(--bs-success-text-emphasis);
+}
+
+.bg-label-info {
+  color: var(--bs-info-text-emphasis);
+}
+
+.bg-label-warning {
+  color: var(--bs-warning-text-emphasis);
+}
+
+.bg-label-danger {
+  color: var(--bs-danger-text-emphasis);
+}
+
 /* Botões e barra de progresso trazem a cor primária fixada no tema.
-   Reapontamos para os tokens do Eithra sem reescrever o componente. */
+   Reapontamos para os tokens do Eithra sem reescrever o componente. O
+   preenchimento usa o tom escuro do lilás: o tom de marca, com texto branco,
+   não alcança contraste suficiente para leitura. */
 .btn-primary {
-  --bs-btn-bg: var(--eithra-primary);
-  --bs-btn-border-color: var(--eithra-primary);
-  --bs-btn-hover-bg: var(--eithra-primary-dark);
-  --bs-btn-hover-border-color: var(--eithra-primary-dark);
-  --bs-btn-active-bg: var(--eithra-primary-dark);
-  --bs-btn-active-border-color: var(--eithra-primary-dark);
-  --bs-btn-disabled-bg: var(--eithra-primary);
-  --bs-btn-disabled-border-color: var(--eithra-primary);
+  --bs-btn-bg: var(--eithra-primary-dark);
+  --bs-btn-border-color: var(--eithra-primary-dark);
+  --bs-btn-hover-bg: var(--eithra-lilas-profundo);
+  --bs-btn-hover-border-color: var(--eithra-lilas-profundo);
+  --bs-btn-active-bg: var(--eithra-lilas-profundo);
+  --bs-btn-active-border-color: var(--eithra-lilas-profundo);
+  --bs-btn-disabled-bg: var(--eithra-primary-dark);
+  --bs-btn-disabled-border-color: var(--eithra-primary-dark);
   --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
 }
 
 .btn-outline-primary {
-  --bs-btn-color: var(--eithra-primary);
-  --bs-btn-border-color: var(--eithra-primary);
-  --bs-btn-hover-bg: var(--eithra-primary);
-  --bs-btn-hover-border-color: var(--eithra-primary);
-  --bs-btn-active-bg: var(--eithra-primary);
-  --bs-btn-active-border-color: var(--eithra-primary);
-  --bs-btn-disabled-color: var(--eithra-primary);
-  --bs-btn-disabled-border-color: var(--eithra-primary);
+  --bs-btn-color: var(--eithra-primary-dark);
+  --bs-btn-border-color: var(--eithra-primary-dark);
+  --bs-btn-hover-bg: var(--eithra-primary-dark);
+  --bs-btn-hover-color: var(--bs-white);
+  --bs-btn-hover-border-color: var(--eithra-primary-dark);
+  --bs-btn-active-bg: var(--eithra-lilas-profundo);
+  --bs-btn-active-color: var(--bs-white);
+  --bs-btn-active-border-color: var(--eithra-lilas-profundo);
+  --bs-btn-disabled-color: var(--eithra-primary-dark);
+  --bs-btn-disabled-border-color: var(--eithra-primary-dark);
   --bs-btn-focus-shadow-rgb: var(--eithra-primary-rgb);
+}
+
+/* O tema preenche os botões semânticos com as cores de demonstração
+   (verde-limão e vermelho-vivo), que não são as do Eithra. Aqui os dois passam
+   a sair dos mesmos tokens dos selos e dos alertas: confirmar é verde,
+   destruir é vermelho — a mesma leitura em qualquer tela. */
+.btn-success {
+  --bs-btn-bg: var(--eithra-verde-escuro);
+  --bs-btn-border-color: var(--eithra-verde-escuro);
+  --bs-btn-hover-bg: color-mix(in sRGB, #000 12%, var(--eithra-verde-escuro));
+  --bs-btn-hover-border-color: var(--bs-btn-hover-bg);
+  --bs-btn-active-bg: var(--bs-btn-hover-bg);
+  --bs-btn-active-border-color: var(--bs-btn-hover-bg);
+  --bs-btn-disabled-bg: var(--eithra-verde-escuro);
+  --bs-btn-disabled-border-color: var(--eithra-verde-escuro);
+  --bs-btn-focus-shadow-rgb: var(--bs-success-rgb);
+}
+
+.btn-danger {
+  --bs-btn-bg: var(--eithra-vermelho-escuro);
+  --bs-btn-border-color: var(--eithra-vermelho-escuro);
+  --bs-btn-hover-bg: color-mix(in sRGB, #000 12%, var(--eithra-vermelho-escuro));
+  --bs-btn-hover-border-color: var(--bs-btn-hover-bg);
+  --bs-btn-active-bg: var(--bs-btn-hover-bg);
+  --bs-btn-active-border-color: var(--bs-btn-hover-bg);
+  --bs-btn-disabled-bg: var(--eithra-vermelho-escuro);
+  --bs-btn-disabled-border-color: var(--eithra-vermelho-escuro);
+  --bs-btn-focus-shadow-rgb: var(--bs-danger-rgb);
 }
 
 .progress {
@@ -517,9 +723,9 @@
 }
 
 .eithra-paginacao-lista .page-item.active .page-link {
-  background-color: var(--eithra-primary);
-  border-color: var(--eithra-primary);
-  color: #fff;
+  background-color: var(--eithra-primary-dark);
+  border-color: var(--eithra-primary-dark);
+  color: var(--bs-white);
 }
 
 .eithra-paginacao-lista .page-item.disabled .page-link {
@@ -544,6 +750,838 @@
   font-size: 0.875rem;
   color: var(--bs-secondary-color);
   white-space: nowrap;
+}
+
+/* Portaria ---------------------------------------------------------------- */
+/* A tela é uma conversa: cabeçalho calmo, busca como ponto de entrada, ação
+   principal evidente e listas simples. Seções abertas com divisores substituem
+   a fileira de cards — nenhuma sombra, nenhuma caixa por informação. O escopo
+   fica aqui para as demais telas continuarem como estão. */
+.eithra-portaria {
+  max-inline-size: 56rem;
+}
+
+.eithra-portaria-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-block-end: 1rem;
+}
+
+.eithra-portaria-titulo {
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--bs-heading-color);
+  margin-block: 0 0.25rem;
+}
+
+.eithra-portaria-subtitulo {
+  color: var(--bs-body-color);
+  margin: 0;
+}
+
+/* Três leituras da mesma portaria: o que acontece agora, o que foi autorizado
+   e o que já passou. A aba em vista é uma linha sob o texto, não uma pílula —
+   a operação continua sendo o centro, e a consulta não disputa com ela. */
+.eithra-abas {
+  display: flex;
+  gap: 1.25rem;
+  margin-block-end: 0.875rem;
+  border-block-end: 1px solid var(--bs-border-color);
+}
+
+.eithra-aba {
+  padding-block: 0.4375rem;
+  margin-block-end: -1px;
+  border-block-end: 2px solid transparent;
+  color: var(--bs-secondary-color);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.eithra-aba:hover {
+  color: var(--bs-heading-color);
+}
+
+.eithra-aba.active {
+  border-block-end-color: var(--eithra-primary);
+  color: var(--bs-primary-text-emphasis);
+  font-weight: 600;
+}
+
+/* O registro manual é exceção: fica na ponta, discreto, sem competir com o
+   que a portaria precisa fazer primeiro. */
+.eithra-portaria-acoes {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: 1rem;
+}
+
+.eithra-portaria-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-end: 1.25rem;
+}
+
+.eithra-portaria-filtros .eithra-busca {
+  flex: 1 1 18rem;
+  max-width: none;
+}
+
+.eithra-portaria-periodo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-periodo .form-control {
+  inline-size: auto;
+}
+
+.eithra-portaria-entrada {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-end: 0.5rem;
+}
+
+.eithra-portaria-entrada .eithra-busca {
+  flex: 1 1 18rem;
+  max-width: none;
+}
+
+.eithra-portaria-entrada .eithra-busca .form-control {
+  background-color: var(--bs-paper-bg);
+  border-color: var(--bs-border-color);
+}
+
+/* A barra de entrada mistura um campo pequeno com botões de altura cheia. Os
+   botões descem para a altura da busca e a linha passa a ter o peso de uma
+   barra só, sem degrau entre o texto e a ação. */
+.eithra-portaria-entrada .btn {
+  --bs-btn-padding-y: 0.4rem;
+  --bs-btn-padding-x: 0.875rem;
+  font-size: 0.875rem;
+}
+
+/* Nota discreta: diz que a tela se alimenta sozinha, sem virar aviso. */
+.eithra-portaria-nota {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-nota .bx {
+  font-size: 1rem;
+}
+
+.eithra-portaria-secao {
+  padding-block: 1.125rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.eithra-portaria-secao:first-of-type {
+  border-top: 0;
+}
+
+.eithra-portaria-secao-titulo {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-body-color);
+  margin-block: 0 0.5rem;
+}
+
+/* Quantos itens há na seção, sem transformar isso em número de painel. */
+.eithra-portaria-contagem {
+  margin-inline-start: 0.5rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-grupo-titulo {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--bs-heading-color);
+  margin-block: 0 0.5rem;
+}
+
+/* A presença herdada de outro turno se destaca por uma marca discreta na
+   lateral — o suficiente para o olho parar, sem virar alerta vermelho. É a
+   mesma presença de sempre; só o contexto de quando entrou é que é outro. */
+.eithra-portaria-secao-atencao {
+  padding-inline-start: 0.875rem;
+  border-inline-start: 2px solid var(--bs-warning);
+}
+
+.eithra-portaria-secao-atencao .eithra-portaria-secao-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--bs-warning-text-emphasis);
+}
+
+.eithra-portaria-explicacao {
+  margin: -0.375rem 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Listas operacionais ----------------------------------------------------- */
+.eithra-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.eithra-linha {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 0.5rem;
+}
+
+.eithra-linha + .eithra-linha {
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.eithra-linha-corpo {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.eithra-linha-acao {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* A ação da linha confirma uma passagem, não abre um formulário: fica no
+   tamanho de quem é clicado de pé, sem a altura de um botão de rodapé. */
+.eithra-linha-acao .btn {
+  --bs-btn-padding-y: 0.3125rem;
+  --bs-btn-padding-x: 0.875rem;
+  font-size: 0.875rem;
+}
+
+.eithra-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+  background-color: var(--bs-secondary-bg-subtle);
+  color: var(--bs-heading-color);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.eithra-linha-nome {
+  font-weight: 500;
+  color: var(--bs-heading-color);
+  line-height: 1.35;
+}
+
+.eithra-linha-contexto {
+  font-size: 0.8125rem;
+  color: var(--bs-body-color);
+  line-height: 1.4;
+}
+
+/* O que ficou pendente de outro turno, dito sem alarme. */
+.eithra-linha-alerta {
+  color: var(--bs-warning-text-emphasis);
+}
+
+.eithra-linha-hora {
+  flex: 0 0 auto;
+  inline-size: 2.75rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--bs-body-color);
+}
+
+/* Estado vazio discreto: uma frase, um ícone, nada de bloco. */
+.eithra-vazio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding-block: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--bs-body-color);
+}
+
+.eithra-vazio .bx {
+  font-size: 1.125rem;
+  color: var(--bs-secondary-color);
+}
+
+/* Formulário como conversa ------------------------------------------------ */
+.eithra-rotulo-grupo {
+  color: var(--bs-heading-color);
+}
+
+.eithra-campo-tipo .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--bs-body-color);
+}
+
+.eithra-campo-tipo .form-select {
+  max-inline-size: 14rem;
+}
+
+/* Demandas operacionais --------------------------------------------------- */
+.eithra-summary-indicator {
+  border-color: var(--bs-border-color);
+  box-shadow: none;
+}
+
+.eithra-summary-indicator .card-body {
+  padding: 1rem 1.125rem;
+}
+
+.eithra-summary-indicator-icon {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background-color: var(--bs-tertiary-bg);
+  font-size: 1.125rem;
+}
+
+.eithra-summary-indicator-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--bs-heading-color);
+}
+
+.eithra-summary-indicator-label {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-filter-shell {
+  border-color: var(--bs-border-color);
+  box-shadow: none;
+}
+
+.eithra-search-field {
+  position: relative;
+}
+
+.eithra-search-field .bx {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0.875rem;
+  transform: translateY(-50%);
+  color: var(--bs-secondary-color);
+  font-size: 1rem;
+  pointer-events: none;
+}
+
+.eithra-search-field .form-control {
+  padding-inline-start: 2.35rem;
+}
+
+.eithra-filter-button {
+  min-inline-size: 8rem;
+}
+
+.eithra-operational-table-shell {
+  border-color: var(--bs-border-color);
+  box-shadow: none;
+}
+
+.eithra-operational-table thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--eithra-tabela-cabecalho);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  /* O fio que separa o cabeçalho do corpo é o lilás da marca, e só ele: mesma
+     espessura do tema, sem sombra e sem cor saturada. O divisor sai daqui, não
+     do cinza do tema. */
+  border-bottom: 1px solid var(--eithra-lilas-fio);
+}
+
+.eithra-operational-table tbody td {
+  padding-block: 0.875rem;
+  vertical-align: middle;
+}
+
+.eithra-modal-wizard .modal-content {
+  border: 0;
+}
+
+/* Modal que o servidor devolve já aberto — por `?abrir=...` ou pela volta de um
+   formulário com erro. Nesse caso não existe instância viva do Bootstrap, e o
+   que o tema faria por script (mostrar o modal e vestir a cortina) vem daqui.
+   O comportamento do modal do tema não muda: a classe só entra enquanto ele
+   está aberto. */
+.eithra-modal-reaberto {
+  display: block;
+  background-color: var(--eithra-modal-backdrop);
+}
+
+.eithra-step-wizard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.eithra-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.8125rem;
+}
+
+.eithra-step-number {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bs-tertiary-bg);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.eithra-step.is-active {
+  color: var(--bs-heading-color);
+}
+
+.eithra-step.is-active .eithra-step-number,
+.eithra-step.is-complete .eithra-step-number {
+  background-color: var(--eithra-primary, var(--bs-primary));
+  color: var(--bs-white);
+}
+
+.eithra-step-label {
+  font-weight: 500;
+}
+
+.eithra-review-card {
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  background-color: var(--bs-paper-bg);
+  padding: 1rem;
+}
+
+.eithra-tips-box {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.eithra-field-help {
+  margin-top: -0.5rem;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+}
+
+/* O detalhe começa cedo. Entre a barra do topo e a primeira linha da página há
+   o respiro do contêiner do tema, e ele pesa mais do que informa: a demanda é
+   uma leitura contínua, não um documento com capa. */
+.eithra-detail-header {
+  margin-block-start: -0.75rem;
+}
+
+.eithra-detail-header .badge {
+  font-weight: 500;
+}
+
+/* A faixa de abas é uma linha, e o fio lilás a fecha. O tema marcaria a aba
+   ativa por cima com uma sombra interna; aqui a marca é uma só, abaixo do
+   rótulo, e o texto do ativo fica no petróleo — legível, sem perfume. */
+.eithra-detail-tabs .nav-link {
+  color: var(--bs-secondary-color);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding-inline: 0.25rem;
+  margin-inline-end: 1.5rem;
+  margin-block-end: -1px;
+}
+
+/* Sob o mouse, a aba muda de tom — não assume a cor de marca: o lilás não
+   serve para texto. O tema aponta esse estado para o primário num seletor de
+   quatro pesos; aqui ele é respondido no mesmo peso, com o fio lilás desenhando
+   o mesmo gesto da aba ativa. */
+.eithra-detail-tabs .nav-item .nav-link:hover,
+.eithra-detail-tabs .nav-item .nav-link:focus {
+  color: var(--bs-body-color);
+  border-bottom-color: var(--eithra-lilas-fio);
+}
+
+.eithra-detail-tabs .nav-link.active {
+  color: var(--bs-heading-color);
+  border-bottom-color: var(--eithra-primary, var(--bs-primary));
+  background: transparent;
+  box-shadow: none;
+}
+
+/* O tema entrega a faixa de abas em linha única (`.nav` herda `nowrap`), o que
+   empurra "Relacionadas" para fora do campo visível em tela estreita. Aqui a
+   faixa volta a quebrar linha: nenhuma aba fica escondida. */
+.eithra-detail-tabs {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+  border-bottom: 1px solid var(--eithra-lilas-fio);
+}
+
+/* Informações: o rótulo encosta no valor. A coluna do rótulo mede o texto mais
+   longo, e não uma fração do grid — assim a distância entre os dois é a mesma
+   em qualquer largura, e o bloco não estica pela tela. Quem separa uma linha
+   da outra é o espaçamento: sem moldura, sem card, sem tabela. */
+.eithra-detail-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 1.25rem;
+  row-gap: 0.5rem;
+  max-inline-size: 34rem;
+  margin: 0;
+}
+
+.eithra-detail-meta dt {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  font-weight: 500;
+}
+
+.eithra-detail-meta dd {
+  margin: 0;
+  min-inline-size: 0;
+}
+
+/* Sem largura para duas colunas, o valor desce para a linha de baixo. */
+@media (max-width: 575.98px) {
+  .eithra-detail-meta {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .eithra-detail-meta dt {
+    margin-bottom: 0.125rem;
+  }
+
+  .eithra-detail-meta dd {
+    margin-bottom: 0.75rem;
+  }
+
+  .eithra-detail-meta dd:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* A descrição é leitura: a linha para onde o olho ainda acompanha o texto, em
+   vez de atravessar a tela inteira. Nada é cortado — muda a largura da coluna. */
+.eithra-detail-leitura {
+  max-inline-size: 40rem;
+}
+
+/* O detalhe é uma leitura contínua: cada seção se separa da seguinte por um
+   fio, e não por uma superfície com sombra própria. */
+.eithra-detail-section + .eithra-detail-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+@media (max-width: 991.98px) {
+  .eithra-step-wizard {
+    gap: 0.75rem;
+  }
+
+  .eithra-step-label {
+    font-size: 0.75rem;
+  }
+}
+
+/* Quem pode autorizar ----------------------------------------------------- */
+/* Uma busca, duas leituras: quem digita o apartamento vê quem responde por
+   ele, quem digita o nome vê o apartamento da pessoa. A lista é curta e cada
+   linha é um alvo de toque — sem tabela, sem coluna estreita, sem rolagem
+   horizontal. A escolha feita fica visível antes do campo seguinte, para a
+   portaria não precisar lembrar o que selecionou. */
+.eithra-autorizador-busca {
+  position: relative;
+}
+
+.eithra-autorizador-busca .bx {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0.75rem;
+  transform: translateY(-50%);
+  font-size: 1.125rem;
+  color: var(--bs-secondary-color);
+  pointer-events: none;
+}
+
+.eithra-autorizador-busca .form-control {
+  padding-inline-start: 2.25rem;
+}
+
+.eithra-autorizador-resultado:not(:empty) {
+  margin-block-start: 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  max-block-size: 16rem;
+  overflow-y: auto;
+}
+
+.eithra-autorizador-lista {
+  padding: 0.25rem;
+}
+
+.eithra-autorizador-grupo + .eithra-autorizador-grupo {
+  margin-block-start: 0.25rem;
+  border-top: 1px solid var(--bs-border-color);
+  padding-block-start: 0.25rem;
+}
+
+.eithra-autorizador-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--bs-heading-color);
+}
+
+.eithra-autorizador-contagem {
+  margin-inline-start: auto;
+  font-weight: 500;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-autorizador-opcao {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: var(--bs-border-radius);
+  background-color: transparent;
+  color: var(--bs-body-color);
+  font-size: 0.9375rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.eithra-autorizador-opcao:hover,
+.eithra-autorizador-opcao:focus-visible {
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+}
+
+.eithra-autorizador-opcao .bx {
+  flex: 0 0 auto;
+  font-size: 1.125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-autorizador-opcao:hover .bx,
+.eithra-autorizador-opcao:focus-visible .bx {
+  color: inherit;
+}
+
+/* Cada resultado é uma linha inteira — iniciais, nome, papel e unidade — com
+   uma seta dizendo que ela se escolhe. Não é botão quadrado nem cartão: é
+   lista, e a leitura corre da esquerda para a direita. O nome manda, o papel
+   acompanha em voz baixa, e o realce de passagem é o mesmo da lista inteira. */
+.eithra-person-result {
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.eithra-person-result .eithra-avatar {
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: 0.8125rem;
+}
+
+.eithra-person-result-corpo {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  line-height: 1.35;
+}
+
+.eithra-person-result-nome {
+  font-weight: 500;
+}
+
+.eithra-person-result-contexto {
+  font-size: 0.8125rem;
+  opacity: 0.75;
+}
+
+.eithra-autorizador-dica {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-autorizador-escolhido {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--bs-border-radius);
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+  font-size: 0.875rem;
+}
+
+.eithra-autorizador-escolhido[hidden] {
+  display: none;
+}
+
+.eithra-autorizador-trocar {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bs-link-color);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Empresa do prestador ---------------------------------------------------- */
+/* Empresa é texto livre: não existe cadastro prévio e a portaria não bloqueia
+   a passagem de quem não está na base. O que existe é memória — o que já
+   passou por aqui volta como sugestão, e quem não achar digita do mesmo jeito.
+   A lista é a mesma leitura da busca de autorizador: linha inteira, alvo de
+   toque, sem tabela e sem coluna estreita. */
+.eithra-empresa-sugestoes {
+  margin-block-start: 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  max-block-size: 12rem;
+  overflow-y: auto;
+}
+
+.eithra-empresa-sugestoes[hidden] {
+  display: none;
+}
+
+.eithra-empresa-opcao {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: var(--bs-border-radius);
+  background-color: transparent;
+  color: var(--bs-body-color);
+  font-size: 0.9375rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.eithra-empresa-opcao:hover,
+.eithra-empresa-opcao:focus-visible,
+.eithra-empresa-opcao[aria-selected="true"] {
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+}
+
+.eithra-empresa-opcao .bx {
+  flex: 0 0 auto;
+  font-size: 1.125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-empresa-opcao:hover .bx,
+.eithra-empresa-opcao:focus-visible .bx,
+.eithra-empresa-opcao[aria-selected="true"] .bx {
+  color: inherit;
+}
+
+/* O texto digitado que não é de ninguém: é a própria resposta, e o ícone diz
+   que ali se escreve em vez de se escolher. */
+.eithra-empresa-opcao[data-eithra-livre="true"] .bx {
+  color: var(--bs-link-color);
+}
+
+@media (max-width: 575.98px) {
+  .eithra-abas {
+    gap: 1rem;
+  }
+
+  .eithra-empresa-sugestoes {
+    max-block-size: 10rem;
+  }
+
+  .eithra-portaria-entrada {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .eithra-portaria-entrada .btn {
+    inline-size: 100%;
+  }
+
+  .eithra-portaria-acoes .btn {
+    inline-size: 100%;
+  }
+
+  .eithra-portaria-filtros {
+    align-items: stretch;
+  }
+
+  .eithra-portaria-filtros .eithra-busca {
+    flex: 1 1 100%;
+  }
+
+  .eithra-portaria-periodo {
+    justify-content: space-between;
+  }
+
+  .eithra-portaria-periodo .form-control {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .eithra-linha {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .eithra-linha-acao {
+    margin-inline-start: auto;
+  }
+
+  .eithra-campo-tipo .form-select {
+    max-inline-size: none;
+  }
 }
 
 /* Acessibilidade básica -------------------------------------------------- */

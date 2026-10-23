@@ -9,6 +9,7 @@ from apps.condominios.constants import Papel
 from apps.demandas.constants import PrioridadeDemanda, StatusDemanda
 from apps.demandas.models import Demanda
 from apps.demandas.services import alterar_status, criar_demanda
+from apps.manutencoes.services import criar_manutencao
 from apps.demandas.tests.apoio import (
     criar_condominio,
     criar_local,
@@ -215,6 +216,17 @@ class ListagemEFiltrosTests(BaseDeTelas):
         titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
         self.assertEqual(titulos, ["Do operacional"])
 
+    def test_filtro_por_local(self):
+        local = criar_local(self.condominio, "Garagem G1")
+        self._demanda(titulo="Da garagem", local=local)
+        self._demanda(titulo="Sem local")
+
+        resposta = self.client.get(
+            reverse("demandas:listagem"), {"local": str(local.pk)}
+        )
+        titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
+        self.assertEqual(titulos, ["Da garagem"])
+
     def test_busca_encontra_por_descricao_e_local(self):
         self._demanda(titulo="Limpeza", descricao="troca do filtro da piscina")
         self._demanda(titulo="Pintura", local_contexto="piscina")
@@ -263,6 +275,29 @@ class ListagemEFiltrosTests(BaseDeTelas):
         resposta = self.client.get(reverse("demandas:listagem"))
         titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
         self.assertEqual(titulos[0], "Vencida")
+
+    def test_indicadores_representam_o_universo_visivel_e_nao_os_filtros(self):
+        hoje = timezone.localdate()
+        self._demanda(titulo="Aberta")
+        self._demanda(
+            titulo="Vencida",
+            prazo=hoje - timedelta(days=1),
+            status=StatusDemanda.EM_ANDAMENTO,
+        )
+        self._demanda(titulo="Andamento", status=StatusDemanda.EM_ANDAMENTO)
+        self._demanda(
+            titulo="Concluída",
+            status=StatusDemanda.CONCLUIDA,
+        )
+
+        resposta = self.client.get(
+            reverse("demandas:listagem"), {"prioridade": PrioridadeDemanda.URGENTE}
+        )
+        indicadores = {item["titulo"]: item["valor"] for item in resposta.context["indicadores"]}
+        self.assertEqual(indicadores["Em aberto"], 3)
+        self.assertEqual(indicadores["Vencidas"], 1)
+        self.assertEqual(indicadores["Em andamento"], 2)
+        self.assertEqual(indicadores["Concluídas no mês"], 1)
 
 
 class AcoesTests(BaseDeTelas):
@@ -340,3 +375,145 @@ class AcoesTests(BaseDeTelas):
         self.assertEqual(cancelamento.status_code, 400)
         demanda.refresh_from_db()
         self.assertEqual(demanda.status, StatusDemanda.ABERTA)
+
+    def test_atualizar_demanda_reutiliza_status_e_observacao(self):
+        demanda = self._demanda()
+        resposta = self.client.post(
+            reverse("demandas:atualizar", args=[demanda.pk]),
+            {
+                "status": StatusDemanda.EM_ANDAMENTO,
+                "texto": "Fornecedor acionado",
+                "etapa_atualizacao": "conclusao",
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        demanda.refresh_from_db()
+        self.assertEqual(demanda.status, StatusDemanda.EM_ANDAMENTO)
+        self.assertEqual(demanda.historico.count(), 3)
+
+
+class RegistroEmTresEtapasTests(BaseDeTelas):
+    """O relato vira wizard visual sem perder a compatibilidade de backend."""
+
+    RELATO = "apareceu uma nova falha no motor do portão interno"
+
+    def _descricao(self, **extra):
+        dados = {
+            "condominio": str(self.condominio.pk),
+            "relato": self.RELATO,
+            "wizard": "descricao",
+        }
+        dados.update(extra)
+        return self.client.post(reverse("demandas:criar"), dados)
+
+    def _informacoes(self, **extra):
+        dados = {
+            "condominio": str(self.condominio.pk),
+            "relato": self.RELATO,
+            "titulo": "Nova falha no motor do portão interno",
+            "prioridade": PrioridadeDemanda.ALTA,
+            "wizard": "informacoes",
+        }
+        dados.update(extra)
+        return self.client.post(reverse("demandas:criar"), dados)
+
+    def test_descricao_sozinha_nao_registra_e_abre_etapa_de_informacoes(self):
+        resposta = self._descricao()
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(Demanda.objects.count(), 0)
+        self.assertEqual(resposta.context["modal_aberto"], "criar")
+        self.assertEqual(resposta.context["registro_etapa"], "informacoes")
+        sugestoes = resposta.context["sugestoes"]
+        self.assertTrue(sugestoes["assunto"]["valor"])
+        self.assertEqual(sugestoes["prioridade"]["valor"], "Alta")
+        self.assertEqual(sugestoes["prioridade"]["motivo"], "Falha recorrente em portão")
+        self.assertEqual(sugestoes["prazo"]["valor"], "")
+
+    def test_o_que_a_leitura_nao_sustentou_permanece_sem_resposta(self):
+        resposta = self._descricao(relato="Comprar lâmpadas para o corredor")
+        sugestoes = resposta.context["sugestoes"]
+        self.assertEqual(sugestoes["prioridade"]["origem"], "Não identificada")
+        self.assertEqual(sugestoes["prazo"]["valor"], "")
+        self.assertEqual(sugestoes["local"]["valor"], "")
+
+    def test_local_reconhecido_no_relato_aparece_nas_informacoes(self):
+        criar_local(self.condominio, "Garagem")
+        resposta = self._descricao(relato="Vazamento na garagem do bloco A")
+        self.assertEqual(resposta.context["sugestoes"]["local"]["valor"], "Garagem")
+
+    def test_etapa_de_revisao_mostra_resumo_final(self):
+        resposta = self._informacoes()
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.context["registro_etapa"], "revisao")
+        revisao = resposta.context["revisao"]
+        self.assertEqual(revisao["assunto"], "Nova falha no motor do portão interno")
+        self.assertEqual(revisao["prioridade"]["valor"], "Alta")
+        self.assertEqual(revisao["prazo"]["valor"], "Sem prazo")
+
+    def test_prazo_nao_e_criado_automaticamente_pela_prioridade(self):
+        resposta = self.client.post(
+            reverse("demandas:criar"),
+            {
+                "condominio": str(self.condominio.pk),
+                "relato": self.RELATO,
+                "titulo": "Nova falha no motor do portão interno",
+                "prioridade": PrioridadeDemanda.ALTA,
+            },
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        demanda = Demanda.objects.get()
+        self.assertEqual(demanda.descricao, self.RELATO)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
+        self.assertIsNone(demanda.prazo)
+
+
+class TelaDeAcompanhamentoTests(BaseDeTelas):
+    """A interface segue o design operacional aprovado."""
+
+    def test_listagem_usa_tabela_operacional_com_indicadores(self):
+        self._demanda(titulo="Tabela")
+        resposta = self.client.get(reverse("demandas:listagem"))
+        conteudo = resposta.content.decode()
+
+        self.assertIn("Em aberto", conteudo)
+        self.assertIn("Concluídas no mês", conteudo)
+        self.assertIn("<table", conteudo)
+        self.assertIn(">Demanda<", conteudo)
+        self.assertNotIn('<ul class="eithra-lista">', conteudo)
+
+    def test_registro_exibe_wizard_de_tres_etapas(self):
+        resposta = self.client.get(reverse("demandas:listagem"))
+        conteudo = resposta.content.decode()
+        for etapa in ("Descrição", "Informações", "Revisão"):
+            self.assertIn(etapa, conteudo)
+        self.assertIn("Descreva o que aconteceu", conteudo)
+
+    def test_detalhe_exibe_abas_aprovadas(self):
+        demanda = self._demanda()
+        resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
+        conteudo = resposta.content.decode()
+
+        self.assertNotIn("Mudar situação", conteudo)
+        for aba in ("Visão geral", "Histórico", "Anexos", "Relacionadas"):
+            self.assertIn(aba, conteudo)
+        self.assertIn("Detalhe da demanda", conteudo)
+
+    def test_detalhe_mostra_acao_contextual_e_modal_de_atualizacao(self):
+        demanda = self._demanda()
+        criar_manutencao(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Manutenção vinculada",
+            demanda_origem=demanda,
+        )
+
+        resposta = self.client.get(
+            reverse("demandas:detalhe", args=[demanda.pk]) + "?abrir=atualizar"
+        )
+        conteudo = resposta.content.decode()
+
+        self.assertIn("Acompanhar manutenção", conteudo)
+        self.assertIn("Atualizar demanda", conteudo)
+        self.assertIn("Conclusão", conteudo)

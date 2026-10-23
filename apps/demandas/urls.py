@@ -15,6 +15,7 @@ urlpatterns = [
     path("registrar/", views.criar, name="criar"),
     path("<uuid:pk>/", views.detalhe, name="detalhe"),
     path("<uuid:pk>/editar/", views.editar, name="editar"),
+    path("<uuid:pk>/atualizar/", views.atualizar, name="atualizar"),
     path("<uuid:pk>/situacao/", views.mudar_status, name="mudar_status"),
     path("<uuid:pk>/observar/", views.observar, name="observar"),
 ]
