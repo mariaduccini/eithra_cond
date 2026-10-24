@@ -42,3 +42,10 @@ class EventoAcesso(models.TextChoices):
         "instrucoes_enviadas",
         "Instruções de senha enviadas",
     )
+    # A administração técnica definiu uma nova senha para a conta. O fato
+    # registrado é a definição, e não a senha: nenhum valor, endereço ou token
+    # entra no histórico.
+    SENHA_DEFINIDA_PELA_GESTAO = (
+        "senha_definida",
+        "Senha definida pela gestão",
+    )

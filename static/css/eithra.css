@@ -595,23 +595,23 @@
 }
 
 .eithra-acessos-table .eithra-col-pessoa {
-  inline-size: 36%;
+  inline-size: 34%;
 }
 
 .eithra-acessos-table .eithra-col-papel {
-  inline-size: 23%;
+  inline-size: 20%;
+}
+
+.eithra-acessos-table .eithra-col-condominio {
+  inline-size: 24%;
 }
 
 .eithra-acessos-table .eithra-col-situacao {
-  inline-size: 12%;
-}
-
-.eithra-acessos-table .eithra-col-desde {
   inline-size: 10%;
 }
 
 .eithra-acessos-table .eithra-col-acoes {
-  inline-size: 19%;
+  inline-size: 12%;
 }
 
 .eithra-acessos-table .eithra-cell-break {
@@ -995,6 +995,17 @@
   font-size: 0.875rem;
   font-weight: 600;
   text-transform: uppercase;
+}
+
+/* O retrato ocupa o mesmo lugar das iniciais — e nunca os dois juntos. O corte
+   ao centro mantém o enquadramento em qualquer proporção: quem não tem foto
+   quadrada não sai esticado por causa disso. */
+.eithra-avatar-foto {
+  flex: 0 0 auto;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .eithra-linha-nome {

@@ -99,13 +99,19 @@ def adicionar_acesso(
     nome_completo: str = "",
     papel: str,
     executor,
+    senha: str = "",
 ) -> AcessoUsuarioCondominio:
     """Dá acesso a uma pessoa a este condomínio.
 
     Se o e-mail já pertence a alguém conhecido, a identidade existente é usada
-    como está. Se não, cria-se a identidade sem senha utilizável — a pessoa
-    entra quando existir um caminho seguro de primeiro acesso, e não por uma
-    senha que alguém de fora escolheria por ela.
+    como está. Se não, cria-se a identidade — sem senha utilizável por padrão:
+    a pessoa entra quando existir um caminho seguro de primeiro acesso, e não
+    por uma senha que alguém de fora escolheria por ela.
+
+    A exceção é declarada: quando a gestão escolhe definir a senha agora, ela
+    vem por ``senha`` e é gravada pelo mesmo ``set_password`` de qualquer outra
+    porta de entrada. A senha nunca é guardada em texto, nunca é registrada no
+    histórico, e o fato fica registrado como ``SENHA_DEFINIDA_PELA_GESTAO``.
 
     Um vínculo já existente e inativo é reativado com o papel pedido, e não
     duplicado: o mesmo par pessoa/condomínio tem um histórico só.
@@ -118,6 +124,10 @@ def adicionar_acesso(
     if condominio is None or not getattr(condominio, "pk", None):
         raise ErroDeAcesso("Não foi possível identificar o condomínio.")
 
+    # A senha nunca é normalizada: espaço faz parte do que a pessoa escolheu.
+    senha = senha or ""
+    definir_senha_agora = bool(senha)
+
     Usuario = get_user_model()
     usuario = Usuario.objects.filter(email__iexact=email).first()
 
@@ -126,10 +136,17 @@ def adicionar_acesso(
         if not nome:
             raise ErroDeAcesso("Diga o nome da pessoa que vai ter acesso.")
         usuario = Usuario(email=email, full_name=nome)
-        # Sem senha utilizável: ninguém define senha por outra pessoa, e não
-        # existe senha provisória trafegando em texto aberto.
-        usuario.set_unusable_password()
+        if definir_senha_agora:
+            usuario.set_password(senha)
+        else:
+            # Sem senha utilizável: ninguém define senha por outra pessoa, e não
+            # existe senha provisória trafegando em texto aberto.
+            usuario.set_unusable_password()
         usuario.save()
+    elif definir_senha_agora:
+        # A pessoa já é conhecida; o que a gestão pediu agora foi uma senha nova.
+        usuario.set_password(senha)
+        usuario.save(update_fields=["password", "updated_at"])
 
     vinculo = (
         AcessoUsuarioCondominio.objects.select_for_update()
@@ -154,6 +171,14 @@ def adicionar_acesso(
             anteriores=None,
             novos=_retrato(vinculo),
         )
+        if definir_senha_agora:
+            _registrar(
+                acesso=vinculo,
+                executor=executor,
+                evento=EventoAcesso.SENHA_DEFINIDA_PELA_GESTAO,
+                anteriores=None,
+                novos=_retrato(vinculo),
+            )
         return vinculo
 
     anteriores = _retrato(vinculo)
@@ -167,6 +192,14 @@ def adicionar_acesso(
         anteriores=anteriores,
         novos=_retrato(vinculo),
     )
+    if definir_senha_agora:
+        _registrar(
+            acesso=vinculo,
+            executor=executor,
+            evento=EventoAcesso.SENHA_DEFINIDA_PELA_GESTAO,
+            anteriores=None,
+            novos=_retrato(vinculo),
+        )
     return vinculo
 
 
@@ -270,3 +303,31 @@ def registrar_instrucoes_de_senha_enviadas(
         anteriores=None,
         novos={**_retrato(acesso), "momento": momento},
     )
+
+
+@transaction.atomic
+def definir_senha_de_acesso(
+    *, acesso: AcessoUsuarioCondominio, senha: str, executor
+) -> AcessoUsuarioCondominio:
+    """Define uma nova senha para a conta ligada a este vínculo.
+
+    É a única porta em que alguém escolhe a senha de outra pessoa, e ela existe
+    para a administração técnica de ambientes de teste — quando não há e-mail
+    para entregar um endereço de primeiro acesso.
+
+    Quem protege a senha é o Django, pelo mesmo ``set_password`` de qualquer
+    outra porta de entrada: nada é cifrado nem guardado aqui. O histórico
+    registra quem definiu, para quem e quando — e nunca a senha.
+    """
+    vinculo = _travado(acesso)
+    conta = vinculo.usuario
+    conta.set_password(senha)
+    conta.save(update_fields=["password", "updated_at"])
+    _registrar(
+        acesso=vinculo,
+        executor=executor,
+        evento=EventoAcesso.SENHA_DEFINIDA_PELA_GESTAO,
+        anteriores=None,
+        novos=_retrato(vinculo),
+    )
+    return vinculo

@@ -1,0 +1,20 @@
+{% comment %}
+O retrato de quem tem acesso: a foto quando existe, as iniciais quando não.
+
+O avatar é apoio do nome, nunca um bloco próprio — e nunca deforma: a imagem
+ocupa o mesmo círculo das iniciais, seja retrato ou paisagem. Sem foto, a
+pessoa não fica sem identificação visual: ficam as iniciais do próprio nome.
+
+Uso:
+  {% include "pages/cadastros/_avatar_acesso.html" with acesso=acesso %}
+{% endcomment %}
+{% if acesso.foto_url %}
+  <img
+    class="eithra-avatar-foto"
+    src="{{ acesso.foto_url }}"
+    alt=""
+    loading="lazy"
+    decoding="async">
+{% else %}
+  <span class="eithra-avatar" aria-hidden="true">{{ acesso.iniciais }}</span>
+{% endif %}

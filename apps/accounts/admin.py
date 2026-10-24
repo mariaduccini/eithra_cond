@@ -1,9 +1,11 @@
 """Administração de pessoas do condomínio.
 
-O admin do Django é uma bancada de manutenção técnica, e nem aqui a senha de
-alguém é escolhida por outra pessoa: o cadastro cria a conta sem senha, e quem
-define a sua é sempre o dono dela, pelo fluxo de primeiro acesso. Também não há
-tela de troca de senha — a regra vale igual dos dois lados.
+O admin do Django é uma bancada de manutenção técnica, e a senha de alguém não
+é escolhida aqui: o cadastro cria a conta sem senha, e quem define a sua é
+sempre o dono dela, pelo fluxo de primeiro acesso. Quando a administração
+técnica precisa definir uma senha — em ambiente sem entrega de e-mail —, ela
+usa a tela de acessos, onde a decisão tem autor e histórico. Aqui não há tela de
+troca de senha.
 """
 from django import forms
 from django.contrib import admin
@@ -72,8 +74,26 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
         ("Datas", {"fields": ("last_login", "date_joined", "created_at", "updated_at")}),
+        (
+            "Foto",
+            {
+                "fields": (
+                    "avatar_storage_provider",
+                    "avatar_storage_bucket",
+                    "avatar_storage_key",
+                )
+            },
+        ),
     )
-    readonly_fields = ("last_login", "date_joined", "created_at", "updated_at")
+    readonly_fields = (
+        "last_login",
+        "date_joined",
+        "created_at",
+        "updated_at",
+        "avatar_storage_provider",
+        "avatar_storage_bucket",
+        "avatar_storage_key",
+    )
 
     add_fieldsets = (
         (
@@ -90,9 +110,9 @@ class UserAdmin(DjangoUserAdmin):
     def get_urls(self):
         """Sem tela de troca de senha neste admin.
 
-        A regra do Eithra é uma só: ninguém define a senha de outra pessoa. A
-        tela que o Django traria aqui faria exatamente isso — o operador
-        escolhendo a senha de quem não é ele —, então ela não é registrada. Quem
+        A tela que o Django traria aqui escolheria a senha de quem não é o
+        operador sem deixar registro nenhum. Definir a senha de outra pessoa é
+        decisão da tela de acessos, onde ela tem autor, papel e histórico. Quem
         precisa de senha nova pede por "esqueci minha senha", ou recebe o
         endereço de primeiro acesso de quem cuida do condomínio.
         """

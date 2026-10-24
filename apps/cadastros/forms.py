@@ -9,8 +9,12 @@ o modelo recusa o que não faz sentido — e não existe uma segunda lista de
 regras no formulário para divergir com o tempo.
 """
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 
+from apps.accounts.avatar import ErroDeFoto, validar_foto
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
@@ -30,6 +34,21 @@ TEXTO = {"class": "form-control"}
 SELECAO = {"class": "form-select"}
 MULTIPLA = {"class": "form-select", "size": 6}
 DATA = {"class": "form-control", "type": "date"}
+
+# Escolher a foto é escolher um arquivo de imagem. O tipo informado aqui é só
+# um filtro de janela: quem decide é o conteúdo real, conferido no domínio. A
+# marcação de baixo é o gancho do retrato na tela — é ela que diz ao script
+# qual campo alimenta a prévia ao lado.
+ARQUIVO_DE_IMAGEM = {
+    "class": "form-control",
+    "accept": "image/jpeg,image/png,image/webp",
+    "data-eithra-foto": "true",
+}
+
+# Os dois caminhos da senha inicial. A escolha é explícita e aparece na tela:
+# não existe senha escondida nem provisória.
+SENHA_DA_PROPRIA_PESSOA = "pessoa"
+SENHA_DA_GESTAO = "gestao"
 
 
 def _do_condominio(modelo, condominio):
@@ -409,13 +428,60 @@ class FornecedorForm(forms.ModelForm):
         return self.cleaned_data.get("tipo_pessoa") or TipoPessoa.NAO_INFORMADO
 
 
-class AdicionarAcessoForm(forms.Form):
+def _foto_conferida(arquivo):
+    """A imagem escolhida, já conferida pelo conteúdo real.
+
+    O que não é imagem aceita é recusado antes de qualquer gravação — pelo
+    conteúdo, e não pela extensão nem pelo tipo que o navegador informou.
+    """
+    if not arquivo:
+        return None
+    try:
+        validar_foto(arquivo)
+    except ErroDeFoto as erro:
+        raise forms.ValidationError(str(erro)) from None
+    return arquivo
+
+
+class EnviarFotoMixin(forms.Form):
+    """O campo de foto e a sua conferência, comuns a criar e a editar.
+
+    A base é um formulário, e não uma classe solta: o Django só recolhe os
+    campos declarados em bases que também sejam formulários. Fora disso, o
+    campo existiria como atributo da classe e não como campo do formulário —
+    a tela não o desenharia e o valor enviado seria simplesmente ignorado.
+    """
+
+    foto = forms.FileField(
+        label="Foto",
+        required=False,
+        widget=forms.ClearableFileInput(attrs=ARQUIVO_DE_IMAGEM),
+        help_text="Opcional. JPG, PNG ou WEBP.",
+    )
+
+    def clean_foto(self):
+        return _foto_conferida(self.cleaned_data.get("foto"))
+
+
+class AdicionarAcessoForm(EnviarFotoMixin, forms.Form):
     """Dar acesso a alguém neste condomínio.
 
     O nome só é exigido quando o e-mail ainda não pertence a ninguém conhecido —
     e quem diz isso é o domínio, não o formulário. Sem isto, a tela recusaria
     uma pessoa que já existe por falta de um dado que já se sabe.
+
+    A senha tem dois caminhos, e a escolha é explícita na tela: a própria
+    pessoa define a dela no primeiro acesso — o caminho de sempre —, ou a
+    administração define uma senha agora. O segundo caminho só existe para quem
+    administra contas: sem essa permissão, os campos nem chegam a ser criados,
+    porque o que não existe não pode ser enviado por fora.
     """
+
+    # A tela compara a escolha do caminho de senha para mostrar ou esconder os
+    # campos. Deixar os valores aqui evita que o mesmo texto seja escrito de
+    # novo no template, onde ele envelheceria sem ninguém notar.
+    SENHA_DA_PROPRIA_PESSOA = SENHA_DA_PROPRIA_PESSOA
+    SENHA_DA_GESTAO = SENHA_DA_GESTAO
 
     nome_completo = forms.CharField(
         label="Nome",
@@ -434,13 +500,133 @@ class AdicionarAcessoForm(forms.Form):
         choices=Papel.choices,
         widget=forms.Select(attrs=SELECAO),
     )
+    modo_senha = forms.ChoiceField(
+        label="Senha",
+        choices=(
+            (SENHA_DA_PROPRIA_PESSOA, "A pessoa define a própria senha no primeiro acesso"),
+            (SENHA_DA_GESTAO, "Definir uma senha agora"),
+        ),
+        initial=SENHA_DA_PROPRIA_PESSOA,
+        required=False,
+        widget=forms.RadioSelect(
+            attrs={"class": "form-check-input", "data-eithra-modo-senha": "true"}
+        ),
+    )
+    senha = forms.CharField(
+        label="Nova senha",
+        required=False,
+        strip=False,
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "new-password",
+                "placeholder": "A senha que a pessoa vai usar",
+            }
+        ),
+    )
+    confirmacao = forms.CharField(
+        label="Confirmar nova senha",
+        required=False,
+        strip=False,
+        widget=forms.PasswordInput(
+            attrs={
+                "class": "form-control",
+                "autocomplete": "new-password",
+                "placeholder": "Repita a mesma senha",
+            }
+        ),
+    )
+
+    def __init__(self, *args, pode_definir_senha=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pode_definir_senha = bool(pode_definir_senha)
+        if not self.pode_definir_senha:
+            # Sem acesso administrativo, a escolha de senha nem é oferecida.
+            for campo in ("modo_senha", "senha", "confirmacao"):
+                self.fields.pop(campo, None)
+
+    @property
+    def senha_definida_aqui(self) -> bool:
+        """Diz se a gestão escolheu definir a senha agora."""
+        if not self.pode_definir_senha:
+            return False
+        return self.cleaned_data.get("modo_senha") == SENHA_DA_GESTAO
+
+    @property
+    def senha_aberta_na_tela(self) -> bool:
+        """Diz se os campos de senha já devem aparecer abertos na tela.
+
+        Vale também para o formulário que voltou com erro: o caminho que a
+        pessoa escolheu não pode se fechar sozinho ao reapresentar a tela.
+        """
+        if not self.pode_definir_senha:
+            return False
+        if self.is_bound:
+            return self.data.get("modo_senha") == SENHA_DA_GESTAO
+        return False
+
+    def clean(self):
+        dados = super().clean()
+        if not self.pode_definir_senha:
+            return dados
+
+        if dados.get("modo_senha") != SENHA_DA_GESTAO:
+            # A senha é da própria pessoa: o que veio no campo não é usado.
+            dados["senha"] = ""
+            dados["confirmacao"] = ""
+            return dados
+
+        senha = dados.get("senha") or ""
+        confirmacao = dados.get("confirmacao") or ""
+        if not senha:
+            self.add_error("senha", "Escolha a senha inicial desta pessoa.")
+        else:
+            # Quem protege a senha é o próprio Django, com as regras do projeto.
+            # A conta ainda não existe, mas os dados dela já são conhecidos: a
+            # comparação com o e-mail e o nome vale desde aqui.
+            Usuario = get_user_model()
+            conta = Usuario(
+                email=dados.get("email") or "",
+                full_name=dados.get("nome_completo") or "",
+            )
+            try:
+                validate_password(senha, conta)
+            except ValidationError as erro:
+                self.add_error("senha", erro)
+
+        if senha and not confirmacao:
+            self.add_error("confirmacao", "Repita a senha para confirmar.")
+        elif senha and confirmacao and senha != confirmacao:
+            self.add_error("confirmacao", "As duas senhas não são iguais.")
+        return dados
 
 
-class PapelForm(forms.Form):
-    """O papel de uma pessoa neste condomínio."""
+class EditarAcessoForm(EnviarFotoMixin, forms.Form):
+    """O que a gestão corrige no acesso de quem já está aqui.
+
+    São duas coisas, e as duas pertencem ao vínculo, não à conta: o papel que a
+    pessoa exerce neste condomínio e a foto que a representa. Mudar o papel aqui
+    não muda o que ela é em outro condomínio.
+
+    A imagem tem três respostas possíveis, e todas são explícitas: manter a
+    atual, substituí-la por outra, ou tirá-la. Tirar é uma escolha declarada —
+    nunca a ausência de arquivo —, senão salvar o formulário sem escolher nada
+    apagaria a foto de quem não pediu para apagá-la.
+    """
 
     papel = forms.ChoiceField(
         label="Papel no condomínio",
         choices=Papel.choices,
         widget=forms.Select(attrs=SELECAO),
     )
+    remover_foto = forms.BooleanField(
+        label="Tirar a foto atual",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def clean(self):
+        dados = super().clean()
+        if dados.get("remover_foto"):
+            dados["foto"] = None
+        return dados

@@ -19,14 +19,19 @@ import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import (
+    ImproperlyConfigured,
+    PermissionDenied,
+    ValidationError,
+)
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from apps.accounts import primeiro_acesso
+from apps.accounts import avatar, primeiro_acesso
+from apps.accounts.forms import DefinirSenhaPelaGestaoForm
 from apps.comunidade.permissoes import (
     condominios_para_ver as condominios_da_comunidade_para_ver,
     pode_operar as pode_operar_comunidade,
@@ -34,6 +39,7 @@ from apps.comunidade.permissoes import (
 from apps.condominios import services as servicos_de_acesso
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 from apps.core.paginacao import paginar
+from apps.core.storage import ErroDeStorage
 from apps.governanca.permissoes import (
     pode_gerenciar_tipos as pode_gerenciar_tipos_de_governanca,
     pode_ver_governanca,
@@ -43,11 +49,11 @@ from . import services
 from .forms import (
     AdicionarAcessoForm,
     CondominioForm,
+    EditarAcessoForm,
     EquipamentoForm,
     EspecialidadeFornecedorForm,
     FornecedorForm,
     LocalForm,
-    PapelForm,
     TipoEquipamentoForm,
     TipoLocalOperacionalForm,
 )
@@ -370,9 +376,19 @@ def acessos(request):
 @login_required
 @require_POST
 def adicionar_acesso(request):
-    """Dá acesso a uma pessoa neste condomínio, com o papel escolhido."""
+    """Dá acesso a uma pessoa neste condomínio, com o papel escolhido.
+
+    A senha inicial tem dois caminhos, e quem escolhe é a tela: a própria
+    pessoa define a dela no primeiro acesso — o caminho de sempre —, ou a
+    administração define uma agora, para quando não há e-mail que entregue o
+    endereço. A foto é opcional e nunca desfaz o acesso: se o armazenamento
+    recusar a imagem depois do vínculo criado, o que houve é um aviso, e a
+    gestão corrige pelo próprio acesso.
+    """
     atual = _condominio_para_gestao(request)
-    formulario = AdicionarAcessoForm(request.POST)
+    formulario = AdicionarAcessoForm(
+        request.POST, request.FILES, pode_definir_senha=request.user.is_staff
+    )
     if not formulario.is_valid():
         return _render_acessos(
             request, formulario_acesso=formulario, modal="adicionar", status=400
@@ -385,6 +401,11 @@ def adicionar_acesso(request):
             nome_completo=formulario.cleaned_data["nome_completo"],
             papel=formulario.cleaned_data["papel"],
             executor=request.user,
+            senha=(
+                formulario.cleaned_data["senha"]
+                if formulario.senha_definida_aqui
+                else ""
+            ),
         )
     except servicos_de_acesso.ErroDeAcesso as erro:
         messages.error(request, str(erro))
@@ -418,6 +439,19 @@ def adicionar_acesso(request):
             )
     else:
         messages.success(request, "Acesso concedido.")
+
+    foto = formulario.cleaned_data["foto"]
+    if foto:
+        try:
+            avatar.definir_foto(vinculo.usuario, foto)
+        except (ErroDeStorage, ImproperlyConfigured):
+            messages.warning(
+                request,
+                (
+                    "Acesso concedido, mas não foi possível guardar a foto agora. "
+                    "Use a ação 'Editar acesso' para tentar novamente."
+                ),
+            )
     return redirect(_destino("cadastros:acessos", atual))
 
 
@@ -463,19 +497,33 @@ def gerar_link_primeiro_acesso(request, pk):
 
 @login_required
 @require_POST
-def alterar_papel_acesso(request, pk):
-    """Muda o papel de uma pessoa neste condomínio."""
+def editar_acesso(request, pk):
+    """Corrige o que a pessoa é neste condomínio e a foto que a representa.
+
+    Duas coisas vivem aqui, e as duas são do vínculo, não da conta: o papel
+    exercido neste condomínio — que não muda o que a pessoa é em outro — e a
+    imagem que a identifica na lista. A senha não entra por esta porta: ela é
+    escolha da própria pessoa, e a administração tem tela própria para isso.
+
+    A imagem tem três respostas possíveis, e todas explícitas: manter a atual,
+    substituí-la por outra, ou tirá-la. Tirar é declarado no formulário, nunca
+    a ausência de arquivo — senão salvar sem escolher nada apagaria a foto de
+    quem não pediu para apagá-la.
+
+    Se o armazenamento recusar a imagem, o papel já valeu: o que houve é um
+    aviso, e a gestão tenta de novo pelo próprio acesso.
+    """
     atual = _condominio_para_gestao(request)
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
     )
-    formulario = PapelForm(request.POST)
+    formulario = EditarAcessoForm(request.POST, request.FILES)
     if not formulario.is_valid():
         return _render_acessos(
             request,
-            formulario_papel=formulario,
+            formulario_edicao=formulario,
             item_edicao=vinculo,
-            modal="papel",
+            modal="editar",
             status=400,
         )
 
@@ -487,13 +535,71 @@ def alterar_papel_acesso(request, pk):
         messages.error(request, str(erro))
         return _render_acessos(
             request,
-            formulario_papel=formulario,
+            formulario_edicao=formulario,
             item_edicao=vinculo,
-            modal="papel",
+            modal="editar",
             status=400,
         )
 
-    messages.success(request, "Papel atualizado.")
+    foto = formulario.cleaned_data["foto"]
+    if foto:
+        try:
+            avatar.definir_foto(vinculo.usuario, foto)
+        except (ErroDeStorage, ImproperlyConfigured):
+            messages.warning(
+                request,
+                (
+                    "O papel foi atualizado, mas não foi possível guardar a foto "
+                    "agora. Tente novamente pela ação 'Editar acesso'."
+                ),
+            )
+    elif formulario.cleaned_data.get("remover_foto"):
+        avatar.remover_foto(vinculo.usuario)
+
+    messages.success(request, "Acesso atualizado.")
+    return redirect(_destino("cadastros:acessos", atual))
+
+
+@login_required
+@require_POST
+def definir_senha_acesso(request, pk):
+    """Define uma nova senha para a conta de uma pessoa deste condomínio.
+
+    Esta é a única porta em que alguém escolhe a senha de outra pessoa, e ela
+    existe para a administração técnica: sem ela, um ambiente sem entrega de
+    e-mail não teria como devolver o acesso a quem perdeu a senha.
+
+    Por isso a decisão é de quem tem acesso administrativo, e não de quem
+    apenas responde pelo condomínio: a síndica vê a tela — a existência já lhe
+    é legítima — mas não define senha de ninguém.
+
+    A senha não é guardada em texto, não aparece na tela e não entra no
+    histórico: quem a protege é o Django. O que fica registrado é quem definiu,
+    para quem e quando.
+    """
+    atual = _condominio_para_gestao(request)
+    if not request.user.is_staff:
+        raise PermissionDenied("Esta pessoa não administra contas.")
+
+    vinculo = _obter_ou_404(
+        AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
+    )
+    formulario = DefinirSenhaPelaGestaoForm(request.POST, conta=vinculo.usuario)
+    if not formulario.is_valid():
+        return _render_acessos(
+            request,
+            formulario_senha=formulario,
+            item_edicao=vinculo,
+            modal="senha",
+            status=400,
+        )
+
+    servicos_de_acesso.definir_senha_de_acesso(
+        acesso=vinculo,
+        senha=formulario.cleaned_data["senha"],
+        executor=request.user,
+    )
+    messages.success(request, "Senha atualizada com sucesso.")
     return redirect(_destino("cadastros:acessos", atual))
 
 
@@ -525,7 +631,8 @@ def _render_acessos(
     request,
     *,
     formulario_acesso=None,
-    formulario_papel=None,
+    formulario_edicao=None,
+    formulario_senha=None,
     item_edicao=None,
     modal=None,
     status=200,
@@ -534,20 +641,24 @@ def _render_acessos(
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+    pode_definir_senha = bool(request.user.is_staff and pode_gerenciar)
 
     if item_edicao is None and pode_gerenciar:
         item_edicao = _item_em_edicao(
-            request, AcessoUsuarioCondominio, base["condominios"]
+            request,
+            AcessoUsuarioCondominio,
+            base["condominios"],
+            abrir=("editar", "senha"),
         )
     if item_edicao is None:
-        if modal == "papel":
+        if modal in {"editar", "senha"}:
             modal = None
     elif modal is None:
-        modal = "papel"
+        modal = "senha" if request.GET.get("abrir") == "senha" else "editar"
 
     vinculos = (
         AcessoUsuarioCondominio.objects.filter(condominio=atual)
-        .select_related("usuario")
+        .select_related("usuario", "condominio")
         .order_by("usuario__full_name", "usuario__email")
     )
     if base["termo"]:
@@ -558,17 +669,32 @@ def _render_acessos(
             | Q(usuario__email__icontains=base["termo"])
         )
     pagina_acessos = paginar(vinculos, request.GET.get("page"))
-    pagina_acessos.itens = [_acesso_para_tela(item) for item in pagina_acessos]
+    pagina_acessos.itens = [
+        _acesso_para_tela(item, pode_definir_senha=pode_definir_senha)
+        for item in pagina_acessos
+    ]
 
     contexto = {
         **base,
         "pode_gerenciar": pode_gerenciar,
         "acessos": pagina_acessos.itens,
         "pagina_acessos": pagina_acessos,
-        "formulario_acesso": formulario_acesso or AdicionarAcessoForm(),
-        "formulario_papel": formulario_papel
-        or (PapelForm(initial={"papel": item_edicao.papel}) if item_edicao else None),
+        "formulario_acesso": formulario_acesso
+        or AdicionarAcessoForm(pode_definir_senha=request.user.is_staff),
+        "formulario_edicao": formulario_edicao
+        or (
+            EditarAcessoForm(initial={"papel": item_edicao.papel})
+            if item_edicao
+            else None
+        ),
+        "formulario_senha": formulario_senha
+        or (
+            DefinirSenhaPelaGestaoForm(conta=item_edicao.usuario)
+            if item_edicao and pode_definir_senha
+            else None
+        ),
         "item_edicao": item_edicao,
+        "foto_em_edicao": _foto_do_acesso(item_edicao.usuario) if item_edicao else "",
         "modal_aberto": modal,
     }
     return render(request, "pages/cadastros/acessos.html", contexto, status=status)
@@ -1314,9 +1440,14 @@ def _base_da_pagina(request):
     }
 
 
-def _item_em_edicao(request, modelo, condominios):
-    """O registro que o modal de edição deve abrir, quando a tela pede um."""
-    if request.GET.get("abrir") != "editar":
+def _item_em_edicao(request, modelo, condominios, abrir=("editar",)):
+    """O registro que um modal deve abrir, quando a tela pede um.
+
+    ``abrir`` diz quais pedidos esta tela reconhece. Quase todas reconhecem só
+    o de edição; a lista de acessos reconhece também o de senha, porque lá os
+    dois modais trabalham sobre o mesmo vínculo.
+    """
+    if request.GET.get("abrir") not in abrir:
         return None
     pk = request.GET.get("item")
     if not pk or not _eh_uuid(pk):
@@ -1382,23 +1513,40 @@ def _campos_do_modelo(modelo, dados: dict) -> dict:
 
 # -- Tradução para a tela -------------------------------------------------------
 
-def _acesso_para_tela(vinculo) -> dict:
+def _acesso_para_tela(vinculo, *, pode_definir_senha=False) -> dict:
     """O vínculo como a lista de acessos precisa dele.
 
     As ações são montadas aqui, e não no template: é esta função que sabe que
     a senha continua sendo escolha da própria pessoa. A lista só desenha a ação
     que pede o envio das instruções, nomeada conforme a conta já tenha senha ou
     ainda espere a primeira.
+
+    ``pode_definir_senha`` abre a única exceção: a administração técnica, em
+    ambiente sem entrega de e-mail, define a nova senha diretamente. Para todo
+    o resto, a lista nem sabe que essa ação existe.
+
+    A foto é um retrato ao lado do nome, nunca um motivo para a lista não
+    abrir: se o armazenamento recusar o acesso à imagem, o que se perde é o
+    retrato — ficam o nome e as iniciais.
     """
     usuario = vinculo.usuario
     acoes = [
         {
-            "label": "Mudar papel",
-            "icon": "bx-transfer",
+            "label": "Editar acesso",
+            "icon": "bx-edit",
             "url": f"?condominio={vinculo.condominio_id}&abrir=editar&item={vinculo.pk}",
             "post": False,
         },
     ]
+    if pode_definir_senha:
+        acoes.append(
+            {
+                "label": "Redefinir senha",
+                "icon": "bx-lock-alt",
+                "url": f"?condominio={vinculo.condominio_id}&abrir=senha&item={vinculo.pk}",
+                "post": False,
+            }
+        )
     acoes.append(
         {
             "label": (
@@ -1425,12 +1573,29 @@ def _acesso_para_tela(vinculo) -> dict:
         "pk": vinculo.pk,
         "nome": usuario.full_name or usuario.email,
         "email": usuario.email,
+        "iniciais": usuario.initials,
+        "foto_url": _foto_do_acesso(usuario),
         "papel": vinculo.get_papel_display(),
+        "condominio": vinculo.condominio.nome,
         "situacao": "Ativo" if vinculo.ativo else "Inativo",
         "tom": "success" if vinculo.ativo else "secondary",
-        "desde": vinculo.criado_em.strftime("%d/%m/%Y"),
         "acoes": acoes,
     }
+
+
+def _foto_do_acesso(usuario) -> str:
+    """O endereço temporário da foto, ou vazio quando não há foto ou acesso.
+
+    A lista não depende do armazenamento para abrir: uma imagem que não se
+    consegue mostrar vale menos do que a tela inteira fora do ar. Sem foto, ou
+    sem armazenamento, a lista segue — e a pessoa aparece pelas iniciais.
+    """
+    if not usuario.tem_foto:
+        return ""
+    try:
+        return avatar.acesso_temporario(usuario) or ""
+    except (ErroDeStorage, ImproperlyConfigured):
+        return ""
 
 
 def _condominios_para_tela(request, condominios):

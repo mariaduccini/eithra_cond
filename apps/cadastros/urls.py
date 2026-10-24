@@ -36,14 +36,19 @@ urlpatterns = [
     path("acessos/", views.acessos, name="acessos"),
     path("acessos/registrar/", views.adicionar_acesso, name="adicionar_acesso"),
     path(
-        "acessos/<uuid:pk>/papel/",
-        views.alterar_papel_acesso,
-        name="alterar_papel_acesso",
+        "acessos/<uuid:pk>/editar/",
+        views.editar_acesso,
+        name="editar_acesso",
     ),
     path(
         "acessos/<uuid:pk>/primeiro-acesso/",
         views.gerar_link_primeiro_acesso,
         name="gerar_link_primeiro_acesso",
+    ),
+    path(
+        "acessos/<uuid:pk>/senha/",
+        views.definir_senha_acesso,
+        name="definir_senha_acesso",
     ),
     path(
         "acessos/<uuid:pk>/alternar/",

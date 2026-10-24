@@ -1,9 +1,10 @@
 {% extends "layouts/app.html" %}
 
 {# Quem tem acesso a este condomínio e com qual papel. Dar acesso é uma decisão
-   sobre pessoas: quem responde pelo condomínio acrescenta, muda o papel, ativa e
-   desativa; a supervisão apenas consulta. Nada é apagado — o vínculo desativado
-   permanece, e o histórico de quem mudou o quê fica registrado. #}
+   sobre pessoas: quem responde pelo condomínio acrescenta, muda o papel, ativa,
+   desativa, corrige a foto — e, quando administra contas, redefine a senha. A
+   supervisão apenas consulta. Nada é apagado: o vínculo desativado permanece, e
+   o histórico de quem mudou o quê fica registrado. #}
 
 {% block title %}Usuários e acessos · Eithra{% endblock %}
 
@@ -34,20 +35,20 @@
     {% if acessos %}
       <div class="table-responsive d-none d-lg-block">
         <table class="table align-middle mb-0 eithra-acessos-table">
-          <caption class="visually-hidden">Pessoas com acesso a este condomínio</caption>
+          <caption class="visually-hidden">Usuários com acesso a este condomínio</caption>
           <colgroup>
             <col class="eithra-col-pessoa">
             <col class="eithra-col-papel">
+            <col class="eithra-col-condominio">
             <col class="eithra-col-situacao">
-            <col class="eithra-col-desde">
             {% if pode_gerenciar %}<col class="eithra-col-acoes">{% endif %}
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">Pessoa</th>
-              <th scope="col">Papel</th>
+              <th scope="col">Usuário</th>
+              <th scope="col">Perfil</th>
+              <th scope="col">Condomínio</th>
               <th scope="col">Situação</th>
-              <th scope="col">Desde</th>
               {% if pode_gerenciar %}<th scope="col" class="text-end">Ações</th>{% endif %}
             </tr>
           </thead>
@@ -55,12 +56,17 @@
             {% for acesso in acessos %}
               <tr>
                 <td class="eithra-cell-break">
-                  <span class="fw-medium d-block text-break">{{ acesso.nome }}</span>
-                  <div class="text-body-secondary small text-break">{{ acesso.email }}</div>
+                  <div class="d-flex align-items-center gap-2">
+                    {% include "pages/cadastros/_avatar_acesso.html" with acesso=acesso %}
+                    <div class="flex-grow-1">
+                      <span class="fw-medium d-block text-break">{{ acesso.nome }}</span>
+                      <div class="text-body-secondary small text-break">{{ acesso.email }}</div>
+                    </div>
+                  </div>
                 </td>
                 <td class="eithra-cell-break">{{ acesso.papel }}</td>
+                <td class="eithra-cell-break">{{ acesso.condominio }}</td>
                 <td><span class="badge bg-label-{{ acesso.tom }}">{{ acesso.situacao }}</span></td>
-                <td>{{ acesso.desde }}</td>
                 {% if pode_gerenciar %}
                   <td class="text-end">
                     <div class="dropdown">
@@ -77,12 +83,19 @@
       <div class="list-group list-group-flush d-lg-none">
         {% for acesso in acessos %}
           <div class="list-group-item">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-              <span class="fw-medium">{{ acesso.nome }}</span>
-              <span class="badge bg-label-{{ acesso.tom }} flex-shrink-0">{{ acesso.situacao }}</span>
+            <div class="d-flex align-items-center gap-2">
+              {% include "pages/cadastros/_avatar_acesso.html" with acesso=acesso %}
+              <div class="flex-grow-1">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <span class="fw-medium text-break">{{ acesso.nome }}</span>
+                  <span class="badge bg-label-{{ acesso.tom }} flex-shrink-0">{{ acesso.situacao }}</span>
+                </div>
+                <div class="text-body-secondary small text-break">{{ acesso.email }}</div>
+                <div class="text-body-secondary small mt-1 text-break">
+                  {{ acesso.papel }} · {{ acesso.condominio }}
+                </div>
+              </div>
             </div>
-            <div class="text-body-secondary small">{{ acesso.email }}</div>
-            <div class="text-body-secondary small mt-1">{{ acesso.papel }} · desde {{ acesso.desde }}</div>
             {% if pode_gerenciar %}
               <div class="d-flex flex-wrap align-items-center justify-content-end gap-2 mt-2">
                 <div class="dropdown">
@@ -121,7 +134,12 @@
       aria-hidden="{% if modal_aberto == 'adicionar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'adicionar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'cadastros:adicionar_acesso' %}" novalidate>
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'cadastros:adicionar_acesso' %}"
+          enctype="multipart/form-data"
+          novalidate>
           {% csrf_token %}
           <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
           <div class="modal-header">
@@ -129,9 +147,55 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
           <div class="modal-body">
+            <h6 class="text-body-secondary small mb-3">Dados do usuário</h6>
             {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.email %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.nome_completo %}
+
+            <div class="d-flex align-items-center gap-3 mb-6" data-eithra-foto-area>
+              <span class="eithra-avatar" data-eithra-foto-atual aria-hidden="true">
+                <i class="bx bx-user" aria-hidden="true"></i>
+              </span>
+              <img
+                class="eithra-avatar-foto d-none"
+                alt=""
+                data-eithra-foto-previa>
+              <div class="flex-grow-1">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.foto classe="mb-1" %}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-text-danger d-none"
+                  data-eithra-foto-limpar>
+                  <i class="bx bx-trash me-1" aria-hidden="true"></i>Remover foto
+                </button>
+              </div>
+            </div>
+
+            <h6 class="text-body-secondary small mb-3">Acesso</h6>
             {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.papel %}
+
+            {% if formulario_acesso.pode_definir_senha %}
+              <h6 class="text-body-secondary small mb-3">Senha</h6>
+              <div class="mb-6">
+                {% for opcao in formulario_acesso.modo_senha %}
+                  <div class="form-check">
+                    {{ opcao.tag }}
+                    <label class="form-check-label" for="{{ opcao.id_for_label }}">
+                      {{ opcao.choice_label }}
+                    </label>
+                  </div>
+                {% endfor %}
+                {% for erro in formulario_acesso.modo_senha.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+              <div
+                class="{% if not formulario_acesso.senha_aberta_na_tela %}d-none{% endif %}"
+                data-eithra-campos-de-senha
+                data-eithra-modo-gestao="{{ formulario_acesso.SENHA_DA_GESTAO }}">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.senha %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.confirmacao classe="mb-0" %}
+              </div>
+            {% endif %}
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
@@ -145,30 +209,52 @@
 
     {% if item_edicao %}
       <div
-        class="modal fade{% if modal_aberto == 'papel' %} show{% endif %}"
-        id="editar-papel"
+        class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+        id="editar-acesso"
         tabindex="-1"
         role="dialog"
-        aria-labelledby="editar-papel-titulo"
-        aria-hidden="{% if modal_aberto == 'papel' %}false{% else %}true{% endif %}"
-        {% if modal_aberto == 'papel' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        aria-labelledby="editar-acesso-titulo"
+        aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <form
             class="modal-content"
             method="post"
-            action="{% url 'cadastros:alterar_papel_acesso' item_edicao.pk %}"
+            action="{% url 'cadastros:editar_acesso' item_edicao.pk %}"
+            enctype="multipart/form-data"
             novalidate>
             {% csrf_token %}
             <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
             <div class="modal-header">
-              <h5 class="modal-title" id="editar-papel-titulo">Mudar papel</h5>
+              <h5 class="modal-title" id="editar-acesso-titulo">Editar acesso</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
             <div class="modal-body">
-              <p class="text-body-secondary small mb-6">
+              <p class="text-body-secondary small mb-4 text-break">
                 {{ item_edicao.usuario.full_name|default:item_edicao.usuario.email }}
               </p>
-              {% include "pages/cadastros/_campo.html" with campo=formulario_papel.papel %}
+
+              <div class="d-flex align-items-center gap-3 mb-6" data-eithra-foto-area>
+                <span class="eithra-avatar" data-eithra-foto-atual aria-hidden="true">
+                  {% if foto_em_edicao %}
+                    <img class="eithra-avatar-foto" src="{{ foto_em_edicao }}" alt="">
+                  {% else %}
+                    {{ item_edicao.usuario.initials }}
+                  {% endif %}
+                </span>
+                <img
+                  class="eithra-avatar-foto d-none"
+                  alt=""
+                  data-eithra-foto-previa>
+                <div class="flex-grow-1">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.foto classe="mb-1" %}
+                  {% if item_edicao.usuario.tem_foto %}
+                    {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.remover_foto classe="mb-1" %}
+                  {% endif %}
+                </div>
+              </div>
+
+              {% include "pages/cadastros/_campo.html" with campo=formulario_edicao.papel classe="mb-0" %}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
@@ -180,5 +266,120 @@
         </div>
       </div>
     {% endif %}
+
+    {% if item_edicao and formulario_senha %}
+      <div
+        class="modal fade{% if modal_aberto == 'senha' %} show{% endif %}"
+        id="definir-senha"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="definir-senha-titulo"
+        aria-hidden="{% if modal_aberto == 'senha' %}false{% else %}true{% endif %}"
+        {% if modal_aberto == 'senha' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+        <div class="modal-dialog modal-dialog-centered">
+          <form
+            class="modal-content"
+            method="post"
+            action="{% url 'cadastros:definir_senha_acesso' item_edicao.pk %}"
+            novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="definir-senha-titulo">Redefinir senha</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small mb-6 text-break">
+                {{ item_edicao.usuario.full_name|default:item_edicao.usuario.email }}
+              </p>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_senha.senha %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_senha.confirmacao classe="mb-0" %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary">Salvar nova senha</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endif %}
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      // A escolha do caminho de senha abre os campos só quando a gestão decide
+      // definir a senha agora. Sem javascript, os campos continuam no
+      // formulário e o domínio decide — a tela só esconde o que não foi pedido.
+      document.querySelectorAll("[data-eithra-campos-de-senha]").forEach(function (bloco) {
+        var formulario = bloco.closest("form");
+        if (!formulario) {
+          return;
+        }
+        var valor = bloco.getAttribute("data-eithra-modo-gestao");
+        var escolhas = formulario.querySelectorAll("[data-eithra-modo-senha]");
+
+        function atualizar() {
+          var marcada = null;
+          escolhas.forEach(function (escolha) {
+            if (escolha.checked) {
+              marcada = escolha.value;
+            }
+          });
+          bloco.classList.toggle("d-none", marcada !== valor);
+        }
+
+        escolhas.forEach(function (escolha) {
+          escolha.addEventListener("change", atualizar);
+        });
+        atualizar();
+      });
+
+      // A foto escolhida aparece ao lado do próprio campo, antes de salvar:
+      // quem escolheu a imagem errada percebe ali, e não depois de gravar.
+      document.querySelectorAll("[data-eithra-foto-area]").forEach(function (area) {
+        var campo = area.querySelector("[data-eithra-foto]");
+        var atual = area.querySelector("[data-eithra-foto-atual]");
+        var previa = area.querySelector("[data-eithra-foto-previa]");
+        var limpar = area.querySelector("[data-eithra-foto-limpar]");
+        if (!campo || !previa || !atual) {
+          return;
+        }
+        var endereco = "";
+
+        function mostrar(arquivo) {
+          if (endereco) {
+            URL.revokeObjectURL(endereco);
+            endereco = "";
+          }
+          atual.classList.toggle("d-none", Boolean(arquivo));
+          previa.classList.toggle("d-none", !arquivo);
+          if (limpar) {
+            limpar.classList.toggle("d-none", !arquivo);
+          }
+          if (arquivo) {
+            endereco = URL.createObjectURL(arquivo);
+            previa.src = endereco;
+          } else {
+            previa.removeAttribute("src");
+          }
+        }
+
+        campo.addEventListener("change", function () {
+          mostrar(campo.files && campo.files[0]);
+        });
+
+        if (limpar) {
+          limpar.addEventListener("click", function () {
+            campo.value = "";
+            mostrar(null);
+          });
+        }
+      });
+    });
+  </script>
 {% endblock %}

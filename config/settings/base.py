@@ -238,6 +238,17 @@ BALANCOS_DETECTOR_MAX_PAGINAS = env.int("BALANCOS_DETECTOR_MAX_PAGINAS", default
 # outro. A infraestrutura compartilhada vive em ``apps/core/storage.py``.
 DOCUMENTOS_STORAGE_BUCKET = env("DOCUMENTOS_STORAGE_BUCKET", default="")
 
+# A foto de quem usa o Eithra fica no mesmo provedor privado, em um bucket
+# próprio: a imagem de uma pessoa não se mistura com os arquivos de outro
+# domínio. Como o arquivo é privado, o acesso é sempre temporário e gerado na
+# hora — nunca uma URL pública guardada.
+EITHRA_AVATAR_BUCKET = env("EITHRA_AVATAR_BUCKET", default="")
+# 2 MB. É um retrato de identificação, não um arquivo de trabalho: um limite
+# menor que o do documento recusa cedo a imagem errada.
+EITHRA_AVATAR_MAX_BYTES = env.int(
+    "EITHRA_AVATAR_MAX_BYTES", default=2 * 1024 * 1024
+)
+
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 

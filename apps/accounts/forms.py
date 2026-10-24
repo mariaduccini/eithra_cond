@@ -98,6 +98,22 @@ class DefinirSenhaForm(forms.Form):
         return dados
 
 
+class DefinirSenhaPelaGestaoForm(DefinirSenhaForm):
+    """A senha que a administração técnica define para a conta de outra pessoa.
+
+    Reaproveita a conferência da primeira senha: as regras são as do Django, e
+    não uma lista inventada para esta tela. O que muda é só o nome do campo de
+    confirmação, porque aqui quem digita não é o dono da conta.
+
+    A senha de agora não existe para ser vista: o formulário não a pede nem a
+    mostra. Quem a guarda é o Django.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["confirmacao"].label = "Confirmar nova senha"
+
+
 class SolicitarRedefinicaoForm(forms.Form):
     """O e-mail de quem esqueceu a senha.
 

@@ -252,12 +252,18 @@ class SupabaseStorageProvider(StorageProvider):
         return f"{self._url}/storage/v1{caminho}"
 
 
-def obter_provider(bucket: str | None = None) -> StorageProvider:
+def obter_provider(
+    bucket: str | None = None, *, nome_do_bucket: str | None = None
+) -> StorageProvider:
     """Devolve o provedor configurado, ou falha dizendo exatamente o que falta.
 
     O bucket é do domínio: quem chama diz qual é. Sem bucket informado, vale o
     bucket dos balanços — que foi o primeiro domínio a usar este armazenamento —
     para que os chamadores existentes continuem funcionando sem mudança.
+
+    ``nome_do_bucket`` só existe para a recusa falar o nome certo da variável
+    quando o domínio pede um bucket próprio (por exemplo, a foto do usuário):
+    sem ele, a recusa citaria a variável do domínio que estreou o provedor.
 
     Não existe queda para disco local. Se o storage está configurado e as
     variáveis obrigatórias não estão no ambiente, o envio é recusado — e não
@@ -266,7 +272,7 @@ def obter_provider(bucket: str | None = None) -> StorageProvider:
     nome = (getattr(settings, "BALANCOS_STORAGE_PROVIDER", "") or "").strip().lower()
 
     if nome in ("", PROVEDOR_PADRAO):
-        return _supabase_configurado(bucket)
+        return _supabase_configurado(bucket, nome_do_bucket=nome_do_bucket)
 
     raise ImproperlyConfigured(
         f"Provedor de armazenamento não suportado: {nome!r}. "
@@ -274,17 +280,19 @@ def obter_provider(bucket: str | None = None) -> StorageProvider:
     )
 
 
-def _supabase_configurado(bucket: str | None = None) -> SupabaseStorageProvider:
+def _supabase_configurado(
+    bucket: str | None = None, *, nome_do_bucket: str | None = None
+) -> SupabaseStorageProvider:
     """Monta o provedor do Supabase, exigindo as variáveis obrigatórias."""
     url = (getattr(settings, "SUPABASE_URL", "") or "").strip()
     chave = (getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
 
     if bucket is None:
         bucket = (getattr(settings, "BALANCOS_STORAGE_BUCKET", "") or "").strip()
-        nome_do_bucket = "BALANCOS_STORAGE_BUCKET"
+        nome_do_bucket = nome_do_bucket or "BALANCOS_STORAGE_BUCKET"
     else:
         bucket = (bucket or "").strip()
-        nome_do_bucket = "DOCUMENTOS_STORAGE_BUCKET"
+        nome_do_bucket = nome_do_bucket or "DOCUMENTOS_STORAGE_BUCKET"
 
     faltando = [
         nome_da_variavel

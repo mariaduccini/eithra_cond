@@ -52,6 +52,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField("ativo", default=True)
     is_staff = models.BooleanField("acesso administrativo", default=False)
     date_joined = models.DateTimeField("entrou em", default=timezone.now)
+    # A foto fica no armazenamento privado; aqui vive apenas a referência do
+    # objeto. Sem foto, a pessoa aparece pelas iniciais do próprio nome.
+    avatar_storage_provider = models.CharField("provedor da foto", max_length=40, blank=True, default="")
+    avatar_storage_bucket = models.CharField("bucket da foto", max_length=120, blank=True, default="")
+    avatar_storage_key = models.CharField("referência da foto", max_length=255, blank=True, default="")
     created_at = models.DateTimeField("criado em", auto_now_add=True)
     updated_at = models.DateTimeField("atualizado em", auto_now=True)
 
@@ -87,3 +92,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         if len(parts) == 1:
             return parts[0][:2].upper()
         return (parts[0][0] + parts[-1][0]).upper()
+
+    @property
+    def tem_foto(self) -> bool:
+        """Diz se há uma foto guardada para esta pessoa."""
+        return bool(self.avatar_storage_key.strip())
