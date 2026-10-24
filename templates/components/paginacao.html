@@ -14,18 +14,22 @@
 	Variáveis: page_obj (obrigatória) — a página devolvida por
 	apps.core.paginacao.paginar, que já traz "faixa" com os números a mostrar,
 	resumidos por reticências quando há muitas páginas; filtro_ativo (opcional)
-	muda só o texto do resumo — "12 resultados" em vez de "Mostrando 1–12 de 12".
+	muda só o texto do resumo — "12 resultados" em vez de "Mostrando 1–12 de 12";
+	rotulo (opcional) nomeia o que está sendo contado, no singular — "demanda"
+	vira "Mostrando 1–12 de 12 demandas", com ou sem filtro; mostrar_resumo
+	(opcional) mantém o resumo à vista mesmo quando tudo cabe em uma página.
 
 	Numa lista curta, que cabe numa página só e não está filtrada, não há nada a
-	dizer nem a navegar: o bloco não aparece.
+	dizer nem a navegar: o bloco não aparece — a não ser que a lista peça o total
+	sempre visível, com mostrar_resumo.
 {% endcomment %}
-{% if page_obj.paginator.count and filtro_ativo or page_obj.paginator.num_pages > 1 %}
+{% if page_obj.paginator.count and mostrar_resumo or page_obj.paginator.count and filtro_ativo or page_obj.paginator.num_pages > 1 %}
   <div class="eithra-paginacao">
     <p class="eithra-paginacao-resumo text-body-secondary small mb-0">
-      {% if filtro_ativo %}
+      {% if filtro_ativo and not rotulo %}
         {{ page_obj.paginator.count }} resultado{{ page_obj.paginator.count|pluralize }}
       {% else %}
-        Mostrando {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}
+        Mostrando {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% if rotulo %} {{ rotulo }}{{ page_obj.paginator.count|pluralize }}{% endif %}
       {% endif %}
     </p>
 

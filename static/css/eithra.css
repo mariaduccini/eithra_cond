@@ -631,6 +631,15 @@
   overflow: hidden;
 }
 
+/* O contexto que acompanha um título é linha secundária: uma linha com
+   reticências basta para reconhecer o assunto, e o resto continua disponível no
+   title. Duas linhas de contexto deixariam a lista mais alta sem informar mais. */
+.eithra-uma-linha {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A linha responde ao mouse com um realce discreto, para o olho não perder a
    linha em listas longas. Só a linha que de fato abre um registro recebe o
    cursor de link: a lista não vira uma fileira de botões. */
@@ -1125,6 +1134,99 @@
 .eithra-operational-table tbody td {
   padding-block: 0.875rem;
   vertical-align: middle;
+}
+
+/* A largura de cada coluna é decidida aqui, não pelo texto que chega. "Demanda"
+   é a única que precisa de espaço para respirar; as demais identificam ou
+   comparam em uma linha. Sem isto, uma descrição longa estica a coluna e obriga
+   todas as linhas da lista a crescer na vertical. */
+.eithra-operational-table {
+  table-layout: fixed;
+  inline-size: 100%;
+}
+
+/* O tema reserva 20px de cada lado de cada célula: nas sete colunas são 280px,
+   mais de um quarto da tabela, gastos só em respiro — e é esse respiro que
+   empurrava "Demanda" para trás. O recuo continua, apenas proporcional ao que
+   cada coluna tem para mostrar. */
+.eithra-operational-table thead th,
+.eithra-operational-table tbody td {
+  padding-inline: 0.5rem;
+}
+
+/* A coluna que carrega o assunto — identificador, título e contexto — e a única
+   que cresce: é ela que ficaria sem espaço se as outras pedissem mais. */
+.eithra-operational-table .eithra-col-demanda {
+  inline-size: 36.5%;
+}
+
+.eithra-operational-table .eithra-col-local {
+  inline-size: 11%;
+}
+
+.eithra-operational-table .eithra-col-prioridade {
+  inline-size: 8.8%;
+}
+
+.eithra-operational-table .eithra-col-prazo {
+  inline-size: 9%;
+}
+
+.eithra-operational-table .eithra-col-responsavel {
+  inline-size: 11%;
+}
+
+/* "Em andamento" é o rótulo mais longo da lista: um badge cortado informa menos
+   do que um badge largo. A coluna cede o mínimo que o selo exige em uma linha. */
+.eithra-operational-table .eithra-col-situacao {
+  inline-size: 13.4%;
+}
+
+/* Dois ícones de ação lado a lado são o caso mais largo desta coluna. */
+.eithra-operational-table .eithra-col-acoes {
+  inline-size: 10.3%;
+}
+
+/* Colunas curtas leem melhor em uma linha: quebrar "22/10/2026" ou
+   "Em andamento" não ajuda ninguém. */
+.eithra-operational-table .eithra-col-prioridade,
+.eithra-operational-table .eithra-col-prazo,
+.eithra-operational-table .eithra-col-situacao,
+.eithra-operational-table .eithra-col-acoes {
+  white-space: nowrap;
+}
+
+/* O identificador acompanha a demanda sem pedir uma coluna: linha própria,
+   corpo menor que o do assunto e tom de apoio. Em uma linha só — partido em
+   quatro pedaços ele não identifica mais nada. */
+.eithra-operational-table .eithra-demanda-identificador {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* As ações são ícones, não texto corrido: o espaço em branco que o template
+   deixa entre eles somava ao botão e estourava a coluna. O afastamento passa a
+   ser declarado aqui. */
+.eithra-operational-table .eithra-acoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* O rodapé fecha a lista, não abre um bloco novo: fio do divisor do sistema e o
+   mesmo recuo lateral das células. Sem fundo, sem moldura, sem sombra — um
+   card aqui faria a lista parecer duas. */
+.eithra-tabela-rodape {
+  border-top: 1px solid var(--eithra-divisor);
+  padding: 0 0.5rem 0.5rem;
+}
+
+/* Palavra longa dentro de coluna estreita não quebra o desenho da linha: ela
+   quebra dentro do próprio limite. */
+.eithra-operational-table .eithra-duas-linhas,
+.eithra-operational-table .eithra-uma-linha {
+  overflow-wrap: anywhere;
 }
 
 .eithra-modal-wizard .modal-content {

@@ -806,6 +806,9 @@ def _demanda_para_tela(demanda, usuario=None):
         "referencia": _referencia_curta(demanda),
         "titulo": demanda.titulo,
         "descricao_curta": _contexto_curto(demanda.descricao),
+        # O corte acima é de exibição: a lista mostra uma linha, e o texto
+        # completo fica disponível no title. O que está guardado não muda.
+        "descricao_completa": demanda.descricao,
         "condominio": demanda.condominio.nome,
         "responsavel": _nome_de(demanda.responsavel),
         "prazo": _prazo_por_extenso(demanda.prazo),

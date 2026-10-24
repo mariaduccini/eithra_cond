@@ -103,61 +103,65 @@
           <caption class="visually-hidden">Demandas operacionais em acompanhamento</caption>
           <thead>
             <tr>
-              <th scope="col">#</th>
-              <th scope="col">Demanda</th>
-              <th scope="col">Local</th>
-              <th scope="col">Prioridade</th>
-              <th scope="col">Prazo</th>
-              <th scope="col">Responsável</th>
-              <th scope="col">Situação</th>
-              <th scope="col" class="text-end">Ações</th>
+              <th scope="col" class="eithra-col-demanda">Demanda</th>
+              <th scope="col" class="eithra-col-local">Local</th>
+              <th scope="col" class="eithra-col-prioridade">Prioridade</th>
+              <th scope="col" class="eithra-col-prazo">Prazo</th>
+              <th scope="col" class="eithra-col-responsavel">Responsável</th>
+              <th scope="col" class="eithra-col-situacao">Situação</th>
+              <th scope="col" class="eithra-col-acoes text-end">Ações</th>
             </tr>
           </thead>
           <tbody>
             {% for demanda in demandas %}
               <tr>
-                <td class="text-body-secondary small">{{ demanda.referencia }}</td>
-                <td>
-                  <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">
+                <td class="eithra-col-demanda">
+                  {% comment %}O identificador identifica, não compete com o assunto: fica na linha
+                  de cima, menor e em cor secundária, e acompanha a demanda na
+                  rastreabilidade sem exigir uma coluna própria.{% endcomment %}
+                  <div class="eithra-demanda-identificador text-body-secondary">{{ demanda.referencia }}</div>
+                  <a class="fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}" title="{{ demanda.titulo }}">
                     {{ demanda.titulo }}
                   </a>
-                  <div class="text-body-secondary small eithra-duas-linhas">{{ demanda.descricao_curta }}</div>
+                  <div class="text-body-secondary small eithra-uma-linha" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
                 </td>
-                <td class="small">{{ demanda.local }}</td>
-                <td><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
-                <td>
+                <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
+                <td class="eithra-col-prioridade"><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
+                <td class="eithra-col-prazo">
                   <div class="small">{{ demanda.prazo }}</div>
                   {% if demanda.prazo_destaque %}
                     <div class="small text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</div>
                   {% endif %}
                 </td>
-                <td class="small">{{ demanda.responsavel }}</td>
-                <td><span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span></td>
-                <td class="text-end text-nowrap">
-                  {% if demanda.acoes|length == 1 %}
-                    {% with acao=demanda.acoes.0 %}
-                      <a class="btn btn-icon btn-text-primary rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
-                        <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                      </a>
-                    {% endwith %}
-                  {% elif demanda.acoes|length == 2 %}
-                    {% for acao in demanda.acoes %}
-                      <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
-                        <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                      </a>
-                    {% endfor %}
-                  {% elif demanda.acoes %}
-                    <div class="dropdown d-inline-block">
-                      <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
-                        <i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>
-                      </button>
-                      <ul class="dropdown-menu dropdown-menu-end">
-                        {% for acao in demanda.acoes %}
-                          <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
-                        {% endfor %}
-                      </ul>
-                    </div>
-                  {% endif %}
+                <td class="eithra-col-responsavel small"><div class="eithra-duas-linhas" title="{{ demanda.responsavel }}">{{ demanda.responsavel }}</div></td>
+                <td class="eithra-col-situacao"><span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span></td>
+                <td class="eithra-col-acoes text-end">
+                  <div class="eithra-acoes">
+                    {% if demanda.acoes|length == 1 %}
+                      {% with acao=demanda.acoes.0 %}
+                        <a class="btn btn-icon btn-text-primary rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
+                          <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                        </a>
+                      {% endwith %}
+                    {% elif demanda.acoes|length == 2 %}
+                      {% for acao in demanda.acoes %}
+                        <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
+                          <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
+                        </a>
+                      {% endfor %}
+                    {% elif demanda.acoes %}
+                      <div class="dropdown">
+                        <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
+                          <i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                          {% for acao in demanda.acoes %}
+                            <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                  </div>
                 </td>
               </tr>
             {% endfor %}
@@ -194,6 +198,12 @@
           </div>
         {% endfor %}
       </div>
+
+      {% comment %}O rodapé pertence à lista: um fio sutil separa, sem virar um card dentro do
+      card. O total acompanha a lista mesmo quando tudo cabe em uma página.{% endcomment %}
+      <div class="eithra-tabela-rodape">
+        {% include "components/paginacao.html" with page_obj=pagina_demandas filtro_ativo=filtros_ativos rotulo="demanda" mostrar_resumo=True %}
+      </div>
     {% else %}
       <div class="card-body">
         {% if filtros_ativos %}
@@ -204,9 +214,6 @@
         {% endif %}
       </div>
     {% endif %}
-    <div class="card-body pt-3">
-      {% include "components/paginacao.html" with page_obj=pagina_demandas filtro_ativo=filtros_ativos %}
-    </div>
   </div>
 
   {% if pode_criar %}
