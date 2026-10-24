@@ -471,10 +471,12 @@ class AdicionarAcessoForm(EnviarFotoMixin, forms.Form):
     uma pessoa que já existe por falta de um dado que já se sabe.
 
     A senha tem dois caminhos, e a escolha é explícita na tela: a própria
-    pessoa define a dela no primeiro acesso — o caminho de sempre —, ou a
-    administração define uma senha agora. O segundo caminho só existe para quem
-    administra contas: sem essa permissão, os campos nem chegam a ser criados,
-    porque o que não existe não pode ser enviado por fora.
+    pessoa definirá a dela no primeiro acesso — o caminho de sempre —, ou quem
+    responde pelo condomínio define uma agora. O segundo caminho só existe
+    quando a view diz que a pessoa pode: sem essa permissão, os campos nem
+    chegam a ser criados, porque o que não existe não pode ser enviado por
+    fora. Quem decide é a permissão de gestão dos cadastros do condomínio, que
+    é do domínio — e não um atributo técnico de administração.
     """
 
     # A tela compara a escolha do caminho de senha para mostrar ou esconder os
@@ -501,10 +503,10 @@ class AdicionarAcessoForm(EnviarFotoMixin, forms.Form):
         widget=forms.Select(attrs=SELECAO),
     )
     modo_senha = forms.ChoiceField(
-        label="Senha",
+        label="Senha de acesso",
         choices=(
-            (SENHA_DA_PROPRIA_PESSOA, "A pessoa define a própria senha no primeiro acesso"),
-            (SENHA_DA_GESTAO, "Definir uma senha agora"),
+            (SENHA_DA_PROPRIA_PESSOA, "A pessoa definirá a própria senha"),
+            (SENHA_DA_GESTAO, "Definir senha agora"),
         ),
         initial=SENHA_DA_PROPRIA_PESSOA,
         required=False,
@@ -541,7 +543,7 @@ class AdicionarAcessoForm(EnviarFotoMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.pode_definir_senha = bool(pode_definir_senha)
         if not self.pode_definir_senha:
-            # Sem acesso administrativo, a escolha de senha nem é oferecida.
+            # Sem permissão de gestão, a escolha de senha nem é oferecida.
             for campo in ("modo_senha", "senha", "confirmacao"):
                 self.fields.pop(campo, None)
 

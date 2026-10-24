@@ -312,8 +312,9 @@ def definir_senha_de_acesso(
     """Define uma nova senha para a conta ligada a este vínculo.
 
     É a única porta em que alguém escolhe a senha de outra pessoa, e ela existe
-    para a administração técnica de ambientes de teste — quando não há e-mail
-    para entregar um endereço de primeiro acesso.
+    para quando não houver e-mail que entregue um endereço de primeiro acesso.
+    Quem pode entrar por ela é decisão da tela: aqui o domínio recebe o acesso,
+    confere que existe um autor identificado e grava.
 
     Quem protege a senha é o Django, pelo mesmo ``set_password`` de qualquer
     outra porta de entrada: nada é cifrado nem guardado aqui. O histórico

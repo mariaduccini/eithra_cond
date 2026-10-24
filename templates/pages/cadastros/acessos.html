@@ -170,11 +170,8 @@
               </div>
             </div>
 
-            <h6 class="text-body-secondary small mb-3">Acesso</h6>
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.papel %}
-
             {% if formulario_acesso.pode_definir_senha %}
-              <h6 class="text-body-secondary small mb-3">Senha</h6>
+              <h6 class="text-body-secondary small mb-3">Senha de acesso</h6>
               <div class="mb-6">
                 {% for opcao in formulario_acesso.modo_senha %}
                   <div class="form-check">
@@ -193,9 +190,12 @@
                 data-eithra-campos-de-senha
                 data-eithra-modo-gestao="{{ formulario_acesso.SENHA_DA_GESTAO }}">
                 {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.senha %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.confirmacao classe="mb-0" %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.confirmacao %}
               </div>
             {% endif %}
+
+            <h6 class="text-body-secondary small mb-3">Acesso</h6>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acesso.papel %}
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">

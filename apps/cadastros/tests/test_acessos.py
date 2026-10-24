@@ -6,9 +6,9 @@ vínculo é desativado, e o histórico de quem mudou o quê continua legível.
 
 Quem concede o acesso cria a conta e escolhe como a senha nasce: a gestão
 entrega um endereço de primeiro acesso, e a própria pessoa define a dela; ou
-quem administra contas define uma agora, para quando não houver e-mail que
-entregue o endereço. A segunda porta é de quem tem acesso administrativo — e
-só dele.
+quem responde pelo condomínio define uma agora, para quando não houver e-mail
+que entregue o endereço. Quem decide isso é a permissão de gestão do domínio,
+e não um atributo técnico de administração.
 
 A foto é opcional, conferida pelo conteúdo real e substituível a qualquer
 momento. Sem foto, a pessoa aparece pelas iniciais.
@@ -565,11 +565,21 @@ class PrimeiroAcessoPelaGestaoTests(TestCase):
         }
         self.assertEqual(
             por_email["nova@exemplo.test"],
-            ["Editar acesso", "Reenviar primeiro acesso", "Retirar acesso"],
+            [
+                "Editar acesso",
+                "Redefinir senha",
+                "Reenviar primeiro acesso",
+                "Retirar acesso",
+            ],
         )
         self.assertEqual(
             por_email[self.gestao.email],
-            ["Editar acesso", "Enviar redefinição de senha", "Retirar acesso"],
+            [
+                "Editar acesso",
+                "Redefinir senha",
+                "Enviar redefinição de senha",
+                "Retirar acesso",
+            ],
         )
 
     # -- O que a gestão não faz ----------------------------------------------
@@ -594,13 +604,16 @@ class PrimeiroAcessoPelaGestaoTests(TestCase):
         self.assertEqual(pessoa.password, senha_da_pessoa)
         self.assertFalse(pessoa.check_password("senhaEscolhidaPelaGestao"))
 
-    def test_quem_nao_administra_contas_nao_define_senha(self):
-        """A síndica responde pelo condomínio, mas não define senha de ninguém."""
+    def test_quem_nao_responde_pelo_condominio_nao_define_senha(self):
+        """A supervisão vê a tela, mas não redefine senha de ninguém."""
         pessoa = criar_pessoa("conhecida@exemplo.test", "Pessoa Conhecida")
         vinculo = criar_vinculo(pessoa, self.condominio, papel=Papel.MORADOR)
         senha_da_pessoa = pessoa.password
 
-        self.assertFalse(self.gestao.is_staff)
+        self.client.logout()
+        entrar_como(
+            self.client, Papel.SUPERVISORA, self.condominio, "supervisao@exemplo.test"
+        )
         resposta = self.client.post(
             reverse("cadastros:definir_senha_acesso", args=[vinculo.pk]),
             {
@@ -614,10 +627,14 @@ class PrimeiroAcessoPelaGestaoTests(TestCase):
         pessoa.refresh_from_db()
         self.assertEqual(pessoa.password, senha_da_pessoa)
 
-    def test_a_lista_nao_oferece_nova_senha_a_quem_nao_administra_contas(self):
+    def test_a_lista_nao_oferece_redefinir_senha_a_quem_nao_responde(self):
         pessoa = criar_pessoa("conhecida@exemplo.test", "Pessoa Conhecida")
         criar_vinculo(pessoa, self.condominio, papel=Papel.MORADOR)
 
+        self.client.logout()
+        entrar_como(
+            self.client, Papel.SUPERVISORA, self.condominio, "supervisao@exemplo.test"
+        )
         rotulos = [
             acao["label"]
             for item in self.client.get(self.url).context["acessos"]
@@ -673,12 +690,14 @@ class PrimeiroAcessoPelaGestaoTests(TestCase):
 
 
 class SenhaDefinidaPelaAdministracaoTests(TestCase):
-    """A administração técnica define a senha de outra pessoa — e só ela.
+    """A administração técnica define a senha de outra pessoa.
 
     Existe uma única porta em que alguém escolhe a senha de outra conta: um
     ambiente sem entrega de e-mail não teria como devolver o acesso a quem
-    perdeu a senha. A porta é de quem tem acesso administrativo, a senha não
-    aparece na tela nem no histórico, e quem protege o valor é o Django.
+    perdeu a senha. Aqui quem entra é a administração técnica — a síndica com
+    acesso administrativo —, porque o atributo continua valendo; o que não
+    vale é ele sozinho, sem responder pelo condomínio. A senha não aparece na
+    tela nem no histórico, e quem protege o valor é o Django.
     """
 
     SENHA_NOVA = "outraSenhaBoa2026"
@@ -830,6 +849,145 @@ class SenhaDefinidaPelaAdministracaoTests(TestCase):
         )
 
 
+class RedefinicaoDeSenhaPelaGestaoTests(TestCase):
+    """Quem responde pelo condomínio redefine a senha de quem tem acesso lá.
+
+    É a mesma permissão que cria o acesso: quem responde pelo condomínio
+    responde pela senha dele. O acesso administrativo continua podendo, mas
+    não é requisito — e, sozinho, não substitui o vínculo com o condomínio.
+    """
+
+    SENHA_NOVA = "outraSenhaBoa2026"
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.url = reverse("cadastros:acessos")
+        self.gestao = entrar_como(
+            self.client, Papel.ADMIN, self.condominio, "gestao@exemplo.test"
+        )
+        self.pessoa = criar_pessoa("conhecida@exemplo.test", "Pessoa Conhecida")
+        self.vinculo = criar_vinculo(
+            self.pessoa, self.condominio, papel=Papel.MORADOR
+        )
+
+    def _redefinir(self, senha=None, vinculo=None, follow=False):
+        senha = self.SENHA_NOVA if senha is None else senha
+        alvo = vinculo or self.vinculo
+        return self.client.post(
+            reverse("cadastros:definir_senha_acesso", args=[alvo.pk]),
+            {
+                "condominio": str(self.condominio.pk),
+                "senha": senha,
+                "confirmacao": senha,
+            },
+            follow=follow,
+        )
+
+    # -- Quem redefine --------------------------------------------------------
+
+    def test_a_gestao_do_condominio_redefine_sem_acesso_administrativo(self):
+        resposta = self._redefinir(follow=True)
+
+        self.assertFalse(self.gestao.is_staff)
+        self.assertContains(resposta, "Senha atualizada com sucesso.")
+        self.pessoa.refresh_from_db()
+        self.assertTrue(self.pessoa.check_password(self.SENHA_NOVA))
+
+    def test_o_acesso_administrativo_continua_redefinindo(self):
+        self.gestao.is_staff = True
+        self.gestao.save(update_fields=["is_staff"])
+
+        self._redefinir()
+
+        self.pessoa.refresh_from_db()
+        self.assertTrue(self.pessoa.check_password(self.SENHA_NOVA))
+
+    def test_a_acao_aparece_para_quem_responde_pelo_condominio(self):
+        rotulos = [
+            acao["label"]
+            for item in self.client.get(self.url).context["acessos"]
+            for acao in item["acoes"]
+        ]
+
+        self.assertFalse(self.gestao.is_staff)
+        self.assertIn("Redefinir senha", rotulos)
+
+    def test_o_modal_abre_para_quem_responde_pelo_condominio(self):
+        resposta = self.client.get(
+            self.url,
+            {
+                "condominio": str(self.condominio.pk),
+                "abrir": "senha",
+                "item": str(self.vinculo.pk),
+            },
+        )
+
+        self.assertEqual(resposta.context["modal_aberto"], "senha")
+        self.assertContains(resposta, 'id="definir-senha"')
+
+    # -- O que a senha faz ----------------------------------------------------
+
+    def test_a_senha_antiga_deixa_de_funcionar_e_a_nova_vale(self):
+        self._redefinir()
+
+        self.pessoa.refresh_from_db()
+        self.assertFalse(self.pessoa.check_password(SENHA))
+        self.assertTrue(self.pessoa.check_password(self.SENHA_NOVA))
+
+        self.client.logout()
+        entrada = self.client.post(
+            reverse("accounts:login"),
+            {"username": self.pessoa.email, "password": self.SENHA_NOVA},
+        )
+        self.assertRedirects(entrada, reverse("core:home"))
+
+    def test_a_auditoria_guarda_o_fato_e_nunca_a_senha(self):
+        self._redefinir()
+
+        self.pessoa.refresh_from_db()
+        registro = HistoricoAcessoCondominio.objects.get(
+            acesso=self.vinculo, evento=EventoAcesso.SENHA_DEFINIDA_PELA_GESTAO
+        )
+        self.assertEqual(registro.usuario_executor, self.gestao)
+        self.assertIsNotNone(registro.data_hora)
+        conteudo = f"{registro.dados_anteriores}{registro.dados_novos}"
+        self.assertNotIn(self.SENHA_NOVA, conteudo)
+        self.assertNotIn(self.pessoa.password, conteudo)
+        self.assertNotIn("pbkdf2", conteudo)
+
+    # -- O que a ação não alcança ---------------------------------------------
+
+    def test_gestor_de_outro_condominio_nao_alcanca_este_acesso(self):
+        outro = criar_condominio("Beta")
+        self.client.logout()
+        entrar_como(self.client, Papel.ADMIN, outro, "outra-gestao@exemplo.test")
+
+        resposta = self._redefinir()
+
+        self.assertEqual(resposta.status_code, 404)
+        self.pessoa.refresh_from_db()
+        self.assertTrue(self.pessoa.check_password(SENHA))
+
+    def test_quem_nao_enxerga_o_modulo_nao_descobre_a_acao(self):
+        """Sem enxergar os cadastros, a tela nem existe para essa pessoa."""
+        self.client.logout()
+        entrar_como(
+            self.client, Papel.OPERACIONAL, self.condominio, "operacional@exemplo.test"
+        )
+
+        resposta = self._redefinir()
+
+        self.assertEqual(resposta.status_code, 404)
+        self.pessoa.refresh_from_db()
+        self.assertTrue(self.pessoa.check_password(SENHA))
+
+    def test_a_senha_nao_volta_para_a_tela(self):
+        resposta = self._redefinir(follow=True)
+
+        self.assertNotContains(resposta, self.SENHA_NOVA)
+        self.assertNotContains(resposta, "pbkdf2")
+
+
 class RegrasDeGestaoDoAcessoTests(TestCase):
     """As regras que o domínio garante mesmo sem passar pela tela."""
 
@@ -893,11 +1051,12 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
     """Criar o usuário e escolher como a primeira senha nasce.
 
     A tela oferece dois caminhos e a escolha é explícita: a própria pessoa
-    define a dela no primeiro acesso — o caminho de sempre —, ou quem administra
-    contas define uma agora, para quando não houver e-mail que entregue o
-    endereço. O segundo caminho não é porta dos fundos: sem acesso
-    administrativo os campos nem existem, e o que a tela mandar a mais é
-    ignorado.
+    definirá a dela no primeiro acesso — o caminho de sempre —, ou quem
+    responde pelo condomínio define uma agora, para quando não houver e-mail
+    que entregue o endereço. Quem responde pelo condomínio é quem tem a
+    permissão de gestão dos cadastros; a supervisão enxerga a tela, mas não
+    concede acesso. O segundo caminho não é porta dos fundos: sem a permissão
+    os campos nem existem, e o que a tela mandar a mais é ignorado.
     """
 
     SENHA_INICIAL = "senhaInicialBoa2026"
@@ -906,10 +1065,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
         self.gestao = entrar_como(self.client, Papel.SINDICA, self.condominio)
-
-    def _com_acesso_administrativo(self):
-        self.gestao.is_staff = True
-        self.gestao.save(update_fields=["is_staff"])
 
     def _adicionar(self, follow=False, **campos):
         dados = {
@@ -927,9 +1082,24 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
 
     # -- Caminho A: a gestão define a senha agora ------------------------------
 
-    def test_a_gestao_define_a_senha_inicial(self):
-        self._com_acesso_administrativo()
+    def test_a_tela_oferece_a_escolha_a_quem_responde_pelo_condominio(self):
+        """Quem responde pelo condomínio escolhe como a senha inicial nasce.
 
+        A permissão é do domínio, e não um atributo técnico: a síndica não tem
+        acesso administrativo e, ainda assim, a escolha aparece na tela e o que
+        ela mandar é reconhecido.
+        """
+        resposta = self.client.get(self.url)
+
+        self.assertFalse(self.gestao.is_staff)
+        self.assertTrue(resposta.context["formulario_acesso"].pode_definir_senha)
+        self.assertContains(resposta, "Senha de acesso")
+        self.assertContains(resposta, "A pessoa definirá a própria senha")
+        self.assertContains(resposta, "Definir senha agora")
+        self.assertContains(resposta, "Nova senha")
+        self.assertContains(resposta, "Confirmar nova senha")
+
+    def test_a_gestao_define_a_senha_inicial(self):
         resposta = self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
             senha=self.SENHA_INICIAL,
@@ -944,7 +1114,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
 
     def test_a_pessoa_entra_com_a_senha_definida_pela_gestao(self):
-        self._com_acesso_administrativo()
         self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
             senha=self.SENHA_INICIAL,
@@ -960,7 +1129,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.assertRedirects(entrada, reverse("core:home"))
 
     def test_a_senha_definida_fica_registrada_sem_o_valor(self):
-        self._com_acesso_administrativo()
         self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
             senha=self.SENHA_INICIAL,
@@ -981,7 +1149,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.assertNotIn("pbkdf2", conteudo)
 
     def test_a_senha_nova_nao_aparece_na_tela(self):
-        self._com_acesso_administrativo()
         resposta = self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
             senha=self.SENHA_INICIAL,
@@ -996,8 +1163,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
     # -- O que a ação recusa ---------------------------------------------------
 
     def test_as_duas_senhas_precisam_ser_iguais(self):
-        self._com_acesso_administrativo()
-
         resposta = self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
             senha=self.SENHA_INICIAL,
@@ -1008,8 +1173,6 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.assertFalse(Usuario.objects.filter(email="nova@exemplo.test").exists())
 
     def test_as_regras_de_senha_do_sistema_valem_aqui(self):
-        self._com_acesso_administrativo()
-
         resposta = self._adicionar(
             modo_senha=SENHA_DA_GESTAO, senha="curta", confirmacao="curta"
         )
@@ -1017,9 +1180,12 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
         self.assertEqual(resposta.status_code, 400)
         self.assertFalse(Usuario.objects.filter(email="nova@exemplo.test").exists())
 
-    def test_quem_nao_administra_contas_nao_escolhe_senha(self):
-        """A síndica cria o acesso, mas não escolhe a senha de ninguém."""
-        self.assertFalse(self.gestao.is_staff)
+    def test_quem_nao_responde_pelo_condominio_nao_escolhe_senha(self):
+        """A supervisão enxerga a tela, mas não concede acesso nem escolhe senha."""
+        self.client.logout()
+        entrar_como(
+            self.client, Papel.SUPERVISORA, self.condominio, "supervisao@exemplo.test"
+        )
 
         resposta = self._adicionar(
             modo_senha=SENHA_DA_GESTAO,
@@ -1027,16 +1193,12 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
             confirmacao=self.SENHA_INICIAL,
         )
 
-        self.assertEqual(resposta.status_code, 302)
-        pessoa = self._nova()
-        self.assertFalse(pessoa.has_usable_password())
-        self.assertFalse(pessoa.check_password(self.SENHA_INICIAL))
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(Usuario.objects.filter(email="nova@exemplo.test").exists())
 
     # -- Caminho B: a própria pessoa define ------------------------------------
 
     def test_a_pessoa_define_a_propria_senha_no_primeiro_acesso(self):
-        self._com_acesso_administrativo()
-
         resposta = self._adicionar(modo_senha=SENHA_DA_PROPRIA_PESSOA, follow=True)
 
         self.assertContains(resposta, "Enviamos as instruções para nova@exemplo.test.")

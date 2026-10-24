@@ -379,15 +379,26 @@ def adicionar_acesso(request):
     """Dá acesso a uma pessoa neste condomínio, com o papel escolhido.
 
     A senha inicial tem dois caminhos, e quem escolhe é a tela: a própria
-    pessoa define a dela no primeiro acesso — o caminho de sempre —, ou a
-    administração define uma agora, para quando não há e-mail que entregue o
-    endereço. A foto é opcional e nunca desfaz o acesso: se o armazenamento
-    recusar a imagem depois do vínculo criado, o que houve é um aviso, e a
-    gestão corrige pelo próprio acesso.
+    pessoa define a dela no primeiro acesso — o caminho de sempre —, ou quem
+    responde pelo condomínio define uma agora, para quando não há e-mail que
+    entregue o endereço.
+
+    Quem responde pelo condomínio é a permissão de gestão dos cadastros, e não
+    um atributo técnico de administração. É ela que abre a escolha no
+    formulário e é ela que a reconhece no que voltou: sem essa permissão os
+    campos nem existem, e o que a tela mandar a mais é ignorado. Quem chega
+    aqui já passou por ``_condominio_para_gestao``; a pergunta é repetida para
+    que a regra apareça no ponto em que ela decide.
+
+    A foto é opcional e nunca desfaz o acesso: se o armazenamento recusar a
+    imagem depois do vínculo criado, o que houve é um aviso, e a gestão
+    corrige pelo próprio acesso.
     """
     atual = _condominio_para_gestao(request)
     formulario = AdicionarAcessoForm(
-        request.POST, request.FILES, pode_definir_senha=request.user.is_staff
+        request.POST,
+        request.FILES,
+        pode_definir_senha=pode_gerenciar_cadastros(request.user, atual),
     )
     if not formulario.is_valid():
         return _render_acessos(
@@ -566,20 +577,21 @@ def definir_senha_acesso(request, pk):
     """Define uma nova senha para a conta de uma pessoa deste condomínio.
 
     Esta é a única porta em que alguém escolhe a senha de outra pessoa, e ela
-    existe para a administração técnica: sem ela, um ambiente sem entrega de
-    e-mail não teria como devolver o acesso a quem perdeu a senha.
+    existe para quando não houver e-mail que entregue o endereço de primeiro
+    acesso.
 
-    Por isso a decisão é de quem tem acesso administrativo, e não de quem
-    apenas responde pelo condomínio: a síndica vê a tela — a existência já lhe
-    é legítima — mas não define senha de ninguém.
+    Quem decide é quem responde pelo condomínio — a mesma permissão de gestão
+    dos cadastros que abre a escolha de senha na criação do acesso. A
+    administração técnica continua podendo, porque quem administra também
+    responde; o que não vale é o contrário, ter o atributo sem responder pelo
+    condomínio. Quem não responde recebe 403, e o vínculo de outro condomínio
+    não é alcançado daqui.
 
     A senha não é guardada em texto, não aparece na tela e não entra no
     histórico: quem a protege é o Django. O que fica registrado é quem definiu,
     para quem e quando.
     """
     atual = _condominio_para_gestao(request)
-    if not request.user.is_staff:
-        raise PermissionDenied("Esta pessoa não administra contas.")
 
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
@@ -641,7 +653,6 @@ def _render_acessos(
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
-    pode_definir_senha = bool(request.user.is_staff and pode_gerenciar)
 
     if item_edicao is None and pode_gerenciar:
         item_edicao = _item_em_edicao(
@@ -670,7 +681,7 @@ def _render_acessos(
         )
     pagina_acessos = paginar(vinculos, request.GET.get("page"))
     pagina_acessos.itens = [
-        _acesso_para_tela(item, pode_definir_senha=pode_definir_senha)
+        _acesso_para_tela(item, pode_gerenciar=pode_gerenciar)
         for item in pagina_acessos
     ]
 
@@ -680,7 +691,7 @@ def _render_acessos(
         "acessos": pagina_acessos.itens,
         "pagina_acessos": pagina_acessos,
         "formulario_acesso": formulario_acesso
-        or AdicionarAcessoForm(pode_definir_senha=request.user.is_staff),
+        or AdicionarAcessoForm(pode_definir_senha=pode_gerenciar),
         "formulario_edicao": formulario_edicao
         or (
             EditarAcessoForm(initial={"papel": item_edicao.papel})
@@ -690,7 +701,7 @@ def _render_acessos(
         "formulario_senha": formulario_senha
         or (
             DefinirSenhaPelaGestaoForm(conta=item_edicao.usuario)
-            if item_edicao and pode_definir_senha
+            if item_edicao and pode_gerenciar
             else None
         ),
         "item_edicao": item_edicao,
@@ -1513,7 +1524,7 @@ def _campos_do_modelo(modelo, dados: dict) -> dict:
 
 # -- Tradução para a tela -------------------------------------------------------
 
-def _acesso_para_tela(vinculo, *, pode_definir_senha=False) -> dict:
+def _acesso_para_tela(vinculo, *, pode_gerenciar=False) -> dict:
     """O vínculo como a lista de acessos precisa dele.
 
     As ações são montadas aqui, e não no template: é esta função que sabe que
@@ -1521,9 +1532,11 @@ def _acesso_para_tela(vinculo, *, pode_definir_senha=False) -> dict:
     que pede o envio das instruções, nomeada conforme a conta já tenha senha ou
     ainda espere a primeira.
 
-    ``pode_definir_senha`` abre a única exceção: a administração técnica, em
-    ambiente sem entrega de e-mail, define a nova senha diretamente. Para todo
-    o resto, a lista nem sabe que essa ação existe.
+    ``pode_gerenciar`` abre a outra ação: redefinir a senha de quem já tem
+    conta neste condomínio. É a mesma permissão de gestão dos cadastros que
+    decide se o acesso pode ser criado — quem responde pelo condomínio responde
+    pela senha dele. Para quem não responde, a lista nem sabe que essa ação
+    existe.
 
     A foto é um retrato ao lado do nome, nunca um motivo para a lista não
     abrir: se o armazenamento recusar o acesso à imagem, o que se perde é o
@@ -1538,7 +1551,7 @@ def _acesso_para_tela(vinculo, *, pode_definir_senha=False) -> dict:
             "post": False,
         },
     ]
-    if pode_definir_senha:
+    if pode_gerenciar:
         acoes.append(
             {
                 "label": "Redefinir senha",
