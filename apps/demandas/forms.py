@@ -1,8 +1,18 @@
 """Formulários do domínio de demandas.
 
 Pede-se apenas o necessário. A pergunta principal é uma só — o que aconteceu —,
-e o que der para ler desse relato já vem preenchido: assunto, prioridade, prazo
-e local. O que não der continua sendo pergunta, com ajuste à mão.
+e o que der para ler desse relato já vem preenchido: assunto, local,
+equipamento, tipo de problema, impacto, risco, prioridade e prazo. O que não der
+continua sendo pergunta, com ajuste à mão.
+
+Duas coisas que a leitura produz **não** viram campo, porque não são dado da
+demanda: a área sai do tipo do local cadastrado, e a recorrência é uma leitura
+do histórico. Guardar qualquer uma delas seria criar uma segunda fonte de
+verdade que envelhece sozinha.
+
+A classificação nasce no registro e não é reescrita pela edição estrutural: o
+que a leitura propôs fica guardado com a origem e a confiança de cada campo,
+separado do que a demanda passou a valer.
 
 O responsável sai de uma lista fechada: só quem tem vínculo ativo com o
 condomínio e enxerga o módulo pode ser escolhido. Como a lista é a mesma que o
@@ -13,11 +23,18 @@ from django import forms
 from django.db.models import Q
 
 from apps.accounts.models import User
-from apps.cadastros.models import LocalOperacional
+from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.condominios.models import Condominio
 
-from .constants import PrioridadeDemanda, StatusDemanda
-from .derivacao import Leitura, interpretar, local_do_relato
+from . import derivacao, interpretacao
+from .constants import (
+    ImpactoDemanda,
+    PrioridadeDemanda,
+    RiscoDemanda,
+    StatusDemanda,
+    TipoProblema,
+)
+from .derivacao import Leitura, local_do_relato
 from .permissoes import usuarios_elegiveis_como_responsavel
 from .services import LIMITE_DA_OBSERVACAO
 
@@ -54,6 +71,39 @@ def _locais_entre(condominios):
         condominio__in=condominios,
         ativo=True,
     ).order_by("nome")
+
+
+def _equipamentos_do_condominio(condominio, atual=None):
+    """Os equipamentos oferecidos numa escolha.
+
+    Mesma regra dos locais: só o que está em uso — mais aquele que a demanda já
+    aponta, para que um cadastro desativado depois continue legível sem voltar a
+    ser oferecido.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return Equipamento.objects.none()
+
+    equipamentos = Equipamento.objects.do_condominio(condominio)
+    if atual is not None and getattr(atual, "pk", None):
+        return equipamentos.filter(Q(ativo=True) | Q(pk=atual.pk)).order_by("nome")
+    return equipamentos.ativos().order_by("nome")
+
+
+def _equipamentos_entre(condominios):
+    """Os equipamentos elegíveis entre os condomínios em vista."""
+    if condominios is None:
+        return Equipamento.objects.none()
+    return Equipamento.objects.filter(
+        condominio__in=condominios,
+        ativo=True,
+    ).order_by("nome")
+
+
+# As escolhas de classificação na tela. O vazio não é "outro": é "ainda não
+# identificado", e é isso que a lista oferece quando ninguém sabe responder.
+ESCOLHAS_DE_TIPO_DE_PROBLEMA = (("", "Não identificado"),) + tuple(TipoProblema.choices)
+ESCOLHAS_DE_IMPACTO = (("", "Não avaliado"),) + tuple(ImpactoDemanda.choices)
+ESCOLHAS_DE_RISCO = (("", "Não avaliado"),) + tuple(RiscoDemanda.choices)
 
 
 # A ordem em que as situações aparecem para escolha, do começo ao fim do ciclo.
@@ -166,13 +216,45 @@ class DemandaForm(forms.Form):
             }
         ),
     )
+    equipamento = forms.ModelChoiceField(
+        label="Equipamento",
+        queryset=Equipamento.objects.none(),
+        required=False,
+        empty_label="Sem equipamento definido",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    tipo_problema = forms.ChoiceField(
+        label="Tipo de problema",
+        choices=ESCOLHAS_DE_TIPO_DE_PROBLEMA,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    # Impacto e risco descrevem a consequência, e por isso não são perguntados
+    # de saída: aparecem quando o relato sustentou algo, e continuam corrigíveis
+    # na edição. "Não avaliado" é a resposta honesta de quem não sabe.
+    impacto = forms.ChoiceField(
+        label="Impacto",
+        choices=ESCOLHAS_DE_IMPACTO,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    risco = forms.ChoiceField(
+        label="Risco",
+        choices=ESCOLHAS_DE_RISCO,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
 
-    def __init__(self, *args, condominios=None, condominio=None, **kwargs):
+    def __init__(self, *args, condominios=None, condominio=None, instancia=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         # O que a leitura do relato sustentar neste envio. Começa vazio: sem
         # relato não há o que ter lido.
         self._leitura = Leitura()
+
+        # A demanda que está sendo revista, quando é uma edição. Serve para o
+        # histórico não contar a própria demanda como ocorrência dela mesma.
+        self._instancia = instancia
 
         permitidos = condominios if condominios is not None else Condominio.objects.none()
         campo_condominio = self.fields["condominio"]
@@ -201,6 +283,9 @@ class DemandaForm(forms.Form):
         self.fields["local"].queryset = _locais_do_condominio(
             self.condominio_efetivo, self._local_atual()
         )
+        self.fields["equipamento"].queryset = _equipamentos_do_condominio(
+            self.condominio_efetivo, self._equipamento_atual()
+        )
         self.fields["local_texto"].widget.attrs["list"] = (
             f"{self['local_texto'].id_for_label}_lista"
         )
@@ -215,6 +300,13 @@ class DemandaForm(forms.Form):
         if not local_id:
             return None
         return LocalOperacional.objects.filter(pk=local_id).first()
+
+    def _equipamento_atual(self):
+        """O equipamento que a demanda já aponta, pela mesma razão do local."""
+        equipamento_id = (self.initial or {}).get("equipamento")
+        if not equipamento_id:
+            return None
+        return Equipamento.objects.filter(pk=equipamento_id).first()
 
     def _condominio_escolhido(self, permitidos):
         """Qual condomínio vale para montar a lista de responsáveis e de locais.
@@ -282,10 +374,17 @@ class DemandaForm(forms.Form):
             descricao = relato
             dados["descricao"] = descricao
 
-        # Uma leitura só do que foi escrito: o assunto, o peso e o prazo saem
-        # dela, e é ela que sustenta o que a revisão mostra.
-        self._leitura = interpretar(
-            descricao or relato, condominio=self.condominio_efetivo
+        # Uma leitura só do que foi escrito: o assunto, o peso e o local saem
+        # dela, e é ela que sustenta o que a revisão mostra. A leitura semântica
+        # só é consultada no registro — na edição o que ela proporia não é
+        # gravado, e perguntar custaria espera sem mudar nada.
+        leitor = (
+            derivacao.interpretar if self._instancia is not None else interpretacao.interpretar
+        )
+        self._leitura = leitor(
+            descricao or relato,
+            condominio=self.condominio_efetivo,
+            ignorar=self._instancia,
         )
 
         assunto = dados.get("titulo") or self._leitura.assunto
@@ -300,7 +399,64 @@ class DemandaForm(forms.Form):
             dados["prioridade"] = self._leitura.prioridade
 
         self._resolver_local(dados)
+        self._classificar(dados)
+        self._conciliar_local_e_equipamento(dados)
         return dados
+
+    def _classificar(self, dados):
+        """Guarda o que a leitura propôs, sem transformar sugestão em fato.
+
+        ``classificacao_sugerida`` preserva o valor sugerido, a origem e a
+        confiança de cada campo — é a memória que permitirá comparar sugestão,
+        confirmação e correção mais adiante. Os campos da demanda recebem só o
+        que a leitura sustentou: o que ficou em aberto continua sendo "não
+        identificado", que não é o mesmo que "outro".
+
+        A leitura só responde pelo campo que a tela não perguntou. Quando o
+        navegador manda o campo — inclusive em branco —, o que voltou é a
+        resposta de quem registra, e "sem equipamento" é uma resposta.
+        """
+        if self._instancia is not None:
+            # A classificação nasce com a demanda. A edição estrutural corrige
+            # o relato e os campos combinados; reclassificar fica para quando
+            # houver como revisar o que o EITHRA propôs.
+            return
+
+        leitura = self._leitura
+        if "equipamento" not in self.data:
+            dados["equipamento"] = leitura.equipamento
+        for campo in ("tipo_problema", "impacto", "risco"):
+            if campo in self.data:
+                continue
+            sugestao = getattr(leitura, campo)
+            dados[campo] = sugestao.valor if sugestao.existe else None
+        dados["classificacao_sugerida"] = leitura.registro() or None
+
+    def _conciliar_local_e_equipamento(self, dados):
+        """Faz o local e o equipamento contarem a mesma história.
+
+        O equipamento sabe onde fica: quando o relato não disse o lugar, o local
+        vem dele — mesmo movimento do cadastro, que já guarda o equipamento
+        dentro de um local. Quando os dois divergem, ninguém escolhe por conta
+        própria: a tela recusa e diz o que encontrou, como já faz a manutenção.
+        """
+        equipamento = dados.get("equipamento")
+        if equipamento is None or not equipamento.local_id:
+            return
+
+        local = dados.get("local")
+        if local is None:
+            dados["local"] = equipamento.local
+            dados["local_texto"] = equipamento.local.nome
+            dados["local_contexto"] = ""
+            return
+
+        if getattr(local, "pk", None) != equipamento.local_id:
+            self.add_error(
+                "equipamento",
+                f"O equipamento escolhido fica em {equipamento.local.nome}. "
+                "Escolha o mesmo local ou troque o equipamento.",
+            )
 
     def _resolver_local(self, dados):
         """Transforma o lugar digitado no cadastro do condomínio, ou em texto.
@@ -368,7 +524,13 @@ class ObservacaoDaDemandaForm(forms.Form):
 
 
 class FiltroDeDemandasForm(forms.Form):
-    """Filtros essenciais da lista. Nunca obrigatórios: filtrar é opcional."""
+    """Filtros essenciais da lista. Nunca obrigatórios: filtrar é opcional.
+
+    Os primeiros recortam o que a operação acompanha — situação, peso, lugar,
+    quem responde. Os de classificação vêm depois porque são a lente fina: tipo
+    de problema, consequência e histórico só interessam quando já se sabe o que
+    se procura.
+    """
 
     condominio = forms.ModelChoiceField(
         label="Condomínio",
@@ -394,6 +556,31 @@ class FiltroDeDemandasForm(forms.Form):
         queryset=LocalOperacional.objects.none(),
         required=False,
         empty_label="Todos os locais",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    equipamento = forms.ModelChoiceField(
+        label="Equipamento",
+        queryset=Equipamento.objects.none(),
+        required=False,
+        empty_label="Todos os equipamentos",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    tipo_problema = forms.ChoiceField(
+        label="Tipo de problema",
+        choices=(),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    impacto = forms.ChoiceField(
+        label="Impacto",
+        choices=(),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
+    risco = forms.ChoiceField(
+        label="Risco",
+        choices=(),
+        required=False,
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
     responsavel = forms.ModelChoiceField(
@@ -439,6 +626,16 @@ class FiltroDeDemandasForm(forms.Form):
             PrioridadeDemanda.choices
         )
         self.fields["local"].queryset = _locais_entre(condominios)
+        self.fields["equipamento"].queryset = _equipamentos_entre(condominios)
+        self.fields["tipo_problema"].choices = [
+            ("", "Todos os tipos de problema")
+        ] + list(TipoProblema.choices)
+        self.fields["impacto"].choices = [("", "Qualquer impacto")] + list(
+            ImpactoDemanda.choices
+        )
+        self.fields["risco"].choices = [("", "Qualquer risco")] + list(
+            RiscoDemanda.choices
+        )
         self.fields["responsavel"].queryset = (
             responsaveis if responsaveis is not None else User.objects.none()
         )

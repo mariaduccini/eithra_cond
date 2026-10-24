@@ -55,9 +55,38 @@
 
     <section class="eithra-detail-section">
       <h2 class="h6 mb-3">Informações</h2>
+      {% comment %}
+        Só o que existe vira linha: campo sem resposta não aparece vazio na tela.
+        A área é leitura do lugar, não campo — vem acompanhada do que a explica.
+      {% endcomment %}
       <dl class="eithra-detail-meta">
         <dt>Local</dt>
         <dd>{{ demanda.local }}</dd>
+        {% if demanda.area %}
+          <dt>Área</dt>
+          <dd>
+            {{ demanda.area }}
+            {% if demanda.area_motivo %}
+              <div class="small text-body-secondary">{{ demanda.area_motivo }}</div>
+            {% endif %}
+          </dd>
+        {% endif %}
+        {% if demanda.equipamento %}
+          <dt>Equipamento</dt>
+          <dd>{{ demanda.equipamento }}</dd>
+        {% endif %}
+        {% if demanda.tipo_problema %}
+          <dt>Tipo de problema</dt>
+          <dd>{{ demanda.tipo_problema }}</dd>
+        {% endif %}
+        {% if demanda.impacto %}
+          <dt>Impacto</dt>
+          <dd>{{ demanda.impacto }}</dd>
+        {% endif %}
+        {% if demanda.risco %}
+          <dt>Risco</dt>
+          <dd>{{ demanda.risco }}</dd>
+        {% endif %}
         <dt>Prioridade</dt>
         <dd>
           {{ demanda.prioridade }}
@@ -79,6 +108,45 @@
         <dd>{{ demanda.status }}</dd>
       </dl>
     </section>
+
+    {% comment %}
+      O que a Governança já sabe sobre este lugar e este equipamento. Só aparece
+      quando existe algo a dizer: sem contrato nem garantia, a seção não ocupa
+      espaço. Nada é copiado para a demanda — a pergunta é feita na hora.
+    {% endcomment %}
+    {% if contexto_governanca.pode_consultar %}{% if contexto_governanca.contratos or contexto_governanca.garantias %}
+      <section class="eithra-detail-section">
+        <h2 class="h6 mb-3">Contratos e garantias</h2>
+        <ul class="eithra-lista">
+          {% for contrato in contexto_governanca.contratos %}
+            <li class="eithra-linha">
+              <div class="eithra-linha-corpo">
+                <div class="eithra-linha-nome">{{ contrato.objeto }}</div>
+                <div class="eithra-linha-contexto">
+                  {% if contrato.fornecedor %}{{ contrato.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Contrato{% if contrato.fim %} até {{ contrato.fim|date:"d/m/Y" }}{% endif %}
+                </div>
+              </div>
+              <div class="eithra-linha-acao">
+                <span class="badge bg-label-{{ contrato.tom }}">{{ contrato.situacao }}</span>
+              </div>
+            </li>
+          {% endfor %}
+          {% for garantia in contexto_governanca.garantias %}
+            <li class="eithra-linha">
+              <div class="eithra-linha-corpo">
+                <div class="eithra-linha-nome">{{ garantia.descricao }}</div>
+                <div class="eithra-linha-contexto">
+                  {% if garantia.fornecedor %}{{ garantia.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Garantia{% if garantia.fim %} até {{ garantia.fim|date:"d/m/Y" }}{% endif %}
+                </div>
+              </div>
+              <div class="eithra-linha-acao">
+                <span class="badge bg-label-{{ garantia.tom }}">{{ garantia.situacao }}</span>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}{% endif %}
 
     <section class="eithra-detail-section">
       <h2 class="h6 mb-1">Próxima ação</h2>
@@ -138,6 +206,15 @@
                 <div class="eithra-linha-contexto">{{ evento.momento }} · {{ evento.quem }}</div>
                 {% if evento.descricao %}
                   <div class="eithra-linha-contexto text-body-secondary">{{ evento.descricao }}</div>
+                {% endif %}
+                {% comment %}O que mudou, com o antes e o depois ao lado: quem lê não
+                precisa deduzir a mudança a partir da frase do evento.{% endcomment %}
+                {% if evento.mudancas %}
+                  <ul class="list-unstyled small text-body-secondary mb-0 mt-1">
+                    {% for mudanca in evento.mudancas %}
+                      <li>{{ mudanca.rotulo }}: {{ mudanca.antes }} <span aria-hidden="true">→</span> {{ mudanca.depois }}</li>
+                    {% endfor %}
+                  </ul>
                 {% endif %}
               </div>
             </li>
@@ -199,9 +276,25 @@
                 <option value="{{ local.nome }}"></option>
               {% endfor %}
             </datalist>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.equipamento %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.tipo_problema %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
+
+            {% comment %}Impacto e risco descrevem a consequência. Aparecem direto
+            quando há o que corrigir; sem nada avaliado, não ocupam espaço no
+            modal.{% endcomment %}
+            {% if formulario_demanda.impacto.value or formulario_demanda.risco.value %}
+              <div class="row g-3">
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.impacto %}
+                </div>
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.risco %}
+                </div>
+              </div>
+            {% endif %}
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>

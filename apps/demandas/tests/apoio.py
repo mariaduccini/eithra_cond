@@ -5,7 +5,8 @@ Nenhum dado real entra aqui — nomes, e-mails e títulos são de teste.
 """
 from django.contrib.auth import get_user_model
 
-from apps.cadastros.models import LocalOperacional
+from apps.cadastros.constants import TipoLocal
+from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.condominios.constants import Papel
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
@@ -15,9 +16,16 @@ def criar_condominio(nome="Condomínio de Teste"):
     return Condominio.objects.create(nome=nome)
 
 
-def criar_local(condominio, nome="Garagem"):
+def criar_local(condominio, nome="Garagem", tipo=TipoLocal.OUTRO):
     """Um local de teste no condomínio informado."""
-    return LocalOperacional.objects.create(condominio=condominio, nome=nome)
+    return LocalOperacional.objects.create(
+        condominio=condominio, nome=nome, tipo=tipo
+    )
+
+
+def criar_equipamento(condominio, nome="Elevador de serviço", **campos):
+    """Um equipamento de teste no condomínio informado."""
+    return Equipamento.objects.create(condominio=condominio, nome=nome, **campos)
 
 
 def criar_pessoa(email, nome="Pessoa de Teste"):

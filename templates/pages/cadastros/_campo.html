@@ -17,7 +17,7 @@ rótulo, e não depois.
       {{ campo }}
       <label class="form-check-label" for="{{ campo.id_for_label }}">
         {{ campo.label }}
-        {% if campo.field.required %}<span class="text-danger ms-1" aria-hidden="true">*</span>{% endif %}
+        {% if campo.field.required %}<span class="text-danger ms-1" aria-hidden="true" data-eithra-required-marker="true">*</span>{% endif %}
       </label>
     </div>
     {% if campo.help_text %}
@@ -31,7 +31,7 @@ rótulo, e não depois.
   <div class="{{ classe|default:'mb-6' }}">
     <label class="form-label" for="{{ campo.id_for_label }}">
       {{ campo.label }}
-      {% if campo.field.required %}<span class="text-danger ms-1" aria-hidden="true">*</span>{% endif %}
+      {% if campo.field.required %}<span class="text-danger ms-1" aria-hidden="true" data-eithra-required-marker="true">*</span>{% endif %}
     </label>
     {{ campo }}
     {% if campo.help_text %}

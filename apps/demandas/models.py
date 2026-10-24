@@ -19,14 +19,17 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from apps.cadastros.models import LocalOperacional
+from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.condominios.models import Condominio
 
 from .constants import (
+    ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
+    RiscoDemanda,
     StatusDemanda,
     TipoEventoDemanda,
+    TipoProblema,
 )
 
 # Situações que encerram a demanda: depois delas nada mais depende de uma ação.
@@ -206,6 +209,51 @@ class Demanda(models.Model):
         blank=True,
         help_text="Onde a demanda acontece: bloco, unidade, área comum, equipamento.",
     )
+    # A classificação do que a demanda é. Não substitui o relato: ela existe
+    # para agrupar, reconhecer repetição e sugerir o próximo passo. Vazio quer
+    # dizer "não identificado" — e "não identificado" é diferente de "outro".
+    equipamento = models.ForeignKey(
+        Equipamento,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="demandas",
+        verbose_name="Equipamento",
+        help_text="O equipamento envolvido, quando a demanda é sobre um.",
+    )
+    tipo_problema = models.CharField(
+        "Tipo de problema",
+        max_length=20,
+        choices=TipoProblema.choices,
+        null=True,
+        blank=True,
+        help_text="A natureza do que está acontecendo, quando identificada.",
+    )
+    impacto = models.CharField(
+        "Impacto",
+        max_length=20,
+        choices=ImpactoDemanda.choices,
+        null=True,
+        blank=True,
+        help_text="Até onde a consequência alcança, quando identificado.",
+    )
+    risco = models.CharField(
+        "Risco",
+        max_length=20,
+        choices=RiscoDemanda.choices,
+        null=True,
+        blank=True,
+        help_text="O risco identificado. Vazio é 'não avaliado', que é diferente de "
+        "'sem risco'.",
+    )
+    classificacao_sugerida = models.JSONField(
+        "Classificação sugerida",
+        null=True,
+        blank=True,
+        help_text="O que o EITHRA propôs ao registrar a demanda, com origem e "
+        "confiança. Nunca é tratado como oficial: existe para comparar sugestão, "
+        "confirmação e correção mais adiante.",
+    )
     ativo = models.BooleanField(
         "Ativa",
         default=True,
@@ -241,6 +289,9 @@ class Demanda(models.Model):
             models.Index(fields=["condominio", "prazo"], name="demanda_cond_prazo_idx"),
             models.Index(fields=["condominio", "prioridade"], name="demanda_cond_prior_idx"),
             models.Index(fields=["responsavel", "status"], name="demanda_resp_status_idx"),
+            # Reconhecer repetição no mesmo equipamento é uma leitura por
+            # condomínio: o índice segue a mesma pergunta que a leitura faz.
+            models.Index(fields=["condominio", "equipamento"], name="demanda_cond_equip_idx"),
         ]
 
     def __str__(self):
@@ -252,6 +303,10 @@ class Demanda(models.Model):
             erros["titulo"] = "Escreva o que a demanda precisa resolver."
         if self.local_id and self.local.condominio_id != self.condominio_id:
             erros["local"] = "O local escolhido não é deste condomínio."
+        # Regra objetiva: equipamento e demanda são da mesma casa. Sem isso, a
+        # classificação apontaria para um aparelho que não existe neste prédio.
+        if self.equipamento_id and self.equipamento.condominio_id != self.condominio_id:
+            erros["equipamento"] = "O equipamento escolhido não é deste condomínio."
         if self.status == StatusDemanda.CONCLUIDA and self.concluido_em is None:
             erros["concluido_em"] = "Uma demanda concluída precisa registrar quando foi concluída."
         if self.status != StatusDemanda.CONCLUIDA and self.concluido_em is not None:

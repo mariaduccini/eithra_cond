@@ -220,30 +220,54 @@
           gatilho.setAttribute("tabindex", "-1");
         });
 
-      // Alguns modais desta base são reabertos pelo servidor via ?abrir=...,
-      // para manter erros e contexto no mesmo lugar. Nesses casos, o Bootstrap
-      // não tem uma instância viva para "dismiss"; então fechar o modal é
-      // voltar à mesma tela sem os parâmetros que o mantêm aberto.
+      // Alguns modais desta base são reabertos pelo servidor: por ?abrir=...,
+      // ou pela volta de um formulário com erro, que devolve a mesma tela com
+      // o modal aberto. Em nenhum dos dois casos existe uma instância viva do
+      // Bootstrap — o botão de fechar não acharia nada para esconder. Por isso
+      // os modais que já vêm abertos ficam marcados, e quem os fecha é daqui.
+      document.querySelectorAll(".modal.show").forEach(function (modal) {
+        modal.setAttribute("data-eithra-reaberto", "true");
+      });
+
+      function fecharModal(modal) {
+        modal.classList.remove("show");
+        modal.style.display = "none";
+        modal.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("modal-open");
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
+        document.querySelectorAll(".modal-backdrop").forEach(function (cortina) {
+          cortina.remove();
+        });
+      }
+
       document.addEventListener("click", function (event) {
         var dismiss = event.target.closest("[data-bs-dismiss=\"modal\"]");
         if (!dismiss) {
           return;
         }
 
-        var modal = dismiss.closest(".modal.show");
+        var modal = dismiss.closest("[data-eithra-reaberto]");
         if (!modal) {
           return;
         }
 
+        event.preventDefault();
+
+        // Com ?abrir=... na URL, fechar é voltar à mesma tela sem o parâmetro
+        // que mantém o modal aberto.
         var url = new URL(window.location.href);
-        if (!url.searchParams.has("abrir")) {
+        if (url.searchParams.has("abrir")) {
+          url.searchParams.delete("abrir");
+          url.searchParams.delete("item");
+          window.location.assign(url.toString());
           return;
         }
 
-        event.preventDefault();
-        url.searchParams.delete("abrir");
-        url.searchParams.delete("item");
-        window.location.assign(url.toString());
+        // Sem esse parâmetro, o endereço atual é o do envio do formulário e
+        // não pode ser pedido de novo por leitura: fechar é tirar o modal da
+        // frente, sem recarregar.
+        fecharModal(modal);
       });
 
       var confirmModalElement = document.getElementById("eithra-confirm-modal");

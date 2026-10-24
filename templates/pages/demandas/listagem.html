@@ -85,9 +85,30 @@
             <label class="form-label small text-body-secondary" for="{{ filtros.prazo.id_for_label }}">Prazo</label>
             {{ filtros.prazo }}
           </div>
-          <div class="col-4 col-lg-auto">
+        </div>
+
+        {% comment %}A lente fina: o que só interessa quando já se sabe o que se procura.
+        Fica na linha de baixo para não apertar os filtros do dia a dia.{% endcomment %}
+        <div class="row g-2 align-items-end mt-2">
+          <div class="col-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="{{ filtros.equipamento.id_for_label }}">Equipamento</label>
+            {{ filtros.equipamento }}
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="{{ filtros.tipo_problema.id_for_label }}">Tipo de problema</label>
+            {{ filtros.tipo_problema }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.impacto.id_for_label }}">Impacto</label>
+            {{ filtros.impacto }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.risco.id_for_label }}">Risco</label>
+            {{ filtros.risco }}
+          </div>
+          <div class="col-12 col-lg-2">
             {% if filtros_ativos %}
-              {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None minhas=None page=None as filtros_limpos %}
+              {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
               <a class="btn btn-sm btn-text-secondary w-100" href="{{ filtros_limpos }}">Limpar filtros</a>
             {% endif %}
           </div>
@@ -207,7 +228,7 @@
     {% else %}
       <div class="card-body">
         {% if filtros_ativos %}
-          {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None minhas=None page=None as filtros_limpos %}
+          {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
           {% include "components/state.html" with state_icon="bx-search" state_title="Nenhuma demanda encontrada" state_message="Nenhuma demanda corresponde aos filtros atuais. Ajuste os filtros ou limpe a busca." state_action_url=filtros_limpos state_action_label="Limpar busca" state_action_tone="discreta" %}
         {% else %}
           {% include "components/state.html" with state_icon="bx-clipboard" state_title="Nenhuma demanda registrada" state_message="Demandas operacionais aparecem aqui quando forem registradas." %}
@@ -272,12 +293,21 @@
               {{ formulario_demanda.relato.as_hidden }}
               <h6 class="mb-1">Informações sugeridas pelo EITHRA</h6>
               <p class="text-body-secondary small mb-3">Revise e ajuste o que for necessário antes de seguir.</p>
+
+              {% comment %}O assunto é o que se lê primeiro: fica no topo, sozinho.{% endcomment %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.titulo %}
+              <div class="eithra-field-help mb-3">{{ sugestoes.assunto.origem }}{% if sugestoes.assunto.motivo %} · {{ sugestoes.assunto.motivo }}{% endif %}</div>
+
+              {% comment %}Onde: o lugar e o que fica nele. A área não é campo — é o tipo
+              do lugar, lido junto dele.{% endcomment %}
+              <div class="fw-medium mb-2">Onde</div>
               <div class="row g-3">
-                <div class="col-12 col-lg-7">
-                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.titulo %}
-                  <div class="eithra-field-help">{{ sugestoes.assunto.origem }}{% if sugestoes.assunto.motivo %} · {{ sugestoes.assunto.motivo }}{% endif %}</div>
+                <div class="col-12 col-lg-4">
+                  <div class="form-label">Área</div>
+                  <div class="form-control-plaintext px-0 py-0" id="eithra-demanda-area">{{ sugestoes.area.valor|default:"Não identificada" }}</div>
+                  <div class="eithra-field-help">{{ sugestoes.area.origem }}{% if sugestoes.area.motivo %} · {{ sugestoes.area.motivo }}{% endif %}</div>
                 </div>
-                <div class="col-12 col-lg-5">
+                <div class="col-12 col-lg-4">
                   {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.local_texto %}
                   <datalist id="id_local_texto_lista">
                     {% for escolha in formulario_demanda.local.field.queryset %}
@@ -285,6 +315,19 @@
                     {% endfor %}
                   </datalist>
                   <div class="eithra-field-help">{{ sugestoes.local.origem }}{% if sugestoes.local.motivo %} · {{ sugestoes.local.motivo }}{% endif %}</div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.equipamento %}
+                  <div class="eithra-field-help">{{ sugestoes.equipamento.origem }}{% if sugestoes.equipamento.motivo %} · {{ sugestoes.equipamento.motivo }}{% endif %}</div>
+                </div>
+              </div>
+
+              {% comment %}Contexto: o que é o problema e como ele pesa na rotina.{% endcomment %}
+              <div class="fw-medium mb-2 mt-3">Contexto</div>
+              <div class="row g-3">
+                <div class="col-12 col-lg-4">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.tipo_problema %}
+                  <div class="eithra-field-help">{{ sugestoes.tipo_problema.origem }}{% if sugestoes.tipo_problema.motivo %} · {{ sugestoes.tipo_problema.motivo }}{% endif %}</div>
                 </div>
                 <div class="col-12 col-lg-4">
                   {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
@@ -306,11 +349,36 @@
                     {% endif %}
                   </div>
                 </div>
-                <div class="col-12 col-lg-4">
+                <div class="col-12 col-lg-6">
                   {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
                   <div class="eithra-field-help">{{ sugestoes.responsavel.origem }}{% if sugestoes.responsavel.motivo %} · {{ sugestoes.responsavel.motivo }}{% endif %}</div>
                 </div>
               </div>
+
+              {% comment %}Impacto e risco descrevem a consequência e aparecem junto
+              do contexto, sem esconderijo: cada um só entra quando o relato
+              sustentou algo. Sem identificação não ocupam espaço — continuam
+              corrigíveis depois, na edição.{% endcomment %}
+              {% if sugestoes.impacto.valor or sugestoes.risco.valor %}
+                <div class="row g-3 mt-0">
+                  {% if sugestoes.impacto.valor %}
+                    <div class="col-12 col-lg-6">
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.impacto %}
+                      <div class="eithra-field-help">{{ sugestoes.impacto.origem }}{% if sugestoes.impacto.motivo %} · {{ sugestoes.impacto.motivo }}{% endif %}</div>
+                    </div>
+                  {% endif %}
+                  {% if sugestoes.risco.valor %}
+                    <div class="col-12 col-lg-6">
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.risco %}
+                      <div class="eithra-field-help">{{ sugestoes.risco.origem }}{% if sugestoes.risco.motivo %} · {{ sugestoes.risco.motivo }}{% endif %}</div>
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+              {% if sugestoes.pergunta %}
+                <div class="eithra-field-help mt-3">{{ sugestoes.pergunta }}</div>
+              {% endif %}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -325,6 +393,12 @@
             {{ formulario_demanda.responsavel.as_hidden }}
             {{ formulario_demanda.local.as_hidden }}
             {{ formulario_demanda.local_texto.as_hidden }}
+            {% comment %}A classificação confirmada segue adiante sem ser perguntada de
+            novo: o que a revisão mostra é o que será gravado.{% endcomment %}
+            {{ formulario_demanda.equipamento.as_hidden }}
+            {{ formulario_demanda.tipo_problema.as_hidden }}
+            {{ formulario_demanda.impacto.as_hidden }}
+            {{ formulario_demanda.risco.as_hidden }}
             <div class="modal-body">
               <h6 class="mb-3">Revisar e registrar</h6>
               <div class="eithra-review-card">
@@ -359,6 +433,16 @@
                     <div>{{ revisao.prazo.valor }}</div>
                     <div class="small text-body-secondary">{{ revisao.prazo.origem }}</div>
                   </div>
+                  {% comment %}A classificação que o EITHRA identificou, junto do
+                  resto: quem revisa confere antes de registrar. Só aparece o que
+                  foi identificado — campo sem proposta não vira linha vazia.{% endcomment %}
+                  {% for item in revisao.identificados %}
+                    <div class="col-12 col-lg-6">
+                      <div class="text-body-secondary small">{{ item.rotulo }}</div>
+                      <div class="fw-medium">{{ item.valor }}</div>
+                      <div class="small text-body-secondary">{{ item.origem }}{% if item.motivo %} · {{ item.motivo }}{% endif %}</div>
+                    </div>
+                  {% endfor %}
                 </div>
               </div>
 

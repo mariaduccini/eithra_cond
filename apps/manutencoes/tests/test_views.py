@@ -219,6 +219,22 @@ class CriacaoPorDemandaTests(BaseDeTelas):
         # Nada é gravado ao abrir: o formulário só chega preenchido.
         self.assertEqual(Manutencao.objects.count(), 0)
 
+    def test_demanda_com_lugar_e_equipamento_preenche_a_manutencao(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        equipamento = criar_equipamento(self.condominio, "Bomba", local=local)
+        demanda = criar_demanda(
+            self.condominio, self.gestao, local=local, equipamento=equipamento
+        )
+
+        resposta = self.client.get(
+            reverse("manutencoes:listagem"), {"demanda": str(demanda.pk)}
+        )
+        formulario = resposta.context["formulario_manutencao"]
+        # A manutenção nasce sabendo onde o problema está: o lugar e o que fica
+        # nele vêm junto, para ninguém refazer o trabalho que o registro fez.
+        self.assertEqual(formulario.initial["local"], local.pk)
+        self.assertEqual(formulario.initial["equipamento"], equipamento.pk)
+
     def test_confirmar_grava_com_a_procedencia(self):
         resposta = self.client.post(
             reverse("manutencoes:criar"),

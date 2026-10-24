@@ -5,17 +5,27 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.cadastros.constants import TipoLocal
 from apps.condominios.constants import Papel
-from apps.demandas.constants import PrioridadeDemanda, StatusDemanda
+from apps.demandas.constants import (
+    ImpactoDemanda,
+    PrioridadeDemanda,
+    RiscoDemanda,
+    StatusDemanda,
+    TipoProblema,
+)
 from apps.demandas.models import Demanda
 from apps.demandas.services import alterar_status, criar_demanda
 from apps.manutencoes.services import criar_manutencao
 from apps.demandas.tests.apoio import (
     criar_condominio,
+    criar_equipamento,
     criar_local,
     criar_pessoa,
     criar_vinculo,
 )
+from apps.governanca.models import ContratoEquipamento, GarantiaEquipamento
+from apps.governanca.tests.apoio import criar_contrato, criar_garantia
 
 SENHA = "senha-forte-123"
 
@@ -517,3 +527,128 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
         self.assertIn("Acompanhar manutenção", conteudo)
         self.assertIn("Atualizar demanda", conteudo)
         self.assertIn("Conclusão", conteudo)
+
+
+class ContextoOperacionalTests(BaseDeTelas):
+    """O contexto que qualifica o problema: onde fica, sobre o que é e o que significa.
+
+    A área não é coluna própria: ela sai do tipo do lugar cadastrado. O detalhe
+    mostra o que existe, o histórico guarda o antes e o depois, e os filtros
+    deixam estreitar a lista por tipo de problema, impacto e risco (§6, §23).
+    """
+
+    def _contexto(self, **campos):
+        """Uma demanda presa a um lugar e ao equipamento que fica nele."""
+        local = criar_local(
+            self.condominio, "Casa de máquinas", tipo=TipoLocal.CASA_DE_MAQUINAS
+        )
+        equipamento = criar_equipamento(
+            self.condominio, "Bomba de recalque", local=local
+        )
+        demanda = self._demanda(
+            titulo="Bomba de recalque com vazamento",
+            local=local,
+            equipamento=equipamento,
+            **campos,
+        )
+        return local, equipamento, demanda
+
+    def test_detalhe_mostra_area_derivada_local_e_equipamento(self):
+        _, _, demanda = self._contexto(
+            tipo_problema=TipoProblema.VAZAMENTO,
+            impacto=ImpactoDemanda.EQUIPAMENTO,
+            risco=RiscoDemanda.ELETRICO,
+        )
+
+        resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
+        self.assertEqual(resposta.status_code, 200)
+        dados = resposta.context["demanda"]
+        # A área é leitura do tipo do lugar, e não um campo guardado à parte.
+        self.assertEqual(dados["area"], TipoLocal.CASA_DE_MAQUINAS.label)
+        self.assertEqual(dados["equipamento"], "Bomba de recalque")
+        self.assertEqual(dados["tipo_problema"], TipoProblema.VAZAMENTO.label)
+        self.assertEqual(dados["risco"], RiscoDemanda.ELETRICO.label)
+
+    def test_filtros_de_classificacao_estreitam_a_lista(self):
+        self._contexto(
+            tipo_problema=TipoProblema.VAZAMENTO, risco=RiscoDemanda.ELETRICO
+        )
+        self._demanda(titulo="Sem contexto")
+
+        resposta = self.client.get(
+            reverse("demandas:listagem"),
+            {"tipo_problema": TipoProblema.VAZAMENTO, "risco": RiscoDemanda.ELETRICO},
+        )
+        titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
+        self.assertEqual(titulos, ["Bomba de recalque com vazamento"])
+        # O filtro aparece com o nome que a gestão lê, não com o do campo.
+        self.assertIn("Tipo de problema", resposta.content.decode())
+
+        vazia = self.client.get(
+            reverse("demandas:listagem"), {"tipo_problema": TipoProblema.RUIDO}
+        )
+        self.assertEqual(vazia.context["demandas"], [])
+
+    def test_filtro_por_equipamento_nao_alcanca_outro_condominio(self):
+        _, _, demanda = self._contexto()
+        outro = criar_condominio("Beta")
+        alheio = criar_equipamento(outro, "Bomba do Beta")
+        do_vizinho = Demanda.objects.create(
+            condominio=outro,
+            criado_por=self.gestao,
+            titulo="Bomba do Beta com ruído",
+            equipamento=alheio,
+        )
+
+        # O equipamento de outro condomínio não é oferecido nem alcança nada:
+        # o filtro vale dentro do que se enxerga, e o vizinho fica fora.
+        resposta = self.client.get(
+            reverse("demandas:listagem"), {"equipamento": str(alheio.pk)}
+        )
+        titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
+        self.assertNotIn(do_vizinho.titulo, titulos)
+        self.assertIn(demanda.titulo, titulos)
+
+    def test_historico_guarda_o_antes_e_o_depois_da_classificacao(self):
+        _, _, demanda = self._contexto(tipo_problema=TipoProblema.VAZAMENTO)
+
+        resposta = self.client.post(
+            reverse("demandas:editar", args=[demanda.pk]),
+            {
+                "titulo": demanda.titulo,
+                "prioridade": PrioridadeDemanda.ALTA,
+                "tipo_problema": TipoProblema.HIDRAULICA,
+                "impacto": ImpactoDemanda.AREA,
+                "risco": RiscoDemanda.ESTRUTURAL,
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+
+        resposta = self.client.get(
+            reverse("demandas:detalhe", args=[demanda.pk]) + "?aba=historico"
+        )
+        conteudo = resposta.content.decode()
+        # O valor anterior e o novo, lado a lado, na língua da tela.
+        self.assertIn("Tipo de problema", conteudo)
+        self.assertIn(TipoProblema.VAZAMENTO.label, conteudo)
+        self.assertIn(TipoProblema.HIDRAULICA.label, conteudo)
+
+    def test_detalhe_reune_contratos_e_garantias_do_equipamento(self):
+        _, equipamento, demanda = self._contexto()
+
+        contrato = criar_contrato(self.condominio, self.gestao)
+        ContratoEquipamento.objects.create(
+            contrato=contrato, equipamento=equipamento
+        )
+        garantia = criar_garantia(self.condominio, self.gestao)
+        GarantiaEquipamento.objects.create(
+            garantia=garantia, equipamento=equipamento
+        )
+
+        resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
+        conteudo = resposta.content.decode()
+        # O que a Governança já sabia sobre o equipamento aparece aqui sem que a
+        # demanda guarde vínculo próprio: a consulta é feita na hora (§6-F).
+        self.assertIn("Contratos e garantias", conteudo)
+        self.assertIn("Manutenção de elevadores", conteudo)
+        self.assertIn("Garantia da bomba de recalque", conteudo)

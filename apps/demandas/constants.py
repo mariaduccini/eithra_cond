@@ -51,6 +51,65 @@ class OrigemDemanda(models.TextChoices):
     OUTRA = "outra", "Outra"
 
 
+class TipoProblema(models.TextChoices):
+    """A natureza do que está acontecendo, na linguagem de quem lê o relato.
+
+    É uma lista curta de propósito. Não é uma taxonomia de engenharia: é o
+    suficiente para agrupar ocorrências semelhantes e reconhecer repetição. A
+    ausência de classificação não vira um valor — ``None`` é "não identificado",
+    que é diferente de "outro".
+    """
+
+    VAZAMENTO = "vazamento", "Vazamento"
+    INFILTRACAO = "infiltracao", "Infiltração"
+    HIDRAULICA = "hidraulica", "Falha hidráulica"
+    ELETRICA = "eletrica", "Falha elétrica"
+    ILUMINACAO = "iluminacao", "Iluminação"
+    ACESSO = "acesso", "Falha de acesso ou automação"
+    ESTRUTURA = "estrutura", "Estrutura ou alvenaria"
+    LIMPEZA = "limpeza", "Limpeza ou conservação"
+    RUIDO = "ruido", "Ruído"
+    OUTRO = "outro", "Outro"
+
+
+class ImpactoDemanda(models.TextChoices):
+    """Até onde a consequência da demanda alcança."""
+
+    UNIDADE = "unidade", "Uma unidade"
+    AREA = "area", "Uma área do condomínio"
+    EQUIPAMENTO = "equipamento", "Um equipamento"
+    COLETIVO = "coletivo", "O condomínio inteiro"
+
+
+class RiscoDemanda(models.TextChoices):
+    """O risco identificado no relato, quando houver algum.
+
+    ``SEM_RISCO`` é uma resposta declarada, e não a ausência de resposta:
+    "sem risco identificado" é diferente de "não deu para avaliar". A ausência
+    continua sendo ``None``.
+    """
+
+    SEM_RISCO = "sem_risco", "Sem risco identificado"
+    SEGURANCA = "seguranca", "Risco à segurança"
+    INCENDIO = "incendio", "Risco de incêndio ou explosão"
+    ELETRICO = "eletrico", "Risco elétrico"
+    ESTRUTURAL = "estrutural", "Risco estrutural"
+    SAUDE = "saude", "Risco à saúde"
+
+
+class RecorrenciaDemanda(models.TextChoices):
+    """Se o que está sendo relatado já aconteceu antes.
+
+    ``DECLARADA`` é o que o relato afirma; ``OBSERVADA`` é o que o histórico do
+    condomínio mostra. São coisas diferentes e continuam separadas: uma é o que
+    a pessoa disse, a outra é o que os registros sustentam.
+    """
+
+    PRIMEIRA = "primeira", "Primeira ocorrência"
+    DECLARADA = "declarada", "O relato indica que já aconteceu antes"
+    OBSERVADA = "observada", "Há ocorrência anterior no histórico"
+
+
 class TipoEventoDemanda(models.TextChoices):
     """O que aconteceu com a demanda, como ela é lembrada depois.
 

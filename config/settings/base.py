@@ -242,6 +242,27 @@ SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 
 # ---------------------------------------------------------------------------
+# Leitura semântica do relato (opcional)
+# ---------------------------------------------------------------------------
+# O Eithra lê o relato com regras próprias, e isso já basta para registrar uma
+# demanda. Quando existe um serviço de linguagem configurado, ele entra como uma
+# segunda leitura — para o que as palavras exatas não alcançam — e nunca como a
+# única fonte: sem chave ou sem modelo, o sistema simplesmente segue
+# determinístico, sem erro e sem tela quebrada (ver apps/core/llm.py).
+#
+# A credencial vive só no ambiente, é usada só no backend e nunca é registrada
+# em log. O endereço segue o formato da API de chat da OpenAI, o que mantém a
+# escolha de provedor fora do código.
+EITHRA_LLM_API_KEY = env("EITHRA_LLM_API_KEY", default="").strip()
+EITHRA_LLM_BASE_URL = env(
+    "EITHRA_LLM_BASE_URL", default="https://api.openai.com/v1"
+).strip()
+EITHRA_LLM_MODEL = env("EITHRA_LLM_MODEL", default="").strip()
+# Curto de propósito: a leitura semântica é uma ajuda, e o registro da demanda
+# não pode ficar esperando por ela.
+EITHRA_LLM_TIMEOUT = env.float("EITHRA_LLM_TIMEOUT", default=6.0)
+
+# ---------------------------------------------------------------------------
 # Fluxos de autenticação
 # ---------------------------------------------------------------------------
 LOGIN_URL = "accounts:login"

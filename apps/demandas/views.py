@@ -5,7 +5,7 @@ manutenção. Esta camada organiza isso na interface aprovada: tabela
 operacional, wizard curto de registro, detalhe com abas e atualização sem
 reinventar o backend.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -21,9 +21,18 @@ from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
-from .constants import OrigemDemanda, PrioridadeDemanda, StatusDemanda
+from .constants import (
+    ImpactoDemanda,
+    OrigemDemanda,
+    PrioridadeDemanda,
+    RiscoDemanda,
+    StatusDemanda,
+    TipoProblema,
+)
 from .derivacao import (
     LIMITE_DO_ASSUNTO_NO_CABECALHO,
+    OrigemSugestao,
+    area_do_contexto,
     assunto_do_relato,
     prioridade_do_relato,
 )
@@ -46,6 +55,7 @@ from .permissoes import (
 from .services import (
     ErroDeDemanda,
     alterar_status,
+    contexto_de_governanca,
     criar_demanda,
     editar_demanda,
     registrar_observacao,
@@ -149,6 +159,11 @@ def criar(request):
         prazo=dados["prazo"],
         local=dados["local"],
         local_contexto=dados.get("local_contexto") or "",
+        equipamento=dados.get("equipamento"),
+        tipo_problema=dados.get("tipo_problema"),
+        impacto=dados.get("impacto"),
+        risco=dados.get("risco"),
+        classificacao_sugerida=dados.get("classificacao_sugerida"),
     )
     messages.success(request, "Demanda registrada.")
     return redirect("demandas:detalhe", pk=demanda.pk)
@@ -175,13 +190,24 @@ def detalhe(request, pk):
 def editar(request, pk):
     """Atualiza o conteúdo da demanda. Só quem responde pelo condomínio edita."""
     demanda = _demanda_para_editar(request, pk)
-    formulario = DemandaForm(request.POST, condominio=demanda.condominio)
+    formulario = DemandaForm(
+        request.POST, condominio=demanda.condominio, instancia=demanda
+    )
     if not formulario.is_valid():
         return _render_detalhe(
             request, demanda, formulario=formulario, modal="editar", status=400
         )
 
     dados = formulario.cleaned_data
+    # Só o que a tela perguntou pode mudar. Quando o envio não fala de um campo —
+    # o caso das integrações e das telas antigas —, ele fica como está: quem não
+    # falou do equipamento não o apagou, e o histórico não registra mudança que
+    # ninguém pediu.
+    classificacao = {
+        campo: dados.get(campo)
+        for campo in ("equipamento", "tipo_problema", "impacto", "risco")
+        if campo in request.POST
+    }
     editar_demanda(
         demanda=demanda,
         usuario=request.user,
@@ -192,6 +218,7 @@ def editar(request, pk):
         prazo=dados["prazo"],
         local=dados["local"],
         local_contexto=dados.get("local_contexto"),
+        **classificacao,
     )
     messages.success(request, "Demanda atualizada.")
     return redirect("demandas:detalhe", pk=demanda.pk)
@@ -355,7 +382,16 @@ def _demanda_autorizada(request, pk):
     condominios = _condominios_para_ver(request)
     return get_object_or_404(
         Demanda.objects.select_related(
-            "condominio", "responsavel", "criado_por", "local"
+            "condominio",
+            "responsavel",
+            "criado_por",
+            "local",
+            "local__tipo_local",
+            # A área sai do tipo do lugar onde o equipamento fica: trazer esse
+            # caminho junto evita uma consulta por demanda só para ler o rótulo.
+            "equipamento",
+            "equipamento__local",
+            "equipamento__local__tipo_local",
         ).filter(condominio__in=condominios),
         pk=pk,
     )
@@ -465,6 +501,12 @@ def _render_detalhe(
         "aba": aba_atual,
         "abas": _abas_para_tela(aba_atual),
         "historico": _historico_para_tela(demanda),
+        # O que a Governança já sabe sobre o lugar e o equipamento desta demanda:
+        # contrato vigente e garantia, quando existem. Vem do domínio de
+        # Governança por consulta, sem criar vínculo novo aqui.
+        "contexto_governanca": contexto_de_governanca(
+            demanda=demanda, usuario=request.user
+        ),
         "relacionadas": _relacionadas_para_tela(demanda, manutencao),
         "motivo_prioridade": _motivo_da_prioridade(demanda),
         "pode_editar": pode_editar,
@@ -494,7 +536,7 @@ def _demandas_filtradas(request, condominios, filtros):
     """Aplica os filtros essenciais e devolve a lista na ordem de atenção."""
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
-    ).select_related("condominio", "responsavel", "local")
+    ).select_related("condominio", "responsavel", "local", "equipamento")
 
     if filtros.is_valid():
         dados = filtros.cleaned_data
@@ -508,6 +550,17 @@ def _demandas_filtradas(request, condominios, filtros):
             queryset = queryset.filter(local=dados["local"])
         if dados["responsavel"]:
             queryset = queryset.filter(responsavel=dados["responsavel"])
+        # A classificação entra como filtro pela mesma razão que o local: é o que
+        # permite olhar só o que interessa naquele momento — o que está sem
+        # equipamento, o que é infiltração, o que tem risco de segurança.
+        if dados["equipamento"]:
+            queryset = queryset.filter(equipamento=dados["equipamento"])
+        if dados["tipo_problema"]:
+            queryset = queryset.filter(tipo_problema=dados["tipo_problema"])
+        if dados["impacto"]:
+            queryset = queryset.filter(impacto=dados["impacto"])
+        if dados["risco"]:
+            queryset = queryset.filter(risco=dados["risco"])
 
         prazo = dados["prazo"]
         if prazo == "vencidas":
@@ -550,6 +603,10 @@ def _iniciais_da_demanda(demanda):
         # O lugar é perguntado como busca: aparece o nome do cadastro e, quando
         # é tudo o que se sabe, o texto que ficou guardado do lugar.
         "local_texto": demanda.local_para_exibir,
+        "equipamento": demanda.equipamento_id,
+        "tipo_problema": demanda.tipo_problema or "",
+        "impacto": demanda.impacto or "",
+        "risco": demanda.risco or "",
     }
 
 
@@ -580,6 +637,14 @@ def _formulario_da_informacao(formulario, condominios, usuario):
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
             "local_texto": local_texto,
+            # O que a leitura sustentou já vem escolhido, para a gestão conferir
+            # em vez de preencher: o equipamento quando o cadastro o confirmou e
+            # a classificação quando o relato a sustentou. O que ficou em aberto
+            # continua em branco.
+            "equipamento": getattr(dados.get("equipamento"), "pk", None),
+            "tipo_problema": dados.get("tipo_problema") or "",
+            "impacto": dados.get("impacto") or "",
+            "risco": dados.get("risco") or "",
         },
     )
 
@@ -608,8 +673,65 @@ def _formulario_da_revisao(formulario, condominios, usuario):
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
             "local_texto": local_texto,
+            # A revisão não reabre a classificação: ela mostra o que foi
+            # confirmado e o leva adiante sem perguntar de novo.
+            "equipamento": getattr(dados.get("equipamento"), "pk", None),
+            "tipo_problema": dados.get("tipo_problema") or "",
+            "impacto": dados.get("impacto") or "",
+            "risco": dados.get("risco") or "",
         },
     )
+
+
+# A classificação que a leitura sustenta e que a tela mostra como proposta, com
+# o rótulo humano do campo e o vocabulário que o traduz. A área não entra aqui:
+# ela é derivada do tipo do local e aparece junto do lugar, onde é lida. A
+# recorrência também não: é leitura do histórico, não classificação da demanda.
+CLASSIFICACAO_PARA_TELA = (
+    ("equipamento", "Equipamento", None),
+    ("tipo_problema", "Tipo de problema", TipoProblema),
+    ("impacto", "Impacto", ImpactoDemanda),
+    ("risco", "Risco", RiscoDemanda),
+)
+
+
+def _proposta_para_tela(proposta, escolhas=None, sem_proposta: str = "") -> dict:
+    """Uma proposta da leitura como ela aparece ao lado do campo que sugeriu.
+
+    Quando a leitura não sustentou nada, o que se mostra é a ausência — dita em
+    linguagem humana —, e não um valor inventado.
+    """
+    if not proposta.existe:
+        return {"valor": "", "origem": sem_proposta, "motivo": ""}
+    return {
+        "valor": escolhas(proposta.valor).label if escolhas else proposta.valor,
+        "origem": OrigemSugestao(proposta.origem).label,
+        "motivo": proposta.motivo,
+    }
+
+
+def _classificacao_identificada(leitura):
+    """O que a leitura do relato identificou, com a origem de cada campo.
+
+    Só entra o que ela sustentou de fato: campo sem proposta não vira linha
+    vazia, e a tela não mostra o que não há. A origem acompanha cada item
+    porque é ela que diz se aquilo veio do relato, do cadastro ou do histórico.
+    """
+    sugestoes = leitura.sugestoes
+    itens = []
+    for campo, rotulo, escolhas in CLASSIFICACAO_PARA_TELA:
+        proposta = sugestoes[campo]
+        if not proposta.existe:
+            continue
+        itens.append(
+            {
+                "rotulo": rotulo,
+                "valor": escolhas(proposta.valor).label if escolhas else proposta.valor,
+                "origem": OrigemSugestao(proposta.origem).label,
+                "motivo": proposta.motivo,
+            }
+        )
+    return itens
 
 
 def _sugestoes_para_tela(formulario, usuario):
@@ -618,6 +740,7 @@ def _sugestoes_para_tela(formulario, usuario):
     dados = formulario.cleaned_data
     responsavel = dados.get("responsavel") or formulario.responsavel_sugerido(usuario)
     prioridade = dados.get("prioridade") or ""
+    propostas = leitura.sugestoes
     return {
         "assunto": {
             "valor": dados.get("titulo") or leitura.assunto,
@@ -631,6 +754,23 @@ def _sugestoes_para_tela(formulario, usuario):
             if leitura.local
             else "",
         },
+        # A área não é campo: é a leitura do tipo do lugar onde o problema está.
+        # Aparece junto de onde as coisas acontecem porque é ali que ela explica.
+        "area": _proposta_para_tela(
+            propostas["area"], None, "Não identificada pelo lugar."
+        ),
+        "equipamento": _proposta_para_tela(
+            propostas["equipamento"], None, "Nenhum equipamento identificado no relato."
+        ),
+        "tipo_problema": _proposta_para_tela(
+            propostas["tipo_problema"],
+            TipoProblema,
+            "Não identificado no relato.",
+        ),
+        "impacto": _proposta_para_tela(
+            propostas["impacto"], ImpactoDemanda, "Não avaliado."
+        ),
+        "risco": _proposta_para_tela(propostas["risco"], RiscoDemanda, "Não avaliado."),
         "prioridade": {
             "valor": PrioridadeDemanda(prioridade).label if prioridade else "",
             "origem": (
@@ -656,6 +796,11 @@ def _sugestoes_para_tela(formulario, usuario):
             if responsavel is not None and getattr(responsavel, "pk", None) == getattr(usuario, "pk", None)
             else "",
         },
+        # A classificação, campo a campo, e a pergunta que o relato deixou em
+        # aberto — no máximo uma. Quando nada ficou ambíguo, ela vem vazia e a
+        # tela não pergunta nada.
+        "identificados": _classificacao_identificada(leitura),
+        "pergunta": leitura.pergunta,
     }
 
 
@@ -685,6 +830,10 @@ def _resumo_do_registro(formulario, usuario):
             "valor": _prazo_por_extenso(dados.get("prazo")),
             "origem": "Informado manualmente" if dados.get("prazo") else "Sem prazo definido",
         },
+        # A mesma classificação que a etapa anterior mostrou: quem revisa
+        # confere o que o EITHRA identificou antes de registrar, e não descobre
+        # depois. Campo sem proposta não vira linha vazia.
+        "identificados": _classificacao_identificada(leitura),
         "responsavel": _nome_de(responsavel),
         "situacao_inicial": StatusDemanda.ABERTA.label,
         "origem": OrigemDemanda.MANUAL.label,
@@ -861,7 +1010,13 @@ def _acoes_da_linha(demanda, usuario):
 
 
 def _demanda_para_detalhe(demanda):
-    """A demanda como a página dela precisa: os dados e o que dá para fazer."""
+    """A demanda como a página dela precisa: os dados e o que dá para fazer.
+
+    Além do que a lista mostra, entra o contexto que qualifica o problema — onde
+    fica, sobre o que é e o que ele significa. Só o que existe aparece: campo
+    sem resposta não vira linha vazia na tela.
+    """
+    area = area_do_contexto(demanda.local, demanda.equipamento)
     dados = _demanda_para_tela(demanda)
     dados.update(
         {
@@ -870,13 +1025,87 @@ def _demanda_para_detalhe(demanda):
             "origem": demanda.get_origem_display(),
             "criado_por": _nome_de(demanda.criado_por),
             "criada_em": _momento_por_extenso(demanda.criado_em, timezone.localdate()),
+            # Derivada, não guardada: a área sai do tipo do lugar cadastrado e,
+            # quando só o equipamento se sabe, do lugar onde ele fica.
+            "area": area.valor if area.existe else "",
+            "area_motivo": area.motivo if area.existe else "",
+            "equipamento": demanda.equipamento.nome if demanda.equipamento_id else "",
+            "tipo_problema": _rotulo_de(TipoProblema, demanda.tipo_problema),
+            "impacto": _rotulo_de(ImpactoDemanda, demanda.impacto),
+            "risco": _rotulo_de(RiscoDemanda, demanda.risco),
         }
     )
     return dados
 
 
+def _rotulo_de(escolhas, valor) -> str:
+    """O rótulo humano de um valor guardado, ou nada quando não há valor."""
+    if not valor:
+        return ""
+    try:
+        return escolhas(valor).label
+    except ValueError:
+        return valor
+
+
+# Os campos do histórico que a gestão lê melhor como dois valores lado a lado.
+# O que fica de fora — local, equipamento, responsável — aparece pelo nome na
+# própria frase do evento: identificador de cadastro não sobe para a tela.
+ROTULOS_DO_HISTORICO = (
+    ("status", "Situação"),
+    ("prioridade", "Prioridade"),
+    ("tipo_problema", "Tipo de problema"),
+    ("impacto", "Impacto"),
+    ("risco", "Risco"),
+    ("prazo", "Prazo"),
+)
+
+ESCOLHAS_DO_HISTORICO = {
+    "status": StatusDemanda,
+    "prioridade": PrioridadeDemanda,
+    "tipo_problema": TipoProblema,
+    "impacto": ImpactoDemanda,
+    "risco": RiscoDemanda,
+}
+
+
+def _valor_do_historico(campo, valor) -> str:
+    """Um valor guardado, como a gestão o lê agora — ou a ausência dele."""
+    if not valor:
+        return "não informado"
+    if campo == "prazo":
+        try:
+            return _prazo_por_extenso(date.fromisoformat(valor))
+        except (TypeError, ValueError):
+            return str(valor)
+    escolhas = ESCOLHAS_DO_HISTORICO.get(campo)
+    return _rotulo_de(escolhas, valor) if escolhas else str(valor)
+
+
+def _mudancas_do_evento(evento):
+    """O antes e o depois de cada campo, na língua da tela."""
+    anteriores = evento.dados_anteriores or {}
+    novos = evento.dados_novos or {}
+    mudancas = []
+    for campo, rotulo in ROTULOS_DO_HISTORICO:
+        if campo not in anteriores and campo not in novos:
+            continue
+        mudancas.append(
+            {
+                "rotulo": rotulo,
+                "antes": _valor_do_historico(campo, anteriores.get(campo)),
+                "depois": _valor_do_historico(campo, novos.get(campo)),
+            }
+        )
+    return mudancas
+
+
 def _historico_para_tela(demanda):
-    """O que aconteceu com a demanda, do começo para o fim."""
+    """O que aconteceu com a demanda, do começo para o fim.
+
+    Cada evento vem com a frase que o descreve e, quando a mudança foi de um
+    campo com vocabulário próprio, com o antes e o depois já traduzidos.
+    """
     hoje = timezone.localdate()
     return [
         {
@@ -884,6 +1113,7 @@ def _historico_para_tela(demanda):
             "tipo": evento.get_tipo_evento_display(),
             "descricao": evento.descricao,
             "quem": _nome_de(evento.usuario),
+            "mudancas": _mudancas_do_evento(evento),
         }
         for evento in demanda.historico.select_related("usuario").order_by("-data_hora")
     ]

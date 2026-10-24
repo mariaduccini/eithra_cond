@@ -207,8 +207,18 @@ Textos recomendados, alinhados ao Design:
 
 Com base no estado atual auditado:
 
-- a derivação de Demandas deve continuar determinística e conservadora;
-- não há autorização para criar nova infraestrutura de IA nesta rodada;
+- a derivação de Demandas continua determinística e conservadora, e é ela que lê
+  o relato primeiro: regras locais respondem por assunto, peso, local,
+  equipamento, tipo de problema, impacto, risco e recorrência;
+- a rodada de classificação (§6) autorizou **uma** camada semântica, e só para o
+  que as regras não alcançam. Ela não decide sozinha: propõe, e a proposta é
+  conferida contra o cadastro e o vocabulário do domínio antes de virar sugestão.
+  Prioridade e área nunca vêm dela. Sem serviço configurado — ou sem resposta —, o
+  resultado é exatamente o das regras, e nenhuma falha aparece para quem usa o
+  sistema (ver `apps/core/llm.py` e `apps/demandas/interpretacao.py`);
+- cada sugestão guarda valor, origem e confiança; o que foi sugerido fica
+  preservado ao lado do que a demanda passou a valer, para que o aprendizado por
+  confirmação seja possível mais adiante;
 - status ainda não é plenamente derivado por evento real do domínio;
 - indicadores e revisões só devem usar cálculos que o backend atual consiga
   sustentar com segurança.

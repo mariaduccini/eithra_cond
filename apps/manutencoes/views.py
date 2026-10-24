@@ -560,7 +560,9 @@ def _iniciais_da_demanda(demanda) -> dict:
     """O que a manutenção já sabe quando ela nasce de uma demanda.
 
     É sugestão, não decisão: o formulário abre preenchido e quem registra revisa
-    antes de confirmar.
+    antes de confirmar. O lugar e o equipamento vêm junto porque a demanda já
+    sabe onde o problema está — perguntar de novo seria refazer um trabalho que
+    o registro do relato já fez.
     """
     return {
         "titulo": demanda.titulo,
@@ -568,6 +570,8 @@ def _iniciais_da_demanda(demanda) -> dict:
         "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
         "data_prevista": demanda.prazo,
+        "local": demanda.local_id,
+        "equipamento": demanda.equipamento_id,
     }
 
 
