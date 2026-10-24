@@ -1,0 +1,79 @@
+{% comment %}
+Quem pode autorizar uma entrada, procurado de uma vez só.
+
+O porteiro repete o que ouviu: "vou para o 902" ou "vim falar com Maria". Quem
+digita o apartamento vê quem responde por ele; quem digita o nome vê o
+apartamento da pessoa. É a mesma lista, e os dois caminhos levam ao mesmo par
+— quem autoriza e a unidade que é o destino.
+
+Cada linha traz o que a portaria precisa para reconhecer quem responde: as
+iniciais, o nome, o papel na unidade e a unidade. Documento, telefone e
+identificação interna não aparecem aqui nem em lugar nenhum da tela.
+
+A escolha é uma linha inteira, e não um botão quadrado: onde houver mais de um
+nome, a lista é isso — uma lista.
+
+Variáveis: termo; unidades (cada uma com id, rotulo e pessoas);
+pessoas (quem responde, com o nome, o papel e a unidade).
+{% endcomment %}
+<div class="eithra-autorizador-lista">
+  {% if not termo %}
+    <p class="eithra-autorizador-dica">Digite o nome do morador ou apartamento.</p>
+  {% elif not unidades and not pessoas %}
+    <p class="eithra-autorizador-dica">Não encontrei esse morador ou apartamento.</p>
+  {% else %}
+    {% for unidade in unidades %}
+      <div class="eithra-autorizador-grupo">
+        <div class="eithra-autorizador-titulo">
+          <i class="bx bx-buildings" aria-hidden="true"></i>{{ unidade.rotulo }}
+          <span class="eithra-autorizador-contagem">
+            {% if unidade.pessoas %}
+              {{ unidade.pessoas|length }} pessoa{{ unidade.pessoas|length|pluralize }} vinculada{{ unidade.pessoas|length|pluralize }}
+            {% endif %}
+          </span>
+        </div>
+        {% if unidade.pessoas %}
+          {% for pessoa in unidade.pessoas %}
+            <button
+              type="button"
+              class="eithra-autorizador-opcao eithra-person-result"
+              data-eithra-autorizador
+              data-unidade="{{ unidade.id }}"
+              data-pessoa="{{ pessoa.pessoa_id }}"
+              data-destino="{{ unidade.rotulo }}"
+              data-autorizador="{{ pessoa.nome }}"
+              aria-label="Usar {{ pessoa.nome }}, {{ pessoa.vinculo }} · {{ pessoa.unidade_rotulo }}">
+              <span class="eithra-avatar" aria-hidden="true">{{ pessoa.iniciais }}</span>
+              <span class="eithra-person-result-corpo">
+                <span class="eithra-person-result-nome">{{ pessoa.nome }}</span>
+                <span class="eithra-person-result-contexto">{{ pessoa.vinculo }} · {{ pessoa.unidade_rotulo }}</span>
+              </span>
+              <i class="bx bx-chevron-right" aria-hidden="true"></i>
+            </button>
+          {% endfor %}
+        {% else %}
+          <p class="eithra-autorizador-dica">Sem moradores vinculados hoje.</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% for pessoa in pessoas %}
+      <button
+        type="button"
+        class="eithra-autorizador-opcao eithra-person-result"
+        data-eithra-autorizador
+        data-unidade="{{ pessoa.unidade_id }}"
+        data-pessoa="{{ pessoa.pessoa_id }}"
+        data-destino="{{ pessoa.unidade_rotulo }}"
+        data-autorizador="{{ pessoa.nome }}"
+        aria-label="Usar {{ pessoa.nome }}, {{ pessoa.vinculo }} · {{ pessoa.unidade_rotulo }}">
+        <span class="eithra-avatar" aria-hidden="true">{{ pessoa.iniciais }}</span>
+        <span class="eithra-person-result-corpo">
+          <span class="eithra-person-result-nome">{{ pessoa.nome }}</span>
+          <span class="eithra-person-result-contexto">{{ pessoa.vinculo }} · {{ pessoa.unidade_rotulo }}</span>
+        </span>
+        <i class="bx bx-chevron-right" aria-hidden="true"></i>
+      </button>
+    {% endfor %}
+  {% endif %}
+</div>

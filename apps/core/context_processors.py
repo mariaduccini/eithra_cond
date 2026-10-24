@@ -18,10 +18,17 @@ from apps.demandas.permissoes import pode_ver_alguma_demanda
 from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
 from apps.governanca.permissoes import pode_ver_governanca_em_algum
 from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
+from apps.portaria.permissoes import pode_ver_portaria_em_algum
 from apps.rotinas.permissoes import pode_ver_alguma_rotina
 
 NAVIGATION = [
-    {"label": "Painel", "view_name": "core:home", "icon": "bx-home-smile"},
+    {"label": "Painel", "view_name": "core:home", "icon": "bx-home"},
+    {
+        "label": "Portaria",
+        "view_name": "portaria:painel",
+        "icon": "bx-door-open",
+        "visivel_para": pode_ver_portaria_em_algum,
+    },
     {
         "label": "Demandas",
         "view_name": "demandas:listagem",

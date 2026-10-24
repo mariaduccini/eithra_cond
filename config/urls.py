@@ -16,6 +16,7 @@ urlpatterns = [
     path("cadastros/", include("apps.cadastros.urls")),
     path("governanca/", include("apps.governanca.urls")),
     path("comunidade/", include("apps.comunidade.urls")),
+    path("portaria/", include("apps.portaria.urls")),
     path("admin/", admin.site.urls),
 ]
 

@@ -5,6 +5,8 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import User
+from apps.condominios.constants import Papel
+from apps.portaria.tests.apoio import criar_condominio, criar_vinculo
 
 
 class HomeTests(TestCase):
@@ -66,6 +68,13 @@ class HomeTests(TestCase):
         response = self.client.get(reverse("core:home"))
         self.assertContains(response, "João Lima")
         self.assertContains(response, "morador@exemplo.com.br")
+
+    def test_menu_do_porteiro_exibe_portaria(self):
+        condominio = criar_condominio()
+        criar_vinculo(self.user, condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("core:home"))
+        self.assertContains(response, reverse("portaria:painel"))
 
 
 class ErrorPageTests(TestCase):
