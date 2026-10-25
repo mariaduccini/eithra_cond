@@ -293,6 +293,25 @@ EITHRA_LLM_MODEL = env("EITHRA_LLM_MODEL", default="").strip()
 EITHRA_LLM_TIMEOUT = env.float("EITHRA_LLM_TIMEOUT", default=6.0)
 
 # ---------------------------------------------------------------------------
+# Áudio: fala em texto (opcional)
+# ---------------------------------------------------------------------------
+# A entrada por voz passa por um núcleo único (apps/core/audio.py), que devolve o
+# texto fiel da fala e para aí — quem interpreta o texto é o domínio. O provedor
+# e a credencial são os mesmos da leitura semântica acima; o que o áudio tem de
+# próprio é o modelo de transcrição.
+#
+# SEM o modelo configurado, a entrada por voz fica indisponível e o registro por
+# texto continua igual: não há erro 500 e nenhuma tela quebra.
+EITHRA_AUDIO_MODEL = env("EITHRA_AUDIO_MODEL", default="").strip()
+# Idioma padrão da transcrição, quando o pedido não informa outro.
+EITHRA_AUDIO_IDIOMA = env("EITHRA_AUDIO_IDIOMA", default="pt").strip()
+# Um recado operacional é curto, mas transcrever é mais lento que ler: o limite
+# é maior que o da leitura semântica de propósito.
+EITHRA_AUDIO_TIMEOUT = env.float("EITHRA_AUDIO_TIMEOUT", default=30.0)
+# 10 MB. Recusa cedo o arquivo errado, sem apertar o recado legítimo.
+EITHRA_AUDIO_MAX_BYTES = env.int("EITHRA_AUDIO_MAX_BYTES", default=10 * 1024 * 1024)
+
+# ---------------------------------------------------------------------------
 # Fluxos de autenticação
 # ---------------------------------------------------------------------------
 LOGIN_URL = "accounts:login"

@@ -29,13 +29,12 @@ def criar_autorizacao(condominio, registrado_por, **campos):
 
 
 def criar_acesso(condominio, usuario, **campos):
-    base = {
-        "tipo_acesso": "visitante",
-        "nome": "Visitante Dentro",
-        "unidade": comunidade_apoio.criar_unidade(condominio, identificador="102"),
-        "entrada_registrada_por": usuario,
-    }
-    return AcessoPortaria.objects.create(
-        condominio=condominio, **{**base, **campos}
-    )
+    campos.setdefault("tipo_acesso", "visitante")
+    campos.setdefault("nome", "Visitante Dentro")
+    campos.setdefault("entrada_registrada_por", usuario)
+    if not campos.get("unidade") and not campos.get("local"):
+        campos["unidade"] = comunidade_apoio.criar_unidade(
+            condominio, identificador="102"
+        )
+    return AcessoPortaria.objects.create(condominio=condominio, **campos)
 
