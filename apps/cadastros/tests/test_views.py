@@ -181,7 +181,7 @@ class LogoDoCondominioTests(TestCase):
         self.condominio.refresh_from_db()
         self.assertTrue(self.condominio.tem_logo)
         self.assertEqual(
-            self.condominio.logo_storage_key, f"logos/{self.condominio.pk}.png"
+            self.condominio.logo_storage_key, f"condominios/logos/{self.condominio.pk}.png"
         )
 
     def test_substitui_a_logo_existente(self):
@@ -189,7 +189,7 @@ class LogoDoCondominioTests(TestCase):
         self._salvar(logo=jpg("segunda.jpg"))
         self.condominio.refresh_from_db()
         self.assertEqual(
-            self.condominio.logo_storage_key, f"logos/{self.condominio.pk}.jpg"
+            self.condominio.logo_storage_key, f"condominios/logos/{self.condominio.pk}.jpg"
         )
 
     def test_salvar_sem_escolher_arquivo_mantem_a_logo(self):

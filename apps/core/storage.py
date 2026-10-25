@@ -1,8 +1,9 @@
-"""Armazenamento externo privado dos arquivos do Eithra.
+"""Armazenamento privado dos arquivos do Eithra.
 
-Nenhum arquivo de negócio fica no sistema de arquivos da aplicação: em produção
-o disco é efêmero. O arquivo vive em um bucket privado, e o banco guarda apenas
-a referência do objeto.
+Em produção o disco é efêmero: o arquivo vive em um bucket privado remoto, e o
+banco guarda apenas a referência do objeto. No desenvolvimento, o mesmo
+contrato é atendido pelo disco da própria aplicação (``MEDIA_ROOT``), para que
+trabalhar localmente não dependa de serviço externo nenhum.
 
 Este módulo existe para que o domínio não conheça o provedor. O domínio fala
 com um contrato pequeno — enviar, remover, gerar acesso temporário — e o
@@ -41,6 +42,8 @@ from abc import ABC, abstractmethod
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage
 from django.core.validators import RegexValidator
 
 # Tempo máximo de espera ao conversar com o provedor. Curto de propósito: uma
@@ -78,7 +81,7 @@ def erros_de_referencia_de_storage(instancia) -> dict:
             )
     return erros
 
-PROVEDOR_PADRAO = "supabase"
+PROVEDOR_PADRAO = "local"
 
 
 class ErroDeStorage(Exception):
@@ -252,32 +255,98 @@ class SupabaseStorageProvider(StorageProvider):
         return f"{self._url}/storage/v1{caminho}"
 
 
+class LocalStorageProvider(StorageProvider):
+    """O sistema de arquivos da própria aplicação, para o desenvolvimento.
+
+    É o provedor que permite trabalhar sem serviço externo: o arquivo fica sob
+    ``MEDIA_ROOT`` e o Django serve a mídia enquanto ``DEBUG`` estiver ligado.
+    Não há bucket — ele fica vazio —, e por isso a referência guardada é o
+    provedor e a chave, sem mais nada.
+
+    O endereço devolvido é o da própria mídia: no disco local não existe
+    assinatura nem validade. O contrato é o mesmo dos demais provedores, então
+    quem pede o acesso não precisa saber onde o arquivo está.
+    """
+
+    nome = "local"
+
+    def __init__(self):
+        super().__init__(bucket="")
+        # A raiz e o endereço são lidos a cada provedor montado, e não guardados
+        # de uma vez: assim trocar o ambiente — como os testes fazem — muda de
+        # verdade onde o arquivo é gravado.
+        self._armazenamento = FileSystemStorage(
+            location=str(getattr(settings, "MEDIA_ROOT", "") or ""),
+            base_url=(getattr(settings, "MEDIA_URL", "") or "/"),
+        )
+
+    def enviar(self, *, key: str, conteudo: bytes, content_type: str) -> None:
+        """Grava o arquivo sob a chave, substituindo o que estiver no lugar.
+
+        O que existir é removido antes: sem isso, gravar duas vezes a mesma
+        logo deixaria um segundo arquivo ao lado, com um sufixo que ninguém
+        pediu. O tipo informado não é usado — o arquivo já chegou conferido pelo
+        conteúdo real, e é a extensão da chave que o descreve.
+        """
+        if self._armazenamento.exists(key):
+            self._armazenamento.delete(key)
+        self._armazenamento.save(key, ContentFile(conteudo))
+
+    def remover(self, *, key: str) -> None:
+        """Remove o arquivo. Não falha se ele já não existir."""
+        if self._armazenamento.exists(key):
+            self._armazenamento.delete(key)
+
+    def url_assinada(self, *, key: str, validade_segundos: int) -> str:
+        """O endereço da mídia — sem assinatura, que só existe no remoto."""
+        return self._armazenamento.url(key)
+
+
 def obter_provider(
     bucket: str | None = None, *, nome_do_bucket: str | None = None
 ) -> StorageProvider:
     """Devolve o provedor configurado, ou falha dizendo exatamente o que falta.
 
-    O bucket é do domínio: quem chama diz qual é. Sem bucket informado, vale o
-    bucket dos balanços — que foi o primeiro domínio a usar este armazenamento —
-    para que os chamadores existentes continuem funcionando sem mudança.
+    O bucket é do domínio: quem chama diz qual é — e ele só importa no provedor
+    remoto. Sem bucket informado, vale o bucket dos balanços, que foi o primeiro
+    domínio a usar este armazenamento, para que os chamadores existentes
+    continuem funcionando sem mudança.
 
     ``nome_do_bucket`` só existe para a recusa falar o nome certo da variável
-    quando o domínio pede um bucket próprio (por exemplo, a foto do usuário):
-    sem ele, a recusa citaria a variável do domínio que estreou o provedor.
+    quando o domínio pede um bucket próprio (por exemplo, a foto do usuário ou
+    a logo do condomínio): sem ele, a recusa citaria a variável do domínio que
+    estreou o provedor.
 
-    Não existe queda para disco local. Se o storage está configurado e as
-    variáveis obrigatórias não estão no ambiente, o envio é recusado — e não
-    desviado, em silêncio, para um lugar inseguro.
+    Não existe troca silenciosa de provedor: escolhido o remoto e faltando
+    alguma variável obrigatória, o envio é recusado — e não desviado, em
+    silêncio, para outro lugar.
     """
-    nome = (getattr(settings, "BALANCOS_STORAGE_PROVIDER", "") or "").strip().lower()
+    nome = _provedor_escolhido()
 
-    if nome in ("", PROVEDOR_PADRAO):
+    if nome == "local":
+        return LocalStorageProvider()
+    if nome == "supabase":
         return _supabase_configurado(bucket, nome_do_bucket=nome_do_bucket)
 
     raise ImproperlyConfigured(
         f"Provedor de armazenamento não suportado: {nome!r}. "
-        "Use 'supabase' ou ajuste BALANCOS_STORAGE_PROVIDER."
+        "Use 'local' ou 'supabase'."
     )
+
+
+def _provedor_escolhido() -> str:
+    """Qual provedor guarda os arquivos privados.
+
+    ``EITHRA_STORAGE_PROVIDER`` decide. ``BALANCOS_STORAGE_PROVIDER`` continua
+    sendo lido porque foi o primeiro nome dado a essa escolha. Sem nenhum dos
+    dois, o ambiente vale como local: trabalhar no desenvolvimento não deve
+    depender de serviço externo para funcionar.
+    """
+    for variavel in ("EITHRA_STORAGE_PROVIDER", "BALANCOS_STORAGE_PROVIDER"):
+        nome = (getattr(settings, variavel, "") or "").strip().lower()
+        if nome:
+            return nome
+    return PROVEDOR_PADRAO
 
 
 def _supabase_configurado(

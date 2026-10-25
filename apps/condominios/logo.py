@@ -6,11 +6,15 @@ opcional, vive pequena ao lado do nome, e quem não tem uma é identificado pela
 iniciais — nunca por uma imagem quebrada.
 
 O arquivo segue o mesmo caminho de qualquer imagem do sistema: vai para o
-armazenamento privado em um bucket próprio — a marca de um condomínio não se
+armazenamento privado, em um espaço próprio — a marca de um condomínio não se
 mistura com a foto de uma pessoa nem com o documento de outro assunto —, e aqui
 fica apenas a referência do objeto. O conteúdo é conferido pelo que o arquivo
-realmente é, e não pela extensão nem pelo que o navegador informou. O acesso é
-temporário e gerado na hora, nunca uma URL pública guardada.
+realmente é, e não pela extensão nem pelo que o navegador informou.
+
+Onde o arquivo fica é decisão do provedor configurado: no desenvolvimento, o
+disco da aplicação; em produção, um bucket privado remoto. O acesso é pedido ao
+provedor na hora — assinado e temporário onde isso existe, o endereço da própria
+mídia onde não existe — e nunca uma URL pública guardada.
 
 A régua da imagem é a mesma de todo o Eithra (``apps/core/imagem.py``); o que é
 próprio da logo é o limite e o jeito de dizer a recusa.
@@ -57,12 +61,13 @@ def validar_logo(arquivo) -> tuple[bytes, str, str]:
 
 
 def montar_chave(*, condominio, extensao: str) -> str:
-    """Caminho do objeto dentro do bucket privado.
+    """Caminho do objeto dentro do armazenamento.
 
     Só o identificador do condomínio e a extensão real: o nome que a pessoa deu
-    ao arquivo não entra aqui.
+    ao arquivo não entra aqui. Com o provedor local, esta chave é também o
+    caminho do arquivo sob ``MEDIA_ROOT``.
     """
-    return f"logos/{condominio.pk}.{extensao}"
+    return f"condominios/logos/{condominio.pk}.{extensao}"
 
 
 # -- Guardar, trocar, tirar -----------------------------------------------------
@@ -76,9 +81,9 @@ def tem_logo(condominio) -> bool:
 def definir_logo(condominio, arquivo) -> None:
     """Guarda a logo do condomínio, substituindo a que houver.
 
-    A imagem vai para o bucket antes de a referência existir no banco: uma falha
-    de armazenamento não deixa um condomínio apontando para uma imagem que não
-    subiu. O objeto antigo é removido quando o formato muda e, com ele, o
+    A imagem vai para o armazenamento antes de a referência existir no banco: uma
+    falha de armazenamento não deixa um condomínio apontando para uma imagem que
+    não subiu. O objeto anterior é removido quando o formato muda e, com ele, o
     caminho — o mesmo formato é substituído no lugar.
     """
     conteudo, mime, extensao = validar_logo(arquivo)
@@ -107,8 +112,8 @@ def definir_logo(condominio, arquivo) -> None:
 def remover_logo(condominio) -> None:
     """Tira a logo do condomínio.
 
-    O objeto é removido do bucket, e o que não pode acontecer é a gestão ficar
-    presa a uma imagem que decidiu tirar: se o armazenamento falhar, a
+    O objeto é removido do armazenamento, e o que não pode acontecer é a gestão
+    ficar presa a uma imagem que decidiu tirar: se o armazenamento falhar, a
     referência é limpa do mesmo jeito, e o objeto pode ser recolhido depois. Sem
     logo, a identificação volta às iniciais do nome.
     """
@@ -137,8 +142,8 @@ def endereco(condominio) -> str:
     """O endereço temporário da logo, pronto para a tela — ou nada.
 
     É o que as telas usam: sem logo, ou sem armazenamento, a resposta é uma
-    string vazia e a interface cai no fallback. Nenhuma página depende do bucket
-    para abrir.
+    string vazia e a interface cai no fallback. Nenhuma página depende do
+    armazenamento para abrir.
     """
     if condominio is None or not tem_logo(condominio):
         return ""
@@ -146,7 +151,11 @@ def endereco(condominio) -> str:
 
 
 def acesso_temporario(condominio, *, validade_segundos: int | None = None) -> str | None:
-    """Devolve um acesso curto à logo, gerado na hora — nunca guardado.
+    """Devolve o acesso à logo, pedido ao provedor na hora — nunca guardado.
+
+    Quem decide a forma do endereço é o provedor: no remoto ele é assinado e
+    vale por pouco tempo; no disco local é o endereço da própria mídia, que não
+    expira. A camada da logo não supõe nenhum dos dois.
 
     Sem logo, ou com o armazenamento fora do ar, a resposta é nada: a tela cai
     nas iniciais, e a identificação continua legível. Uma imagem que não abre
@@ -171,10 +180,12 @@ def acesso_temporario(condominio, *, validade_segundos: int | None = None) -> st
 
 
 def _provedor():
-    """O provedor do bucket de logos, ou a recusa citando a variável certa.
+    """O provedor do espaço de logos, ou a recusa citando a variável certa.
 
-    Nunca cai no bucket de outro domínio: o bucket de logos é próprio, e sem ele
-    configurado a guarda é recusada — não desviada em silêncio.
+    O provedor é global, mas o bucket de logos é próprio do domínio: quando o
+    provedor remoto está escolhido, pedir a logo sem o bucket dela é recusado —
+    e não desviado, em silêncio, para o bucket de outro domínio. No provedor
+    local não há bucket, e nada disso se aplica.
     """
     return obter_provider(
         bucket=(getattr(settings, NOME_DO_BUCKET, "") or ""),

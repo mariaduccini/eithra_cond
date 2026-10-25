@@ -205,16 +205,23 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
-# Arquivos de balanço (storage externo privado)
+# Arquivos privados (storage compartilhado entre os domínios)
 # ---------------------------------------------------------------------------
-# O PDF de um balanço nunca fica no sistema de arquivos da aplicação — em
-# produção, o disco é efêmero. O arquivo vive em um bucket privado, e o banco
-# guarda apenas a referência do objeto.
+# O arquivo privado nunca vai para o banco: o que se guarda ali é a referência
+# do objeto, e quem guarda o arquivo é o provedor configurado. Em produção o
+# disco é efêmero, e por isso o arquivo vive em bucket privado remoto; no
+# desenvolvimento, ele fica no sistema de arquivos da própria aplicação
+# (MEDIA_ROOT), servido pelo Django enquanto DJANGO_DEBUG for verdadeiro.
 #
+# Qual provedor guarda os arquivos privados do Eithra. A infraestrutura
+# compartilhada vive em apps/core/storage.py.
+EITHRA_STORAGE_PROVIDER = env("EITHRA_STORAGE_PROVIDER", default="").strip().lower()
+
+# O primeiro nome dado a essa escolha, mantido para os ambientes que já o usam.
 # As credenciais vêm do ambiente e são usadas somente no backend. Se o provedor
-# estiver configurado e as variáveis obrigatórias faltarem, o envio é recusado:
-# não existe queda silenciosa para disco local (ver apps/balancos/storage.py).
-BALANCOS_STORAGE_PROVIDER = env("BALANCOS_STORAGE_PROVIDER", default="supabase")
+# remoto estiver escolhido e as variáveis obrigatórias faltarem, o envio é
+# recusado: não existe queda silenciosa para outro lugar.
+BALANCOS_STORAGE_PROVIDER = env("BALANCOS_STORAGE_PROVIDER", default="")
 BALANCOS_STORAGE_BUCKET = env("BALANCOS_STORAGE_BUCKET", default="")
 # 50 MB. Um balanço real pode ter muitas páginas e vir com anexos; o limite
 # existe para recusar cedo um arquivo absurdo, não para apertar o uso.

@@ -244,9 +244,10 @@ class AcessoAssinadoTests(TestCase):
 
 
 class EscolhaDoProviderTests(TestCase):
-    """Sem configuração não há envio: nada cai para disco local."""
+    """Escolhido o remoto, o que falta é recusado — não desviado para o disco."""
 
     @override_settings(
+        EITHRA_STORAGE_PROVIDER="supabase",
         BALANCOS_STORAGE_PROVIDER="supabase",
         SUPABASE_URL="",
         SUPABASE_SERVICE_ROLE_KEY="",
@@ -262,6 +263,7 @@ class EscolhaDoProviderTests(TestCase):
         self.assertIn("BALANCOS_STORAGE_BUCKET", mensagem)
 
     @override_settings(
+        EITHRA_STORAGE_PROVIDER="supabase",
         BALANCOS_STORAGE_PROVIDER="supabase",
         SUPABASE_URL=ENDERECO,
         SUPABASE_SERVICE_ROLE_KEY="",
@@ -275,6 +277,7 @@ class EscolhaDoProviderTests(TestCase):
         self.assertNotIn("SUPABASE_URL,", mensagem)
 
     @override_settings(
+        EITHRA_STORAGE_PROVIDER="disco-local",
         BALANCOS_STORAGE_PROVIDER="disco-local",
         SUPABASE_URL=ENDERECO,
         SUPABASE_SERVICE_ROLE_KEY=CHAVE,
@@ -285,6 +288,7 @@ class EscolhaDoProviderTests(TestCase):
             obter_provider()
 
     @override_settings(
+        EITHRA_STORAGE_PROVIDER="supabase",
         BALANCOS_STORAGE_PROVIDER="supabase",
         SUPABASE_URL=ENDERECO,
         SUPABASE_SERVICE_ROLE_KEY=CHAVE,

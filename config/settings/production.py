@@ -36,6 +36,13 @@ SECURE_HSTS_PRELOAD = False
 # Proxy reverso (Vercel, Nginx, etc.).
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# Em produção o arquivo privado vive em bucket remoto: sem escolha explícita no
+# ambiente, o provedor continua sendo o Supabase, como antes de o provedor local
+# existir.
+EITHRA_STORAGE_PROVIDER = (
+    env("EITHRA_STORAGE_PROVIDER", default="supabase").strip().lower() or "supabase"
+)
+
 # Arquivos estáticos servidos com compressão e hash pelo WhiteNoise.
 STORAGES["staticfiles"]["BACKEND"] = (  # noqa: F405
     "whitenoise.storage.CompressedManifestStaticFilesStorage"
