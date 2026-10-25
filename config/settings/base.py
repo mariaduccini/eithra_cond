@@ -250,6 +250,17 @@ EITHRA_AVATAR_MAX_BYTES = env.int(
     "EITHRA_AVATAR_MAX_BYTES", default=2 * 1024 * 1024
 )
 
+# A logo do condomínio é identificação de contexto, não acervo: pequena, ao lado
+# do nome. Fica em um bucket próprio pelo mesmo motivo da foto — a marca de um
+# condomínio não se mistura com a imagem de outro domínio — e o acesso também é
+# temporário e gerado na hora.
+EITHRA_CONDOMINIO_LOGO_BUCKET = env("EITHRA_CONDOMINIO_LOGO_BUCKET", default="")
+# 1 MB. Uma logo é um símbolo pequeno, exibido em poucos pixels: um limite
+# apertado recusa cedo a imagem errada sem atrapalhar a legítima.
+EITHRA_CONDOMINIO_LOGO_MAX_BYTES = env.int(
+    "EITHRA_CONDOMINIO_LOGO_MAX_BYTES", default=1 * 1024 * 1024
+)
+
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 

@@ -28,6 +28,7 @@ from django.urls import reverse
 from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
+from apps.condominios import logo
 from apps.core.paginacao import paginar
 from apps.core.storage import ErroDeStorage
 
@@ -809,9 +810,11 @@ def _base_da_pagina(request):
     """O que toda tela da governança precisa: os condomínios, qual está em vista
     e o termo já procurado, quando houver."""
     condominios = _condominios_para_ver(request)
+    atual = _condominio_atual(request, condominios)
     return {
         "condominios": condominios,
-        "condominio_atual": _condominio_atual(request, condominios),
+        "condominio_atual": atual,
+        "logo_do_condominio": logo.endereco(atual),
         "mostrar_seletor": condominios.count() > 1,
         "termo": (request.GET.get("q") or "").strip(),
     }

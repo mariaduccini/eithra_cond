@@ -1,27 +1,40 @@
 {% comment %}
-Diz qual condomínio está em vista e permite trocar quando a pessoa responde por
-mais de um. Com um só vínculo não há o que escolher, e a tela não pergunta.
+Diz qual condomínio está em vista e — quando a pessoa responde por mais de um —
+permite trocar.
+
+O nome e a marca aparecem sempre, mesmo com um só vínculo: é isso que diz onde
+a pessoa está operando. Com mais de um condomínio, o mesmo bloco vira a escolha
+entre eles, e trocar muda nome e logo juntos — nunca a marca de um com o nome
+de outro.
 {% endcomment %}
-{% if mostrar_seletor %}
-  <div class="dropdown">
-    <button
-      class="btn btn-label-secondary dropdown-toggle"
-      type="button"
-      data-bs-toggle="dropdown"
-      aria-expanded="false"
-      aria-label="Trocar de condomínio">
-      <i class="bx bx-buildings me-1" aria-hidden="true"></i>{{ condominio_atual.nome }}
-    </button>
-    <ul class="dropdown-menu dropdown-menu-end">
-      {% for condominio in condominios %}
-        <li>
-          <a
-            class="dropdown-item{% if condominio.pk == condominio_atual.pk %} active{% endif %}"
-            href="?condominio={{ condominio.pk }}">
-            {{ condominio.nome }}
-          </a>
-        </li>
-      {% endfor %}
-    </ul>
-  </div>
+{% if condominio_atual %}
+  {% if mostrar_seletor %}
+    <div class="dropdown eithra-contexto-condominio">
+      <button
+        class="btn btn-label-secondary dropdown-toggle"
+        type="button"
+        data-bs-toggle="dropdown"
+        aria-expanded="false"
+        aria-label="Trocar de condomínio">
+        {% include "pages/cadastros/_logo_condominio.html" %}
+        <span class="eithra-contexto-nome">{{ condominio_atual.nome }}</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        {% for condominio in condominios %}
+          <li>
+            <a
+              class="dropdown-item{% if condominio.pk == condominio_atual.pk %} active{% endif %}"
+              href="?condominio={{ condominio.pk }}">
+              {{ condominio.nome }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <span class="eithra-contexto-condominio">
+      {% include "pages/cadastros/_logo_condominio.html" %}
+      <span class="eithra-contexto-nome">{{ condominio_atual.nome }}</span>
+    </span>
+  {% endif %}
 {% endif %}

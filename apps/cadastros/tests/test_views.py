@@ -1,7 +1,11 @@
 """Telas dos cadastros: quem entra, o que vê e o que consegue mudar."""
-from django.test import TestCase
+from unittest.mock import patch
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from apps.balancos.tests.apoio import StorageDeMentira, jpg, png
 from apps.cadastros.models import (
     Equipamento,
     EspecialidadeFornecedor,
@@ -17,6 +21,7 @@ from apps.cadastros.tests.apoio import (
     criar_vinculo,
     entrar_como,
 )
+from apps.condominios import logo
 from apps.condominios.constants import Papel
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
@@ -141,6 +146,117 @@ class CondominioTests(TestCase):
         )
         resposta = self.client.get(self.url)
         self.assertNotContains(resposta, "Salvar")
+
+
+@override_settings(
+    EITHRA_CONDOMINIO_LOGO_BUCKET="bucket-de-logos-de-teste",
+    EITHRA_CONDOMINIO_LOGO_MAX_BYTES=1 * 1024 * 1024,
+)
+class LogoDoCondominioTests(TestCase):
+    """A logo entra pela edição do condomínio — nunca por uma tela à parte.
+
+    Adicionar, substituir e tirar são passos explícitos. Salvar o cadastro sem
+    escolher arquivo mantém a logo como está; tirar é declarado, e não o efeito
+    de um campo vazio.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio("Rio Vermelho Exclusive")
+        self.pessoa = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.url = reverse("cadastros:editar_condominio", args=[self.condominio.pk])
+        self.provider = StorageDeMentira(bucket="bucket-de-logos-de-teste")
+        self.obter = patch(
+            "apps.condominios.logo.obter_provider", return_value=self.provider
+        )
+        self.obter.start()
+        self.addCleanup(self.obter.stop)
+
+    def _salvar(self, **extra):
+        dados = {"nome": self.condominio.nome}
+        dados.update(extra)
+        return self.client.post(self.url, dados)
+
+    def test_adiciona_a_logo_pela_edicao(self):
+        self._salvar(logo=png("marca.png"))
+        self.condominio.refresh_from_db()
+        self.assertTrue(self.condominio.tem_logo)
+        self.assertEqual(
+            self.condominio.logo_storage_key, f"logos/{self.condominio.pk}.png"
+        )
+
+    def test_substitui_a_logo_existente(self):
+        self._salvar(logo=png("primeira.png"))
+        self._salvar(logo=jpg("segunda.jpg"))
+        self.condominio.refresh_from_db()
+        self.assertEqual(
+            self.condominio.logo_storage_key, f"logos/{self.condominio.pk}.jpg"
+        )
+
+    def test_salvar_sem_escolher_arquivo_mantem_a_logo(self):
+        self._salvar(logo=png("marca.png"))
+        self._salvar()
+        self.condominio.refresh_from_db()
+        self.assertTrue(self.condominio.tem_logo)
+
+    def test_tirar_a_logo_e_declarado_e_nao_por_ausencia(self):
+        self._salvar(logo=png("marca.png"))
+        self._salvar(remover_logo="on")
+        self.condominio.refresh_from_db()
+        self.assertFalse(self.condominio.tem_logo)
+
+    def test_arquivo_que_nao_e_imagem_e_recusado_sem_salvar(self):
+        falsa = SimpleUploadedFile(
+            "marca.jpg", b"isto nao e uma imagem", content_type="image/jpeg"
+        )
+        resposta = self._salvar(logo=falsa)
+        self.assertEqual(resposta.status_code, 400)
+        self.condominio.refresh_from_db()
+        self.assertFalse(self.condominio.tem_logo)
+
+    def test_condominio_sem_logo_e_identificado_pelas_iniciais(self):
+        resposta = self.client.get(reverse("cadastros:acessos"))
+        self.assertContains(resposta, "RVE")
+
+    def test_o_campo_da_logo_aparece_no_modal_de_edicao(self):
+        """O campo precisa estar na tela, e não só no formulário.
+
+        Sem logo guardada e sem bucket configurado, o campo continua visível: o
+        armazenamento decide o salvamento, nunca a existência do campo.
+        """
+        resposta = self.client.get(
+            f"{reverse('cadastros:condominios')}?abrir=editar&item={self.condominio.pk}"
+        )
+        html = resposta.content.decode()
+        self.assertIn('name="logo"', html[html.index('id="editar-condominio"'):])
+        self.assertContains(resposta, "Logo do condomínio")
+        self.assertContains(resposta, 'enctype="multipart/form-data"')
+
+    def test_a_ficha_do_condominio_tambem_traz_o_campo_da_logo(self):
+        """A ficha do condomínio é a outra porta do mesmo cadastro.
+
+        Ela monta os campos na mão, e por isso precisa trazer a logo também —
+        senão a mesma decisão existiria em uma tela e não na outra.
+        """
+        resposta = self.client.get(reverse("cadastros:condominio"))
+        self.assertContains(resposta, "Logo do condomínio")
+        self.assertContains(resposta, 'name="logo"')
+        self.assertContains(resposta, 'enctype="multipart/form-data"')
+
+    def test_trocar_de_condominio_troca_nome_e_logo_juntos(self):
+        outro = criar_condominio("Aurora")
+        criar_vinculo(self.pessoa, outro, papel=Papel.SINDICA)
+        logo.definir_logo(outro, png("aurora.png"))
+        self._salvar(logo=png("rve.png"))
+
+        resposta = self.client.get(
+            f"{reverse('cadastros:condominios')}?condominio={outro.pk}"
+        )
+
+        self.assertEqual(resposta.context["condominio_atual"], outro)
+        self.assertIn(f"logos/{outro.pk}.png", resposta.context["logo_do_condominio"])
+        self.assertNotIn(
+            f"logos/{self.condominio.pk}.png", resposta.context["logo_do_condominio"]
+        )
 
 
 class ListaDeCondominiosTests(TestCase):

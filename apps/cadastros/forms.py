@@ -16,6 +16,7 @@ from django.db.models import Q
 
 from apps.accounts.avatar import ErroDeFoto, validar_foto
 from apps.condominios.constants import Papel
+from apps.condominios.logo import ErroDeLogo, validar_logo
 from apps.condominios.models import Condominio
 
 from .constants import TipoPessoa
@@ -45,6 +46,16 @@ ARQUIVO_DE_IMAGEM = {
     "data-eithra-foto": "true",
 }
 
+# Escolher a logo do condomínio é a mesma coisa: um arquivo de imagem, com o
+# tipo informado servindo só de filtro de janela. A marca de baixo é o gancho da
+# prévia na tela — e é própria da logo, para não se confundir com o retrato de
+# quem usa o sistema.
+ARQUIVO_DE_LOGO = {
+    "class": "form-control",
+    "accept": "image/jpeg,image/png,image/webp",
+    "data-eithra-logo": "true",
+}
+
 # Os dois caminhos da senha inicial. A escolha é explícita e aparece na tela:
 # não existe senha escondida nem provisória.
 SENHA_DA_PROPRIA_PESSOA = "pessoa"
@@ -69,6 +80,21 @@ def _escolhiveis(modelo, condominio, ids_escolhidos=()):
     return _do_condominio(modelo, condominio).filter(Q(ativo=True) | Q(pk__in=escolhidos))
 
 
+def _logo_conferida(arquivo):
+    """A logo escolhida, já conferida pelo conteúdo real.
+
+    O que não é imagem aceita é recusado antes de qualquer gravação — pelo
+    conteúdo, e não pela extensão nem pelo tipo que o navegador informou.
+    """
+    if not arquivo:
+        return None
+    try:
+        validar_logo(arquivo)
+    except ErroDeLogo as erro:
+        raise forms.ValidationError(str(erro)) from None
+    return arquivo
+
+
 class CondominioForm(forms.ModelForm):
     """O cadastro do condomínio: dados gerais, endereço e administração.
 
@@ -78,7 +104,27 @@ class CondominioForm(forms.ModelForm):
 
     Em modo de leitura (``somente_leitura``) os campos aparecem desabilitados:
     a supervisão vê o mesmo cadastro que a gestão, sem poder alterá-lo.
+
+    A logo fica aqui, no cadastro que já existe, e não em uma tela à parte: é
+    identificação do condomínio, não um acervo de imagens. Ela tem três
+    respostas possíveis, e todas explícitas — manter a atual, substituí-la por
+    outra, ou tirá-la. Tirar é uma escolha declarada, nunca a ausência de
+    arquivo; senão salvar o cadastro sem escolher nada apagaria a logo de quem
+    não pediu para apagá-la. O arquivo em si não é um dado do cadastro: ele
+    segue para o armazenamento, e quem cuida disso é ``apps.condominios.logo``.
     """
+
+    logo = forms.FileField(
+        label="Logo do condomínio",
+        required=False,
+        widget=forms.ClearableFileInput(attrs=ARQUIVO_DE_LOGO),
+        help_text="Opcional. JPG, PNG ou WEBP. Aparece pequena, ao lado do nome.",
+    )
+    remover_logo = forms.BooleanField(
+        label="Tirar a logo atual",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     class Meta:
         model = Condominio
@@ -130,6 +176,17 @@ class CondominioForm(forms.ModelForm):
         if somente_leitura:
             for campo in self.fields.values():
                 campo.disabled = True
+
+    def clean_logo(self):
+        return _logo_conferida(self.cleaned_data.get("logo"))
+
+    def clean(self):
+        dados = super().clean()
+        if dados.get("remover_logo"):
+            # Tirar é declarado. Escolher outra imagem também tira a anterior,
+            # mas aí quem decide é o próprio arquivo enviado.
+            dados["logo"] = None
+        return dados
 
 
 class TipoLocalOperacionalForm(forms.ModelForm):

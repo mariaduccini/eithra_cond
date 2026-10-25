@@ -132,6 +132,40 @@
           window.location.assign(linha.dataset.href);
         });
       });
+
+      // A logo escolhida aparece ao lado do próprio campo, antes de salvar:
+      // quem trocou o arquivo errado percebe ali, e não depois de gravar. O
+      // arquivo só sobe quando o cadastro é submetido — a prévia vive no
+      // navegador e é descartada ao fechar.
+      document.querySelectorAll("[data-eithra-logo-area]").forEach(function (area) {
+        var campo = area.querySelector("[data-eithra-logo]");
+        var atual = area.querySelector("[data-eithra-logo-atual]");
+        var previa = area.querySelector("[data-eithra-logo-previa-area]");
+        var imagem = area.querySelector("[data-eithra-logo-previa]");
+        if (!campo || !atual || !previa || !imagem) {
+          return;
+        }
+        var endereco = "";
+
+        function mostrar(arquivo) {
+          if (endereco) {
+            URL.revokeObjectURL(endereco);
+            endereco = "";
+          }
+          atual.classList.toggle("d-none", Boolean(arquivo));
+          previa.classList.toggle("d-none", !arquivo);
+          if (arquivo) {
+            endereco = URL.createObjectURL(arquivo);
+            imagem.src = endereco;
+          } else {
+            imagem.removeAttribute("src");
+          }
+        }
+
+        campo.addEventListener("change", function () {
+          mostrar(campo.files && campo.files[0]);
+        });
+      });
     });
   </script>
 {% endblock %}
@@ -149,7 +183,11 @@
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-          <form method="post" action="{% url 'cadastros:criar_condominio' %}" novalidate>
+          <form
+            method="post"
+            action="{% url 'cadastros:criar_condominio' %}"
+            enctype="multipart/form-data"
+            novalidate>
             {% csrf_token %}
             <div class="modal-header">
               <h5 class="modal-title" id="novo-condominio-titulo">Novo condomínio</h5>
@@ -184,6 +222,7 @@
           <form
             method="post"
             action="{% url 'cadastros:editar_condominio' item_edicao.pk %}"
+            enctype="multipart/form-data"
             novalidate>
             {% csrf_token %}
             <div class="modal-header">

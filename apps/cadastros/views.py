@@ -36,6 +36,7 @@ from apps.comunidade.permissoes import (
     condominios_para_ver as condominios_da_comunidade_para_ver,
     pode_operar as pode_operar_comunidade,
 )
+from apps.condominios import logo
 from apps.condominios import services as servicos_de_acesso
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 from apps.core.paginacao import paginar
@@ -75,6 +76,44 @@ from .permissoes import (
 # -- Cadastro do condomínio -----------------------------------------------------
 
 
+def _dados_do_cadastro(formulario) -> dict:
+    """O cadastro já validado, sem os campos que não são do cadastro.
+
+    A logo não é um dado do condomínio: o arquivo vai para o armazenamento, e o
+    que fica no banco é só a referência que ``logo.definir_logo`` escreve.
+    "Tirar a logo" também não é dado do cadastro — é uma decisão sobre o
+    arquivo —, e por isso as duas chaves saem antes de o domínio gravar.
+    """
+    dados = dict(formulario.cleaned_data)
+    dados.pop("logo", None)
+    dados.pop("remover_logo", None)
+    return dados
+
+
+def _guardar_logo(request, condominio, formulario) -> None:
+    """Guarda, troca ou tira a logo — sem deixar o cadastro refém do arquivo.
+
+    O cadastro já valeu quando isto roda: o que houver de errado com a imagem
+    vira um aviso, e a gestão tenta de novo pela própria edição. Escolher um
+    arquivo novo substitui o anterior; não escolher nada mantém a logo como
+    está; e tirar é declarado no formulário, nunca a ausência de arquivo.
+    """
+    arquivo = formulario.cleaned_data.get("logo")
+    try:
+        if arquivo:
+            logo.definir_logo(condominio, arquivo)
+        elif formulario.cleaned_data.get("remover_logo"):
+            logo.remover_logo(condominio)
+    except (ErroDeStorage, ImproperlyConfigured):
+        messages.warning(
+            request,
+            (
+                "O cadastro foi salvo, mas não foi possível atualizar a logo "
+                "agora. Tente novamente pela edição do condomínio."
+            ),
+        )
+
+
 @login_required
 def condominios(request):
     """A carteira de condomínios cujos cadastros esta pessoa pode consultar."""
@@ -96,7 +135,7 @@ def condominio(request):
         if not pode_gerenciar:
             raise PermissionDenied("Esta pessoa não mantém o cadastro deste condomínio.")
 
-        formulario = CondominioForm(request.POST, instance=atual)
+        formulario = CondominioForm(request.POST, request.FILES, instance=atual)
         if not formulario.is_valid():
             return _render_condominios(
                 request,
@@ -106,7 +145,10 @@ def condominio(request):
                 status=400,
             )
 
-        services.salvar_condominio(condominio=atual, dados=formulario.cleaned_data)
+        services.salvar_condominio(
+            condominio=atual, dados=_dados_do_cadastro(formulario)
+        )
+        _guardar_logo(request, atual, formulario)
         messages.success(request, "Cadastro do condomínio atualizado.")
         return redirect(reverse("cadastros:condominios"))
 
@@ -124,7 +166,7 @@ def criar_condominio(request):
     if not pode_criar_condominios(request.user):
         raise PermissionDenied("Esta pessoa não pode abrir novos condomínios.")
 
-    formulario = CondominioForm(request.POST)
+    formulario = CondominioForm(request.POST, request.FILES)
     if not formulario.is_valid():
         return _render_condominios(
             request,
@@ -135,7 +177,7 @@ def criar_condominio(request):
 
     try:
         condominio = services.criar_condominio(
-            dados=formulario.cleaned_data,
+            dados=_dados_do_cadastro(formulario),
             criado_por=request.user,
         )
     except services.ErroDeCadastro as erro:
@@ -147,6 +189,7 @@ def criar_condominio(request):
             status=400,
         )
 
+    _guardar_logo(request, condominio, formulario)
     messages.success(request, "Condomínio cadastrado.")
     return redirect(reverse("cadastros:condominios"))
 
@@ -160,7 +203,7 @@ def editar_condominio(request, pk):
     if not pode_gerenciar_cadastros(request.user, condominio):
         raise PermissionDenied("Esta pessoa não mantém o cadastro deste condomínio.")
 
-    formulario = CondominioForm(request.POST, instance=condominio)
+    formulario = CondominioForm(request.POST, request.FILES, instance=condominio)
     if not formulario.is_valid():
         return _render_condominios(
             request,
@@ -171,7 +214,9 @@ def editar_condominio(request, pk):
         )
 
     try:
-        services.salvar_condominio(condominio=condominio, dados=formulario.cleaned_data)
+        services.salvar_condominio(
+            condominio=condominio, dados=_dados_do_cadastro(formulario)
+        )
     except services.ErroDeCadastro as erro:
         messages.error(request, str(erro))
         return _render_condominios(
@@ -182,6 +227,7 @@ def editar_condominio(request, pk):
             status=400,
         )
 
+    _guardar_logo(request, condominio, formulario)
     messages.success(request, "Cadastro do condomínio atualizado.")
     return redirect(reverse("cadastros:condominios"))
 
@@ -351,6 +397,7 @@ def _render_condominios(
             else None
         ),
         "item_edicao": item_edicao,
+        "logo_do_item_edicao": logo.endereco(item_edicao),
         "pode_gerenciar_item_edicao": pode_gerenciar_item,
         "modal_aberto": modal,
     }
@@ -1443,9 +1490,11 @@ def _condominio_para_gestao(request):
 def _base_da_pagina(request):
     """O que toda tela de cadastro precisa: os condomínios e qual está em vista."""
     condominios = _condominios_para_ver(request)
+    atual = _condominio_atual(request, condominios)
     return {
         "condominios": condominios,
-        "condominio_atual": _condominio_atual(request, condominios),
+        "condominio_atual": atual,
+        "logo_do_condominio": logo.endereco(atual),
         "mostrar_seletor": condominios.count() > 1,
         "termo": (request.GET.get("q") or "").strip(),
     }

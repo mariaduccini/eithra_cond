@@ -1,5 +1,36 @@
+{% comment %}
+O cadastro do condomínio. A logo fica no topo, junto do nome, porque é
+identificação — não um acervo de imagens. A imagem escolhida aparece ao lado do
+próprio campo, antes de salvar: quem trocou o arquivo errado percebe ali, e não
+depois de gravar. A prévia não salva nada; o arquivo segue para o armazenamento
+só quando o cadastro é submetido.
+{% endcomment %}
 <div class="row g-3">
   {% include "pages/cadastros/_campo.html" with campo=formulario.nome classe="col-12" %}
+
+  <div class="col-12">
+    <div class="d-flex align-items-center gap-3" data-eithra-logo-area>
+      <span class="eithra-logo-condominio" data-eithra-logo-atual aria-hidden="true">
+        {% if logo_do_item_edicao %}
+          <img src="{{ logo_do_item_edicao }}" alt="">
+        {% elif item_edicao %}
+          <span class="eithra-logo-condominio-iniciais">{{ item_edicao.iniciais }}</span>
+        {% else %}
+          <i class="bx bx-buildings" aria-hidden="true"></i>
+        {% endif %}
+      </span>
+      <span class="eithra-logo-condominio d-none" data-eithra-logo-previa-area aria-hidden="true">
+        <img alt="" data-eithra-logo-previa>
+      </span>
+      <div class="flex-grow-1">
+        {% include "pages/cadastros/_campo.html" with campo=formulario.logo classe="mb-1" %}
+        {% if item_edicao and item_edicao.tem_logo %}
+          {% include "pages/cadastros/_campo.html" with campo=formulario.remover_logo classe="mb-0" %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {% include "pages/cadastros/_campo.html" with campo=formulario.cnpj classe="col-12" %}
   {% include "pages/cadastros/_campo.html" with campo=formulario.logradouro classe="col-12" %}
   {% include "pages/cadastros/_campo.html" with campo=formulario.numero classe="col-12 col-lg-4" %}

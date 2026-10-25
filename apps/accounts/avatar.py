@@ -17,28 +17,13 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 
-from apps.balancos.services import formatar_tamanho, ler_conteudo
+from apps.core.imagem import validar_imagem
 from apps.core.storage import ErroDeStorage, obter_provider
-
-# Assinatura real de cada imagem aceita. O que vale é o começo do arquivo.
-ASSINATURAS = (
-    ("image/jpeg", b"\xff\xd8\xff", "jpg"),
-    ("image/png", b"\x89PNG\r\n\x1a\n", "png"),
-)
-
-# WEBP é um contêiner RIFF: o tipo está na marca no meio do cabeçalho, e não no
-# início do arquivo.
-MARCA_RIFF = b"RIFF"
-MARCA_WEBP = b"WEBP"
-MIME_WEBP = "image/webp"
-EXTENSAO_WEBP = "webp"
 
 # A variável de ambiente que diz em qual bucket privado a foto vive. O nome é
 # citado na recusa do provedor: sem ele, a falta da variável seria reportada
 # com o nome do bucket de outro domínio.
 NOME_DO_BUCKET = "EITHRA_AVATAR_BUCKET"
-
-FORMATOS_ACEITOS = "JPG, PNG ou WEBP"
 
 
 class ErroDeFoto(Exception):
@@ -53,60 +38,20 @@ def limite_da_foto() -> int:
     return int(getattr(settings, "EITHRA_AVATAR_MAX_BYTES", 0) or 0)
 
 
-def tipo_da_imagem(conteudo: bytes) -> tuple[str, str] | None:
-    """O tipo e a extensão da imagem, lidos do próprio arquivo."""
-    for mime, assinatura, extensao in ASSINATURAS:
-        if conteudo.startswith(assinatura):
-            return mime, extensao
-
-    if conteudo[:4] == MARCA_RIFF and conteudo[8:12] == MARCA_WEBP:
-        return MIME_WEBP, EXTENSAO_WEBP
-
-    return None
-
-
 def validar_foto(arquivo) -> tuple[bytes, str, str]:
     """Confere a imagem e devolve o que dela precisa ser guardado.
 
-    Devolve o conteúdo, o tipo real e a extensão. Um arquivo que não passa
-    daqui não vira nem foto: o que não é imagem aceita é recusado pelo conteúdo,
-    e não pelo nome que recebeu.
+    Devolve o conteúdo, o tipo real e a extensão. A régua é a mesma para toda
+    imagem do sistema (``apps/core/imagem.py``); o que é próprio da foto é o
+    limite e o jeito de dizer a recusa.
     """
-    if arquivo is None:
-        raise ErroDeFoto("Escolha a imagem que vai representar esta pessoa.")
-
-    tamanho = int(getattr(arquivo, "size", 0) or 0)
-    if tamanho <= 0:
-        raise ErroDeFoto("A imagem está vazia.")
-
-    limite = limite_da_foto()
-    if limite and tamanho > limite:
-        raise ErroDeFoto(
-            f"A imagem tem {formatar_tamanho(tamanho)} e passa do limite de "
-            f"{formatar_tamanho(limite)}."
-        )
-
-    conteudo = ler_conteudo(arquivo)
-    detectado = tipo_da_imagem(conteudo)
-    if detectado is None:
-        raise ErroDeFoto(
-            f"O arquivo não é uma imagem aceita. Envie uma foto {FORMATOS_ACEITOS}."
-        )
-    mime, extensao = detectado
-
-    informado = (
-        (getattr(arquivo, "content_type", "") or "").split(";")[0].strip().lower()
+    return validar_imagem(
+        arquivo,
+        limite_em_bytes=limite_da_foto(),
+        erro=ErroDeFoto,
+        sem_arquivo="Escolha a imagem que vai representar esta pessoa.",
+        assunto="foto",
     )
-    if informado and informado != mime:
-        # O navegador disse uma coisa e o arquivo é outra. Recusar é a única
-        # resposta honesta: repassar o tipo informado seria guardar um arquivo
-        # com um tipo que ele não tem.
-        raise ErroDeFoto(
-            f"O arquivo enviado não corresponde a uma imagem aceita. Envie uma "
-            f"foto {FORMATOS_ACEITOS}."
-        )
-
-    return conteudo, mime, extensao
 
 
 def montar_chave(*, conta, extensao: str) -> str:

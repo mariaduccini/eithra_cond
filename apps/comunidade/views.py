@@ -24,6 +24,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from apps.condominios import logo
 from apps.core.paginacao import paginar
 
 from . import services
@@ -869,9 +870,11 @@ def _exigir_operacao(request, condominio):
 def _base_da_pagina(request):
     """O que toda tela de comunidade precisa: os condomínios e qual está em vista."""
     condominios = _condominios_para_ver(request)
+    atual = _condominio_atual(request, condominios)
     return {
         "condominios": condominios,
-        "condominio_atual": _condominio_atual(request, condominios),
+        "condominio_atual": atual,
+        "logo_do_condominio": logo.endereco(atual),
         "mostrar_seletor": condominios.count() > 1,
         "termo": (request.GET.get("q") or "").strip(),
     }

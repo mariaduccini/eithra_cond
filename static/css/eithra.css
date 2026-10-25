@@ -457,6 +457,76 @@
   object-fit: contain;
 }
 
+/* O condomínio em vista: a logo quando existe, as iniciais quando não. É
+   identificação de onde se está operando — não substitui a marca do Eithra, e
+   não vira white-label. */
+.eithra-contexto-condominio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+/* Uma logo muito larga não aumenta a barra: o nome encolhe e ganha reticências
+   antes de a marca empurrar o que está ao lado. */
+.eithra-contexto-nome {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* A área da marca é fixa e discreta: a imagem se ajusta inteira dentro dela
+   (object-fit: contain), qualquer que seja a proporção — horizontal, vertical,
+   quadrada ou circular. Nada é esticado e nada é cortado, e uma logo muito
+   larga é reduzida para caber em vez de aumentar a barra. O fundo neutro
+   mantém legível a logo de fundo transparente. */
+.eithra-logo-condominio {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--bs-secondary-bg-subtle);
+  color: var(--bs-heading-color);
+  overflow: hidden;
+}
+
+.eithra-logo-condominio img {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  inline-size: auto;
+  block-size: auto;
+  object-fit: contain;
+}
+
+.eithra-logo-condominio-iniciais {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* A marca dentro do botão de troca não incha o controle: a folga vertical do
+   botão é reduzida para a altura ficar perto dos controles ao lado. */
+.eithra-contexto-condominio > .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-block: 0.125rem;
+}
+
+@media (max-width: 575.98px) {
+  .eithra-logo-condominio {
+    inline-size: 2.125rem;
+    block-size: 2.125rem;
+    border-radius: 0.375rem;
+  }
+}
+
 /* Altura do cabeçalho do menu. O tema só define isso no CSS de demonstração,
    que não é usado aqui. */
 .menu .app-brand {

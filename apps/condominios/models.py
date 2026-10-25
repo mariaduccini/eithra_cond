@@ -72,6 +72,19 @@ class Condominio(models.Model):
     observacao_administrativa = models.TextField(
         "observação administrativa", blank=True, default=""
     )
+    # A logo do condomínio, como a foto da pessoa, vive em bucket privado: aqui
+    # fica só a referência do objeto. O acesso é temporário e gerado na hora —
+    # nunca uma URL pública guardada. Sem logo, a identificação cai nas iniciais
+    # do nome, e a gestão segue sem imagem nenhuma.
+    logo_storage_provider = models.CharField(
+        "provedor da logo", max_length=40, blank=True, default=""
+    )
+    logo_storage_bucket = models.CharField(
+        "bucket da logo", max_length=120, blank=True, default=""
+    )
+    logo_storage_key = models.CharField(
+        "chave da logo", max_length=255, blank=True, default=""
+    )
     ativo = models.BooleanField("ativo", default=True)
     criado_em = models.DateTimeField("criado em", auto_now_add=True)
     atualizado_em = models.DateTimeField("atualizado em", auto_now=True)
@@ -127,6 +140,29 @@ class Condominio(models.Model):
 
         if erros:
             raise ValidationError(erros)
+
+    @property
+    def tem_logo(self) -> bool:
+        """Diz se o condomínio tem uma logo guardada.
+
+        Sem logo, quem identifica o condomínio são as iniciais do nome — e a
+        interface não deve tentar buscar uma imagem que não existe.
+        """
+        return bool((self.logo_storage_key or "").strip())
+
+    @property
+    def iniciais(self) -> str:
+        """As iniciais do nome, para quando não houver logo.
+
+        Até três letras, tiradas das primeiras palavras: "Rio Vermelho
+        Exclusive" vira "RVE". Um nome só dá as duas primeiras letras.
+        """
+        palavras = [palavra for palavra in (self.nome or "").split() if palavra]
+        if not palavras:
+            return "?"
+        if len(palavras) == 1:
+            return palavras[0][:2].upper()
+        return "".join(palavra[0] for palavra in palavras[:3]).upper()
 
     @property
     def cnpj_formatado(self) -> str:

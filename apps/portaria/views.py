@@ -20,6 +20,7 @@ from apps.comunidade.models import (
     Veiculo,
     VinculoPessoaUnidade,
 )
+from apps.condominios import logo
 from apps.core.paginacao import paginar
 
 from .constants import (
@@ -886,9 +887,11 @@ def _condominio_para_operar(request):
 
 def _base_da_pagina(request):
     condominios = _condominios_para_ver(request)
+    atual = _condominio_atual(request, condominios)
     return {
         "condominios": condominios,
-        "condominio_atual": _condominio_atual(request, condominios),
+        "condominio_atual": atual,
+        "logo_do_condominio": logo.endereco(atual),
         "mostrar_seletor": condominios.count() > 1,
         "aba": _aba(request),
         "termo": (request.GET.get("q") or "").strip(),

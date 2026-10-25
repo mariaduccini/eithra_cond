@@ -1,0 +1,23 @@
+{% comment %}
+A marca do condomínio em vista: a logo, quando existe, e as iniciais do nome
+quando não.
+
+Isto é identificação de contexto, e não white-label: o Eithra continua sendo a
+marca do produto, e esta marca só diz em qual condomínio a pessoa está operando.
+
+A imagem se ajusta inteira dentro da área de ``.eithra-logo-condominio``,
+qualquer que seja a proporção — horizontal, vertical, quadrada ou circular.
+Nada é esticado, nada é cortado, e uma logo muito larga não aumenta a barra.
+
+Sem logo — ou com o armazenamento fora do ar —, o mesmo lugar é ocupado pelas
+iniciais. O nome ao lado nunca depende da imagem para ser lido.
+{% endcomment %}
+<span class="eithra-logo-condominio">
+  {% if logo_do_condominio %}
+    <img
+      src="{{ logo_do_condominio }}"
+      alt="Logo do Condomínio {{ condominio_atual.nome }}">
+  {% else %}
+    <span class="eithra-logo-condominio-iniciais" aria-hidden="true">{{ condominio_atual.iniciais }}</span>
+  {% endif %}
+</span>
