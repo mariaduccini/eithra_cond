@@ -222,21 +222,12 @@
             </div>
 
             <div class="row g-3 mb-6">
-              <div class="col-6">
+              <div class="col-12">
                 <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
                   {{ formulario_manutencao.tipo.label }}
                 </label>
                 {{ formulario_manutencao.tipo }}
                 {% for erro in formulario_manutencao.tipo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-              <div class="col-6">
-                <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
-                  {{ formulario_manutencao.prioridade.label }}
-                </label>
-                {{ formulario_manutencao.prioridade }}
-                {% for erro in formulario_manutencao.prioridade.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>
@@ -366,11 +357,11 @@
 
           <div class="modal-body">
             <div class="mb-0">
-              <label class="form-label" for="{{ formulario_status.status.id_for_label }}">
-                {{ formulario_status.status.label }}
+              <label class="form-label" for="{{ formulario_status.acao.id_for_label }}">
+                {{ formulario_status.acao.label }}
               </label>
-              {{ formulario_status.status }}
-              {% for erro in formulario_status.status.errors %}
+              {{ formulario_status.acao }}
+              {% for erro in formulario_status.acao.errors %}
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>

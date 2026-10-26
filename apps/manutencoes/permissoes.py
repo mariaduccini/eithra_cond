@@ -137,7 +137,9 @@ def _pode_gerenciar(usuario, condominio) -> bool:
 
 def pode_editar_manutencao(usuario, manutencao) -> bool:
     """Diz se a pessoa pode editar o conteúdo: tipo, título, problema, serviço,
-    prioridade, local, equipamento, fornecedor, responsável, previsão e custo.
+    local, equipamento, fornecedor, responsável, previsão e custo. A prioridade
+    não entra aqui: ela é consequência do problema relatado, lida pela mesma
+    regra do resto do sistema, e não se corrige à mão.
 
     Editar os dados operacionais é a mesma responsabilidade de criar. Sem
     certeza, a resposta é negar.

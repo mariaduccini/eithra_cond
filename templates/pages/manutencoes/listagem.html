@@ -258,21 +258,12 @@
             </div>
 
             <div class="row g-3">
-              <div class="col-6">
+              <div class="col-12">
                 <label class="form-label" for="{{ formulario_manutencao.tipo.id_for_label }}">
                   {{ formulario_manutencao.tipo.label }}
                 </label>
                 {{ formulario_manutencao.tipo }}
                 {% for erro in formulario_manutencao.tipo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-              <div class="col-6">
-                <label class="form-label" for="{{ formulario_manutencao.prioridade.id_for_label }}">
-                  {{ formulario_manutencao.prioridade.label }}
-                </label>
-                {{ formulario_manutencao.prioridade }}
-                {% for erro in formulario_manutencao.prioridade.errors %}
                   <div class="text-danger small mt-1">{{ erro }}</div>
                 {% endfor %}
               </div>

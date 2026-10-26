@@ -37,7 +37,7 @@ from .derivacao import (
     prioridade_do_relato,
 )
 from .forms import (
-    AlteracaoDeStatusForm,
+    AcaoDeStatusForm,
     DemandaForm,
     FiltroDeDemandasForm,
     ObservacaoDaDemandaForm,
@@ -235,7 +235,9 @@ def atualizar(request, pk):
         raise PermissionDenied("Esta pessoa não pode atualizar esta demanda.")
 
     etapa = request.POST.get("etapa_atualizacao") or "informacoes"
-    formulario_status = AlteracaoDeStatusForm(request.POST, permitidos=permitidos)
+    formulario_status = AcaoDeStatusForm(
+        request.POST, permitidos=permitidos, demanda=demanda
+    )
     texto = " ".join((request.POST.get("texto") or "").split())
     precisa_validar_observacao = bool(texto)
     if precisa_validar_observacao and not pode_observar:
@@ -261,11 +263,11 @@ def atualizar(request, pk):
             status=400,
         )
 
-    proximo_status = (
-        formulario_status.cleaned_data["status"]
-        if permitidos and formulario_status.is_valid()
-        else demanda.status
-    )
+    # A tela diz o que aconteceu; a situação é consequência. Sem ação escolhida,
+    # a demanda fica onde está — atualizar também serve só para observar.
+    proximo_status = demanda.status
+    if permitidos and formulario_status.is_valid():
+        proximo_status = formulario_status.cleaned_data.get("acao") or demanda.status
     resumo = _resumo_da_atualizacao(demanda, proximo_status, texto)
 
     if etapa == "informacoes":
@@ -310,11 +312,14 @@ def atualizar(request, pk):
 @login_required
 @require_POST
 def mudar_status(request, pk):
-    """Move a demanda para outra situação entre as que esta pessoa alcança."""
+    """Registra a ação que move a demanda entre as que esta pessoa alcança."""
     demanda = _demanda_para_mudar_status(request, pk)
     permitidos = status_permitidos_para(request.user, demanda)
-    formulario = AlteracaoDeStatusForm(request.POST, permitidos=permitidos)
-    if not formulario.is_valid():
+    formulario = AcaoDeStatusForm(request.POST, permitidos=permitidos, demanda=demanda)
+    acao = formulario.cleaned_data.get("acao") if formulario.is_valid() else ""
+    if not formulario.is_valid() or not acao:
+        if formulario.is_valid():
+            formulario.add_error("acao", "Diga o que aconteceu com a demanda.")
         return _render_detalhe(
             request, demanda, formulario_status=formulario, modal="status", status=400
         )
@@ -323,7 +328,7 @@ def mudar_status(request, pk):
         alterar_status(
             demanda=demanda,
             usuario=request.user,
-            novo_status=formulario.cleaned_data["status"],
+            novo_status=acao,
         )
     except ErroDeDemanda as erro:
         messages.error(request, str(erro))
@@ -518,9 +523,7 @@ def _render_detalhe(
         "formulario_demanda": formulario
         or DemandaForm(condominio=demanda.condominio, initial=_iniciais_da_demanda(demanda)),
         "formulario_status": formulario_status
-        or AlteracaoDeStatusForm(
-            permitidos=permitidos, initial={"status": demanda.status}
-        ),
+        or AcaoDeStatusForm(permitidos=permitidos, demanda=demanda),
         "formulario_observacao": formulario_observacao or ObservacaoDaDemandaForm(),
         "modal_aberto": modal,
         "etapa_atualizacao": etapa_atualizacao,
@@ -596,7 +599,6 @@ def _iniciais_da_demanda(demanda):
         "relato": demanda.descricao,
         "titulo": demanda.titulo,
         "descricao": demanda.descricao,
-        "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
         "prazo": demanda.prazo,
         "local": demanda.local_id,
@@ -632,7 +634,6 @@ def _formulario_da_informacao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados["titulo"],
             "descricao": dados.get("descricao") or "",
-            "prioridade": leitura.prioridade if leitura.motivo else dados.get("prioridade"),
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -668,7 +669,6 @@ def _formulario_da_revisao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados.get("titulo") or leitura.assunto,
             "descricao": dados.get("descricao") or "",
-            "prioridade": dados.get("prioridade"),
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -815,15 +815,11 @@ def _resumo_do_registro(formulario, usuario):
         "assunto": dados.get("titulo") or leitura.assunto,
         "descricao_original": dados.get("descricao") or dados.get("relato") or "",
         "local": dados.get("local").nome if dados.get("local") else dados.get("local_texto") or "Sem local definido",
+        # O peso não se escolhe: ele é o que o relato sustenta, e a origem diz
+        # exatamente isso — não há mais um caso "informada pela gestão".
         "prioridade": {
             "valor": PrioridadeDemanda(prioridade).label if prioridade else "Não identificada",
-            "origem": (
-                "Sugerida pelo EITHRA"
-                if leitura.motivo and prioridade == leitura.prioridade
-                else "Informada pela gestão"
-                if prioridade
-                else "Não identificada"
-            ),
+            "origem": "Sugerida pelo EITHRA" if leitura.motivo else "Não identificada",
             "motivo": leitura.motivo,
         },
         "prazo": {

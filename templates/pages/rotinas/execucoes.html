@@ -429,15 +429,6 @@
             </div>
             <div class="row g-3">
               <div class="col-12 col-sm-6">
-                <label class="form-label" for="{{ formulario_demanda.prioridade.id_for_label }}">
-                  {{ formulario_demanda.prioridade.label }}
-                </label>
-                {{ formulario_demanda.prioridade }}
-                {% for erro in formulario_demanda.prioridade.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-              <div class="col-12 col-sm-6">
                 <label class="form-label" for="{{ formulario_demanda.prazo.id_for_label }}">
                   {{ formulario_demanda.prazo.label }}
                 </label>

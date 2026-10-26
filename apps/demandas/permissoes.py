@@ -130,7 +130,8 @@ def _pode_gerenciar(usuario, condominio) -> bool:
 
 def pode_editar_demanda(usuario, demanda) -> bool:
     """Diz se a pessoa pode editar o conteúdo: título, descrição, responsável,
-    prazo, prioridade e local.
+    prazo e local. A prioridade não entra aqui: ela é consequência do relato,
+    lida pela mesma regra do registro, e não se corrige à mão.
 
     Editar é a mesma responsabilidade de responder pelo condomínio. Sem
     certeza, a resposta é negar.

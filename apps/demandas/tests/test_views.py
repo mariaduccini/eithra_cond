@@ -99,7 +99,6 @@ class CriacaoTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Vazamento na garagem",
-                "prioridade": PrioridadeDemanda.NORMAL,
             },
         )
         self.assertEqual(resposta.status_code, 302)
@@ -113,7 +112,6 @@ class CriacaoTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "",
-                "prioridade": PrioridadeDemanda.NORMAL,
             },
         )
         self.assertEqual(resposta.status_code, 400)
@@ -130,7 +128,6 @@ class CriacaoTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Com responsável de fora",
-                "prioridade": PrioridadeDemanda.NORMAL,
                 "responsavel": str(alheio.pk),
             },
         )
@@ -159,7 +156,6 @@ class CriacaoTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Vazamento na garagem",
-                "prioridade": PrioridadeDemanda.NORMAL,
                 "local": str(local.pk),
             },
         )
@@ -175,7 +171,6 @@ class CriacaoTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Com local de fora",
-                "prioridade": PrioridadeDemanda.NORMAL,
                 "local": str(local_alheio.pk),
             },
         )
@@ -320,13 +315,14 @@ class AcoesTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Atualizada",
-                "prioridade": PrioridadeDemanda.ALTA,
             },
         )
         self.assertEqual(resposta.status_code, 302)
         demanda.refresh_from_db()
         self.assertEqual(demanda.titulo, "Atualizada")
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
+        # O peso não vem do navegador: segue o que o relato sustenta — aqui,
+        # nada além do padrão do domínio.
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.NORMAL)
 
     def test_supervisora_nao_edita(self):
         supervisora = criar_pessoa("sup@exemplo.test", "Supervisora")
@@ -338,7 +334,6 @@ class AcoesTests(BaseDeTelas):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": "Tentativa",
-                "prioridade": PrioridadeDemanda.NORMAL,
             },
         )
         self.assertEqual(resposta.status_code, 403)
@@ -347,7 +342,7 @@ class AcoesTests(BaseDeTelas):
         demanda = self._demanda()
         resposta = self.client.post(
             reverse("demandas:mudar_status", args=[demanda.pk]),
-            {"status": StatusDemanda.EM_ANDAMENTO},
+            {"acao": StatusDemanda.EM_ANDAMENTO},
         )
         self.assertEqual(resposta.status_code, 302)
         demanda.refresh_from_db()
@@ -380,7 +375,7 @@ class AcoesTests(BaseDeTelas):
 
         cancelamento = self.client.post(
             reverse("demandas:mudar_status", args=[demanda.pk]),
-            {"status": StatusDemanda.CANCELADA},
+            {"acao": StatusDemanda.CANCELADA},
         )
         self.assertEqual(cancelamento.status_code, 400)
         demanda.refresh_from_db()
@@ -391,7 +386,7 @@ class AcoesTests(BaseDeTelas):
         resposta = self.client.post(
             reverse("demandas:atualizar", args=[demanda.pk]),
             {
-                "status": StatusDemanda.EM_ANDAMENTO,
+                "acao": StatusDemanda.EM_ANDAMENTO,
                 "texto": "Fornecedor acionado",
                 "etapa_atualizacao": "conclusao",
             },
@@ -421,7 +416,6 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
             "condominio": str(self.condominio.pk),
             "relato": self.RELATO,
             "titulo": "Nova falha no motor do portão interno",
-            "prioridade": PrioridadeDemanda.ALTA,
             "wizard": "informacoes",
         }
         dados.update(extra)
@@ -468,7 +462,6 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "relato": self.RELATO,
                 "titulo": "Nova falha no motor do portão interno",
-                "prioridade": PrioridadeDemanda.ALTA,
             },
         )
 
@@ -616,7 +609,6 @@ class ContextoOperacionalTests(BaseDeTelas):
             reverse("demandas:editar", args=[demanda.pk]),
             {
                 "titulo": demanda.titulo,
-                "prioridade": PrioridadeDemanda.ALTA,
                 "tipo_problema": TipoProblema.HIDRAULICA,
                 "impacto": ImpactoDemanda.AREA,
                 "risco": RiscoDemanda.ESTRUTURAL,

@@ -106,7 +106,6 @@ class CriacaoTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "Troca da bomba do reservatório",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.NORMAL,
             },
         )
         self.assertEqual(resposta.status_code, 302)
@@ -123,7 +122,6 @@ class CriacaoTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.NORMAL,
             },
         )
         self.assertEqual(resposta.status_code, 400)
@@ -154,7 +152,6 @@ class CriacaoTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "Com fornecedor de fora",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.NORMAL,
                 "fornecedor": str(alheio.pk),
             },
         )
@@ -170,7 +167,6 @@ class CriacaoTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "Revisar bomba",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.NORMAL,
                 "equipamento": str(equipamento.pk),
             },
         )
@@ -186,7 +182,6 @@ class CriacaoTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "Revisar bomba",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.NORMAL,
                 "equipamento": str(equipamento.pk),
                 "local": str(outro_local.pk),
             },
@@ -243,7 +238,6 @@ class CriacaoPorDemandaTests(BaseDeTelas):
                 "titulo": self.demanda.titulo,
                 "descricao_problema": self.demanda.descricao,
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.ALTA,
                 "demanda_origem": str(self.demanda.pk),
             },
         )
@@ -374,19 +368,19 @@ class AcoesTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "titulo": "Atualizada",
                 "tipo": TipoManutencao.CORRETIVA,
-                "prioridade": Prioridade.ALTA,
             },
         )
         self.assertEqual(resposta.status_code, 302)
         manutencao.refresh_from_db()
         self.assertEqual(manutencao.titulo, "Atualizada")
-        self.assertEqual(manutencao.prioridade, Prioridade.ALTA)
+        # O peso não vem do navegador: segue o que o problema relatado sustenta.
+        self.assertEqual(manutencao.prioridade, Prioridade.NORMAL)
 
     def test_mudar_status(self):
         manutencao = self._manutencao()
         resposta = self.client.post(
             reverse("manutencoes:mudar_status", args=[manutencao.pk]),
-            {"status": StatusManutencao.EM_ANDAMENTO},
+            {"acao": StatusManutencao.EM_ANDAMENTO},
         )
         self.assertEqual(resposta.status_code, 302)
         manutencao.refresh_from_db()
@@ -450,7 +444,7 @@ class AcoesTests(BaseDeTelas):
         self.client.force_login(operacional)
         resposta = self.client.post(
             reverse("manutencoes:mudar_status", args=[manutencao.pk]),
-            {"status": StatusManutencao.EM_ANDAMENTO},
+            {"acao": StatusManutencao.EM_ANDAMENTO},
         )
         self.assertEqual(resposta.status_code, 403)
 

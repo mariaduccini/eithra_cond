@@ -28,6 +28,22 @@ class StatusDemanda(models.TextChoices):
     CANCELADA = "cancelada", "Cancelada"
 
 
+# Como uma demanda sai de onde está: cada situação do ciclo tem uma ação com
+# nome próprio, e é a ação — não uma lista de estados — que a alcança. "Iniciar"
+# não é escolher "Em andamento": é dizer o que aconteceu com a demanda. Por isso
+# o verbo, e não o rótulo do estado, é o que a tela oferece.
+ACOES_DE_STATUS = (
+    (StatusDemanda.EM_ANDAMENTO, "Iniciar"),
+    (StatusDemanda.AGUARDANDO, "Aguardar"),
+    (StatusDemanda.CONCLUIDA, "Concluir"),
+    (StatusDemanda.CANCELADA, "Cancelar"),
+)
+
+# A demanda encerrada não volta a andar por movimento comum: a única ação é
+# devolvê-la à operação. O verbo diz isso, e a situação alcançada é "Aberta".
+ACAO_DE_REABERTURA = (StatusDemanda.ABERTA, "Reabrir")
+
+
 # O peso da demanda é o mesmo vocabulário usado por outros módulos do Eithra.
 # O nome antigo continua valendo para quem já o importa daqui, e os valores e
 # rótulos são exatamente os de sempre — nada muda no que já está gravado.

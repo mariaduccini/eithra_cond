@@ -38,6 +38,22 @@ class StatusManutencao(models.TextChoices):
     CANCELADA = "cancelada", "Cancelada"
 
 
+# Como a manutenção anda: cada situação do movimento comum tem uma ação com nome
+# próprio, e é a ação — não uma lista de estados — que a alcança. Concluir e
+# cancelar não entram aqui: cada uma tem ação própria, porque pedem,
+# respectivamente, o que foi feito e por quê. O movimento comum só faz a
+# manutenção andar.
+ACOES_DE_STATUS = (
+    (StatusManutencao.EM_ANDAMENTO, "Iniciar"),
+    (StatusManutencao.AGUARDANDO, "Aguardar"),
+    (StatusManutencao.PROGRAMADA, "Programar"),
+)
+
+# A manutenção encerrada não volta a andar por movimento comum: a única ação é
+# devolvê-la à operação. O verbo diz isso, e a situação alcançada é "Aberta".
+ACAO_DE_REABERTURA = (StatusManutencao.ABERTA, "Reabrir")
+
+
 class TipoEventoManutencao(models.TextChoices):
     """O que aconteceu com a manutenção, como ela é lembrada depois.
 

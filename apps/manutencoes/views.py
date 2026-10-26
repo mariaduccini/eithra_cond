@@ -30,11 +30,12 @@ from apps.demandas.models import Demanda
 
 from .constants import StatusManutencao
 from .forms import (
-    AlteracaoDeStatusManutencaoForm,
+    AcaoDeStatusForm,
     CancelamentoDeManutencaoForm,
     ConclusaoDeManutencaoForm,
     FiltroDeManutencoesForm,
     ManutencaoForm,
+    acoes_de_status,
 )
 from .models import Manutencao
 from .permissoes import (
@@ -185,11 +186,16 @@ def editar(request, pk):
 @login_required
 @require_POST
 def mudar_status(request, pk):
-    """Move a manutenção para outra situação entre as que esta pessoa alcança."""
+    """Registra a ação que move a manutenção entre as que esta pessoa alcança."""
     manutencao = _manutencao_para_mudar_status(request, pk)
     permitidos = situacoes_para_mudar(request.user, manutencao)
-    formulario = AlteracaoDeStatusManutencaoForm(request.POST, permitidos=permitidos)
-    if not formulario.is_valid():
+    formulario = AcaoDeStatusForm(
+        request.POST, permitidos=permitidos, manutencao=manutencao
+    )
+    acao = formulario.cleaned_data.get("acao") if formulario.is_valid() else ""
+    if not formulario.is_valid() or not acao:
+        if formulario.is_valid():
+            formulario.add_error("acao", "Diga o que aconteceu com a manutenção.")
         return _render_detalhe(
             request, manutencao, formulario_status=formulario, modal="status", status=400
         )
@@ -198,7 +204,7 @@ def mudar_status(request, pk):
         alterar_status(
             manutencao=manutencao,
             usuario=request.user,
-            novo_status=formulario.cleaned_data["status"],
+            novo_status=acao,
         )
     except ErroDeManutencao as erro:
         messages.error(request, str(erro))
@@ -464,13 +470,14 @@ def _render_detalhe(
 ):
     """Monta a tela da manutenção com o que esta pessoa pode fazer com ela."""
     permitidos = situacoes_para_mudar(request.user, manutencao)
+    acoes = acoes_de_status(permitidos, manutencao)
     pode_editar = pode_editar_manutencao(request.user, manutencao)
     pode_concluir_agora = pode_concluir(request.user, manutencao)
     pode_cancelar_agora = pode_cancelar_manutencao(request.user, manutencao)
 
     if (
         (modal == "editar" and not pode_editar)
-        or (modal == "status" and not permitidos)
+        or (modal == "status" and not acoes)
         or (modal == "concluir" and not pode_concluir_agora)
         or (modal == "cancelar" and not pode_cancelar_agora)
     ):
@@ -480,7 +487,7 @@ def _render_detalhe(
         "manutencao": _manutencao_para_detalhe(manutencao),
         "historico": _historico_para_tela(manutencao),
         "pode_editar": pode_editar,
-        "pode_alterar_status": bool(permitidos),
+        "pode_alterar_status": bool(acoes),
         "pode_concluir": pode_concluir_agora,
         "pode_cancelar": pode_cancelar_agora,
         "pode_administrar": pode_administrar_manutencao(request.user, manutencao),
@@ -491,9 +498,7 @@ def _render_detalhe(
             initial=_iniciais_da_manutencao(manutencao),
         ),
         "formulario_status": formulario_status
-        or AlteracaoDeStatusManutencaoForm(
-            permitidos=permitidos, initial={"status": manutencao.status}
-        ),
+        or AcaoDeStatusForm(permitidos=permitidos, manutencao=manutencao),
         "formulario_conclusao": formulario_conclusao or ConclusaoDeManutencaoForm(),
         "formulario_cancelamento": formulario_cancelamento
         or CancelamentoDeManutencaoForm(),
@@ -567,7 +572,6 @@ def _iniciais_da_demanda(demanda) -> dict:
     return {
         "titulo": demanda.titulo,
         "descricao_problema": demanda.descricao,
-        "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
         "data_prevista": demanda.prazo,
         "local": demanda.local_id,
@@ -582,7 +586,6 @@ def _iniciais_da_manutencao(manutencao) -> dict:
         "titulo": manutencao.titulo,
         "descricao_problema": manutencao.descricao_problema,
         "descricao_servico": manutencao.descricao_servico,
-        "prioridade": manutencao.prioridade,
         "local": manutencao.local_id,
         "equipamento": manutencao.equipamento_id,
         "fornecedor": manutencao.fornecedor_id,

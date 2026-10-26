@@ -1,9 +1,13 @@
 """Formulários do domínio de manutenções operacionais.
 
 Pede-se apenas o necessário: título e condomínio são o mínimo para a manutenção
-existir, e o resto aparece em progressive disclosure — tipo, problema,
-prioridade, local, equipamento, fornecedor, responsável, previsão e custo. Nada
-de campo técnico na tela.
+existir, e o resto aparece em progressive disclosure — tipo, problema, local,
+equipamento, fornecedor, responsável, previsão e custo. Nada de campo técnico na
+tela.
+
+A prioridade não é campo: ela é o que o problema relatado sustenta, lida pela
+mesma regra que o resto do sistema usa. Quem registra corrige o fato, e o peso
+se recalcula.
 
 As listas de escolha são fechadas e vêm do condomínio da manutenção: local,
 equipamento, fornecedor e responsável são os dele, e de mais nenhum. Como a
@@ -18,8 +22,14 @@ from apps.accounts.models import User
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.condominios.models import Condominio
 from apps.core.constants import Prioridade
+from apps.demandas.derivacao import prioridade_do_relato
 
-from .constants import StatusManutencao, TipoManutencao
+from .constants import (
+    ACAO_DE_REABERTURA,
+    ACOES_DE_STATUS,
+    StatusManutencao,
+    TipoManutencao,
+)
 from .permissoes import usuarios_elegiveis_como_responsavel
 
 # A ordem em que as situações aparecem para escolha, do começo ao fim do ciclo.
@@ -110,12 +120,6 @@ class ManutencaoForm(forms.Form):
                 "placeholder": "O que foi feito. Obrigatório para concluir.",
             }
         ),
-    )
-    prioridade = forms.ChoiceField(
-        label="Prioridade",
-        choices=Prioridade.choices,
-        initial=Prioridade.NORMAL,
-        widget=forms.Select(attrs={"class": "form-select"}),
     )
     local = forms.ModelChoiceField(
         label="Local",
@@ -254,6 +258,14 @@ class ManutencaoForm(forms.Form):
         aqui é recusada com o nome do lugar certo — nunca corrigida em silêncio.
         """
         dados = super().clean()
+
+        # O peso não se escolhe: ele é o que o problema relatado sustenta, lido
+        # pela mesma regra que o resto do sistema usa. Corrigir o texto é o que
+        # muda a prioridade — por isso ela nunca vem do navegador.
+        dados["prioridade"], _ = prioridade_do_relato(
+            dados.get("descricao_problema") or dados.get("titulo")
+        )
+
         equipamento = dados.get("equipamento")
         local = dados.get("local")
 
@@ -270,23 +282,46 @@ class ManutencaoForm(forms.Form):
         return dados
 
 
-class AlteracaoDeStatusManutencaoForm(forms.Form):
-    """Move a manutenção para outra situação entre as que esta pessoa alcança."""
+def acoes_de_status(permitidos, manutencao=None):
+    """As ações que esta manutenção alcança agora, com o verbo que a tela mostra.
 
-    status = forms.ChoiceField(
-        label="Nova situação",
+    O valor de cada ação é a situação que ela produz — e é por isso que a tela
+    oferece o verbo, e não o nome do estado. Concluir e cancelar não entram: cada
+    uma tem ação própria, porque pedem, respectivamente, o que foi feito e por
+    quê. A manutenção encerrada não anda por movimento comum: a única ação é
+    devolvê-la à operação. Nas demais, não se oferece a ação que levaria a
+    manutenção aonde ela já está.
+    """
+    alcancaveis = set(permitidos)
+    if manutencao is not None and getattr(manutencao, "esta_encerrada", False):
+        return tuple(acao for acao in (ACAO_DE_REABERTURA,) if acao[0] in alcancaveis)
+    return tuple(
+        (situacao, verbo)
+        for situacao, verbo in ACOES_DE_STATUS
+        if situacao in alcancaveis and situacao != getattr(manutencao, "status", None)
+    )
+
+
+class AcaoDeStatusForm(forms.Form):
+    """Registra a ação que move a manutenção — nunca a situação escolhida.
+
+    Cada verbo leva a uma situação: "Iniciar" põe a manutenção em andamento,
+    "Aguardar" a deixa dependendo de terceiro, "Programar" marca o serviço com
+    data. Concluir e cancelar ficam de fora: têm ação própria. Quem registra diz
+    o que aconteceu; a situação é consequência. O backend só aceita uma ação que
+    a pessoa alcança — qualquer outra é recusada, venha de onde vier.
+    """
+
+    acao = forms.ChoiceField(
+        label="O que aconteceu?",
         choices=(),
+        required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
-    def __init__(self, *args, permitidos=(), **kwargs):
+    def __init__(self, *args, permitidos=(), manutencao=None, **kwargs):
         super().__init__(*args, **kwargs)
-        alcancaveis = set(permitidos)
-        self.fields["status"].choices = [
-            (situacao, StatusManutencao(situacao).label)
-            for situacao in ORDEM_DOS_STATUS
-            if situacao in alcancaveis
-        ]
+        self.fields["acao"].choices = acoes_de_status(permitidos, manutencao)
 
 
 class ConclusaoDeManutencaoForm(forms.Form):

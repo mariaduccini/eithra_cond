@@ -278,7 +278,6 @@
             </datalist>
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.equipamento %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.tipo_problema %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
 
@@ -333,8 +332,8 @@
 
           {% if etapa_atualizacao == "informacoes" %}
             <div class="modal-body">
-              {% if formulario_status.fields.status.choices %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_status.status %}
+              {% if formulario_status.fields.acao.choices %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao %}
               {% endif %}
               {% if pode_observar %}
                 {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
@@ -345,7 +344,7 @@
               <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn btn-primary">Continuar</button>
             </div>
           {% else %}
-            {% if formulario_status.fields.status.choices %}{{ formulario_status.status.as_hidden }}{% endif %}
+            {% if formulario_status.fields.acao.choices %}{{ formulario_status.acao.as_hidden }}{% endif %}
             {% if pode_observar %}{{ formulario_observacao.texto.as_hidden }}{% endif %}
             <div class="modal-body">
               <div class="eithra-review-card">

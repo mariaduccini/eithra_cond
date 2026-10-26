@@ -330,7 +330,10 @@
                   <div class="eithra-field-help">{{ sugestoes.tipo_problema.origem }}{% if sugestoes.tipo_problema.motivo %} · {{ sugestoes.tipo_problema.motivo }}{% endif %}</div>
                 </div>
                 <div class="col-12 col-lg-4">
-                  {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
+                  {% comment %}O peso não se escolhe aqui: ele é o que o relato
+                  sustenta. Corrigir o fato é o que muda a prioridade.{% endcomment %}
+                  <div class="form-label">Prioridade</div>
+                  <div class="fw-medium">{{ sugestoes.prioridade.valor|default:"Não identificada" }}</div>
                   <div class="eithra-field-help">
                     {% if sugestoes.prioridade.valor %}
                       {{ sugestoes.prioridade.origem }}{% if sugestoes.prioridade.motivo %} · {{ sugestoes.prioridade.motivo }}{% endif %}
@@ -388,7 +391,6 @@
             {{ formulario_demanda.condominio.as_hidden }}
             {{ formulario_demanda.relato.as_hidden }}
             {{ formulario_demanda.titulo.as_hidden }}
-            {{ formulario_demanda.prioridade.as_hidden }}
             {{ formulario_demanda.prazo.as_hidden }}
             {{ formulario_demanda.responsavel.as_hidden }}
             {{ formulario_demanda.local.as_hidden }}

@@ -5,6 +5,9 @@ e o que der para ler desse relato já vem preenchido: assunto, local,
 equipamento, tipo de problema, impacto, risco, prioridade e prazo. O que não der
 continua sendo pergunta, com ajuste à mão.
 
+A prioridade não é campo: ela é consequência do que o relato sustenta, lida pela
+mesma regra que já existia. Quem registra corrige o fato, e o peso se recalcula.
+
 Duas coisas que a leitura produz **não** viram campo, porque não são dado da
 demanda: a área sai do tipo do local cadastrado, e a recorrência é uma leitura
 do histórico. Guardar qualquer uma delas seria criar uma segunda fonte de
@@ -28,6 +31,8 @@ from apps.condominios.models import Condominio
 
 from . import derivacao, interpretacao
 from .constants import (
+    ACAO_DE_REABERTURA,
+    ACOES_DE_STATUS,
     ImpactoDemanda,
     PrioridadeDemanda,
     RiscoDemanda,
@@ -171,13 +176,6 @@ class DemandaForm(forms.Form):
         label="Descrição",
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-    )
-    prioridade = forms.ChoiceField(
-        label="Prioridade",
-        choices=PrioridadeDemanda.choices,
-        required=False,
-        initial=PrioridadeDemanda.NORMAL,
-        widget=forms.Select(attrs={"class": "form-select"}),
     )
     responsavel = forms.ModelChoiceField(
         label="Quem acompanha?",
@@ -395,8 +393,9 @@ class DemandaForm(forms.Form):
             )
             return dados
 
-        if not dados.get("prioridade"):
-            dados["prioridade"] = self._leitura.prioridade
+        # O peso não se escolhe: ele é o que o relato sustenta. Corrigir o fato
+        # é o que muda a prioridade — por isso ela nunca vem do navegador.
+        dados["prioridade"] = self._leitura.prioridade
 
         self._resolver_local(dados)
         self._classificar(dados)
@@ -481,23 +480,44 @@ class DemandaForm(forms.Form):
 
 
 
-class AlteracaoDeStatusForm(forms.Form):
-    """Move a demanda para outra situação entre as que esta pessoa alcança."""
+def acoes_de_status(permitidos, demanda=None):
+    """As ações que esta demanda alcança agora, com o verbo que a tela mostra.
 
-    status = forms.ChoiceField(
-        label="Nova situação",
+    O valor de cada ação é a situação que ela produz — e é por isso que a tela
+    oferece o verbo, e não o nome do estado. A demanda encerrada não anda por
+    movimento comum: a única ação é devolvê-la à operação. Nas demais, não se
+    oferece a ação que levaria a demanda aonde ela já está.
+    """
+    alcancaveis = set(permitidos)
+    if demanda is not None and getattr(demanda, "esta_encerrada", False):
+        return tuple(acao for acao in (ACAO_DE_REABERTURA,) if acao[0] in alcancaveis)
+    return tuple(
+        (situacao, verbo)
+        for situacao, verbo in ACOES_DE_STATUS
+        if situacao in alcancaveis and situacao != getattr(demanda, "status", None)
+    )
+
+
+class AcaoDeStatusForm(forms.Form):
+    """Registra a ação que move a demanda — nunca a situação escolhida.
+
+    Cada verbo leva a uma situação: "Iniciar" põe a demanda em andamento,
+    "Aguardar" a deixa dependendo de terceiro, "Concluir" a encerra, "Cancelar"
+    a interrompe e "Reabrir" a devolve à operação. Quem registra diz o que
+    aconteceu; a situação é consequência. O backend só aceita uma ação que a
+    pessoa alcança — qualquer outra é recusada, venha de onde vier.
+    """
+
+    acao = forms.ChoiceField(
+        label="O que aconteceu?",
         choices=(),
+        required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
-    def __init__(self, *args, permitidos=(), **kwargs):
+    def __init__(self, *args, permitidos=(), demanda=None, **kwargs):
         super().__init__(*args, **kwargs)
-        alcancaveis = set(permitidos)
-        self.fields["status"].choices = [
-            (situacao, StatusDemanda(situacao).label)
-            for situacao in ORDEM_DOS_STATUS
-            if situacao in alcancaveis
-        ]
+        self.fields["acao"].choices = acoes_de_status(permitidos, demanda)
 
 
 class ObservacaoDaDemandaForm(forms.Form):
