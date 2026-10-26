@@ -12,10 +12,11 @@ Nada é esticado, nada é cortado, e uma logo muito larga não aumenta a barra.
 Sem logo — ou com o armazenamento fora do ar —, o mesmo lugar é ocupado pelas
 iniciais. O nome ao lado nunca depende da imagem para ser lido.
 {% endcomment %}
-<span class="eithra-logo-condominio">
+<span class="eithra-logo-condominio{% if classe_logo %} {{ classe_logo }}{% endif %}{% if logo_do_condominio %} eithra-logo-condominio--com-imagem{% endif %}">
   {% if logo_do_condominio %}
     <img
       src="{{ logo_do_condominio }}"
+      class="eithra-logo-condominio-imagem{% if classe_imagem %} {{ classe_imagem }}{% endif %}"
       alt="Logo do Condomínio {{ condominio_atual.nome }}">
   {% else %}
     <span class="eithra-logo-condominio-iniciais" aria-hidden="true">{{ condominio_atual.iniciais }}</span>

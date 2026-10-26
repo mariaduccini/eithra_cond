@@ -8,7 +8,16 @@
     <div class="layout-container">
       <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
         <div class="app-brand">
-          <a href="{% url 'core:home' %}" class="app-brand-link">{% include "components/brand.html" %}</a>
+          {% comment %}
+            O alto do menu identifica o condomínio em vista — a logo dele, ou as
+            iniciais do nome quando não há logo. A identidade principal é sempre
+            a do condomínio aberto: a marca do produto não entra aqui.
+          {% endcomment %}
+          {% if condominio_da_marca %}
+            <a href="{% url 'core:home' %}" class="app-brand-link eithra-brand-link-condominio">
+              {% include "pages/cadastros/_logo_condominio.html" with condominio_atual=condominio_da_marca logo_do_condominio=logo_da_marca classe_logo="eithra-logo-condominio--shell" classe_imagem="eithra-logo-condominio-imagem--shell" %}
+            </a>
+          {% endif %}
           <a
             href="javascript:void(0);"
             class="layout-menu-toggle menu-link text-large ms-auto"
