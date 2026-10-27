@@ -14,7 +14,6 @@ duplicar a identidade da fonte para cada registro de destino.
 """
 import re
 import uuid
-from email.utils import parseaddr
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -29,6 +28,7 @@ from .constants import (
     OrigemImportacaoHistorica,
     ResultadoImportacaoHistorica,
 )
+from .texto import normalizar_endereco_email
 
 
 def _texto_curto(valor: str | None) -> str:
@@ -39,13 +39,6 @@ def _texto_curto(valor: str | None) -> str:
 def _texto_longo(valor: str | None) -> str:
     """Preserva parágrafos, removendo só os espaços das pontas."""
     return (valor or "").strip()
-
-
-def _normalizar_endereco_email(valor: str | None) -> str:
-    """Guarda só o endereço canônico do remetente, sem o nome de exibição."""
-    _, endereco = parseaddr(_texto_curto(valor))
-    endereco = _texto_curto(endereco).lower()
-    return endereco if "@" in endereco else ""
 
 
 class LoteImportacaoHistorica(models.Model):
@@ -506,7 +499,7 @@ class ItemImportacaoHistorica(models.Model):
         ):
             setattr(self, campo, _texto_curto(getattr(self, campo)))
         self.hash_fonte = self.hash_fonte.lower()
-        self.remetente = _normalizar_endereco_email(self.remetente)
+        self.remetente = normalizar_endereco_email(self.remetente)
         super().save(*args, **kwargs)
 
     def clean(self):

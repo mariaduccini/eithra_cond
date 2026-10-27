@@ -313,6 +313,30 @@ EITHRA_AUDIO_TIMEOUT = env.float("EITHRA_AUDIO_TIMEOUT", default=30.0)
 EITHRA_AUDIO_MAX_BYTES = env.int("EITHRA_AUDIO_MAX_BYTES", default=10 * 1024 * 1024)
 
 # ---------------------------------------------------------------------------
+# Gmail: leitura de fonte externa (opcional)
+# ---------------------------------------------------------------------------
+# O Eithra lê a caixa do condomínio como uma fonte de informação a mais — nunca
+# como uma segunda caixa de entrada nem como dona de nada (ver apps/core/gmail.py
+# e docs/carga_historica_gmail_drive_auditoria.md). A leitura é somente leitura
+# (gmail.readonly): não marca como lido, não arquiva, não exclui, não responde e
+# não envia.
+#
+# A credencial vive só no ambiente, é usada só no backend e nunca é registrada
+# em log. O acesso usa o fluxo *refresh token* (servidor a servidor): o refresh
+# token é obtido uma única vez, fora do Eithra, por consentimento do responsável
+# pela conta — nesta fase o Eithra não abre tela de consentimento.
+#
+# SEM essas variáveis, a leitura do Gmail fica indisponível (configurado() diz
+# que não) e o resto do sistema segue igual: não há erro 500 nem tela quebrada.
+EITHRA_GMAIL_CLIENT_ID = env("EITHRA_GMAIL_CLIENT_ID", default="").strip()
+EITHRA_GMAIL_CLIENT_SECRET = env("EITHRA_GMAIL_CLIENT_SECRET", default="").strip()
+EITHRA_GMAIL_REFRESH_TOKEN = env("EITHRA_GMAIL_REFRESH_TOKEN", default="").strip()
+# Rótulo humano da conta lida (ex.: portaria@condominio.com.br). Opcional.
+EITHRA_GMAIL_CONTA = env("EITHRA_GMAIL_CONTA", default="").strip()
+# Tempo máximo de espera ao conversar com a API do Gmail, em segundos.
+EITHRA_GMAIL_TIMEOUT = env.float("EITHRA_GMAIL_TIMEOUT", default=30.0)
+
+# ---------------------------------------------------------------------------
 # Fluxos de autenticação
 # ---------------------------------------------------------------------------
 LOGIN_URL = "accounts:login"

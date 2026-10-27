@@ -13,10 +13,16 @@ diferentes. ``apps/demandas/derivacao.py`` tem as suas próprias cópias destas
 duas funções, escritas antes deste módulo existir; unificá-las é uma limpeza de
 baixo risco, deixada para uma rodada própria porque tocaria o domínio de
 Demandas.
+
+Também guarda ``normalizar_endereco_email``, a redução pura de um remetente ao
+seu endereço canônico. Ela vivia no modelo de cadastro, mas é só texto: quem
+compara remetente — o cadastro e a leitura de fonte externa — não deve depender
+do módulo de ORM por causa disso.
 """
 from __future__ import annotations
 
 import re
+from email.utils import parseaddr
 from unicodedata import combining, normalize
 
 
@@ -28,6 +34,21 @@ def normalizar(texto: str | None) -> str:
         letra for letra in normalize("NFD", texto) if not combining(letra)
     )
     return " ".join(sem_acento.lower().split())
+
+
+def normalizar_endereco_email(valor: str | None) -> str:
+    """O endereço canônico de um remetente, sem o nome de exibição.
+
+    ``Atlas Elevadores <Financeiro@Atlas.com.br>`` vira
+    ``financeiro@atlas.com.br``. Mora aqui, e não no modelo nem no provider,
+    porque é redução de texto pura: nem o cadastro (``apps/core/models.py``) nem
+    a leitura de fonte externa (``apps/core/gmail.py``) devem depender do módulo
+    de ORM só para comparar remetente — duas cópias desta regra divergiriam com
+    o tempo.
+    """
+    _, endereco = parseaddr(" ".join((valor or "").split()))
+    endereco = " ".join(endereco.split()).lower()
+    return endereco if "@" in endereco else ""
 
 
 def contem(texto_normalizado: str, palavras) -> bool:
