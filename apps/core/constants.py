@@ -69,3 +69,22 @@ class ResultadoImportacaoHistorica(models.TextChoices):
     ATUALIZADO = "atualizado", "Atualizado"
     IGNORADO = "ignorado", "Ignorado"
     ERRO = "erro", "Erro"
+
+
+class EstadoProcessamentoImportacao(models.TextChoices):
+    """Em que ponto do ciclo operacional este item de fonte está.
+
+    É o estado do próprio item da fonte — não da consequência no domínio. Um
+    item pode já ter sido processado uma vez e voltar a ``PROCESSANDO`` por
+    reprocessamento explícito, preservando a identidade externa e os vínculos
+    que já foram descobertos.
+    """
+
+    PENDENTE = "pendente", "Pendente"
+    PROCESSANDO = "processando", "Processando"
+    AGUARDANDO_CONFIRMACAO = (
+        "aguardando_confirmacao",
+        "Aguardando confirmação",
+    )
+    PROCESSADO = "processado", "Processado"
+    ERRO = "erro", "Erro"

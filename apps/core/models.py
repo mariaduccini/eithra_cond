@@ -14,6 +14,7 @@ duplicar a identidade da fonte para cada registro de destino.
 """
 import re
 import uuid
+from email.utils import parseaddr
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -23,6 +24,7 @@ from django.utils import timezone
 from apps.condominios.models import Condominio
 
 from .constants import (
+    EstadoProcessamentoImportacao,
     EntidadeImportacaoHistorica,
     OrigemImportacaoHistorica,
     ResultadoImportacaoHistorica,
@@ -37,6 +39,13 @@ def _texto_curto(valor: str | None) -> str:
 def _texto_longo(valor: str | None) -> str:
     """Preserva parágrafos, removendo só os espaços das pontas."""
     return (valor or "").strip()
+
+
+def _normalizar_endereco_email(valor: str | None) -> str:
+    """Guarda só o endereço canônico do remetente, sem o nome de exibição."""
+    _, endereco = parseaddr(_texto_curto(valor))
+    endereco = _texto_curto(endereco).lower()
+    return endereco if "@" in endereco else ""
 
 
 class LoteImportacaoHistorica(models.Model):
@@ -137,6 +146,31 @@ class LoteImportacaoHistorica(models.Model):
 class ItemImportacaoHistoricaQuerySet(models.QuerySet):
     """Leituras e registros dos itens de fonte da carga histórica."""
 
+    TRANSICOES_PERMITIDAS = {
+        EstadoProcessamentoImportacao.PENDENTE: frozenset(
+            {EstadoProcessamentoImportacao.PROCESSANDO}
+        ),
+        EstadoProcessamentoImportacao.PROCESSANDO: frozenset(
+            {
+                EstadoProcessamentoImportacao.PROCESSADO,
+                EstadoProcessamentoImportacao.AGUARDANDO_CONFIRMACAO,
+                EstadoProcessamentoImportacao.ERRO,
+            }
+        ),
+        EstadoProcessamentoImportacao.AGUARDANDO_CONFIRMACAO: frozenset(
+            {
+                EstadoProcessamentoImportacao.PROCESSADO,
+                EstadoProcessamentoImportacao.PROCESSANDO,
+            }
+        ),
+        EstadoProcessamentoImportacao.PROCESSADO: frozenset(
+            {EstadoProcessamentoImportacao.PROCESSANDO}
+        ),
+        EstadoProcessamentoImportacao.ERRO: frozenset(
+            {EstadoProcessamentoImportacao.PROCESSANDO}
+        ),
+    }
+
     def do_condominio(self, condominio):
         """Itens deste condomínio. Sem condomínio resolvido, conjunto vazio."""
         if condominio is None or not getattr(condominio, "pk", None):
@@ -155,6 +189,9 @@ class ItemImportacaoHistoricaQuerySet(models.QuerySet):
         file_id: str = "",
         nome_original: str = "",
         hash_fonte: str = "",
+        remetente: str = "",
+        assunto: str = "",
+        momento_da_mensagem=None,
         criado_por=None,
     ):
         """Cria ou reaproveita o item de fonte daquele registro externo.
@@ -193,10 +230,82 @@ class ItemImportacaoHistoricaQuerySet(models.QuerySet):
         item.file_id = file_id
         item.nome_original = nome_original
         item.hash_fonte = hash_fonte
+        item.remetente = remetente
+        item.assunto = assunto
+        item.momento_da_mensagem = momento_da_mensagem
         item.criado_por = criado_por
         item.full_clean()
         item.save()
         return item, criado
+
+    @transaction.atomic
+    def alterar_estado_processamento(
+        self,
+        *,
+        item: "ItemImportacaoHistorica",
+        novo_estado: str,
+        reprocessamento_explicito: bool = False,
+    ) -> "ItemImportacaoHistorica":
+        """Move o item entre os estados válidos do ciclo de processamento.
+
+        O manager centraliza as transições para que ingestão, retry e
+        reprocessamento não espalhem atribuições soltas pelo código.
+        """
+        if item is None or not getattr(item, "pk", None):
+            raise ValidationError(
+                {"item": "Diga qual item da fonte deve mudar de estado."}
+            )
+        if novo_estado not in EstadoProcessamentoImportacao.values:
+            raise ValidationError(
+                {"estado_processamento": "Estado de processamento inválido."}
+            )
+
+        item = self.select_for_update().get(pk=item.pk)
+        estado_atual = item.estado_processamento
+        if novo_estado == estado_atual:
+            return item
+
+        permitidos = self.TRANSICOES_PERMITIDAS.get(estado_atual, frozenset())
+        if novo_estado not in permitidos:
+            raise ValidationError(
+                {
+                    "estado_processamento": (
+                        "Transição de processamento inválida para este item."
+                    )
+                }
+            )
+
+        if (
+            novo_estado == EstadoProcessamentoImportacao.PROCESSANDO
+            and estado_atual
+            in {
+                EstadoProcessamentoImportacao.PROCESSADO,
+                EstadoProcessamentoImportacao.AGUARDANDO_CONFIRMACAO,
+            }
+            and not reprocessamento_explicito
+        ):
+            raise ValidationError(
+                {
+                    "estado_processamento": (
+                        "Reprocessamento exige ação explícita."
+                    )
+                }
+            )
+
+        item.estado_processamento = novo_estado
+        if novo_estado == EstadoProcessamentoImportacao.PROCESSADO:
+            item.processado_em = timezone.now()
+        item.full_clean()
+        item.save(update_fields=["estado_processamento", "processado_em", "atualizado_em"])
+        return item
+
+    def reprocessar_item(self, *, item: "ItemImportacaoHistorica") -> "ItemImportacaoHistorica":
+        """Reabre explicitamente um item já analisado para nova leitura."""
+        return self.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+            reprocessamento_explicito=True,
+        )
 
 
 class VinculoImportacaoHistoricaQuerySet(models.QuerySet):
@@ -324,6 +433,26 @@ class ItemImportacaoHistorica(models.Model):
             "arquivo pode ter chegado por duas fontes."
         ),
     )
+    remetente = models.CharField("Remetente", max_length=320, blank=True, default="")
+    assunto = models.CharField("Assunto", max_length=255, blank=True, default="")
+    momento_da_mensagem = models.DateTimeField(
+        "Momento da mensagem",
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    estado_processamento = models.CharField(
+        "Estado do processamento",
+        max_length=30,
+        choices=EstadoProcessamentoImportacao.choices,
+        default=EstadoProcessamentoImportacao.PENDENTE,
+        db_index=True,
+    )
+    processado_em = models.DateTimeField(
+        "Processado em",
+        null=True,
+        blank=True,
+    )
     criado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -370,11 +499,14 @@ class ItemImportacaoHistorica(models.Model):
             "message_id",
             "thread_id",
             "file_id",
+            "remetente",
+            "assunto",
             "nome_original",
             "hash_fonte",
         ):
             setattr(self, campo, _texto_curto(getattr(self, campo)))
         self.hash_fonte = self.hash_fonte.lower()
+        self.remetente = _normalizar_endereco_email(self.remetente)
         super().save(*args, **kwargs)
 
     def clean(self):
@@ -398,6 +530,10 @@ class ItemImportacaoHistorica(models.Model):
 
         if erros:
             raise ValidationError(erros)
+
+    def reprocessar(self) -> "ItemImportacaoHistorica":
+        """Atalho explícito para reabrir este item no ciclo de processamento."""
+        return type(self).objects.reprocessar_item(item=self)
 
 
 class VinculoImportacaoHistorica(models.Model):

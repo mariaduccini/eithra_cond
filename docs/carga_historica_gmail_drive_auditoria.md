@@ -19,6 +19,16 @@
 > inventar dados, o que é proibido. Ver §0. O que depende só do domínio existente
 > (§20 a §24, e o mapa de §4) está completo.
 
+> **Nota posterior — carga histórica x Gmail recorrente.** As decisões deste
+> documento continuam valendo para a **carga histórica**: sem dependência de
+> runtime do Google, sem OAuth permanente e sem integração operacional contínua
+> dentro do Eithra. A capacidade posterior de **integração operacional
+> recorrente com Gmail**, quando habilitada, é outra frente: opcional por
+> condomínio, tolerante a falhas e reaproveitando `ItemImportacaoHistorica` e
+> `VinculoImportacaoHistorica` apenas como fundação de identidade,
+> idempotência e proveniência. Uma capacidade não substitui nem invalida a
+> outra.
+
 ---
 
 ## 0. Bloqueio de fonte — leitura obrigatória antes do restante

@@ -5,10 +5,15 @@ separam as duas coisas: recarregar a mesma fonte não duplica a fonte, e a mesma
 fonte pode explicar vários registros do Eithra sem virar várias fontes.
 """
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TestCase, TransactionTestCase
+from django.utils import timezone
 
 from apps.cadastros.tests.apoio import criar_condominio, criar_pessoa
+from apps.condominios.models import Condominio as CondominioAtual
 from apps.core.constants import (
+    EstadoProcessamentoImportacao,
     EntidadeImportacaoHistorica,
     OrigemImportacaoHistorica,
     ResultadoImportacaoHistorica,
@@ -189,6 +194,225 @@ class ItemImportacaoHistoricaTests(TestCase):
         with self.assertRaises(ValidationError):
             item.full_clean()
 
+    def test_item_novo_comeca_pendente_e_guarda_metadados_minimos(self):
+        momento = timezone.now()
+        item, criado = self._mensagem(
+            identificador="msg-meta-001",
+            remetente="Atlas Elevadores <Financeiro@Atlas.com.br>",
+            assunto="Orçamento do elevador social",
+            momento_da_mensagem=momento,
+        )
+
+        self.assertTrue(criado)
+        self.assertEqual(
+            item.estado_processamento, EstadoProcessamentoImportacao.PENDENTE
+        )
+        self.assertEqual(item.remetente, "financeiro@atlas.com.br")
+        self.assertEqual(item.assunto, "Orçamento do elevador social")
+        self.assertEqual(item.momento_da_mensagem, momento)
+        self.assertIsNone(item.processado_em)
+
+    def test_registrar_novamente_atualiza_metadados_sem_reabrir_item_processado(self):
+        item, _ = self._mensagem(
+            identificador="msg-meta-002",
+            assunto="Primeira versão",
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+        processado_em = item.processado_em
+
+        item_recarregado, criado = self._mensagem(
+            lote=self.lote_gmail_reprocessado,
+            identificador="msg-meta-002",
+            assunto="Versão mais completa",
+            remetente="Equipe Atlas <novo@atlas.com.br>",
+        )
+
+        self.assertFalse(criado)
+        self.assertEqual(item_recarregado.pk, item.pk)
+        self.assertEqual(
+            item_recarregado.estado_processamento,
+            EstadoProcessamentoImportacao.PROCESSADO,
+        )
+        self.assertEqual(item_recarregado.assunto, "Versão mais completa")
+        self.assertEqual(item_recarregado.remetente, "novo@atlas.com.br")
+        self.assertEqual(item_recarregado.processado_em, processado_em)
+
+    def test_reprocessamento_explicito_nao_cria_novo_item_nem_apaga_vinculos(self):
+        item, _ = self._mensagem(identificador="msg-reprocessar-001")
+        VinculoImportacaoHistorica.objects.registrar_vinculo(
+            item=item,
+            entidade_destino=EntidadeImportacaoHistorica.DEMANDA,
+            identificador_destino="demanda-001",
+            resultado=ResultadoImportacaoHistorica.CRIADO,
+            criado_por=self.gestao,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+
+        reprocessado = ItemImportacaoHistorica.objects.reprocessar_item(item=item)
+
+        self.assertEqual(ItemImportacaoHistorica.objects.count(), 1)
+        self.assertEqual(VinculoImportacaoHistorica.objects.count(), 1)
+        self.assertEqual(reprocessado.pk, item.pk)
+        self.assertEqual(
+            reprocessado.estado_processamento,
+            EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+
+
+class ItemProcessamentoImportacaoTests(TestCase):
+    """O ciclo de processamento do item é explícito e não depende do vínculo."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao.processamento@exemplo.test", "Gestão")
+        self.lote = LoteImportacaoHistorica.objects.create(
+            condominio=self.condominio,
+            origem=OrigemImportacaoHistorica.GMAIL,
+            conta_origem="sindica@exemplo.test",
+            criado_por=self.gestao,
+        )
+        self.item, _ = ItemImportacaoHistorica.objects.registrar_item(
+            lote=self.lote,
+            identificador_externo="msg-processo-001",
+            message_id="msg-processo-001",
+            criado_por=self.gestao,
+        )
+
+    def test_transicao_pendente_para_processando(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+
+        self.assertEqual(
+            item.estado_processamento, EstadoProcessamentoImportacao.PROCESSANDO
+        )
+
+    def test_processado_preenche_processado_em_mesmo_sem_vinculo(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+
+        self.assertEqual(
+            item.estado_processamento, EstadoProcessamentoImportacao.PROCESSADO
+        )
+        self.assertIsNotNone(item.processado_em)
+        self.assertEqual(item.vinculos.count(), 0)
+
+    def test_processando_para_aguardando_confirmacao(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.AGUARDANDO_CONFIRMACAO,
+        )
+
+        self.assertEqual(
+            item.estado_processamento,
+            EstadoProcessamentoImportacao.AGUARDANDO_CONFIRMACAO,
+        )
+
+    def test_processando_para_erro(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.ERRO,
+        )
+
+        self.assertEqual(item.estado_processamento, EstadoProcessamentoImportacao.ERRO)
+
+    def test_erro_para_processando_funciona_como_retry(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.ERRO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+
+        self.assertEqual(
+            item.estado_processamento, EstadoProcessamentoImportacao.PROCESSANDO
+        )
+
+    def test_processado_para_processando_exige_reprocessamento_explicito(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+
+        with self.assertRaises(ValidationError):
+            ItemImportacaoHistorica.objects.alterar_estado_processamento(
+                item=item,
+                novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+            )
+
+        reprocessado = ItemImportacaoHistorica.objects.reprocessar_item(item=item)
+        self.assertEqual(
+            reprocessado.estado_processamento,
+            EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+
+    def test_transicao_invalida_e_rejeitada(self):
+        with self.assertRaises(ValidationError):
+            ItemImportacaoHistorica.objects.alterar_estado_processamento(
+                item=self.item,
+                novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+            )
+
+    def test_reprocessamento_preserva_conclusao_anterior_ate_nova_conclusao(self):
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=self.item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSANDO,
+        )
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+        conclusao_anterior = item.processado_em
+
+        item = ItemImportacaoHistorica.objects.reprocessar_item(item=item)
+
+        self.assertEqual(item.processado_em, conclusao_anterior)
+
+        item = ItemImportacaoHistorica.objects.alterar_estado_processamento(
+            item=item,
+            novo_estado=EstadoProcessamentoImportacao.PROCESSADO,
+        )
+        self.assertGreaterEqual(item.processado_em, conclusao_anterior)
+
 
 class VinculoImportacaoHistoricaTests(TestCase):
     """O vínculo diz para onde a fonte aponta, e pode haver mais de um."""
@@ -306,3 +530,50 @@ class VinculoImportacaoHistoricaTests(TestCase):
 
         with self.assertRaises(ValidationError):
             vinculo.full_clean()
+
+
+class Migration0002ImportacaoHistoricaTests(TransactionTestCase):
+    """A migration preserva os itens existentes sem fabricar conclusão."""
+
+    migrate_from = [("core", "0001_initial")]
+    migrate_to = [("core", "0002_itemimportacaohistorica_assunto_and_more")]
+
+    def test_itens_existentes_passam_a_processado_sem_fabricar_data(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        apps_antigos = executor.loader.project_state(self.migrate_from).apps
+
+        Lote = apps_antigos.get_model("core", "LoteImportacaoHistorica")
+        Item = apps_antigos.get_model("core", "ItemImportacaoHistorica")
+
+        condominio = CondominioAtual.objects.create(
+            nome="Condomínio legado",
+            logo_storage_provider="",
+            logo_storage_bucket="",
+            logo_storage_key="",
+        )
+        lote = Lote.objects.create(
+            condominio_id=condominio.pk,
+            origem=OrigemImportacaoHistorica.GMAIL,
+            conta_origem="sindica@exemplo.test",
+        )
+        item_legado = Item.objects.create(
+            lote_id=lote.pk,
+            condominio_id=condominio.pk,
+            origem=OrigemImportacaoHistorica.GMAIL,
+            conta_origem="sindica@exemplo.test",
+            identificador_externo="msg-legado-001",
+            message_id="msg-legado-001",
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_to)
+        apps_novos = executor.loader.project_state(self.migrate_to).apps
+        ItemNovo = apps_novos.get_model("core", "ItemImportacaoHistorica")
+        item_migrado = ItemNovo.objects.get(pk=item_legado.pk)
+
+        self.assertEqual(
+            item_migrado.estado_processamento,
+            EstadoProcessamentoImportacao.PROCESSADO,
+        )
+        self.assertIsNone(item_migrado.processado_em)
