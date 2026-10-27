@@ -10,6 +10,7 @@ urlpatterns = [
     path("transcrever/", views.transcrever_audio, name="transcrever"),
     path("confirmar/", views.confirmar_relato, name="confirmar"),
     path("autorizadores/", views.buscar_autorizador, name="buscar_autorizador"),
+    path("busca/", views.buscar_portaria, name="buscar_portaria"),
     path("esperados/registrar/", views.criar_esperado, name="criar_esperado"),
     path(
         "chegadas/nao-prevista/",

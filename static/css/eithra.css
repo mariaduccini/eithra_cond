@@ -973,7 +973,13 @@
 }
 
 .eithra-portaria-barra-busca {
+  position: relative;
   flex: 1 1 18rem;
+  max-width: none;
+}
+
+.eithra-portaria-barra-busca .eithra-busca {
+  min-width: 0;
   max-width: none;
 }
 
@@ -1033,16 +1039,16 @@
   color: var(--bs-secondary-color);
 }
 
-.eithra-portaria-contexto-busca {
-  margin-block-end: 1rem;
-  padding: 1rem 0 0;
-  border-top: 1px solid var(--bs-border-color);
-}
-
-.eithra-portaria-contexto-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+/* A resposta da busca nasce colada ao campo que a pediu: mesma largura, logo
+   abaixo dele, sem empurrar o resto da portaria. A altura é limitada e a
+   rolagem é da própria lista. */
+.eithra-portaria-busca-resultado:not(:empty) {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline: 0;
+  z-index: 5;
+  background-color: var(--bs-paper-bg);
+  box-shadow: var(--bs-box-shadow);
 }
 
 .eithra-portaria-cabecalho-secao {
@@ -1195,12 +1201,6 @@
   border: 1px solid var(--bs-border-color);
   border-radius: 0.875rem;
   background-color: var(--bs-paper-bg);
-}
-
-.eithra-vazio-sutil {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--bs-secondary-color);
 }
 
 /* Três leituras da mesma portaria: o que acontece agora, o que foi autorizado
@@ -1437,13 +1437,6 @@
   margin-inline-start: 0.5rem;
   font-weight: 600;
   color: var(--bs-secondary-color);
-}
-
-.eithra-portaria-grupo-titulo {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--bs-heading-color);
-  margin-block: 0 0.5rem;
 }
 
 /* A presença herdada de outro turno se destaca por uma marca discreta na
@@ -2073,6 +2066,19 @@
   opacity: 0.75;
 }
 
+/* O que a busca apenas informa não se anuncia como ação: sem destino, a linha
+   perde a seta, o realce de passagem e o cursor de clique. O alinhamento é o
+   mesmo — o que muda é que ela não promete nada. */
+.eithra-person-result-informativo {
+  cursor: default;
+}
+
+.eithra-person-result-informativo:hover,
+.eithra-person-result-informativo:focus-visible {
+  background-color: transparent;
+  color: var(--bs-body-color);
+}
+
 .eithra-autorizador-dica {
   margin: 0;
   padding: 0.5rem;
@@ -2240,7 +2246,6 @@
   }
 
   .eithra-portaria-indicadores,
-  .eithra-portaria-contexto-grid,
   .eithra-opcoes-cards {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2255,9 +2260,10 @@
     padding: 0.875rem;
   }
 
-  .eithra-portaria-contexto-busca {
-    margin-block-end: 0.75rem;
-    padding-top: 0.75rem;
+  /* No celular a lista usa a largura da tela e para antes do fim do viewport:
+     nunca empurra a operação para fora de vista. */
+  .eithra-portaria-busca-resultado:not(:empty) {
+    max-block-size: min(20rem, 55vh);
   }
 
   .eithra-portaria-cabecalho-secao {

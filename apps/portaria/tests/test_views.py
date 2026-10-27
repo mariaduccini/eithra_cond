@@ -32,45 +32,6 @@ class PortariaViewsTests(TestCase):
         resposta = self.client.get(reverse("portaria:painel"))
         self.assertEqual(resposta.status_code, 404)
 
-    def test_busca_por_unidade_mostra_contexto(self):
-        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="301")
-        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Ana Moradora")
-        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, pessoa, unidade)
-        apoio.criar_autorizacao(
-            self.condominio, self.usuario, nome="João Esperado", unidade=unidade
-        )
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "301"})
-        self.assertContains(resposta, "301")
-        self.assertContains(resposta, "Ana Moradora")
-        self.assertContains(resposta, "João Esperado")
-
-    def test_busca_por_pessoa(self):
-        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Carlos Souza")
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "Carlos"})
-        self.assertContains(resposta, "Carlos Souza")
-
-    def test_busca_por_morador_traz_autorizacoes_relacionadas(self):
-        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="301")
-        morador = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Ana Moradora")
-        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, morador, unidade)
-        apoio.criar_autorizacao(
-            self.condominio, self.usuario, nome="João Esperado", unidade=unidade
-        )
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "Ana"})
-        self.assertContains(resposta, "Ana Moradora")
-        self.assertContains(resposta, "João Esperado")
-
-    def test_busca_por_placa(self):
-        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="501")
-        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Motorista")
-        veiculo = comunidade_apoio.criar_veiculo(self.condominio, placa="ABC1D23")
-        comunidade_apoio.criar_vinculo_veiculo_pessoa(self.condominio, veiculo, pessoa)
-        comunidade_apoio.criar_vinculo_veiculo_unidade(self.condominio, veiculo, unidade)
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "ABC1D23"})
-        self.assertContains(resposta, "ABC1D23")
-        self.assertContains(resposta, "Motorista")
-        self.assertContains(resposta, "501")
-
     def test_esperado_aparece_na_lista(self):
         apoio.criar_autorizacao(self.condominio, self.usuario, nome="João Esperado")
         resposta = self.client.get(reverse("portaria:painel"))
@@ -124,22 +85,15 @@ class PortariaViewsTests(TestCase):
         )
         self.assertEqual(resposta.status_code, 404)
 
-    def test_privacidade_nao_exibe_documento_completo(self):
-        comunidade_apoio.criar_pessoa_da_comunidade(
-            self.condominio, "Pessoa Privada", documento="12345678901"
-        )
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "Pessoa Privada"})
-        self.assertContains(resposta, "Pessoa Privada")
-        self.assertNotContains(resposta, "12345678901")
-
 
 class PortariaBuscaDaTelaTests(TestCase):
-    """O contrato da tela de busca: o que a view já sabe precisa chegar até ela.
+    """O contrato da tela da busca: o campo, o gatilho e onde a lista aparece.
 
-    A view filtra corretamente quando recebe `q` — o que faltava era a tela
-    entregar o que foi digitado. Estes testes prendem o formulário marcado, o
-    campo que carrega o termo por `q` e o condomínio que viaja junto: sem isso
-    a lista volta a exibir tudo, mesmo com o backend certo.
+    A busca da portaria usa o mesmo caminho do modal de chegada — digita,
+    espera, e a lista aparece abaixo do campo, sem recarregar a página. Estes
+    testes prendem o campo marcado, o endereço que ele consulta, o condomínio
+    que viaja junto e o lugar da lista: colada ao campo e antes do relato, dos
+    indicadores e da movimentação. Nada vem pronto do servidor.
     """
 
     def setUp(self):
@@ -154,15 +108,36 @@ class PortariaBuscaDaTelaTests(TestCase):
         self.assertNotEqual(inicio, -1, "formulário %s não está na tela" % classe)
         return conteudo[inicio : conteudo.find("</form>", inicio)]
 
-    def test_a_busca_principal_usa_o_mesmo_mecanismo_das_listagens(self):
-        """A marca que o Eithra liga sozinho — a mesma das outras listagens."""
-        formulario = self._formulario("eithra-portaria-barra")
-        self.assertIn("data-eithra-busca", formulario)
+    def _painel(self, **params):
+        return self.client.get(reverse("portaria:painel"), params).content.decode()
 
-    def test_o_campo_principal_continua_sendo_a_busca_por_q(self):
-        formulario = self._formulario("eithra-portaria-barra")
-        self.assertIn('type="search"', formulario)
-        self.assertIn('name="q"', formulario)
+    def _campo_da_busca(self, conteudo):
+        """O próprio elemento do campo: do `<input` que o abre até o `>`."""
+        campo = conteudo.find('id="busca-portaria"')
+        self.assertNotEqual(campo, -1, "o campo da busca não está na tela")
+        inicio = conteudo.rfind("<input", 0, campo)
+        return conteudo[inicio : conteudo.find(">", campo)]
+
+    def test_a_busca_principal_usa_o_autocomplete_do_registro_de_chegada(self):
+        """Um mecanismo só: o campo carrega o endereço que a lista consulta."""
+        conteudo = self._painel()
+        campo = self._campo_da_busca(conteudo)
+        self.assertIn("data-eithra-portaria-busca", campo)
+        self.assertIn(reverse("portaria:buscar_portaria"), campo)
+        self.assertIn("data-eithra-portaria-resultado", conteudo)
+
+    def test_a_busca_principal_nao_recarrega_a_pagina(self):
+        """Soltar o filtro: nada de `data-eithra-busca` na busca de cima."""
+        conteudo = self._painel()
+        inicio = conteudo.find('class="eithra-portaria-barra"')
+        barra = conteudo[inicio : conteudo.find('id="busca-portaria"')]
+        self.assertNotIn("data-eithra-busca", barra)
+        self.assertNotIn("<form", barra)
+
+    def test_o_campo_principal_e_o_campo_de_busca(self):
+        campo = self._campo_da_busca(self._painel())
+        self.assertIn('type="search"', campo)
+        self.assertIn('name="q"', campo)
 
     def test_o_historico_liga_os_filtros_reativos(self):
         formulario = self._formulario("eithra-portaria-filtros", aba="historico")
@@ -170,16 +145,299 @@ class PortariaBuscaDaTelaTests(TestCase):
 
     def test_o_condominio_em_vista_viaja_com_a_busca(self):
         """Buscar dentro de um condomínio não pode trocar de condomínio."""
-        formulario = self._formulario("eithra-portaria-barra")
-        self.assertIn('name="condominio" value="%s"' % self.condominio.pk, formulario)
+        campo = self._campo_da_busca(self._painel())
+        self.assertIn('data-condominio="%s"' % self.condominio.pk, campo)
 
-    def test_busca_por_empresa_mostra_o_fornecedor(self):
-        """Empresa é um dos cinco caminhos da busca — e o único sem cobertura."""
-        cadastros_apoio.criar_fornecedor(
-            self.condominio, nome_razao_social="Atlas Elevadores Ltda."
+    def test_o_resultado_da_busca_fica_colado_ao_campo_e_antes_do_resto(self):
+        """Sem termo, nada pronto: a lista nasce logo abaixo do próprio campo.
+
+        Quem busca não deve procurar onde a resposta apareceu: ela vem antes do
+        relato, dos indicadores e da movimentação — e nada dela vem do servidor.
+        """
+        conteudo = self._painel()
+        resultado = conteudo.find("data-eithra-portaria-resultado")
+
+        self.assertNotEqual(resultado, -1, "o lugar da lista não está na tela")
+        self.assertLess(conteudo.find('id="busca-portaria"'), resultado)
+        for seguinte in (
+            "eithra-portaria-barra-acoes",
+            'id="relato-portaria"',
+            "eithra-portaria-indicadores",
+            "Movimentação atual",
+        ):
+            self.assertLess(resultado, conteudo.find(seguinte), seguinte)
+
+        self.assertNotIn("eithra-autorizador-opcao", conteudo)
+
+
+class PortariaBuscaPortariaTests(TestCase):
+    """A busca da portaria numa lista só, do jeito que a lista é desenhada.
+
+    Quem opera não escolhe o que está procurando: digita o que sabe e recebe o
+    que existe — nome, unidade, morador, placa ou empresa. A resposta é única,
+    ordenada por relevância, sem repetir o mesmo item e sem atravessar
+    condomínio. O markup é o mesmo do registro de chegada, para a tela não
+    inventar uma segunda aparência.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+        self.url = reverse("portaria:buscar_portaria")
+
+    def _buscar(self, termo, condominio=None):
+        return self.client.get(
+            self.url,
+            {"q": termo, "condominio": str((condominio or self.condominio).pk)},
         )
-        resposta = self.client.get(reverse("portaria:painel"), {"q": "Atlas"})
-        self.assertContains(resposta, "Atlas Elevadores Ltda.")
+
+    def _morador(self, identificador, nome):
+        unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador=identificador
+        )
+        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, nome)
+        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, pessoa, unidade)
+        return unidade, pessoa
+
+    def test_sem_termo_a_lista_nao_aparece(self):
+        """Termo vazio fecha o dropdown: nada de lista nem de estado vazio."""
+        resposta = self._buscar("")
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertNotContains(resposta, "eithra-autorizador-opcao")
+        self.assertNotContains(resposta, "Nenhum resultado encontrado.")
+
+    def test_nome_retorna_a_pessoa(self):
+        self._morador("502", "Ana Paula")
+
+        resposta = self._buscar("Ana")
+
+        self.assertContains(resposta, "Ana Paula")
+
+    def test_unidade_retorna_o_morador(self):
+        self._morador("301", "Ana Moradora")
+
+        resposta = self._buscar("301")
+
+        self.assertContains(resposta, "301")
+        self.assertContains(resposta, "Ana Moradora")
+
+    def test_empresa_retorna_o_fornecedor(self):
+        cadastros_apoio.criar_fornecedor(
+            self.condominio, nome_razao_social="Elevadores Atlas Schindler Ltda."
+        )
+
+        resposta = self._buscar("Atlas")
+
+        self.assertContains(resposta, "Elevadores Atlas Schindler Ltda.")
+        self.assertContains(resposta, "Fornecedor")
+
+    def test_placa_retorna_o_contexto_do_veiculo(self):
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="501")
+        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Motorista")
+        veiculo = comunidade_apoio.criar_veiculo(self.condominio, placa="ABC1D23")
+        comunidade_apoio.criar_vinculo_veiculo_pessoa(self.condominio, veiculo, pessoa)
+        comunidade_apoio.criar_vinculo_veiculo_unidade(self.condominio, veiculo, unidade)
+
+        resposta = self._buscar("ABC1D23")
+
+        self.assertContains(resposta, "ABC1D23")
+        self.assertContains(resposta, "Motorista")
+
+    def test_a_lista_nao_repete_o_mesmo_item(self):
+        """Ana aparece uma vez — como pessoa — e não também pelo veículo.
+
+        A placa e a unidade até citam Ana no contexto, mas nenhuma delas é uma
+        segunda "Ana Paula" na lista: o nome principal é único.
+        """
+        unidade, pessoa = self._morador("502", "Ana Paula")
+        veiculo = comunidade_apoio.criar_veiculo(self.condominio, placa="ANA1234")
+        comunidade_apoio.criar_vinculo_veiculo_pessoa(self.condominio, veiculo, pessoa)
+        comunidade_apoio.criar_vinculo_veiculo_unidade(self.condominio, veiculo, unidade)
+
+        conteudo = self._buscar("Ana").content.decode()
+
+        self.assertEqual(
+            conteudo.count(
+                '<span class="eithra-person-result-nome">Ana Paula</span>'
+            ),
+            1,
+        )
+
+    def test_lista_vazia_diz_que_nao_encontrou(self):
+        resposta = self._buscar("Ninguem Aqui")
+
+        self.assertContains(resposta, "Nenhum resultado encontrado.")
+        self.assertNotContains(resposta, "eithra-autorizador-opcao")
+
+    def test_o_resultado_usa_o_markup_do_registro_de_chegada(self):
+        """A lista é a mesma do modal: opção, avatar, nome, contexto e seta."""
+        self._morador("502", "Ana Paula")
+
+        resposta = self._buscar("Ana")
+
+        self.assertContains(resposta, "eithra-autorizador-opcao")
+        self.assertContains(resposta, "eithra-person-result")
+        self.assertContains(resposta, "eithra-person-result-nome")
+        self.assertContains(resposta, "eithra-person-result-contexto")
+        self.assertContains(resposta, "eithra-avatar")
+        self.assertContains(resposta, "bx-chevron-right")
+
+    def test_a_busca_nao_traz_outro_condominio(self):
+        """O que é de fora não entra — nem por nome, nem por unidade."""
+        outro = apoio.criar_condominio("Outro")
+        unidade = comunidade_apoio.criar_unidade(outro, identificador="999")
+        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(outro, "Ana do Outro")
+        comunidade_apoio.criar_vinculo_pessoa_unidade(outro, pessoa, unidade)
+
+        resposta = self._buscar("Ana")
+
+        self.assertNotContains(resposta, "Ana do Outro")
+        self.assertNotContains(resposta, "999")
+
+    def test_quem_nao_opera_a_portaria_nao_busca(self):
+        """A busca não atravessa a permissão: quem não opera não vê nada."""
+        morador = apoio.criar_pessoa("morador@teste.com", "Morador")
+        apoio.criar_vinculo(morador, self.condominio, papel=Papel.MORADOR)
+        self.client.force_login(morador)
+
+        resposta = self._buscar("Ana")
+
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_a_lista_nao_mostra_documento(self):
+        comunidade_apoio.criar_pessoa_da_comunidade(
+            self.condominio, "Pessoa Privada", documento="12345678901"
+        )
+
+        resposta = self._buscar("Pessoa Privada")
+
+        self.assertContains(resposta, "Pessoa Privada")
+        self.assertNotContains(resposta, "12345678901")
+
+    # -- O clique localiza contexto, não opera -------------------------------
+
+    def _destinos(self, resposta):
+        """Os endereços que a lista oferece, na ordem em que aparecem."""
+        return re.findall(r'href="([^"]+)"', resposta.content.decode())
+
+    def test_a_pessoa_leva_ao_historico_dela(self):
+        """A busca acha a pessoa; o histórico é que conta o que ela fez aqui."""
+        self._morador("502", "Ana Paula")
+
+        destinos = self._destinos(self._buscar("Ana"))
+
+        self.assertEqual(len(destinos), 1)
+        self.assertIn("aba=historico", destinos[0])
+        self.assertIn("q=Ana+Paula", destinos[0])
+        self.assertEqual(self.client.get(destinos[0]).status_code, 200)
+
+    def test_a_unidade_leva_ao_historico_da_unidade(self):
+        """A unidade leva pelo identificador — é o que o filtro do histórico lê."""
+        self._morador("502", "Ana Paula")
+
+        destinos = self._destinos(self._buscar("502"))
+
+        self.assertEqual(len(destinos), 1)
+        self.assertIn("q=502", destinos[0])
+        self.assertEqual(self.client.get(destinos[0]).status_code, 200)
+
+    def test_a_presenca_nao_traz_a_acao_de_saida(self):
+        """Quem está dentro continua assunto da operação: a busca não o fecha."""
+        acesso = apoio.criar_acesso(
+            self.condominio, self.usuario, nome="João da Silva"
+        )
+
+        conteudo = self._buscar("João").content.decode()
+
+        self.assertIn("Dentro agora", conteudo)
+        self.assertNotIn(reverse("portaria:saiu", args=[acesso.pk]), conteudo)
+        self.assertNotIn(">Saiu<", conteudo)
+
+    def test_a_autorizacao_abre_a_revisao_e_nao_a_chegada(self):
+        """Esperado se revisa na tela que já existe; a entrada é ato da portaria."""
+        esperado = apoio.criar_autorizacao(
+            self.condominio, self.usuario, nome="João Esperado"
+        )
+
+        destinos = self._destinos(self._buscar("João Esperado"))
+
+        self.assertEqual(len(destinos), 1)
+        self.assertIn("abrir=verificar", destinos[0])
+        self.assertIn("item=%s" % esperado.pk, destinos[0])
+        self.assertNotIn(reverse("portaria:chegou", args=[esperado.pk]), destinos[0])
+        self.assertEqual(self.client.get(destinos[0]).status_code, 200)
+
+    def test_o_veiculo_leva_ao_historico_pela_placa(self):
+        """O histórico já procura por placa: o veículo leva para lá."""
+        unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="501"
+        )
+        pessoa = comunidade_apoio.criar_pessoa_da_comunidade(
+            self.condominio, "Motorista"
+        )
+        veiculo = comunidade_apoio.criar_veiculo(self.condominio, placa="ABC1D23")
+        comunidade_apoio.criar_vinculo_veiculo_pessoa(
+            self.condominio, veiculo, pessoa
+        )
+        comunidade_apoio.criar_vinculo_veiculo_unidade(
+            self.condominio, veiculo, unidade
+        )
+
+        destinos = self._destinos(self._buscar("ABC1D23"))
+
+        self.assertEqual(len(destinos), 1)
+        self.assertIn("aba=historico", destinos[0])
+        self.assertIn("q=ABC1D23", destinos[0])
+        self.assertEqual(self.client.get(destinos[0]).status_code, 200)
+
+    def test_o_fornecedor_e_informacao_e_nao_acao(self):
+        """Sem tela própria, o fornecedor se apresenta: não promete um clique."""
+        cadastros_apoio.criar_fornecedor(
+            self.condominio, nome_razao_social="Elevadores Atlas Schindler Ltda."
+        )
+
+        resposta = self._buscar("Atlas")
+        conteudo = resposta.content.decode()
+
+        self.assertContains(resposta, "Elevadores Atlas Schindler Ltda.")
+        self.assertEqual(self._destinos(resposta), [])
+        self.assertIn("eithra-person-result-informativo", conteudo)
+        self.assertNotIn("bx-chevron-right", conteudo)
+
+    def test_nenhum_resultado_dispara_operacao(self):
+        """A busca localiza: nenhum item carrega formulário, POST ou ação."""
+        self._morador("502", "Ana Paula")
+        apoio.criar_acesso(self.condominio, self.usuario, nome="João da Silva")
+        apoio.criar_autorizacao(self.condominio, self.usuario, nome="João Esperado")
+        cadastros_apoio.criar_fornecedor(
+            self.condominio, nome_razao_social="Elevadores Atlas Schindler Ltda."
+        )
+
+        conteudo = self._buscar("Jo").content.decode()
+
+        self.assertNotIn("<form", conteudo)
+        self.assertNotIn("method=", conteudo)
+        self.assertNotIn("csrfmiddlewaretoken", conteudo)
+        # Nenhum dos caminhos que mudam estado aparece na lista.
+        for caminho in ("/chegadas/", "/acessos/", "/autorizacoes/", "/esperados/"):
+            self.assertNotIn(caminho, conteudo)
+
+    def test_o_destino_nao_atravessa_condominio(self):
+        """Todo endereço da lista aponta para o condomínio que está em vista."""
+        self._morador("502", "Ana Paula")
+        apoio.criar_acesso(self.condominio, self.usuario, nome="João da Silva")
+        cadastros_apoio.criar_fornecedor(
+            self.condominio, nome_razao_social="Ana Cosméticos"
+        )
+
+        destinos = self._destinos(self._buscar("Ana"))
+
+        self.assertTrue(destinos)
+        for destino in destinos:
+            self.assertIn("condominio=%s" % self.condominio.pk, destino)
 
 
 class PortariaEsperadosTests(TestCase):

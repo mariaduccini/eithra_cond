@@ -1,0 +1,51 @@
+{% comment %}
+A busca da portaria: uma pergunta, tudo o que o condomínio guarda.
+
+Quem opera não escolhe o que está procurando — digita o que sabe, e a tela
+responde com o que existe: quem está dentro agora, quem se espera, quem mora
+onde, de quem é a placa e qual empresa já passou por aqui. É a mesma leitura do
+registro de chegada: uma lista só, cada linha um alvo, com o nome mandando e o
+contexto acompanhando em voz baixa.
+
+Sem termo, nada é renderizado — e o dropdown nem aparece. A lista é única e
+ordenada por relevância, então não há cabeçalho de tipo: o contexto secundário
+já diz de que se trata.
+
+A busca localiza, não opera: quem tem para onde ir é um atalho para uma tela que
+já existe — o histórico do contexto, ou a revisão da autorização. Quem não tem
+destino, hoje o fornecedor, vem como informação: mesma linha, sem seta e sem
+semântica de ação. Nenhum item executa consequência por si.
+
+Variáveis: termo; resultados (nome, contexto, iniciais, url).
+{% endcomment %}
+{% if resultados %}
+  <div class="eithra-autorizador-lista">
+    {% for item in resultados %}
+      {% if item.url %}
+        <a
+          class="eithra-autorizador-opcao eithra-person-result"
+          href="{{ item.url }}"
+          aria-label="{{ item.nome }}, {{ item.contexto }}">
+          <span class="eithra-avatar" aria-hidden="true">{{ item.iniciais }}</span>
+          <span class="eithra-person-result-corpo">
+            <span class="eithra-person-result-nome">{{ item.nome }}</span>
+            <span class="eithra-person-result-contexto">{{ item.contexto }}</span>
+          </span>
+          <i class="bx bx-chevron-right" aria-hidden="true"></i>
+        </a>
+      {% else %}
+        <div class="eithra-autorizador-opcao eithra-person-result eithra-person-result-informativo">
+          <span class="eithra-avatar" aria-hidden="true">{{ item.iniciais }}</span>
+          <span class="eithra-person-result-corpo">
+            <span class="eithra-person-result-nome">{{ item.nome }}</span>
+            <span class="eithra-person-result-contexto">{{ item.contexto }}</span>
+          </span>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% elif termo %}
+  <div class="eithra-autorizador-lista">
+    <p class="eithra-autorizador-dica">Nenhum resultado encontrado.</p>
+  </div>
+{% endif %}

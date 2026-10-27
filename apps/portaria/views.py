@@ -1,6 +1,7 @@
 """Tela operacional da Portaria."""
 import uuid
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -73,6 +74,23 @@ def buscar_autorizador(request):
         request,
         "pages/portaria/_autorizador.html",
         {"termo": termo, "unidades": unidades, "pessoas": pessoas},
+    )
+
+
+@login_required
+def buscar_portaria(request):
+    """A busca da portaria: o condomínio responde numa lista só.
+
+    Quem opera não escolhe entre procurar pessoa, apartamento, placa ou
+    empresa: digita o que sabe e a tela diz o que existe. É a mesma pergunta do
+    registro de chegada, com tudo o que o condomínio guarda como resposta.
+    """
+    condominio = _condominio_para_operar(request)
+    termo = (request.GET.get("q") or "").strip()
+    return render(
+        request,
+        "pages/portaria/_busca.html",
+        {"termo": termo, "resultados": _resultados_da_portaria(condominio, termo)},
     )
 
 
@@ -677,16 +695,18 @@ def _render_painel(
     if base["aba"] == "historico":
         contexto.update(_historico(request, atual))
     else:
-        contexto.update(_painel_operacional(atual, base["agora"], base["termo"]))
+        contexto.update(_painel_operacional(atual, base["agora"]))
     return render(request, "pages/portaria/painel.html", contexto, status=status)
 
 
-def _painel_operacional(condominio, agora, termo):
-    """Resumo e movimentação operacional da Portaria."""
-    busca = (termo or "").strip()
+def _painel_operacional(condominio, agora):
+    """Resumo e movimentação operacional da Portaria.
+
+    A movimentação é sempre a operação real: o que a portaria procura sai na
+    busca do campo, e não esconde quem está dentro nem quem se espera.
+    """
     autorizacoes = _autorizacoes_operacionais(condominio, agora)
     acessos_abertos = _acessos_operacionais(condominio)
-    acessos = acessos_abertos
 
     aguardando = autorizacoes.filter(status=StatusAutorizacaoPortaria.AGUARDANDO).count()
     dentro_agora = acessos_abertos.count()
@@ -694,17 +714,12 @@ def _painel_operacional(condominio, agora, termo):
         entrada_em__date=agora.date()
     ).count()
 
-    if busca:
-        autorizacoes = autorizacoes.buscar(busca)
-        acessos = acessos.buscar(busca)
-
     movimentacao = _movimentacao_atual(
         list(autorizacoes),
-        list(acessos.order_by("-entrada_em")),
+        list(acessos_abertos.order_by("-entrada_em")),
         agora,
     )
     return {
-        "resultado_busca": _resultado_da_busca(condominio, busca),
         "indicadores": [
             {
                 "icone": "bx-loader-circle",
@@ -1243,6 +1258,155 @@ def _resultado_da_busca(condominio, termo):
         "presencas": presencas,
         "historico": historico,
     }
+
+
+def _resultados_da_portaria(condominio, termo):
+    """A busca da portaria numa lista só, na ordem em que a portaria olha.
+
+    A busca já sabe achar cada coisa — pessoa, unidade, veículo, fornecedor,
+    espera e passagem. O que faltava era dizer tudo junto: primeiro quem está
+    dentro agora, depois quem se espera, e então o cadastro. Nada aparece duas
+    vezes, e nada de outro condomínio entra.
+
+    A busca localiza contexto, não opera: cada item que tem para onde ir leva o
+    endereço de uma tela que já existe. Quem não tem — hoje, o fornecedor — vem
+    sem destino, e a tela o apresenta como informação, não como ação.
+    """
+    achados = _resultado_da_busca(condominio, termo)
+    if not achados:
+        return []
+
+    agora = timezone.localtime()
+    ligacoes = _vinculos_das_pessoas(
+        condominio, [resumo["registro"] for resumo in achados["pessoas"]]
+    )
+    itens = []
+    vistos = set()
+
+    def acrescentar(chave, nome, contexto, destino=None):
+        if not nome or chave in vistos:
+            return
+        vistos.add(chave)
+        itens.append(
+            {
+                "nome": nome,
+                "contexto": contexto,
+                "iniciais": _iniciais(nome),
+                "url": destino,
+            }
+        )
+
+    for acesso in achados["presencas"]:
+        # Quem está dentro se procura no histórico pelo nome: a saída continua
+        # sendo ato da operação, e a busca não a executa por ninguém.
+        acrescentar(
+            ("acesso", acesso.pk),
+            acesso.nome_para_exibir,
+            "Dentro agora · %s · %s"
+            % (acesso.get_tipo_acesso_display().lower(), acesso.destino_para_exibir),
+            _destino_do_historico(condominio, acesso.nome_para_exibir),
+        )
+    for esperado in achados["esperados"]:
+        # A revisão da autorização já existe na tela: o clique só a abre.
+        acrescentar(
+            ("autorizacao", esperado.pk),
+            esperado.nome_para_exibir,
+            "%s · %s"
+            % (esperado.situacao_para_exibir, esperado.destino_para_exibir),
+            _destino_da_verificacao(condominio, esperado),
+        )
+    for resumo in achados["pessoas"]:
+        pessoa = resumo["registro"]
+        papeis = ligacoes.get(pessoa.pk, [])
+        if papeis:
+            contexto = "%s · %s" % (
+                papeis[0].get_tipo_vinculo_display(),
+                ", ".join(vinculo.unidade.rotulo for vinculo in papeis),
+            )
+        else:
+            contexto = "Sem unidade ativa"
+        acrescentar(
+            ("pessoa", pessoa.pk),
+            str(pessoa),
+            contexto,
+            _destino_do_historico(condominio, str(pessoa)),
+        )
+    for resumo in achados["unidades"]:
+        registro = resumo["registro"]
+        moradores = ", ".join(str(morador) for morador in resumo["pessoas"])
+        acrescentar(
+            ("unidade", registro.pk),
+            registro.rotulo,
+            moradores or "Sem moradores vinculados hoje",
+            # O histórico procura pela unidade pelo identificador, e não pelo
+            # rótulo com bloco: é o identificador que o filtro entende.
+            _destino_do_historico(condominio, registro.identificador),
+        )
+    for veiculo in achados["veiculos"]:
+        condutores = ", ".join(str(pessoa) for pessoa in veiculo.pessoas_atuais())
+        acrescentar(
+            ("veiculo", veiculo.pk),
+            veiculo.placa,
+            condutores or "Veículo cadastrado no condomínio",
+            # O histórico já aceita placa na busca; o veículo leva para lá.
+            _destino_do_historico(condominio, veiculo.placa),
+        )
+    for fornecedor in achados["fornecedores"]:
+        # Sem tela própria de fornecedor, ele apenas se apresenta.
+        acrescentar(("fornecedor", fornecedor.pk), str(fornecedor), "Fornecedor")
+    for acesso in achados["historico"]:
+        acrescentar(
+            ("acesso", acesso.pk),
+            acesso.nome_para_exibir,
+            "%s · %s"
+            % (acesso.destino_para_exibir, _quando(acesso.entrada_em, agora)),
+            _destino_do_historico(condominio, acesso.nome_para_exibir),
+        )
+    return itens
+
+
+def _endereco_do_painel(parametros):
+    """Um endereço da própria Portaria, com o condomínio viajando junto."""
+    return "%s?%s" % (reverse("portaria:painel"), urlencode(parametros))
+
+
+def _destino_do_historico(condominio, termo):
+    """O histórico já procura por nome, unidade e placa: a busca só aponta."""
+    return _endereco_do_painel(
+        {"aba": "historico", "q": termo, "condominio": condominio.pk}
+    )
+
+
+def _destino_da_verificacao(condominio, autorizacao):
+    """A revisão da autorização já existe: o clique abre, não registra."""
+    return _endereco_do_painel(
+        {
+            "abrir": "verificar",
+            "item": str(autorizacao.pk),
+            "condominio": condominio.pk,
+        }
+    )
+
+
+def _vinculos_das_pessoas(condominio, pessoas):
+    """Por onde cada pessoa responde hoje, e com que papel.
+
+    Uma consulta para todas: o papel é do vínculo, e sem ele a busca diria só
+    um nome solto, sem dizer de que unidade ele é.
+    """
+    if not pessoas:
+        return {}
+    vinculos = (
+        VinculoPessoaUnidade.objects.do_condominio(condominio)
+        .vigentes()
+        .filter(pessoa__in=pessoas)
+        .select_related("unidade")
+        .order_by("unidade__bloco_torre", "unidade__identificador")
+    )
+    ligacoes = {}
+    for vinculo in vinculos:
+        ligacoes.setdefault(vinculo.pessoa_id, []).append(vinculo)
+    return ligacoes
 
 
 def _autorizacao_em_verificacao(request, condominio):
