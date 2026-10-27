@@ -2,11 +2,12 @@
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import NON_FIELD_ERRORS, PermissionDenied, ValidationError
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +22,7 @@ from apps.comunidade.models import (
     VinculoPessoaUnidade,
 )
 from apps.condominios import logo
+from apps.core import audio
 from apps.core.paginacao import paginar
 
 from . import interpretacao
@@ -258,6 +260,56 @@ def confirmar_relato(request):
 
     messages.success(request, recado)
     return redirect(_destino("portaria:painel", condominio))
+
+
+@login_required
+@require_POST
+def transcrever_audio(request):
+    """Transforma a fala da portaria em texto — e para aí.
+
+    Esta é a única porta de entrada de áudio da Portaria, e ela não sabe nada
+    sobre chegada, saída, autorização ou presença: recebe o recado, devolve a
+    transcrição e descarta o áudio. Interpretar continua sendo o passo seguinte,
+    no mesmo caminho de texto de sempre — e quem decide quando é a pessoa,
+    revendo o que foi transcrito e tocando em "Entender". O áudio não executa
+    nada por conta própria.
+
+    O arquivo não é gravado em lugar nenhum: vive na memória deste pedido e morre
+    com ele. Nem o áudio nem a transcrição entram em log.
+    """
+    condominio = _condominio_para_operar(request)
+    arquivo = request.FILES.get("audio")
+    resultado = audio.transcrever(
+        audio.PedidoDeAudio(
+            conteudo=_conteudo_do_audio(arquivo),
+            nome_do_arquivo=getattr(arquivo, "name", ""),
+            content_type=getattr(arquivo, "content_type", ""),
+            condominio=condominio,
+            usuario=request.user,
+        )
+    )
+    # Um recado que não pôde ser transcrito não é falha do sistema: é uma
+    # situação comum, com frase pronta para a tela. Por isso a resposta é
+    # sempre a mesma — ou vem o texto, ou vem o que dizer sobre ele.
+    if resultado.obtida:
+        return JsonResponse({"texto": resultado.texto})
+    return JsonResponse({"mensagem": resultado.erro})
+
+
+def _conteudo_do_audio(arquivo) -> bytes:
+    """Lê o áudio sem trazer mais para a memória do que o necessário.
+
+    A leitura para um byte além do teto: se o arquivo for maior que o aceito, o
+    núcleo recebe o suficiente para recusá-lo e o resto nunca é carregado. Quem
+    decide o limite continua sendo o núcleo de áudio — aqui só se evita segurar
+    um arquivo inteiro na memória antes de ouvir a resposta dele.
+    """
+    if arquivo is None:
+        return b""
+    teto = int(
+        getattr(settings, "EITHRA_AUDIO_MAX_BYTES", audio.LIMITE_DE_BYTES_PADRAO)
+    )
+    return arquivo.read(teto + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -618,6 +670,9 @@ def _render_painel(
         "campo_do_relato": campo_do_relato,
         "placeholder_do_relato": placeholder_do_relato,
         "respondendo": respondendo,
+        # Voz é atalho, não caminho: sem serviço de transcrição configurado o
+        # microfone nem aparece, e o relato por texto segue inteiro.
+        "voz_disponivel": audio.disponivel(),
     }
     if base["aba"] == "historico":
         contexto.update(_historico(request, atual))

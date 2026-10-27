@@ -112,7 +112,7 @@
             <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
           {% endif %}
           <input type="hidden" name="respondendo" value="{{ respondendo }}" data-eithra-respondendo>
-          <div class="eithra-busca">
+          <div class="eithra-busca{% if voz_disponivel %} eithra-portaria-relato-campo{% endif %}">
             <label class="visually-hidden" for="relato-portaria">O que aconteceu?</label>
             <i class="bx bx-message-square-detail eithra-busca-icone" aria-hidden="true"></i>
             <input
@@ -126,11 +126,28 @@
               data-eithra-campo
               data-eithra-relato-original="{{ relato }}"
               data-eithra-placeholder="{{ placeholder_do_relato }}">
+            {% if voz_disponivel %}
+              <button
+                type="button"
+                class="eithra-portaria-ditar"
+                data-eithra-ditar
+                data-eithra-ditar-url="{% url 'portaria:transcrever' %}"
+                aria-label="Ditar o que aconteceu"
+                title="Ditar o que aconteceu"
+                aria-pressed="false"
+                hidden>
+                <i class="bx bx-microphone" aria-hidden="true"></i>
+              </button>
+            {% endif %}
           </div>
           <button type="submit" class="btn btn-primary">
             <i class="bx bx-bolt-circle" aria-hidden="true"></i>Entender
           </button>
         </form>
+
+        {% if voz_disponivel %}
+          <p class="eithra-portaria-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+        {% endif %}
 
         {% if proposta %}
           <section class="eithra-portaria-leitura" aria-live="polite">
@@ -1076,6 +1093,203 @@
         campoDoRelato.placeholder = campoDoRelato.dataset.eithraPlaceholder || "";
         campoDoRelato.focus();
         campoDoRelato.select();
+      });
+    }
+
+    // Ditar o que aconteceu: a voz só produz texto. Terminada a transcrição, o
+    // relato cai no mesmo campo e o caminho daqui para a frente é o de sempre —
+    // a pessoa revisa e toca em "Entender". O áudio não interpreta nem registra
+    // nada: ele vira texto e é descartado.
+    var botaoDitar = document.querySelector("[data-eithra-ditar]");
+    var recadoDitar = document.querySelector("[data-eithra-ditar-recado]");
+    if (botaoDitar && relatoForm && recadoDitar) {
+      var campoDitar = relatoForm.querySelector("[data-eithra-campo]");
+      var tokenDitar = relatoForm.querySelector("input[name='csrfmiddlewaretoken']");
+      var condominioDitar = relatoForm.querySelector("input[name='condominio']");
+      var gravadorDitar = null;
+      var fluxoDitar = null;
+      var pedacosDitar = [];
+
+      function avisar(texto, tom) {
+        recadoDitar.textContent = texto || "";
+        recadoDitar.hidden = !texto;
+        recadoDitar.classList.toggle("text-danger", tom === "erro");
+        recadoDitar.classList.toggle("text-success", tom === "pronto");
+      }
+
+      function repousar() {
+        botaoDitar.disabled = false;
+        botaoDitar.classList.remove("eithra-portaria-ditar--ouvindo");
+        botaoDitar.setAttribute("aria-pressed", "false");
+        botaoDitar.setAttribute("aria-label", "Ditar o que aconteceu");
+        botaoDitar.setAttribute("title", "Ditar o que aconteceu");
+        botaoDitar.querySelector("i").className = "bx bx-microphone";
+      }
+
+      // O microfone é liberado assim que a gravação acaba — nada fica aberto
+      // enquanto a transcrição acontece.
+      function liberarMicrofone() {
+        if (!fluxoDitar) {
+          return;
+        }
+        fluxoDitar.getTracks().forEach(function (faixa) {
+          faixa.stop();
+        });
+        fluxoDitar = null;
+      }
+
+      // Só os formatos que o backend conhece, na ordem de preferência: o
+      // primeiro que este navegador souber gravar é o que vai.
+      function formatoEscolhido() {
+        var opcoes = [
+          "audio/webm;codecs=opus",
+          "audio/webm",
+          "audio/ogg;codecs=opus",
+          "audio/ogg",
+          "audio/mp4"
+        ];
+        if (typeof window.MediaRecorder.isTypeSupported !== "function") {
+          return "";
+        }
+        for (var i = 0; i < opcoes.length; i++) {
+          if (window.MediaRecorder.isTypeSupported(opcoes[i])) {
+            return opcoes[i];
+          }
+        }
+        return "";
+      }
+
+      function extensaoDo(tipo) {
+        if (tipo.indexOf("ogg") !== -1) {
+          return "ogg";
+        }
+        if (tipo.indexOf("mp4") !== -1) {
+          return "m4a";
+        }
+        return "webm";
+      }
+
+      function transcrever(blob) {
+        var dados = new FormData();
+        dados.append("audio", blob, "relato." + extensaoDo(blob.type || ""));
+        if (condominioDitar) {
+          dados.append("condominio", condominioDitar.value);
+        }
+        botaoDitar.disabled = true;
+        botaoDitar.classList.remove("eithra-portaria-ditar--ouvindo");
+        botaoDitar.querySelector("i").className = "bx bx-loader-alt bx-spin";
+        avisar("Transcrevendo…", "");
+        fetch(botaoDitar.dataset.eithraDitarUrl, {
+          method: "POST",
+          body: dados,
+          headers: tokenDitar ? { "X-CSRFToken": tokenDitar.value } : {}
+        })
+          .then(function (resposta) {
+            return resposta.json();
+          })
+          .then(function (leitura) {
+            repousar();
+            if (leitura && leitura.texto) {
+              campoDitar.value = leitura.texto;
+              campoDitar.focus();
+              avisar("Transcrição pronta. Revise e toque em Entender.", "pronto");
+              return;
+            }
+            avisar(
+              (leitura && leitura.mensagem) ||
+                "Não foi possível entender o áudio agora. Tente de novo ou escreva.",
+              "erro"
+            );
+          })
+          .catch(function () {
+            repousar();
+            avisar("Não foi possível entender o áudio agora. Tente de novo ou escreva.", "erro");
+          });
+      }
+
+      function comecar(formato) {
+        botaoDitar.disabled = false;
+        try {
+          gravadorDitar = new window.MediaRecorder(
+            fluxoDitar,
+            formato ? { mimeType: formato } : undefined
+          );
+        } catch (erro) {
+          liberarMicrofone();
+          repousar();
+          avisar("Não foi possível gravar neste navegador. Escreva o que aconteceu.", "erro");
+          return;
+        }
+        pedacosDitar = [];
+        gravadorDitar.addEventListener("dataavailable", function (evento) {
+          if (evento.data && evento.data.size) {
+            pedacosDitar.push(evento.data);
+          }
+        });
+        gravadorDitar.addEventListener("stop", function () {
+          var tipo = gravadorDitar ? gravadorDitar.mimeType || formato : formato;
+          gravadorDitar = null;
+          liberarMicrofone();
+          transcrever(new Blob(pedacosDitar, tipo ? { type: tipo } : undefined));
+        });
+        gravadorDitar.start();
+        botaoDitar.classList.add("eithra-portaria-ditar--ouvindo");
+        botaoDitar.setAttribute("aria-pressed", "true");
+        botaoDitar.setAttribute("aria-label", "Parar a gravação");
+        botaoDitar.setAttribute("title", "Parar a gravação");
+        botaoDitar.querySelector("i").className = "bx bx-stop-circle";
+        avisar("Ouvindo… fale o que aconteceu e toque para parar.", "");
+      }
+
+      function pararGravacao() {
+        if (gravadorDitar && gravadorDitar.state === "recording") {
+          gravadorDitar.stop();
+          return;
+        }
+        liberarMicrofone();
+        repousar();
+      }
+
+      if (
+        typeof window.MediaRecorder !== "undefined" &&
+        window.navigator.mediaDevices &&
+        typeof window.navigator.mediaDevices.getUserMedia === "function"
+      ) {
+        // Só agora o microfone se oferece: se o navegador não grava, ele
+        // continua escondido e o relato por texto não muda em nada.
+        botaoDitar.hidden = false;
+      }
+
+      botaoDitar.addEventListener("click", function () {
+        if (gravadorDitar && gravadorDitar.state === "recording") {
+          pararGravacao();
+          return;
+        }
+        // A permissão só é pedida aqui, depois do clique — nunca ao abrir a tela.
+        botaoDitar.disabled = true;
+        window.navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then(function (fluxo) {
+            fluxoDitar = fluxo;
+            var formato = formatoEscolhido();
+            if (!formato) {
+              liberarMicrofone();
+              repousar();
+              avisar("Este navegador não grava num formato que o Eithra entende. Escreva o que aconteceu.", "erro");
+              return;
+            }
+            comecar(formato);
+          })
+          .catch(function (erro) {
+            liberarMicrofone();
+            repousar();
+            avisar(
+              erro && erro.name === "NotAllowedError"
+                ? "O microfone não foi liberado. Você pode escrever o que aconteceu."
+                : "Não foi possível usar o microfone. Você pode escrever o que aconteceu.",
+              "erro"
+            );
+          });
       });
     }
   </script>
