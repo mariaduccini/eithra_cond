@@ -198,6 +198,10 @@ class ItemImportacaoHistoricaQuerySet(models.QuerySet):
         `message_id` junto do anexo, o `file_id` do arquivo, ou a chave da linha
         dentro dele. Este modelo não deduz essa chave — deduzir errado
         produziria duplicata em silêncio.
+
+        A autoria é do nascimento do registro, não da última leitura: registrar
+        de novo a mesma fonte não reescreve quem a registrou da primeira vez.
+        Reingestão atualiza o que a fonte diz — metadados — e não quem a trouxe.
         """
         identificador_externo = _texto_curto(identificador_externo)
         if not identificador_externo:
@@ -217,6 +221,9 @@ class ItemImportacaoHistoricaQuerySet(models.QuerySet):
         criado = item is None
         if item is None:
             item = self.model(**chave)
+            # Só aqui a autoria é gravada: reingestão não a sobrescreve nem a
+            # apaga, mesmo quando a chamada vem sem autoria (como a do Gmail).
+            item.criado_por = criado_por
         item.lote = lote
         item.message_id = message_id
         item.thread_id = thread_id
@@ -226,7 +233,6 @@ class ItemImportacaoHistoricaQuerySet(models.QuerySet):
         item.remetente = remetente
         item.assunto = assunto
         item.momento_da_mensagem = momento_da_mensagem
-        item.criado_por = criado_por
         item.full_clean()
         item.save()
         return item, criado

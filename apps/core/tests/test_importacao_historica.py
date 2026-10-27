@@ -244,6 +244,53 @@ class ItemImportacaoHistoricaTests(TestCase):
         self.assertEqual(item_recarregado.remetente, "novo@atlas.com.br")
         self.assertEqual(item_recarregado.processado_em, processado_em)
 
+    def test_item_novo_guarda_a_autoria_de_quem_registrou(self):
+        item, criado = self._mensagem(identificador="msg-autoria-001")
+
+        self.assertTrue(criado)
+        self.assertEqual(item.criado_por, self.gestao)
+
+    def test_item_novo_sem_autoria_permanece_sem_autoria(self):
+        item, criado = ItemImportacaoHistorica.objects.registrar_item(
+            lote=self.lote_gmail,
+            identificador_externo="msg-autoria-002",
+            message_id="msg-autoria-002",
+        )
+
+        self.assertTrue(criado)
+        self.assertIsNone(item.criado_por)
+
+    def test_reingestao_sem_autoria_nao_apaga_autoria_existente(self):
+        """Recarregar a fonte não pode apagar quem a registrou da primeira vez."""
+        item, _ = self._mensagem(identificador="msg-autoria-003")
+
+        recarregado, criado = ItemImportacaoHistorica.objects.registrar_item(
+            lote=self.lote_gmail_reprocessado,
+            identificador_externo="msg-autoria-003",
+            message_id="msg-autoria-003",
+            assunto="Assunto atualizado",
+        )
+
+        self.assertFalse(criado)
+        self.assertEqual(recarregado.pk, item.pk)
+        self.assertEqual(recarregado.criado_por, self.gestao)
+        self.assertEqual(recarregado.assunto, "Assunto atualizado")
+
+    def test_reingestao_com_outra_autoria_preserva_a_original(self):
+        """A autoria é do nascimento do registro, não da última leitura."""
+        outra_gestao = criar_pessoa("outra.gestao@exemplo.test", "Outra gestão")
+        item, _ = self._mensagem(identificador="msg-autoria-004")
+
+        recarregado, _ = ItemImportacaoHistorica.objects.registrar_item(
+            lote=self.lote_gmail_reprocessado,
+            identificador_externo="msg-autoria-004",
+            message_id="msg-autoria-004",
+            criado_por=outra_gestao,
+        )
+
+        self.assertEqual(recarregado.criado_por, self.gestao)
+        self.assertNotEqual(recarregado.criado_por, outra_gestao)
+
     def test_reprocessamento_explicito_nao_cria_novo_item_nem_apaga_vinculos(self):
         item, _ = self._mensagem(identificador="msg-reprocessar-001")
         VinculoImportacaoHistorica.objects.registrar_vinculo(
