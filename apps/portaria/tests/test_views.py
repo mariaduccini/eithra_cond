@@ -133,6 +133,55 @@ class PortariaViewsTests(TestCase):
         self.assertNotContains(resposta, "12345678901")
 
 
+class PortariaBuscaDaTelaTests(TestCase):
+    """O contrato da tela de busca: o que a view já sabe precisa chegar até ela.
+
+    A view filtra corretamente quando recebe `q` — o que faltava era a tela
+    entregar o que foi digitado. Estes testes prendem o formulário marcado, o
+    campo que carrega o termo por `q` e o condomínio que viaja junto: sem isso
+    a lista volta a exibir tudo, mesmo com o backend certo.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+
+    def _formulario(self, classe, **params):
+        conteudo = self.client.get(reverse("portaria:painel"), params).content.decode()
+        inicio = conteudo.find('class="%s"' % classe)
+        self.assertNotEqual(inicio, -1, "formulário %s não está na tela" % classe)
+        return conteudo[inicio : conteudo.find("</form>", inicio)]
+
+    def test_a_busca_principal_usa_o_mesmo_mecanismo_das_listagens(self):
+        """A marca que o Eithra liga sozinho — a mesma das outras listagens."""
+        formulario = self._formulario("eithra-portaria-barra")
+        self.assertIn("data-eithra-busca", formulario)
+
+    def test_o_campo_principal_continua_sendo_a_busca_por_q(self):
+        formulario = self._formulario("eithra-portaria-barra")
+        self.assertIn('type="search"', formulario)
+        self.assertIn('name="q"', formulario)
+
+    def test_o_historico_liga_os_filtros_reativos(self):
+        formulario = self._formulario("eithra-portaria-filtros", aba="historico")
+        self.assertIn("data-eithra-filtros", formulario)
+
+    def test_o_condominio_em_vista_viaja_com_a_busca(self):
+        """Buscar dentro de um condomínio não pode trocar de condomínio."""
+        formulario = self._formulario("eithra-portaria-barra")
+        self.assertIn('name="condominio" value="%s"' % self.condominio.pk, formulario)
+
+    def test_busca_por_empresa_mostra_o_fornecedor(self):
+        """Empresa é um dos cinco caminhos da busca — e o único sem cobertura."""
+        cadastros_apoio.criar_fornecedor(
+            self.condominio, nome_razao_social="Atlas Elevadores Ltda."
+        )
+        resposta = self.client.get(reverse("portaria:painel"), {"q": "Atlas"})
+        self.assertContains(resposta, "Atlas Elevadores Ltda.")
+
+
 class PortariaEsperadosTests(TestCase):
     """Quem a portaria ainda aguarda, depois de uma visita já cumprida.
 

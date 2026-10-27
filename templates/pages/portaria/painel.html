@@ -29,7 +29,7 @@
           </a>
         </div>
 
-        <form method="get" class="eithra-portaria-filtros" role="search">
+        <form method="get" class="eithra-portaria-filtros" role="search" data-eithra-filtros>
           <input type="hidden" name="aba" value="historico">
           {% if condominio_atual %}
             <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
@@ -80,7 +80,7 @@
       </div>
     {% else %}
       <div class="eithra-portaria-superficie">
-        <form method="get" class="eithra-portaria-barra" role="search">
+        <form method="get" class="eithra-portaria-barra" role="search" data-eithra-busca>
           {% if condominio_atual %}
             <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
           {% endif %}
