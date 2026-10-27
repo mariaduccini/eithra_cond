@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from apps.cadastros.models import Fornecedor
+from apps.cadastros.models import Fornecedor, LocalOperacional
 from apps.comunidade.models import (
     Pessoa,
     Unidade,
@@ -23,9 +23,12 @@ from apps.comunidade.models import (
 from apps.condominios import logo
 from apps.core.paginacao import paginar
 
+from . import interpretacao
 from .constants import (
     HORA_DE_ABERTURA,
     HORA_DE_FECHAMENTO,
+    ContextoAcessoPortaria,
+    IntencaoPortaria,
     StatusAutorizacaoPortaria,
     TipoAcessoPortaria,
 )
@@ -205,6 +208,342 @@ def saiu(request, pk):
     return redirect(_destino("portaria:painel", condominio))
 
 
+@login_required
+@require_POST
+def interpretar_relato(request):
+    """Lê o que a portaria escreveu e devolve a proposta — sem registrar nada.
+
+    O relato é a única informação que vem do formulário. O condomínio continua
+    sendo resolvido aqui, pela mesma permissão da Portaria inteira: quem não
+    opera este condomínio não chega nem a esta leitura.
+    """
+    condominio = _condominio_para_operar(request)
+    relato = _relato_do_pedido(request)
+    return _render_painel(
+        request,
+        relato=relato,
+        proposta=_proposta_do_relato(relato, condominio),
+    )
+
+
+@login_required
+@require_POST
+def confirmar_relato(request):
+    """Executa a proposta que a portaria confirmou.
+
+    Nada do que a tela mostrou é levado a crédito: o relato é reinterpretado
+    aqui e a ação só acontece se continuar sendo a mesma leitura de agora. Só
+    depois disso os services da Portaria são chamados.
+    """
+    condominio = _condominio_para_operar(request)
+    relato = _relato_do_pedido(request)
+    escolha = (request.POST.get("acao") or "").strip()
+    intencao = interpretacao.interpretar(relato, condominio=condominio)
+
+    if escolha not in ROTULOS_DE_ACAO or _escolha_executavel(intencao) != escolha:
+        messages.error(
+            request, "O relato mudou desde a leitura. Diga de novo o que aconteceu."
+        )
+        return _render_painel(
+            request, relato=relato, proposta=_proposta(intencao, relato)
+        )
+
+    try:
+        recado = _executar_a_intencao(intencao, escolha, condominio, request.user)
+    except ErroDePortaria as erro:
+        messages.error(request, str(erro))
+        return _render_painel(
+            request, relato=relato, proposta=_proposta(intencao, relato)
+        )
+
+    messages.success(request, recado)
+    return redirect(_destino("portaria:painel", condominio))
+
+
+# ---------------------------------------------------------------------------
+# Relato conversacional
+# ---------------------------------------------------------------------------
+
+# O relato é texto livre; o espaço vazio dele convida a dizer o que aconteceu.
+PLACEHOLDER_DO_RELATO = "O que aconteceu? Ex.: Chegou Carlos, visita do 902."
+
+# O que a proposta pode executar nesta rodada. Cada chave é a ação conceitual
+# que o núcleo de interpretação já devolve; nenhuma delas é inventada aqui.
+CHAVES_DE_ACAO = {
+    "chegada": interpretacao.ACAO_DE_CHEGADA,
+    "saida": interpretacao.ACAO_DE_SAIDA,
+}
+
+ROTULOS_DE_ACAO = {
+    "chegada": "Registrar entrada",
+    "saida": "Registrar saída",
+}
+
+
+def _relato_do_pedido(request) -> str:
+    """O relato desta rodada, já com a resposta curta da pergunta anterior.
+
+    Quem responde "902" a "Para qual unidade?" não reescreve o relato: a
+    resposta é acrescentada à frente do texto original, porque é a mesma frase
+    dita em dois tempos. Nada é guardado entre um envio e outro.
+    """
+    relato = (request.POST.get("relato") or "").strip()
+    respondendo = (request.POST.get("respondendo") or "").strip()
+    if not respondendo:
+        return relato
+    if not relato:
+        return respondendo
+    return f"{relato} {respondendo}"
+
+
+def _proposta_do_relato(relato, condominio):
+    return _proposta(interpretacao.interpretar(relato, condominio=condominio), relato)
+
+
+def _proposta(intencao, relato) -> dict:
+    """O que a portaria escreveu, dito de volta de forma humana.
+
+    A tela mostra a leitura e, quando ela já sustenta um registro, a única ação
+    que a resolve. Não há estado, confiança nem identificador aqui: quem lê é
+    quem está na portaria, e o que ele precisa saber é o que o Eithra entendeu.
+    """
+    pergunta = intencao.perguntas[0] if intencao.perguntas else ""
+    escolha = _escolha_executavel(intencao)
+    proposta = {
+        "entendeu": intencao.tipo != IntencaoPortaria.INSUFICIENTE,
+        "titulo": _titulo_da_leitura(intencao),
+        "contexto": _contexto_da_leitura(intencao),
+        "detalhe": _detalhe_da_leitura(intencao),
+        "pergunta": pergunta,
+        "nota": _nota_da_leitura(intencao),
+        "aviso": _aviso_da_leitura(intencao, escolha),
+        "acao": None,
+        "campo": relato,
+        "placeholder": PLACEHOLDER_DO_RELATO,
+        "respondendo": "",
+    }
+    if escolha is not None:
+        proposta["acao"] = {"chave": escolha, "rotulo": ROTULOS_DE_ACAO[escolha]}
+    elif pergunta:
+        # Enquanto falta informação, o campo se esvazia e passa a perguntar: a
+        # resposta volta completando o relato original, sem histórico.
+        proposta["campo"] = ""
+        proposta["placeholder"] = pergunta
+        proposta["respondendo"] = relato
+    return proposta
+
+
+def _escolha_executavel(intencao):
+    """Qual ação desta leitura já pode ser registrada — e nenhuma no escuro.
+
+    Chegada e saída são as únicas consequências desta rodada. Uma chegada só é
+    executável quando a portaria consegue nomear quem chegou e dizer para onde
+    ele vai; sem um dos dois, o registro seria um chute.
+    """
+    if interpretacao.ACAO_DE_SAIDA in intencao.acoes:
+        acesso = intencao.entidade("acesso")
+        if acesso is not None and acesso.confirmada and acesso.objeto is not None:
+            return "saida"
+        return None
+
+    if interpretacao.ACAO_DE_CHEGADA not in intencao.acoes:
+        return None
+
+    esperado = intencao.entidade("esperado")
+    if esperado is not None and esperado.existe and not esperado.confirmada:
+        # Duas visitas esperadas respondem à mesma fala: quem escolhe é a
+        # portaria, pela lista de esperados.
+        return None
+    if esperado is not None and esperado.confirmada and esperado.objeto is not None:
+        return "chegada"
+
+    pessoa = intencao.entidade("pessoa")
+    empresa = intencao.entidade("empresa")
+    if not ((pessoa is not None and pessoa.existe) or (empresa is not None and empresa.existe)):
+        return None
+
+    unidade = intencao.entidade("unidade")
+    if unidade is not None and unidade.confirmada and unidade.objeto is not None:
+        return "chegada"
+    if _local_da_chegada(intencao) is not None:
+        return "chegada"
+    return None
+
+
+def _titulo_da_leitura(intencao) -> str:
+    pessoa = intencao.entidade("pessoa")
+    empresa = intencao.entidade("empresa")
+    acesso = intencao.entidade("acesso")
+    if pessoa is not None and pessoa.existe:
+        return pessoa.texto
+    if empresa is not None and empresa.existe:
+        return empresa.texto
+    if acesso is not None and acesso.existe:
+        return acesso.rotulo
+    if intencao.tipo == IntencaoPortaria.RELATO_DE_PROBLEMA:
+        return "Problema relatado"
+    if intencao.tipo == IntencaoPortaria.AUTORIZACAO:
+        return "Autorização"
+    return "Não entendi"
+
+
+def _contexto_da_leitura(intencao) -> str:
+    pedacos: list[str] = []
+    tipo = intencao.entidade("tipo_acesso")
+    if tipo is not None and tipo.existe:
+        pedacos.append(tipo.texto)
+    destino = _destino_da_leitura(intencao)
+    if destino:
+        pedacos.append(destino)
+    servico = intencao.entidade("servico")
+    if servico is not None and servico.existe:
+        pedacos.append(f"serviço {servico.texto}")
+    return " · ".join(pedacos)
+
+
+def _destino_da_leitura(intencao) -> str:
+    unidade = intencao.entidade("unidade")
+    if unidade is not None and unidade.existe:
+        rotulo = getattr(unidade.objeto, "rotulo", "") if unidade.objeto else ""
+        return rotulo or f"Unidade {unidade.texto}"
+    esperado = intencao.entidade("esperado")
+    if esperado is not None and esperado.confirmada and esperado.objeto is not None:
+        return esperado.objeto.destino_para_exibir
+    contexto = intencao.entidade("contexto")
+    if contexto is not None and contexto.valor in (
+        ContextoAcessoPortaria.PRESTADOR_DO_CONDOMINIO.value,
+        ContextoAcessoPortaria.FORNECEDOR_DO_CONDOMINIO.value,
+    ):
+        return "Condomínio"
+    return ""
+
+
+def _detalhe_da_leitura(intencao) -> str:
+    pedacos: list[str] = []
+    esperado = intencao.entidade("esperado")
+    if esperado is not None and esperado.confirmada and esperado.objeto is not None:
+        pedacos.append("Já esperado na portaria")
+
+    autorizador = intencao.entidade("autorizador")
+    meio = intencao.entidade("meio")
+    if autorizador is not None and autorizador.existe:
+        frase = f"Autorizado por {autorizador.texto}"
+        if meio is not None and meio.existe:
+            frase += f" · {meio.texto}"
+        pedacos.append(frase)
+
+    status = intencao.entidade("status")
+    if status is not None and status.existe:
+        pedacos.append(status.texto)
+    return " · ".join(pedacos)
+
+
+def _nota_da_leitura(intencao) -> str:
+    """O que a fala trouxe além da operação desta rodada."""
+    if interpretacao.ACAO_DE_OCORRENCIA not in intencao.acoes:
+        return ""
+    if intencao.tipo == IntencaoPortaria.RELATO_DE_PROBLEMA:
+        return "Registrar ocorrência ainda não está disponível por aqui."
+    return (
+        "Há também um problema relatado nesta fala. "
+        "Registrar ocorrência ainda não está disponível por aqui."
+    )
+
+
+def _aviso_da_leitura(intencao, escolha) -> str:
+    if escolha is not None or intencao.perguntas:
+        return ""
+    if intencao.tipo == IntencaoPortaria.AUTORIZACAO:
+        return "Registrar autorização ainda não está disponível por aqui."
+    if intencao.tipo == IntencaoPortaria.RELATO_DE_PROBLEMA:
+        return ""
+    esperado = intencao.entidade("esperado")
+    if esperado is not None and esperado.existe and not esperado.confirmada:
+        return "Mais de uma visita esperada corresponde a esta fala."
+    if intencao.tipo == IntencaoPortaria.CHEGADA:
+        return "Para registrar, diga a unidade ou a área comum desta chegada."
+    return ""
+
+
+def _local_da_chegada(intencao):
+    """A área comum do condomínio que o serviço citado aponta, quando há uma."""
+    servico = intencao.entidade("servico")
+    if servico is None or not servico.existe:
+        return None
+    objeto = servico.objeto
+    if isinstance(objeto, LocalOperacional):
+        return objeto
+    local = getattr(objeto, "local", None)
+    if local is not None and getattr(local, "pk", None):
+        return local
+    return None
+
+
+def _executar_a_intencao(intencao, escolha, condominio, usuario) -> str:
+    if escolha == "saida":
+        return _recado_de_saida(
+            registrar_saida(acesso=intencao.entidade("acesso").objeto, usuario=usuario)
+        )
+    return _executar_chegada(intencao, condominio, usuario)
+
+
+def _executar_chegada(intencao, condominio, usuario) -> str:
+    esperado = intencao.entidade("esperado")
+    if esperado is not None and esperado.confirmada and esperado.objeto is not None:
+        # A visita já estava autorizada: a chegada cumpre o que a portaria
+        # esperava, pela mesma operação que a lista de esperados usa.
+        return _recado_de_entrada(
+            registrar_chegada(autorizacao=esperado.objeto, usuario=usuario)
+        )
+    autorizacao, acesso = registrar_chegada_com_resultado(
+        condominio=condominio,
+        usuario=usuario,
+        dados=_dados_da_chegada(intencao),
+    )
+    return _recado_do_resultado(autorizacao, acesso)
+
+
+def _dados_da_chegada(intencao) -> dict:
+    """O que a leitura já sustenta, no formato que a Portaria sempre aceitou."""
+    pessoa = intencao.entidade("pessoa")
+    empresa = intencao.entidade("empresa")
+    unidade = intencao.entidade("unidade")
+    tipo = intencao.entidade("tipo_acesso")
+    autorizador = intencao.entidade("autorizador")
+    meio = intencao.entidade("meio")
+    status = intencao.entidade("status")
+
+    nome = ""
+    if pessoa is not None and pessoa.existe:
+        nome = pessoa.texto
+    elif empresa is not None and empresa.existe:
+        nome = empresa.texto
+
+    dados = {
+        "nome": nome,
+        "tipo_acesso": (
+            tipo.valor
+            if tipo is not None and tipo.existe
+            else TipoAcessoPortaria.VISITANTE.value
+        ),
+        "empresa": empresa.texto if empresa is not None and empresa.existe else "",
+        "meio_autorizacao": meio.valor if meio is not None and meio.existe else "",
+        "unidade": unidade.objeto if unidade is not None and unidade.confirmada else None,
+        "local": _local_da_chegada(intencao),
+        # Confirmar a entrada é o próprio ato de autorizar quem está na frente
+        # do porteiro; só um resultado já dito em contrário muda isso.
+        "status": StatusAutorizacaoPortaria.AUTORIZADO,
+    }
+    if autorizador is not None and autorizador.existe:
+        if autorizador.confirmada and autorizador.objeto is not None:
+            dados["autorizador_pessoa"] = autorizador.objeto
+        else:
+            dados["autorizador_nome"] = autorizador.texto
+    if status is not None and status.existe:
+        dados["status"] = status.valor
+    return dados
+
+
 ABAS_DA_PORTARIA = ("painel", "historico")
 
 # Quantos dias ainda contam como "próximas" antes de a autorização sair da fila
@@ -234,6 +573,8 @@ def _render_painel(
     formulario_verificacao=None,
     item_verificacao=None,
     modal=None,
+    relato="",
+    proposta=None,
     status=200,
 ):
     """Monta a Portaria operacional, com histórico separado."""
@@ -243,6 +584,15 @@ def _render_painel(
         item_verificacao = _autorizacao_em_verificacao(request, atual)
         if item_verificacao is not None:
             modal = "verificar"
+    # Enquanto a leitura espera uma resposta, o campo volta vazio e pergunta:
+    # é a própria pergunta que ocupa o lugar do relato, sem histórico.
+    campo_do_relato = relato
+    placeholder_do_relato = PLACEHOLDER_DO_RELATO
+    respondendo = ""
+    if proposta is not None:
+        campo_do_relato = proposta["campo"]
+        placeholder_do_relato = proposta["placeholder"]
+        respondendo = proposta["respondendo"]
     contexto = {
         **base,
         "formulario_esperado": formulario_esperado
@@ -263,6 +613,11 @@ def _render_painel(
         "autorizador_unidade": _unidade_escolhida(formulario_chegada, atual),
         "empresas_conhecidas": empresas_conhecidas(atual),
         "modal_aberto": modal,
+        "relato": relato,
+        "proposta": proposta,
+        "campo_do_relato": campo_do_relato,
+        "placeholder_do_relato": placeholder_do_relato,
+        "respondendo": respondendo,
     }
     if base["aba"] == "historico":
         contexto.update(_historico(request, atual))

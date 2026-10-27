@@ -6,6 +6,8 @@ app_name = "portaria"
 
 urlpatterns = [
     path("", views.painel, name="painel"),
+    path("interpretar/", views.interpretar_relato, name="interpretar"),
+    path("confirmar/", views.confirmar_relato, name="confirmar"),
     path("autorizadores/", views.buscar_autorizador, name="buscar_autorizador"),
     path("esperados/registrar/", views.criar_esperado, name="criar_esperado"),
     path(

@@ -106,6 +106,76 @@
           </div>
         </form>
 
+        <form method="post" action="{% url 'portaria:interpretar' %}" class="eithra-portaria-entrada" data-eithra-relato-form>
+          {% csrf_token %}
+          {% if condominio_atual %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          {% endif %}
+          <input type="hidden" name="respondendo" value="{{ respondendo }}" data-eithra-respondendo>
+          <div class="eithra-busca">
+            <label class="visually-hidden" for="relato-portaria">O que aconteceu?</label>
+            <i class="bx bx-message-square-detail eithra-busca-icone" aria-hidden="true"></i>
+            <input
+              type="text"
+              class="form-control"
+              id="relato-portaria"
+              name="relato"
+              value="{{ campo_do_relato }}"
+              placeholder="{{ placeholder_do_relato }}"
+              autocomplete="off"
+              data-eithra-campo
+              data-eithra-relato-original="{{ relato }}"
+              data-eithra-placeholder="{{ placeholder_do_relato }}">
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bx bx-bolt-circle" aria-hidden="true"></i>Entender
+          </button>
+        </form>
+
+        {% if proposta %}
+          <section class="eithra-portaria-leitura" aria-live="polite">
+            <span class="eithra-portaria-leitura-icone">
+              <i class="bx bx-brain" aria-hidden="true"></i>
+            </span>
+            <div class="eithra-portaria-leitura-corpo">
+              <div class="eithra-portaria-leitura-titulo">{{ proposta.titulo }}</div>
+              {% if proposta.contexto %}
+                <div class="eithra-portaria-leitura-contexto">{{ proposta.contexto }}</div>
+              {% endif %}
+              {% if proposta.detalhe %}
+                <div class="eithra-portaria-leitura-detalhe">{{ proposta.detalhe }}</div>
+              {% endif %}
+              {% if proposta.pergunta %}
+                <p class="eithra-portaria-leitura-pergunta">{{ proposta.pergunta }}</p>
+              {% endif %}
+              {% if proposta.aviso %}
+                <p class="eithra-portaria-leitura-aviso">{{ proposta.aviso }}</p>
+              {% endif %}
+              {% if proposta.nota %}
+                <p class="eithra-portaria-leitura-nota">{{ proposta.nota }}</p>
+              {% endif %}
+              <div class="eithra-portaria-leitura-acoes">
+                {% if proposta.acao %}
+                  <form method="post" action="{% url 'portaria:confirmar' %}">
+                    {% csrf_token %}
+                    {% if condominio_atual %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    {% endif %}
+                    <input type="hidden" name="relato" value="{{ relato }}">
+                    <input type="hidden" name="acao" value="{{ proposta.acao.chave }}">
+                    <button type="submit" class="btn btn-primary">
+                      <i class="bx bx-check-circle" aria-hidden="true"></i>{{ proposta.acao.rotulo }}
+                    </button>
+                  </form>
+                {% endif %}
+                <button type="button" class="btn btn-label-secondary" data-eithra-corrigir>
+                  <i class="bx bx-pencil" aria-hidden="true"></i>Corrigir
+                </button>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
         <div class="eithra-portaria-indicadores">
           {% for indicador in indicadores %}
             <div class="eithra-portaria-indicador">
@@ -987,5 +1057,26 @@
         });
       });
     });
+
+    // Corrigir devolve ao campo o relato que originou a leitura, para ser
+    // reescrito — e desfaz a resposta que estava sendo pedida.
+    var relatoForm = document.querySelector("[data-eithra-relato-form]");
+    var corrigir = document.querySelector("[data-eithra-corrigir]");
+    if (relatoForm && corrigir) {
+      var campoDoRelato = relatoForm.querySelector("[data-eithra-campo]");
+      var respondendo = relatoForm.querySelector("[data-eithra-respondendo]");
+      corrigir.addEventListener("click", function () {
+        if (!campoDoRelato) {
+          return;
+        }
+        campoDoRelato.value = campoDoRelato.dataset.eithraRelatoOriginal || "";
+        if (respondendo) {
+          respondendo.value = "";
+        }
+        campoDoRelato.placeholder = campoDoRelato.dataset.eithraPlaceholder || "";
+        campoDoRelato.focus();
+        campoDoRelato.select();
+      });
+    }
   </script>
 {% endblock %}

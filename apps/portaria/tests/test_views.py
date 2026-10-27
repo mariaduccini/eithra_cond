@@ -1,9 +1,13 @@
+import re
+
 from django.test import TestCase
 from django.urls import reverse
 
+from apps.cadastros.tests import apoio as cadastros_apoio
 from apps.comunidade.models import Pessoa
 from apps.comunidade.tests import apoio as comunidade_apoio
 from apps.condominios.constants import Papel
+from apps.demandas.models import Demanda
 from apps.portaria.forms import AutorizacaoPortariaForm, ChegadaNaoPrevistaForm
 from apps.portaria.models import AcessoPortaria, AutorizacaoPortaria
 from apps.portaria.tests import apoio
@@ -638,3 +642,277 @@ class PortariaEmpresaTests(TestCase):
         self.assertEqual(resposta.status_code, 302)
         autorizacao = AutorizacaoPortaria.objects.get(nome="Técnica Nova")
         self.assertEqual(autorizacao.empresa, "Vidraçaria Nova")
+
+
+class PortariaRelatoTests(TestCase):
+    """A primeira conversa por texto: entender, perguntar o mínimo, confirmar.
+
+    Dois envios, nenhum estado entre eles. O primeiro só lê o relato; o segundo
+    reinterpreta o mesmo texto e, se a leitura ainda sustentar a ação, chama as
+    operações que a Portaria já tinha.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+        self.unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="301"
+        )
+
+    # --- utilidades -------------------------------------------------------
+
+    def _entender(self, relato, **extra):
+        dados = {"condominio": str(self.condominio.pk), "relato": relato}
+        dados.update(extra)
+        return self.client.post(reverse("portaria:interpretar"), dados)
+
+    def _confirmar(self, relato, acao, **extra):
+        dados = {
+            "condominio": str(self.condominio.pk),
+            "relato": relato,
+            "acao": acao,
+        }
+        dados.update(extra)
+        return self.client.post(reverse("portaria:confirmar"), dados)
+
+    def _valor_do_campo(self, resposta):
+        achado = re.search(
+            r'id="relato-portaria".*?value="([^"]*)"',
+            resposta.content.decode(),
+            re.S,
+        )
+        return achado.group(1) if achado else None
+
+    # --- leitura sem consequência ----------------------------------------
+
+    def test_entender_nao_grava_nada(self):
+        resposta = self._entender("Chegou Carlos, visita do 301")
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+        self.assertEqual(AcessoPortaria.objects.count(), 0)
+
+    def test_quem_nao_opera_nao_interpreta(self):
+        morador = apoio.criar_pessoa("morador@teste.com", "Morador")
+        apoio.criar_vinculo(morador, self.condominio, papel=Papel.MORADOR)
+        self.client.force_login(morador)
+
+        resposta = self._entender("Chegou Carlos, visita do 301")
+
+        self.assertEqual(resposta.status_code, 404)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+
+    # --- leituras que já sustentam uma ação ------------------------------
+
+    def test_chegada_clara_vira_proposta(self):
+        resposta = self._entender("Chegou Carlos, visita do 301")
+
+        self.assertContains(resposta, 'name="acao" value="chegada"')
+        self.assertContains(
+            resposta, 'eithra-portaria-leitura-titulo">Carlos</div>'
+        )
+        self.assertContains(resposta, "data-eithra-corrigir")
+
+    def test_saida_clara_vira_proposta(self):
+        apoio.criar_acesso(
+            self.condominio, self.usuario, nome="Joana Prado", unidade=self.unidade
+        )
+
+        resposta = self._entender("Joana saiu")
+
+        self.assertContains(resposta, 'name="acao" value="saida"')
+        self.assertContains(
+            resposta, 'eithra-portaria-leitura-titulo">Joana</div>'
+        )
+
+    # --- pergunta mínima -------------------------------------------------
+
+    def test_o_que_faltou_vira_pergunta(self):
+        resposta = self._entender("Chegou uma visita")
+
+        self.assertContains(
+            resposta, 'eithra-portaria-leitura-pergunta">Quem chegou?</p>'
+        )
+        self.assertEqual(self._valor_do_campo(resposta), "")
+        self.assertContains(resposta, 'data-eithra-placeholder="Quem chegou?"')
+        self.assertContains(
+            resposta, 'value="Chegou uma visita" data-eithra-respondendo'
+        )
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+
+    def test_a_resposta_curta_completa_o_relato(self):
+        primeira = self._entender("Chegou Carlos")
+        self.assertContains(
+            primeira, 'eithra-portaria-leitura-pergunta">Para qual unidade?</p>'
+        )
+
+        segunda = self._entender("301", respondendo="Chegou Carlos")
+
+        self.assertContains(segunda, 'name="acao" value="chegada"')
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+
+    # --- confirmação -----------------------------------------------------
+
+    def test_confirmar_chegada_registra_a_entrada(self):
+        resposta = self._confirmar("Chegou Carlos, visita do 301", "chegada")
+
+        self.assertEqual(resposta.status_code, 302)
+        acesso = AcessoPortaria.objects.get(nome="Carlos")
+        self.assertIsNotNone(acesso.entrada_em)
+        self.assertEqual(acesso.unidade_id, self.unidade.pk)
+
+    def test_confirmar_saida_fecha_a_presenca(self):
+        acesso = apoio.criar_acesso(
+            self.condominio, self.usuario, nome="Joana Prado", unidade=self.unidade
+        )
+
+        resposta = self._confirmar("Joana saiu", "saida")
+
+        self.assertEqual(resposta.status_code, 302)
+        acesso.refresh_from_db()
+        self.assertIsNotNone(acesso.saida_em)
+
+    # --- payload forjado -------------------------------------------------
+
+    def test_payload_forjado_nao_escolhe_a_acao(self):
+        """A portaria leu chegada; um POST dizendo saída não executa nada."""
+        resposta = self._confirmar("Chegou Carlos, visita do 301", "saida")
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "O relato mudou desde a leitura.")
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+        self.assertEqual(AcessoPortaria.objects.count(), 0)
+
+    def test_payload_forjado_nao_troca_de_condominio(self):
+        outro = apoio.criar_condominio("Outro Condomínio")
+
+        lido = self._entender(
+            "Chegou Carlos, visita do 301", condominio=str(outro.pk)
+        )
+        confirmado = self._confirmar(
+            "Chegou Carlos, visita do 301",
+            "chegada",
+            condominio=str(outro.pk),
+        )
+
+        self.assertEqual(lido.status_code, 404)
+        self.assertEqual(confirmado.status_code, 404)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+        self.assertEqual(AcessoPortaria.objects.count(), 0)
+
+    # --- quem não passa pela portaria ------------------------------------
+
+    def test_quem_nao_esta_logado_nao_interpreta(self):
+        """Sem sessão não há leitura: o primeiro portão é o login."""
+        self.client.logout()
+
+        resposta = self._entender("Chegou Carlos, visita do 301")
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+        self.assertEqual(AcessoPortaria.objects.count(), 0)
+
+    # --- quando a fala serve a mais de uma leitura ------------------------
+
+    def test_unidade_ambigua_pergunta_em_vez_de_escolher(self):
+        """Dois cadastros respondem ao mesmo número: quem escolhe é a portaria."""
+        comunidade_apoio.criar_unidade(self.condominio, identificador="A-101")
+        comunidade_apoio.criar_unidade(self.condominio, identificador="B-101")
+
+        resposta = self._entender("Chegou Carlos, visita do 101")
+
+        self.assertContains(resposta, "Qual unidade: A-101 ou B-101?")
+        self.assertNotContains(resposta, 'name="acao"')
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+
+    # --- destino do prestador --------------------------------------------
+
+    def test_prestador_do_condominio_nao_pede_unidade(self):
+        """Quem vem ao condomínio inteiro não tem unidade a informar."""
+        apoio.criar_local(self.condominio, nome="Elevador de serviço")
+
+        relato = "Chegou João da Atlas para ver o elevador."
+        resposta = self._entender(relato)
+
+        self.assertContains(resposta, 'name="acao" value="chegada"')
+        self.assertNotContains(resposta, "Para qual unidade?")
+
+        self._confirmar(relato, "chegada")
+
+        acesso = AcessoPortaria.objects.get(nome="João")
+        self.assertIsNone(acesso.unidade_id)
+        self.assertIsNotNone(acesso.local_id)
+
+    def test_prestador_de_unidade_mantem_a_unidade(self):
+        """O serviço é em uma unidade: ela continua sendo o destino."""
+        relato = "Chegou o técnico da Atlas para a unidade 301."
+        resposta = self._entender(relato)
+
+        self.assertContains(resposta, 'name="acao" value="chegada"')
+
+        self._confirmar(relato, "chegada")
+
+        acesso = AcessoPortaria.objects.get()
+        self.assertEqual(acesso.unidade_id, self.unidade.pk)
+        self.assertEqual(acesso.tipo_acesso, "prestador")
+
+    # --- corrigir ---------------------------------------------------------
+
+    def test_corrigir_guarda_o_relato_para_devolver_ao_campo(self):
+        """O relato original fica na tela mesmo quando o campo se esvazia.
+
+        É o que permite reescrever sem reiniciar: enquanto a leitura pede uma
+        resposta, o texto dito continua guardado para o "Corrigir" devolvê-lo.
+        """
+        resposta = self._entender("Chegou Carlos")
+
+        self.assertContains(
+            resposta, 'eithra-portaria-leitura-pergunta">Para qual unidade?</p>'
+        )
+        self.assertContains(resposta, 'data-eithra-relato-original="Chegou Carlos"')
+        self.assertContains(
+            resposta, 'value="Chegou Carlos" data-eithra-respondendo'
+        )
+        self.assertContains(resposta, "data-eithra-corrigir")
+        self.assertNotContains(resposta, 'name="acao"')
+
+    # --- o que ainda não tem fluxo por aqui -------------------------------
+
+    def test_problema_na_fala_nao_abre_ocorrencia(self):
+        """A ocorrência é anunciada, mas quem a registra é o fluxo convencional."""
+        cadastros_apoio.criar_fornecedor(
+            self.condominio,
+            nome_razao_social="Atlas Elevadores Ltda.",
+            nome_fantasia="Atlas",
+        )
+        local = apoio.criar_local(self.condominio, nome="Casa de máquinas")
+        cadastros_apoio.criar_equipamento(
+            self.condominio, nome="Elevador de serviço", local=local
+        )
+        relato = "Chegou o técnico da Atlas e o elevador está fazendo barulho."
+
+        resposta = self._entender(relato)
+
+        self.assertContains(
+            resposta, "Registrar ocorrência ainda não está disponível por aqui."
+        )
+        self.assertEqual(Demanda.objects.count(), 0)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+
+        self._confirmar(relato, "chegada")
+
+        self.assertEqual(Demanda.objects.count(), 0)
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 1)
+
+    def test_autorizacao_nao_abre_fluxo_novo(self):
+        """Uma autorização dita na portaria para no aviso, sem registro novo."""
+        resposta = self._entender("A Ana autorizou a entrada do Carlos no 301.")
+
+        self.assertContains(
+            resposta, "Registrar autorização ainda não está disponível por aqui."
+        )
+        self.assertNotContains(resposta, 'name="acao"')
+        self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
+        self.assertEqual(AcessoPortaria.objects.count(), 0)
