@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {% block title %}Demandas · Eithra{% endblock %}
 
@@ -283,8 +284,18 @@
                 {{ formulario_demanda.condominio.as_hidden }}
               {% endif %}
               <h6 class="mb-1">Descreva o que aconteceu</h6>
-              <p class="text-body-secondary small mb-3">Você pode escrever com suas próprias palavras.</p>
+              {% if voz_disponivel %}
+                <p class="text-body-secondary small mb-3">Escreva com suas próprias palavras — ou fale, se for mais rápido.</p>
+              {% else %}
+                <p class="text-body-secondary small mb-3">Você pode escrever com suas próprias palavras.</p>
+              {% endif %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.relato %}
+              {% comment %}O que a fala produziu fica logo abaixo do campo: a transcrição é
+              só o texto do relato, e é aqui que quem ditou confere antes de
+              seguir. Sem transcrição não há nada a mostrar.{% endcomment %}
+              {% if voz_disponivel %}
+                <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+              {% endif %}
               <div class="eithra-review-card eithra-tips-box mt-3">
                 <div class="fw-medium mb-2"><i class="bx bx-bulb me-1" aria-hidden="true"></i>Dicas para uma boa descrição</div>
                 <ul class="small text-body-secondary mb-0 ps-3">
@@ -297,6 +308,23 @@
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              {% if voz_disponivel %}
+                {% comment %}Falar é a outra forma de escrever o relato: a fala vira texto
+                neste mesmo campo e o caminho daqui para a frente não muda. O
+                botão começa escondido e só se oferece onde o navegador grava.{% endcomment %}
+                <button
+                  type="button"
+                  class="btn btn-label-secondary"
+                  data-eithra-ditar
+                  data-eithra-ditar-url="{% url 'demandas:transcrever' %}"
+                  data-eithra-ditar-campo="#{{ formulario_demanda.relato.id_for_label }}"
+                  aria-label="Falar o que aconteceu"
+                  title="Falar o que aconteceu"
+                  aria-pressed="false"
+                  hidden>
+                  <i class="bx bx-microphone me-1" aria-hidden="true"></i>Falar
+                </button>
+              {% endif %}
               <button type="submit" name="wizard" value="descricao" class="btn btn-primary">Continuar</button>
             </div>
           {% elif registro_etapa == "informacoes" %}
@@ -488,5 +516,15 @@
         </form>
       </div>
     </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  {% comment %}O controlador de voz só é carregado quando há para onde transcrever:
+  sem serviço configurado não existe botão, e não faz sentido baixar código
+  para um botão que não está na tela.{% endcomment %}
+  {% if voz_disponivel %}
+    <script src="{% static 'js/eithra-ditar.js' %}"></script>
   {% endif %}
 {% endblock %}

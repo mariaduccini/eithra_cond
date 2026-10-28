@@ -5,22 +5,26 @@ manutenção. Esta camada organiza isso na interface aprovada: tabela
 operacional, wizard curto de registro, detalhe com abas e atualização sem
 reinventar o backend.
 """
+import uuid
+
 from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
+from . import movimentacao
 from .constants import (
     ImpactoDemanda,
     OrigemDemanda,
@@ -91,6 +95,11 @@ ETAPAS_DA_ATUALIZACAO = (
     ("informacoes", "Informações", False),
     ("conclusao", "Conclusão", False),
 )
+
+# Onde a sessão guarda as confirmações que já produziram movimentação. Existe
+# para uma coisa só: o mesmo formulário não escrever duas vezes no histórico.
+CHAVE_DAS_CONFIRMACOES = "demandas_confirmacoes"
+LIMITE_DAS_CONFIRMACOES = 20
 
 
 @login_required
@@ -170,6 +179,82 @@ def criar(request):
 
 
 @login_required
+@require_POST
+def transcrever_audio(request):
+    """Transforma a fala em texto do relato — e para aí.
+
+    Esta é a única porta de áudio das Demandas, e ela termina no texto. Recebe
+    o recado falado, devolve a transcrição fiel e descarta o arquivo: não
+    interpreta, não sugere local nem prioridade, não cria nada. O texto cai no
+    mesmo campo que a pessoa digitaria, e daí em diante o caminho é
+    exatamente o do relato escrito — as etapas de informação, revisão e a
+    criação pelo mesmo serviço de sempre.
+
+    Falar é uma forma de escrever, não um caminho paralelo: é por isso que não
+    existe aqui nenhuma regra de demanda. O arquivo não é gravado em lugar
+    nenhum — vive na memória deste pedido e morre com ele. Nem o áudio nem a
+    transcrição entram em log.
+
+    O mesmo endereço serve às duas situações, porque as duas são a mesma coisa:
+    escrever um relato. No registro de uma demanda nova o texto vai para o campo
+    do relato; na atualização de uma demanda existente ele é a atualização dela,
+    e a demanda vem indicada no próprio pedido.
+    """
+    condominio = _condominio_para_ditar(request)
+    arquivo = request.FILES.get("audio")
+    resultado = audio.transcrever(
+        audio.PedidoDeAudio(
+            conteudo=audio.ler_conteudo(arquivo),
+            nome_do_arquivo=getattr(arquivo, "name", ""),
+            content_type=getattr(arquivo, "content_type", ""),
+            condominio=condominio,
+            usuario=request.user,
+        )
+    )
+    # Um recado que não pôde ser transcrito não é falha do sistema: é uma
+    # situação comum, com frase pronta para a tela. A resposta é sempre a
+    # mesma forma — ou vem o texto, ou vem o que dizer sobre ele.
+    if resultado.obtida:
+        return JsonResponse({"texto": resultado.texto})
+    return JsonResponse({"mensagem": resultado.erro})
+
+
+def _condominio_para_ditar(request):
+    """O condomínio em que esta pessoa pode escrever agora.
+
+    Ditar é escrever o relato, então quem dita é quem registra: a permissão é a
+    mesma de ``criar``, sem papel novo e sem regra nova. Condomínio fora da
+    lista autorizada não existe para esta pessoa, e a resposta é 404 — esconder
+    o botão na tela nunca substituiu esta checagem.
+
+    Quando o pedido aponta uma demanda, o relato ditado é a atualização dela, e
+    a permissão é a de quem acompanha aquela demanda. Aí o condomínio não é
+    escolhido pelo navegador: ele sai da demanda autorizada.
+    """
+    identificador_da_demanda = (
+        request.POST.get("demanda") or request.GET.get("demanda") or ""
+    ).strip()
+    if identificador_da_demanda:
+        return _demanda_para_observar(request, identificador_da_demanda).condominio
+
+    autorizados = condominios_para_criar(request.user)
+    if not autorizados.exists():
+        raise Http404("Nenhum condomínio disponível para registrar demanda.")
+
+    identificador = (request.POST.get("condominio") or "").strip()
+    if not identificador:
+        return autorizados.first()
+
+    try:
+        condominio = autorizados.filter(pk=identificador).first()
+    except (ValidationError, ValueError, TypeError):
+        condominio = None
+    if condominio is None:
+        raise Http404("Condomínio não autorizado.")
+    return condominio
+
+
+@login_required
 def detalhe(request, pk):
     """A demanda, o que ela é hoje e o que já aconteceu com ela."""
     demanda = _demanda_autorizada(request, pk)
@@ -227,7 +312,18 @@ def editar(request, pk):
 @login_required
 @require_POST
 def atualizar(request, pk):
-    """Atualiza o andamento operacional sem reabrir a edição estrutural."""
+    """Registra o que aconteceu com a demanda — por texto ou por fala.
+
+    O relato é a entrada; a movimentação é a saída. Quem registra conta o que
+    aconteceu, a leitura do próprio relato propõe a consequência que ele
+    sustenta, e a etapa de conclusão mostra isso antes de tocar em coisa
+    alguma. Nenhuma situação muda sem a confirmação de quem registrou: o
+    movimento passa pelo serviço oficial do domínio, que grava situação e
+    histórico na mesma transação.
+
+    O caminho é o mesmo para o relato digitado e para o relato ditado — a fala
+    vira texto antes de chegar aqui, e daí em diante não há duas rotas.
+    """
     demanda = _demanda_autorizada(request, pk)
     permitidos = status_permitidos_para(request.user, demanda)
     pode_observar = pode_adicionar_observacao(request.user, demanda)
@@ -235,6 +331,7 @@ def atualizar(request, pk):
         raise PermissionDenied("Esta pessoa não pode atualizar esta demanda.")
 
     etapa = request.POST.get("etapa_atualizacao") or "informacoes"
+    confirmacao = (request.POST.get("confirmacao") or "").strip()
     formulario_status = AcaoDeStatusForm(
         request.POST, permitidos=permitidos, demanda=demanda
     )
@@ -263,12 +360,23 @@ def atualizar(request, pk):
             status=400,
         )
 
-    # A tela diz o que aconteceu; a situação é consequência. Sem ação escolhida,
-    # a demanda fica onde está — atualizar também serve só para observar.
+    # O que o próprio relato sustenta. É leitura, não decisão: nada daqui toca
+    # na demanda antes da confirmação.
+    leitura = movimentacao.ler(texto, demanda=demanda)
+
+    # A tela diz o que aconteceu; a situação é consequência. A ação escolhida
+    # manda; quando ninguém escolheu nenhuma, quem ainda pode mover a demanda é
+    # o próprio relato — e só até onde esta pessoa alcança.
     proximo_status = demanda.status
     if permitidos and formulario_status.is_valid():
         proximo_status = formulario_status.cleaned_data.get("acao") or demanda.status
-    resumo = _resumo_da_atualizacao(demanda, proximo_status, texto)
+    if (
+        proximo_status == demanda.status
+        and leitura.conclusao
+        and StatusDemanda.CONCLUIDA in permitidos
+    ):
+        proximo_status = StatusDemanda.CONCLUIDA
+    resumo = _resumo_da_atualizacao(demanda, proximo_status, texto, leitura=leitura)
 
     if etapa == "informacoes":
         return _render_detalhe(
@@ -280,6 +388,19 @@ def atualizar(request, pk):
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="conclusao",
             resumo_atualizacao=resumo,
+            confirmacao=confirmacao or uuid.uuid4().hex,
+        )
+
+    if etapa == "corrigir":
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_status=formulario_status,
+            formulario_observacao=formulario_observacao,
+            modal="atualizar",
+            aba=request.GET.get("aba") or "visao_geral",
+            etapa_atualizacao="informacoes",
+            confirmacao=confirmacao or uuid.uuid4().hex,
         )
 
     mudou_status = proximo_status != demanda.status
@@ -296,6 +417,13 @@ def atualizar(request, pk):
             status=400,
         )
 
+    # Uma confirmação vale uma movimentação: o toque repetido no botão, ou a
+    # página recarregada, reenviam o mesmo formulário. O histórico é a memória
+    # da demanda — ele não ganha a mesma atualização duas vezes por acidente.
+    if confirmacao and _confirmacao_ja_usada(request, confirmacao):
+        messages.info(request, "Esta atualização já tinha sido registrada.")
+        return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+
     try:
         if mudou_status:
             alterar_status(demanda=demanda, usuario=request.user, novo_status=proximo_status)
@@ -305,8 +433,33 @@ def atualizar(request, pk):
         messages.error(request, str(erro))
         return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
 
+    if confirmacao:
+        _lembrar_confirmacao(request, confirmacao)
+
     messages.success(request, "Demanda atualizada.")
     return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+
+
+def _confirmacao_ja_usada(request, confirmacao: str) -> bool:
+    """Se esta confirmação já produziu movimentação nesta sessão.
+
+    A chave nasce quando a tela mostra o que vai acontecer e volta no envio;
+    guardá-la é o que permite recusar o segundo envio do mesmo formulário sem
+    inventar tabela nem mexer no domínio.
+    """
+    return confirmacao in (request.session.get(CHAVE_DAS_CONFIRMACOES) or [])
+
+
+def _lembrar_confirmacao(request, confirmacao: str) -> None:
+    """Lembra a confirmação executada, guardando só as últimas."""
+    registradas = [
+        chave
+        for chave in (request.session.get(CHAVE_DAS_CONFIRMACOES) or [])
+        if chave != confirmacao
+    ]
+    request.session[CHAVE_DAS_CONFIRMACOES] = (registradas + [confirmacao])[
+        -LIMITE_DAS_CONFIRMACOES:
+    ]
 
 
 @login_required
@@ -470,6 +623,10 @@ def _render_listagem(
         "sugestoes": sugestoes,
         "revisao": revisao,
         "mostrar_condominio": condominios.count() > 1,
+        # Falar é outra forma de preencher o relato. Sem serviço de
+        # transcrição configurado, o botão não é oferecido e o registro por
+        # texto continua exatamente como era.
+        "voz_disponivel": audio.disponivel(),
     }
     return render(request, "pages/demandas/listagem.html", contexto, status=status)
 
@@ -485,6 +642,7 @@ def _render_detalhe(
     aba=None,
     etapa_atualizacao="informacoes",
     resumo_atualizacao=None,
+    confirmacao=None,
     status=200,
 ):
     """Monta a tela da demanda com o que esta pessoa pode fazer com ela."""
@@ -531,6 +689,10 @@ def _render_detalhe(
             ETAPAS_DA_ATUALIZACAO, etapa_atualizacao
         ),
         "resumo_atualizacao": resumo_atualizacao,
+        # A marca que acompanha o formulário de atualização entre a revisão e a
+        # confirmação. É o que impede o mesmo envio de virar duas movimentações.
+        "confirmacao": confirmacao,
+        "voz_disponivel": audio.disponivel(),
     }
     return render(request, "pages/demandas/detalhe.html", contexto, status=status)
 
@@ -889,11 +1051,13 @@ def _proximo_passo(demanda, usuario, manutencao):
 
 
 def _mais_acoes_da_demanda(demanda, usuario):
-    """Ações secundárias do detalhe, preservando permissões do backend."""
+    """Ações secundárias do detalhe, preservando permissões do backend.
+
+    Registrar uma atualização não entra aqui: ela é a ação principal da tela e
+    já aparece à vista. Repetir no menu o mesmo destino não é atalho — é ruído.
+    """
     acoes = []
     destino = reverse("demandas:detalhe", args=[demanda.pk])
-    if pode_adicionar_observacao(usuario, demanda) or status_permitidos_para(usuario, demanda):
-        acoes.append({"label": "Atualizar demanda", "url": f"{destino}?abrir=atualizar"})
     if pode_editar_demanda(usuario, demanda):
         acoes.append({"label": "Editar demanda", "url": f"{destino}?abrir=editar"})
     return acoes
@@ -1202,13 +1366,33 @@ def _relacionadas_para_tela(demanda, manutencao):
     return relacionadas
 
 
-def _resumo_da_atualizacao(demanda, proximo_status, texto):
-    """Resumo da atualização operacional antes de salvar."""
+def _resumo_da_atualizacao(demanda, proximo_status, texto, *, leitura=None):
+    """O que a tela mostra entre o relato e a confirmação.
+
+    É um retrato do que aconteceria se esta pessoa confirmasse: o que o próprio
+    relato sustentou e a consequência que ele teria. Nada aqui foi aplicado à
+    demanda — a leitura propõe, a tela mostra, e só a confirmação chama o
+    serviço oficial.
+    """
     mudou_status = proximo_status != demanda.status
+    situacao = StatusDemanda(proximo_status).label
+    conclui = mudou_status and proximo_status == StatusDemanda.CONCLUIDA
+
+    if not mudou_status:
+        consequencia, tom = "A demanda continua na mesma situação.", "secondary"
+    elif conclui:
+        consequencia, tom = "A demanda será concluída.", "success"
+    else:
+        consequencia, tom = f"A demanda passará para {situacao}.", "info"
+
     return {
-        "situacao": StatusDemanda(proximo_status).label,
+        "situacao": situacao,
         "mudou_status": mudou_status,
         "observacao": texto or "Sem observação adicional.",
+        "identificado": list(leitura.identificado) if leitura else [],
+        "consequencia": consequencia,
+        "consequencia_tom": tom,
+        "propoe_conclusao": conclui,
     }
 
 

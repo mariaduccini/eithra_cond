@@ -1435,6 +1435,66 @@
   color: var(--bs-secondary-color);
 }
 
+/* Ditado por voz, fora da Portaria.
+ *
+ * O controle é o mesmo — botão só de ícone, estado de escuta em vermelho,
+ * recado discreto embaixo —, mas o nome acompanha a tela que o usa. Demandas
+ * não é Portaria, e uma classe chamada "portaria" na lista de demandas
+ * confundiria quem for mexer nela depois. As regras da Portaria ficam
+ * exatamente como estavam. */
+.eithra-ditar {
+  position: absolute;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--bs-secondary-color);
+  font-size: 1.125rem;
+}
+
+/* No rodapé do modal o botão é textual: ele carrega rótulo ao lado do ícone e
+   por isso não pode ficar posicionado nem do tamanho de um ícone solto. */
+.modal-footer .eithra-ditar {
+  position: static;
+  inline-size: auto;
+  block-size: auto;
+  gap: 0;
+  font-size: inherit;
+}
+
+.eithra-ditar:hover,
+.eithra-ditar:focus-visible {
+  background-color: rgba(var(--bs-secondary-rgb), 0.12);
+  color: var(--bs-body-color);
+}
+
+.modal-footer .eithra-ditar:hover,
+.modal-footer .eithra-ditar:focus-visible {
+  background-color: transparent;
+}
+
+/* Gravando: a cor diz o que está acontecendo sem precisar de texto ao lado. */
+.eithra-ditar--ouvindo {
+  background-color: rgba(var(--bs-danger-rgb), 0.12);
+  color: var(--bs-danger);
+}
+
+.modal-footer .eithra-ditar--ouvindo {
+  background-color: transparent;
+}
+
+.eithra-ditar-recado {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
 .eithra-portaria-secao {
   padding-block: 1.125rem;
   border-top: 1px solid var(--bs-border-color);

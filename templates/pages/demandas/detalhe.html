@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {% block title %}{{ demanda.titulo }} · Demandas · Eithra{% endblock %}
 
@@ -164,9 +165,13 @@
           <a href="{{ proximo_passo.url }}" class="btn btn-primary">
             <i class="bx {{ proximo_passo.icon }} me-1" aria-hidden="true"></i>{{ proximo_passo.label }}
           </a>
-        {% elif pode_atualizar %}
-          <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn btn-primary">
-            <i class="bx bx-refresh me-1" aria-hidden="true"></i>Atualizar demanda
+        {% endif %}
+
+        {% comment %}Registrar o que aconteceu é a ação do dia a dia desta tela: ela fica
+        sempre à vista, e não escondida atrás de um menu.{% endcomment %}
+        {% if pode_atualizar %}
+          <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn {% if proximo_passo %}btn-label-primary{% else %}btn-primary{% endif %}">
+            <i class="bx bx-refresh me-1" aria-hidden="true"></i>Registrar atualização
           </a>
         {% endif %}
 
@@ -315,6 +320,9 @@
       <div class="modal-dialog modal-dialog-centered modal-lg eithra-modal-wizard">
         <form class="modal-content" method="post" action="{% url 'demandas:atualizar' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
+          {% comment %}A marca que acompanha este formulário até a confirmação. É ela que
+          impede o mesmo envio de virar duas movimentações.{% endcomment %}
+          {% if confirmacao %}<input type="hidden" name="confirmacao" value="{{ confirmacao }}">{% endif %}
           <div class="modal-header">
             <div>
               <h5 class="modal-title" id="atualizar-demanda-titulo">Atualizar demanda</h5>
@@ -332,15 +340,44 @@
 
           {% if etapa_atualizacao == "informacoes" %}
             <div class="modal-body">
+              {% if pode_observar %}
+                {% comment %}Um relato é a entrada: escrever e falar são a mesma coisa dita
+                de dois jeitos — a fala só produz texto para este campo.{% endcomment %}
+                <p class="text-body-secondary small mb-3">
+                  {% if voz_disponivel %}Escreva o que aconteceu com esta demanda — ou fale, se for mais rápido.{% else %}Escreva o que aconteceu com esta demanda.{% endif %}
+                </p>
+              {% endif %}
               {% if formulario_status.fields.acao.choices %}
                 {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao %}
               {% endif %}
               {% if pode_observar %}
                 {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
+                {% comment %}O que a fala produziu fica logo abaixo do campo: quem ditou
+                confere aqui antes de seguir.{% endcomment %}
+                {% if voz_disponivel %}
+                  <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+                {% endif %}
               {% endif %}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              {% if voz_disponivel and pode_observar %}
+                {% comment %}Falar é a outra forma de escrever a atualização: a fala vira texto
+                neste mesmo campo e o caminho daqui para a frente não muda. O botão
+                começa escondido e só se oferece onde o navegador grava.{% endcomment %}
+                <button
+                  type="button"
+                  class="btn btn-label-secondary"
+                  data-eithra-ditar
+                  data-eithra-ditar-url="{% url 'demandas:transcrever' %}?demanda={{ demanda.pk }}"
+                  data-eithra-ditar-campo="#{{ formulario_observacao.texto.id_for_label }}"
+                  aria-label="Falar o que aconteceu"
+                  title="Falar o que aconteceu"
+                  aria-pressed="false"
+                  hidden>
+                  <i class="bx bx-microphone me-1" aria-hidden="true"></i>Falar
+                </button>
+              {% endif %}
               <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn btn-primary">Continuar</button>
             </div>
           {% else %}
@@ -359,14 +396,45 @@
                   </div>
                 </div>
               </div>
+              {% comment %}A leitura do próprio relato, sem inventar nada: o que ele não
+              disse não vira linha, e a consequência aparece separada do resto.{% endcomment %}
+              <div class="mt-3">
+                <h6 class="mb-2">O EITHRA identificou</h6>
+                {% if resumo_atualizacao.identificado %}
+                  <ul class="list-unstyled small mb-2">
+                    {% for item in resumo_atualizacao.identificado %}
+                      <li class="d-flex align-items-start mb-1">
+                        <i class="bx bx-info-circle text-body-secondary me-2" aria-hidden="true"></i>
+                        <span>{{ item }}</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+                <p class="mb-0">
+                  <span class="badge bg-label-{{ resumo_atualizacao.consequencia_tom }}">{{ resumo_atualizacao.consequencia }}</span>
+                </p>
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-              <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn btn-primary">Salvar</button>
+              {% comment %}Corrigir volta ao relato sem perder o que foi escrito; Confirmar é o
+              que autoriza a movimentação pelo serviço oficial do domínio.{% endcomment %}
+              <button type="submit" name="etapa_atualizacao" value="corrigir" class="btn btn-label-secondary">Corrigir</button>
+              <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn btn-primary">Confirmar</button>
             </div>
           {% endif %}
         </form>
       </div>
     </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  {% comment %}O controlador de voz só é carregado quando há para onde transcrever: sem
+  serviço configurado não existe botão, e não faz sentido baixar código para um
+  botão que não está na tela.{% endcomment %}
+  {% if voz_disponivel %}
+    <script src="{% static 'js/eithra-ditar.js' %}"></script>
   {% endif %}
 {% endblock %}

@@ -13,6 +13,7 @@ app_name = "demandas"
 urlpatterns = [
     path("", views.listagem, name="listagem"),
     path("registrar/", views.criar, name="criar"),
+    path("transcrever/", views.transcrever_audio, name="transcrever"),
     path("<uuid:pk>/", views.detalhe, name="detalhe"),
     path("<uuid:pk>/editar/", views.editar, name="editar"),
     path("<uuid:pk>/atualizar/", views.atualizar, name="atualizar"),

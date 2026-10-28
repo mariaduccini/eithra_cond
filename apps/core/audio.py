@@ -224,6 +224,22 @@ def transcrever(pedido: PedidoDeAudio) -> Transcricao:
     return _da_resposta(carga, referencia=referencia)
 
 
+def ler_conteudo(arquivo) -> bytes:
+    """Lê o áudio recebido sem trazer mais para a memória do que o necessário.
+
+    A leitura para um byte além do teto: se o arquivo for maior que o aceito, o
+    núcleo recebe o suficiente para recusá-lo e o resto nunca é carregado. Quem
+    decide o limite continua sendo este módulo — aqui só se evita segurar um
+    arquivo inteiro na memória antes de ouvir a resposta dele.
+
+    Existe para que cada tela que recebe áudio não repita a mesma leitura
+    defensiva: quem dita entrega o arquivo do pedido e obtém os bytes.
+    """
+    if arquivo is None:
+        return b""
+    return arquivo.read(_limite_de_bytes() + 1)
+
+
 # ---------------------------------------------------------------------------
 # Entrada
 # ---------------------------------------------------------------------------
