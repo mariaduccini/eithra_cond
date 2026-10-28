@@ -30,6 +30,12 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# Uma segunda tentativa, e só ela: o tempo esgotado é a falha mais provável de
+# uma leitura que já respondeu, e insistir uma vez custa pouco. Insistir mais do
+# que isso seguraria quem espera — e não é assim que as outras falhas se
+# resolvem.
+TENTATIVAS = 2
+
 
 def disponivel() -> bool:
     """Se há um serviço de leitura configurado para consultar.
@@ -62,14 +68,43 @@ def pedir_json(*, sistema: str, pedido: str) -> dict | None:
     de log com o tipo da falha. Nada é levantado: quem chama já sabe o que
     fazer sem esta resposta, e uma sugestão a menos nunca pode impedir o
     registro de uma demanda.
+
+    A demora acima do limite é a única falha que vale repetir: o serviço
+    respondeu da outra vez, então insistir uma vez costuma resolver. As demais
+    — recusa HTTP, credencial, resposta ilegível — não melhoram por
+    repetição, e repetir só seguraria quem está esperando.
     """
     if not disponivel():
         return None
 
+    for tentativa in range(1, TENTATIVAS + 1):
+        try:
+            return _uma_leitura(sistema=sistema, pedido=pedido)
+        except TimeoutError as falha:
+            logger.warning(
+                "Leitura semântica demorou demais (tentativa %s de %s, %s).",
+                tentativa,
+                TENTATIVAS,
+                type(falha).__name__,
+            )
+
+    return None
+
+
+def _uma_leitura(*, sistema: str, pedido: str) -> dict | None:
+    """Uma tentativa: monta o pedido, conversa com o serviço, devolve o objeto.
+
+    Devolve ``None`` quando a falha não melhora por insistência. O tempo
+    esgotado é a exceção: sobe intacto, porque repetir é decisão de quem
+    chamou — e esta camada não decide duas vezes.
+    """
     corpo = {
         "model": settings.EITHRA_LLM_MODEL,
-        # Duas leituras do mesmo relato devem concordar entre si.
-        "temperature": 0,
+        # O ``temperature`` não vai no pedido de propósito: alguns modelos
+        # recusam o parâmetro — e um valor fixo recusaria a leitura inteira por
+        # causa de um detalhe que não é do domínio. Sem o campo, a resposta sai
+        # no padrão de quem responde, e o determinismo que importa continua
+        # vindo do próprio pedido.
         "messages": [
             {"role": "system", "content": sistema},
             {"role": "user", "content": pedido},
@@ -95,7 +130,10 @@ def pedir_json(*, sistema: str, pedido: str) -> dict | None:
         # O corpo da resposta de erro pode conter o que foi enviado; fica fora.
         logger.warning("Leitura semântica recusada (HTTP %s).", falha.code)
         return None
-    except Exception as falha:  # rede, tempo esgotado, resposta ilegível
+    except TimeoutError:
+        # Repetir é decisão de quem chamou; aqui a falha sobe intacta.
+        raise
+    except Exception as falha:  # rede fora, resposta ilegível
         logger.warning("Leitura semântica indisponível (%s).", type(falha).__name__)
         return None
 
