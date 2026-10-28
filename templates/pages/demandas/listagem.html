@@ -124,7 +124,14 @@
           <caption class="visually-hidden">Demandas operacionais em acompanhamento</caption>
           <thead>
             <tr>
-              <th scope="col" class="eithra-col-demanda">Demanda</th>
+              {% comment %}Código, título e descrição são três coisas diferentes e por isso
+              ocupam três colunas: o código identifica, o título nomeia, a
+              descrição contextualiza. Empilhá-las na mesma célula obrigava a
+              coluna a ser larga para acomodar todas — e mesmo assim a leitura
+              ficava em blocos, sem alinhamento entre as linhas.{% endcomment %}
+              <th scope="col" class="eithra-col-codigo">Código</th>
+              <th scope="col" class="eithra-col-titulo">Título</th>
+              <th scope="col" class="eithra-col-descricao d-none d-xl-table-cell">Descrição</th>
               <th scope="col" class="eithra-col-local">Local</th>
               <th scope="col" class="eithra-col-prioridade">Prioridade</th>
               <th scope="col" class="eithra-col-prazo">Prazo</th>
@@ -136,15 +143,20 @@
           <tbody>
             {% for demanda in demandas %}
               <tr>
-                <td class="eithra-col-demanda">
-                  {% comment %}O identificador identifica, não compete com o assunto: fica na linha
-                  de cima, menor e em cor secundária, e acompanha a demanda na
-                  rastreabilidade sem exigir uma coluna própria.{% endcomment %}
-                  <div class="eithra-demanda-identificador text-body-secondary">{{ demanda.referencia }}</div>
+                <td class="eithra-col-codigo">
+                  <span class="eithra-demanda-codigo text-body-secondary">{{ demanda.referencia }}</span>
+                </td>
+                <td class="eithra-col-titulo">
                   <a class="fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}" title="{{ demanda.titulo }}">
                     {{ demanda.titulo }}
                   </a>
-                  <div class="text-body-secondary small eithra-uma-linha" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+                </td>
+                {% comment %}A descrição contextualiza o título, nunca o repete: são dois campos
+                distintos e a coluna só mostra o que a descrição acrescenta. Duas
+                linhas com reticências bastam para reconhecer o assunto; o texto
+                inteiro continua no detalhe da demanda e no title.{% endcomment %}
+                <td class="eithra-col-descricao d-none d-xl-table-cell">
+                  <div class="text-body-secondary small eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
                 </td>
                 <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
                 <td class="eithra-col-prioridade"><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
@@ -197,7 +209,7 @@
               <div class="min-w-0">
                 <div class="text-body-secondary small">{{ demanda.referencia }}</div>
                 <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
-                <div class="text-body-secondary small eithra-duas-linhas">{{ demanda.descricao_curta }}</div>
+                <div class="text-body-secondary small eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
               </div>
               <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
             </div>

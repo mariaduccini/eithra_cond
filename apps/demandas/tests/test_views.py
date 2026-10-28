@@ -483,7 +483,10 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
         self.assertIn("Em aberto", conteudo)
         self.assertIn("Concluídas no mês", conteudo)
         self.assertIn("<table", conteudo)
-        self.assertIn(">Demanda<", conteudo)
+        # Código, título e descrição ocupam colunas próprias na grid.
+        self.assertIn(">Código<", conteudo)
+        self.assertIn(">Título<", conteudo)
+        self.assertIn(">Descrição<", conteudo)
         self.assertNotIn('<ul class="eithra-lista">', conteudo)
 
     def test_registro_exibe_wizard_de_tres_etapas(self):

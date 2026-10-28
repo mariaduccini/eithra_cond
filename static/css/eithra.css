@@ -1682,59 +1682,110 @@
   vertical-align: middle;
 }
 
-/* A largura de cada coluna é decidida aqui, não pelo texto que chega. "Demanda"
-   é a única que precisa de espaço para respirar; as demais identificam ou
-   comparam em uma linha. Sem isto, uma descrição longa estica a coluna e obriga
-   todas as linhas da lista a crescer na vertical. */
+/* A largura de cada coluna é decidida aqui, não pelo texto que chega: código,
+   título e descrição identificam coisas diferentes e cada um recebe o espaço
+   que o seu papel pede. Sem isto, uma descrição longa estica a coluna e obriga
+   todas as linhas da lista a crescer na vertical.
+
+   As larguras são declaradas duas vezes de propósito. Até 1200px a lista tem
+   oito colunas — a descrição sai, porque nessa largura ela roubaria espaço do
+   título sem conseguir mostrar texto útil. A partir de 1200px a tabela
+   recompõe as nove colunas e a soma volta a fechar em 100%. */
 .eithra-operational-table {
   table-layout: fixed;
   inline-size: 100%;
 }
 
-/* O tema reserva 20px de cada lado de cada célula: nas sete colunas são 280px,
-   mais de um quarto da tabela, gastos só em respiro — e é esse respiro que
-   empurrava "Demanda" para trás. O recuo continua, apenas proporcional ao que
-   cada coluna tem para mostrar. */
+/* O tema reserva 20px de cada lado de cada célula: nas nove colunas seriam
+   360px, mais de um quarto da tabela, gastos só em respiro. O recuo continua,
+   apenas proporcional ao que cada coluna tem para mostrar. */
 .eithra-operational-table thead th,
 .eithra-operational-table tbody td {
   padding-inline: 0.5rem;
 }
 
-/* A coluna que carrega o assunto — identificador, título e contexto — e a única
-   que cresce: é ela que ficaria sem espaço se as outras pedissem mais. */
-.eithra-operational-table .eithra-col-demanda {
-  inline-size: 36.5%;
+/* O código identifica e nada mais: uma coluna estreita, de uma linha só, para
+   o olho descer a coluna inteira sem esbarrar em quebra. */
+.eithra-operational-table .eithra-col-codigo {
+  inline-size: 8%;
+}
+
+/* O título é o que se lê primeiro na linha; por isso é ele que cresce quando
+   as outras colunas cedem espaço. */
+.eithra-operational-table .eithra-col-titulo {
+  inline-size: 24%;
 }
 
 .eithra-operational-table .eithra-col-local {
-  inline-size: 11%;
+  inline-size: 12%;
 }
 
 .eithra-operational-table .eithra-col-prioridade {
-  inline-size: 8.8%;
-}
-
-.eithra-operational-table .eithra-col-prazo {
   inline-size: 9%;
 }
 
+.eithra-operational-table .eithra-col-prazo {
+  inline-size: 10%;
+}
+
 .eithra-operational-table .eithra-col-responsavel {
-  inline-size: 11%;
+  inline-size: 13%;
 }
 
 /* "Em andamento" é o rótulo mais longo da lista: um badge cortado informa menos
    do que um badge largo. A coluna cede o mínimo que o selo exige em uma linha. */
 .eithra-operational-table .eithra-col-situacao {
-  inline-size: 13.4%;
+  inline-size: 13%;
 }
 
 /* Dois ícones de ação lado a lado são o caso mais largo desta coluna. */
 .eithra-operational-table .eithra-col-acoes {
-  inline-size: 10.3%;
+  inline-size: 11%;
+}
+
+@media (min-width: 1200px) {
+  /* Aqui a descrição cabe. O título e o código devolvem parte do que ocupavam
+     para que ela entre sem empurrar a linha para o scroll horizontal. */
+  .eithra-operational-table .eithra-col-codigo {
+    inline-size: 7%;
+  }
+
+  .eithra-operational-table .eithra-col-titulo {
+    inline-size: 16%;
+  }
+
+  .eithra-operational-table .eithra-col-descricao {
+    inline-size: 24%;
+  }
+
+  .eithra-operational-table .eithra-col-local {
+    inline-size: 10%;
+  }
+
+  .eithra-operational-table .eithra-col-prioridade {
+    inline-size: 7%;
+  }
+
+  .eithra-operational-table .eithra-col-prazo {
+    inline-size: 8%;
+  }
+
+  .eithra-operational-table .eithra-col-responsavel {
+    inline-size: 10%;
+  }
+
+  .eithra-operational-table .eithra-col-situacao {
+    inline-size: 10%;
+  }
+
+  .eithra-operational-table .eithra-col-acoes {
+    inline-size: 8%;
+  }
 }
 
 /* Colunas curtas leem melhor em uma linha: quebrar "22/10/2026" ou
    "Em andamento" não ajuda ninguém. */
+.eithra-operational-table .eithra-col-codigo,
 .eithra-operational-table .eithra-col-prioridade,
 .eithra-operational-table .eithra-col-prazo,
 .eithra-operational-table .eithra-col-situacao,
@@ -1742,10 +1793,9 @@
   white-space: nowrap;
 }
 
-/* O identificador acompanha a demanda sem pedir uma coluna: linha própria,
-   corpo menor que o do assunto e tom de apoio. Em uma linha só — partido em
-   quatro pedaços ele não identifica mais nada. */
-.eithra-operational-table .eithra-demanda-identificador {
+/* O código acompanha a demanda sem competir com o assunto: corpo menor que o
+   do título e tom de apoio. Partido em pedaços ele não identifica mais nada. */
+.eithra-operational-table .eithra-demanda-codigo {
   font-size: 0.75rem;
   line-height: 1.3;
   white-space: nowrap;
