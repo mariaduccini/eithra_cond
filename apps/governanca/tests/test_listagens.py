@@ -64,7 +64,7 @@ class BuscaDeContratosTests(TestCase):
         self.assertEqual(
             resposta.context["contratos"][0]["objeto"], "Manutenção predial 07"
         )
-        self.assertContains(resposta, "1 resultado")
+        self.assertContains(resposta, "Mostrando 1–1 de 1 registro")
 
     def test_termo_sem_resultado_nao_diz_que_nao_ha_contrato(self):
         resposta = self._abrir(q="Zuleica")

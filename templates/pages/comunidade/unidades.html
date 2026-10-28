@@ -114,7 +114,7 @@
       </div>
 
       <div class="card-body pt-3">
-        {% include "components/paginacao.html" with page_obj=pagina_unidades filtro_ativo=termo %}
+        {% include "components/paginacao.html" with page_obj=pagina_unidades %}
       </div>
     {% elif termo %}
       {% querystring q=None page=None as busca_limpa %}

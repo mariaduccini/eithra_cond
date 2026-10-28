@@ -24,7 +24,7 @@ from apps.comunidade.models import (
 )
 from apps.condominios import logo
 from apps.core import audio
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 
 from . import interpretacao
 from .constants import (
@@ -897,7 +897,7 @@ def _historico(request, condominio):
     if ate:
         registros = registros.filter(entrada_em__date__lte=ate)
 
-    pagina = paginar(registros.order_by("-entrada_em"), request.GET.get("page"))
+    pagina = paginar_do_pedido(registros.order_by("-entrada_em"), request.GET)
     agora = timezone.localtime()
     for acesso in pagina:
         acesso.iniciais = _iniciais(acesso.nome_para_exibir)

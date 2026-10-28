@@ -1,104 +1,117 @@
 {% comment %}
-	Navegação das listagens que podem crescer, junto do total em vista.
+	Rodapé das listagens que podem crescer: quanto está em vista, de quanto, e
+	como andar por elas.
 
 	Uso:
-	  {% include "components/paginacao.html" with page_obj=pagina_pessoas filtro_ativo=termo %}
+	  {% include "components/paginacao.html" with page_obj=pagina_demandas %}
 
-	O que já está na barra de endereços — busca, filtros e condomínio — continua
-	vigorando em cada página, porque cada número de página é um endereço montado
-	a partir do que está lá. Mudar de página não apaga o que a pessoa procurou.
+	A página vem de apps.core.paginacao.paginar_do_pedido, que já resolveu o
+	número e o tamanho a partir do endereço. Duas coisas moram nela: "tamanho",
+	o que está em vigor, e "tamanhos", as opções aceitas — por isso a view não
+	precisa montar nada disso.
+
+	O que já está na barra de endereços — condomínio, busca e filtros — continua
+	vigorando em cada página, porque cada endereço é montado a partir do que
+	está lá. Mudar de página não apaga o que a pessoa procurou. Trocar o tamanho
+	recomeça na primeira página: manter a página 4 de um recorte que acabou de
+	mudar mostraria uma tela que ninguém pediu.
 
 	No desktop aparecem os números, com reticências quando há muitas páginas; no
 	celular, uma faixa curta que não obriga a linha inteira a caber na tela.
 
 	Variáveis: page_obj (obrigatória) — a página devolvida por
-	apps.core.paginacao.paginar, que já traz "faixa" com os números a mostrar,
-	resumidos por reticências quando há muitas páginas; filtro_ativo (opcional)
-	muda só o texto do resumo — "12 resultados" em vez de "Mostrando 1–12 de 12";
-	rotulo (opcional) nomeia o que está sendo contado, no singular — "demanda"
-	vira "Mostrando 1–12 de 12 demandas", com ou sem filtro; mostrar_resumo
-	(opcional) mantém o resumo à vista mesmo quando tudo cabe em uma página.
+	apps.core.paginacao.paginar_do_pedido.
 
-	Numa lista curta, que cabe numa página só e não está filtrada, não há nada a
-	dizer nem a navegar: o bloco não aparece — a não ser que a lista peça o total
-	sempre visível, com mostrar_resumo.
+	Uma lista sem nenhum registro não mostra rodapé: não há o que contar nem por
+	onde andar, e o vazio já é dito pela própria tela.
 {% endcomment %}
-{% if page_obj.paginator.count and mostrar_resumo or page_obj.paginator.count and filtro_ativo or page_obj.paginator.num_pages > 1 %}
+{% if page_obj.paginator.count %}
   <div class="eithra-paginacao">
     <p class="eithra-paginacao-resumo text-body-secondary small mb-0">
-      {% if filtro_ativo and not rotulo %}
-        {{ page_obj.paginator.count }} resultado{{ page_obj.paginator.count|pluralize }}
-      {% else %}
-        Mostrando {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }}{% if rotulo %} {{ rotulo }}{{ page_obj.paginator.count|pluralize }}{% endif %}
-      {% endif %}
+      Mostrando {{ page_obj.start_index }}–{{ page_obj.end_index }} de {{ page_obj.paginator.count }} registro{{ page_obj.paginator.count|pluralize }}
     </p>
 
-    {% if page_obj.paginator.num_pages > 1 %}
-      <nav aria-label="Paginação da lista">
-        <ul class="pagination eithra-paginacao-lista d-none d-lg-flex mb-0">
-          {% if page_obj.has_previous %}
-            <li class="page-item">
-              <a class="page-link" href="{% querystring page=page_obj.previous_page_number %}" aria-label="Página anterior">‹</a>
+    <div class="eithra-paginacao-controles">
+      <div class="eithra-paginacao-tamanho">
+        <span class="eithra-paginacao-rotulo d-none d-sm-inline">Por página</span>
+        <ul class="pagination eithra-paginacao-lista mb-0">
+          {% for opcao in page_obj.tamanhos %}
+            <li class="page-item{% if opcao == page_obj.tamanho %} active{% endif %}">
+              <a class="page-link" href="{% querystring per_page=opcao page=1 %}"
+                 aria-label="Mostrar {{ opcao }} registros por página"
+                 {% if opcao == page_obj.tamanho %}aria-current="true"{% endif %}>{{ opcao }}</a>
             </li>
-          {% else %}
-            <li class="page-item disabled">
-              <span class="page-link" aria-hidden="true">‹</span>
-            </li>
-          {% endif %}
+          {% endfor %}
+        </ul>
+      </div>
 
-          {% for numero in page_obj.faixa %}
-            {% if numero == page_obj.paginator.ELLIPSIS %}
-              <li class="page-item disabled">
-                <span class="page-link" aria-hidden="true">…</span>
-              </li>
-            {% elif numero == page_obj.number %}
-              <li class="page-item active" aria-current="page">
-                <span class="page-link">{{ numero }}</span>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <nav aria-label="Paginação da lista">
+          <ul class="pagination eithra-paginacao-lista d-none d-lg-flex mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="{% querystring page=page_obj.previous_page_number %}" aria-label="Página anterior">‹</a>
               </li>
             {% else %}
-              <li class="page-item">
-                <a class="page-link" href="{% querystring page=numero %}" aria-label="Página {{ numero }}">{{ numero }}</a>
+              <li class="page-item disabled">
+                <span class="page-link" aria-hidden="true">‹</span>
               </li>
             {% endif %}
-          {% endfor %}
 
-          {% if page_obj.has_next %}
-            <li class="page-item">
-              <a class="page-link" href="{% querystring page=page_obj.next_page_number %}" aria-label="Próxima página">›</a>
-            </li>
-          {% else %}
-            <li class="page-item disabled">
-              <span class="page-link" aria-hidden="true">›</span>
-            </li>
-          {% endif %}
-        </ul>
+            {% for numero in page_obj.faixa %}
+              {% if numero == page_obj.paginator.ELLIPSIS %}
+                <li class="page-item disabled">
+                  <span class="page-link" aria-hidden="true">…</span>
+                </li>
+              {% elif numero == page_obj.number %}
+                <li class="page-item active" aria-current="page">
+                  <span class="page-link">{{ numero }}</span>
+                </li>
+              {% else %}
+                <li class="page-item">
+                  <a class="page-link" href="{% querystring page=numero %}" aria-label="Página {{ numero }}">{{ numero }}</a>
+                </li>
+              {% endif %}
+            {% endfor %}
 
-        <div class="eithra-paginacao-mobile d-lg-none">
-          {% if page_obj.has_previous %}
-            <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.previous_page_number %}">
-              <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
-            </a>
-          {% else %}
-            <span class="btn btn-sm btn-text-secondary disabled">
-              <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="{% querystring page=page_obj.next_page_number %}" aria-label="Próxima página">›</a>
+              </li>
+            {% else %}
+              <li class="page-item disabled">
+                <span class="page-link" aria-hidden="true">›</span>
+              </li>
+            {% endif %}
+          </ul>
+
+          <div class="eithra-paginacao-mobile d-lg-none">
+            {% if page_obj.has_previous %}
+              <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.previous_page_number %}">
+                <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
+              </a>
+            {% else %}
+              <span class="btn btn-sm btn-text-secondary disabled">
+                <i class="bx bx-chevron-left" aria-hidden="true"></i> Anterior
+              </span>
+            {% endif %}
+
+            <span class="eithra-paginacao-atual">
+              {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
             </span>
-          {% endif %}
 
-          <span class="eithra-paginacao-atual">
-            {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
-          </span>
-
-          {% if page_obj.has_next %}
-            <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.next_page_number %}">
-              Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
-            </a>
-          {% else %}
-            <span class="btn btn-sm btn-text-secondary disabled">
-              Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
-            </span>
-          {% endif %}
-        </div>
-      </nav>
-    {% endif %}
+            {% if page_obj.has_next %}
+              <a class="btn btn-sm btn-text-secondary" href="{% querystring page=page_obj.next_page_number %}">
+                Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
+              </a>
+            {% else %}
+              <span class="btn btn-sm btn-text-secondary disabled">
+                Próxima <i class="bx bx-chevron-right" aria-hidden="true"></i>
+              </span>
+            {% endif %}
+          </div>
+        </nav>
+      {% endif %}
+    </div>
   </div>
 {% endif %}

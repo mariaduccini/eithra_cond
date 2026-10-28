@@ -846,6 +846,27 @@
   line-height: 1.4;
 }
 
+/* O tamanho da página e a navegação andam juntos à direita; quando não cabem
+   numa linha — no celular — quebram em duas, sem empurrar o resumo. */
+.eithra-paginacao-controles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 1rem;
+}
+
+.eithra-paginacao-tamanho {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-paginacao-rotulo {
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
 .eithra-paginacao-lista {
   gap: 0.25rem;
 }

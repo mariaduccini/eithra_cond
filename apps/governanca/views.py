@@ -29,7 +29,7 @@ from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.condominios import logo
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
 
 from . import arquivos, services
@@ -171,8 +171,8 @@ def _render_contratos(
     elif modal is None:
         modal = "editar"
 
-    pagina_contratos = paginar(
-        _contratos_do_condominio(atual, base["termo"]), request.GET.get("page")
+    pagina_contratos = paginar_do_pedido(
+        _contratos_do_condominio(atual, base["termo"]), request.GET
     )
 
     contexto = {
@@ -421,8 +421,8 @@ def _render_garantias(
     elif modal is None:
         modal = "editar"
 
-    pagina_garantias = paginar(
-        _garantias_do_condominio(atual, base["termo"]), request.GET.get("page")
+    pagina_garantias = paginar_do_pedido(
+        _garantias_do_condominio(atual, base["termo"]), request.GET
     )
 
     contexto = {
@@ -598,8 +598,8 @@ def _render_documentos(
     elif modal is None:
         modal = "arquivos"
 
-    pagina_documentos = paginar(
-        _documentos_do_condominio(atual, base["termo"]), request.GET.get("page")
+    pagina_documentos = paginar_do_pedido(
+        _documentos_do_condominio(atual, base["termo"]), request.GET
     )
 
     contexto = {

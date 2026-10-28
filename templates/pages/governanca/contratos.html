@@ -167,7 +167,7 @@
       {% include "components/state.html" with state_icon="bx-file" state_title="Nenhum contrato registrado" state_message="Contratos de manutenção, seguro, locação e outros aparecem aqui quando forem registrados." %}
     {% endif %}
     <div class="card-body pt-3">
-      {% include "components/paginacao.html" with page_obj=pagina_contratos filtro_ativo=termo %}
+      {% include "components/paginacao.html" with page_obj=pagina_contratos %}
     </div>
   </div>
 

@@ -25,7 +25,7 @@ from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.core.filtros import tem_filtros
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 from apps.demandas.models import Demanda
 
 from .constants import StatusManutencao
@@ -410,8 +410,8 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         equipamentos=_cadastros_ativos_entre(Equipamento, condominios),
         fornecedores=_cadastros_ativos_entre(Fornecedor, condominios),
     )
-    pagina_manutencoes = paginar(
-        _manutencoes_filtradas(request, condominios, filtros), request.GET.get("page")
+    pagina_manutencoes = paginar_do_pedido(
+        _manutencoes_filtradas(request, condominios, filtros), request.GET
     )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()

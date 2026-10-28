@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Fornecedor
 from apps.core.filtros import tem_filtros
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 
 from .constants import (
     DestinoDoItem,
@@ -606,7 +606,7 @@ def _obter_ou_404(queryset, pk):
 def _render_itens(request, condominios, *, formulario=None, modal=None, status=200):
     """Monta a lista de itens com os filtros aplicados e o formulário de cadastro."""
     filtros = FiltroDeItensForm(request.GET or None, condominios=condominios)
-    pagina_itens = paginar(_itens_filtrados(condominios, filtros), request.GET.get("page"))
+    pagina_itens = paginar_do_pedido(_itens_filtrados(condominios, filtros), request.GET)
     pode_criar = condominios_para_operar_estoque(request.user).exists()
 
     if formulario is None and pode_criar:
@@ -682,7 +682,7 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
         condominios=condominios,
         fornecedores=Fornecedor.objects.filter(condominio__in=condominios, ativo=True),
     )
-    pagina_compras = paginar(_compras_filtradas(condominios, filtros), request.GET.get("page"))
+    pagina_compras = paginar_do_pedido(_compras_filtradas(condominios, filtros), request.GET)
     pode_criar = condominios_para_criar_compras(request.user).exists()
 
     if formulario is None and pode_criar:

@@ -25,7 +25,7 @@ from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.core.filtros import tem_filtros
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 
 from .constants import Periodicidade, StatusExecucao, StatusItemChecklist
 from .forms import (
@@ -820,8 +820,8 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         locais=_cadastros_ativos_entre(LocalOperacional, condominios),
         equipamentos=_cadastros_ativos_entre(Equipamento, condominios),
     )
-    pagina_rotinas = paginar(
-        _rotinas_filtradas(request, condominios, filtros), request.GET.get("page")
+    pagina_rotinas = paginar_do_pedido(
+        _rotinas_filtradas(request, condominios, filtros), request.GET
     )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
@@ -879,8 +879,8 @@ def _render_execucoes(request, condominios, *, status=200):
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
-    pagina_execucoes = paginar(
-        _execucoes_filtradas(request, condominios, filtros), request.GET.get("page")
+    pagina_execucoes = paginar_do_pedido(
+        _execucoes_filtradas(request, condominios, filtros), request.GET
     )
     linhas = [_execucao_para_tela(item, request.user) for item in pagina_execucoes]
 

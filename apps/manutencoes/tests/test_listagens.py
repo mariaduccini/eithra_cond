@@ -48,7 +48,7 @@ class ListagemFiltradaEPaginadaTests(TestCase):
         resposta = self._abrir(status=StatusManutencao.ABERTA)
         self.assertEqual(resposta.context["total"], 25)
         self.assertEqual(len(resposta.context["manutencoes"]), TAMANHO)
-        self.assertContains(resposta, "25 resultados")
+        self.assertContains(resposta, "Mostrando 1–20 de 25 registros")
 
     def test_a_pagina_seguinte_continua_dentro_do_filtro(self):
         resposta = self._abrir(status=StatusManutencao.ABERTA, page=2)
@@ -75,3 +75,30 @@ class ListagemFiltradaEPaginadaTests(TestCase):
 
         sem_filtro = self._abrir()
         self.assertNotContains(sem_filtro, "Limpar filtros")
+
+    def test_trocar_o_tamanho_traz_mais_registros_numa_pagina(self):
+        resposta = self._abrir(per_page=50)
+        pagina = resposta.context["pagina_manutencoes"]
+        self.assertEqual(pagina.paginator.per_page, 50)
+        self.assertEqual(len(resposta.context["manutencoes"]), 30)
+        self.assertContains(resposta, "Mostrando 1–30 de 30 registros")
+
+    def test_tamanho_fora_das_opcoes_cai_no_padrao(self):
+        resposta = self._abrir(per_page=37)
+        pagina = resposta.context["pagina_manutencoes"]
+        self.assertEqual(pagina.paginator.per_page, TAMANHO)
+
+    def test_pagina_fora_do_alcance_cai_na_ultima_disponivel(self):
+        resposta = self._abrir(status=StatusManutencao.ABERTA, page=99)
+        pagina = resposta.context["pagina_manutencoes"]
+        self.assertEqual(pagina.number, 2)
+        self.assertEqual(len(resposta.context["manutencoes"]), 5)
+
+    def test_pagina_sem_numero_cai_na_primeira(self):
+        resposta = self._abrir(page="abc")
+        pagina = resposta.context["pagina_manutencoes"]
+        self.assertEqual(pagina.number, 1)
+
+    def test_lista_vazia_nao_mostra_rodape(self):
+        resposta = self._abrir(status=StatusManutencao.CANCELADA)
+        self.assertNotContains(resposta, "Mostrando")

@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.core.filtros import tem_filtros
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
 from .constants import (
@@ -446,8 +446,8 @@ def _render_listagem(
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
-    pagina_demandas = paginar(
-        _demandas_filtradas(request, condominios, filtros), request.GET.get("page")
+    pagina_demandas = paginar_do_pedido(
+        _demandas_filtradas(request, condominios, filtros), request.GET
     )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()

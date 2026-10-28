@@ -39,7 +39,7 @@ from apps.comunidade.permissoes import (
 from apps.condominios import logo
 from apps.condominios import services as servicos_de_acesso
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
 from apps.governanca.permissoes import (
     pode_gerenciar_tipos as pode_gerenciar_tipos_de_governanca,
@@ -726,7 +726,7 @@ def _render_acessos(
             Q(usuario__full_name__icontains=base["termo"])
             | Q(usuario__email__icontains=base["termo"])
         )
-    pagina_acessos = paginar(vinculos, request.GET.get("page"))
+    pagina_acessos = paginar_do_pedido(vinculos, request.GET)
     pagina_acessos.itens = [
         _acesso_para_tela(item, pode_gerenciar=pode_gerenciar)
         for item in pagina_acessos
@@ -837,7 +837,7 @@ def _render_locais(
     elif modal is None:
         modal = "editar"
 
-    pagina_locais = _locais_para_tela(atual, base["termo"], request.GET.get("page"))
+    pagina_locais = _locais_para_tela(atual, base["termo"], request.GET)
 
     contexto = {
         **base,
@@ -1063,7 +1063,7 @@ def _render_equipamentos(
         modal = "editar"
 
     pagina_equipamentos = _equipamentos_para_tela(
-        atual, base["termo"], request.GET.get("page")
+        atual, base["termo"], request.GET
     )
 
     contexto = {
@@ -1295,7 +1295,7 @@ def _render_fornecedores(
         modal = "editar"
 
     pagina_fornecedores = _fornecedores_para_tela(
-        atual, base["termo"], request.GET.get("page")
+        atual, base["termo"], request.GET
     )
 
     contexto = {
@@ -1728,7 +1728,7 @@ def _tipos_para_tela(tipos) -> list[dict]:
     ]
 
 
-def _locais_para_tela(condominio, termo="", numero=1):
+def _locais_para_tela(condominio, termo="", pedido=None):
     """A página de locais do condomínio, como a lista precisa dela.
 
     A leitura prefere a classificação nova. O texto antigo só aparece enquanto
@@ -1741,7 +1741,7 @@ def _locais_para_tela(condominio, termo="", numero=1):
         .select_related("tipo_local")
         .order_by("nome")
     )
-    pagina = paginar(locais, numero)
+    pagina = paginar_do_pedido(locais, pedido)
     pagina.itens = [
         {
             "pk": local.pk,
@@ -1757,7 +1757,7 @@ def _locais_para_tela(condominio, termo="", numero=1):
     return pagina
 
 
-def _equipamentos_para_tela(condominio, termo="", numero=1):
+def _equipamentos_para_tela(condominio, termo="", pedido=None):
     """A página de equipamentos do condomínio, como a lista precisa dela.
 
     Como no local, a classificação nova vem primeiro e o texto antigo só
@@ -1769,7 +1769,7 @@ def _equipamentos_para_tela(condominio, termo="", numero=1):
         .select_related("local", "tipo_equipamento")
         .order_by("nome")
     )
-    pagina = paginar(equipamentos, numero)
+    pagina = paginar_do_pedido(equipamentos, pedido)
     pagina.itens = [
         {
             "pk": equipamento.pk,
@@ -1789,7 +1789,7 @@ def _equipamentos_para_tela(condominio, termo="", numero=1):
     return pagina
 
 
-def _fornecedores_para_tela(condominio, termo="", numero=1):
+def _fornecedores_para_tela(condominio, termo="", pedido=None):
     """A página de fornecedores do condomínio, como a lista precisa dela."""
     fornecedores = (
         Fornecedor.objects.filter(condominio=condominio)
@@ -1797,7 +1797,7 @@ def _fornecedores_para_tela(condominio, termo="", numero=1):
         .prefetch_related("especialidades__especialidade")
         .order_by("nome_razao_social")
     )
-    pagina = paginar(fornecedores, numero)
+    pagina = paginar_do_pedido(fornecedores, pedido)
     pagina.itens = [
         {
             "pk": fornecedor.pk,

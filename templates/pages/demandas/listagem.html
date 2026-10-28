@@ -223,7 +223,7 @@
       {% comment %}O rodapé pertence à lista: um fio sutil separa, sem virar um card dentro do
       card. O total acompanha a lista mesmo quando tudo cabe em uma página.{% endcomment %}
       <div class="eithra-tabela-rodape">
-        {% include "components/paginacao.html" with page_obj=pagina_demandas filtro_ativo=filtros_ativos rotulo="demanda" mostrar_resumo=True %}
+        {% include "components/paginacao.html" with page_obj=pagina_demandas %}
       </div>
     {% else %}
       <div class="card-body">

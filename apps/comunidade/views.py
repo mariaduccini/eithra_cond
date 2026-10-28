@@ -25,7 +25,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.condominios import logo
-from apps.core.paginacao import paginar
+from apps.core.paginacao import paginar_do_pedido
 
 from . import services
 from .forms import (
@@ -206,7 +206,7 @@ def _render_unidades(
     atual = base["condominio_atual"]
     operar = pode_operar(request.user, atual)
     pagina_unidades = _unidades_para_tela(
-        atual, base.get("termo", ""), request.GET.get("page")
+        atual, base.get("termo", ""), request.GET
     )
 
     contexto = {
@@ -433,7 +433,7 @@ def _render_pessoas(request, *, formulario_criacao=None, modal=None, status=200)
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     pagina_pessoas = _pessoas_para_tela(
-        atual, base.get("termo", ""), request.GET.get("page")
+        atual, base.get("termo", ""), request.GET
     )
     contexto = {
         **base,
@@ -659,7 +659,7 @@ def _render_veiculos(request, *, formulario_criacao=None, modal=None, status=200
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
     pagina_veiculos = _veiculos_para_tela(
-        atual, base.get("termo", ""), request.GET.get("page")
+        atual, base.get("termo", ""), request.GET
     )
     contexto = {
         **base,
@@ -953,7 +953,7 @@ def _resumo_de_unidades(rotulos: set[str]) -> str:
     return f"Unidades {ordenadas[0]}, {ordenadas[1]} e mais {len(ordenadas) - 2}"
 
 
-def _unidades_para_tela(condominio, termo="", numero=1):
+def _unidades_para_tela(condominio, termo="", pedido=None):
     """A página de unidades do condomínio, como a lista precisa dela.
 
     Quem está ligado à unidade hoje vem no mesmo carregamento da lista — é uma
@@ -972,7 +972,7 @@ def _unidades_para_tela(condominio, termo="", numero=1):
         )
         .order_by("bloco_torre", "identificador")
     )
-    pagina = paginar(unidades, numero)
+    pagina = paginar_do_pedido(unidades, pedido)
     pagina.itens = [
         {
             "pk": unidade.pk,
@@ -1007,7 +1007,7 @@ def _unidade_para_tela(unidade) -> dict:
     }
 
 
-def _pessoas_para_tela(condominio, termo="", numero=1):
+def _pessoas_para_tela(condominio, termo="", pedido=None):
     """A página de pessoas do condomínio, como a lista precisa dela.
 
     O documento não aparece aqui: ele não identifica a pessoa na lista, e é
@@ -1026,7 +1026,7 @@ def _pessoas_para_tela(condominio, termo="", numero=1):
         )
         .order_by("nome")
     )
-    pagina = paginar(pessoas, numero)
+    pagina = paginar_do_pedido(pessoas, pedido)
     pagina.itens = [
         {
             "pk": pessoa.pk,
@@ -1066,7 +1066,7 @@ def _pessoa_para_tela(pessoa) -> dict:
     }
 
 
-def _veiculos_para_tela(condominio, termo="", numero=1):
+def _veiculos_para_tela(condominio, termo="", pedido=None):
     """A página de veículos do condomínio, como a lista precisa deles.
 
     Quem usa o veículo e a que unidade ele se relaciona hoje vêm no mesmo
@@ -1091,7 +1091,7 @@ def _veiculos_para_tela(condominio, termo="", numero=1):
         )
         .order_by("placa")
     )
-    pagina = paginar(veiculos, numero)
+    pagina = paginar_do_pedido(veiculos, pedido)
     pagina.itens = [
         {
             **_veiculo_para_tela(veiculo),

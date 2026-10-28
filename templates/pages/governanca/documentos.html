@@ -158,7 +158,7 @@
       {% include "components/state.html" with state_icon="bx-file-blank" state_title="Nenhum documento registrado" state_message="Documentos do condomínio e o que eles valem aparecem aqui quando forem registrados." %}
     {% endif %}
     <div class="card-body pt-3">
-      {% include "components/paginacao.html" with page_obj=pagina_documentos filtro_ativo=termo %}
+      {% include "components/paginacao.html" with page_obj=pagina_documentos %}
     </div>
   </div>
 

@@ -121,7 +121,7 @@
       {% include "components/state.html" with state_icon="bx-shield-quarter" state_title="Nenhuma garantia registrada" state_message="Garantias de equipamentos, serviços e itens de compra aparecem aqui quando forem registradas." %}
     {% endif %}
     <div class="card-body pt-3">
-      {% include "components/paginacao.html" with page_obj=pagina_garantias filtro_ativo=termo %}
+      {% include "components/paginacao.html" with page_obj=pagina_garantias %}
     </div>
   </div>
 
