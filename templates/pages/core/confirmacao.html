@@ -1,0 +1,86 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Mensagem recebida · Eithra{% endblock %}
+
+{% block content %}
+  {% comment %}
+    Uma mensagem, a leitura dela e a única decisão que faz sentido agora.
+    Nada de identificadores técnicos, nada de resposta bruta da leitura.
+  {% endcomment %}
+  <div class="eithra-detail-header mb-3">
+    <a href="{% url 'core:home' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+      <i class="bx bx-chevron-left" aria-hidden="true"></i> Painel
+    </a>
+    <div class="text-body-secondary small">Mensagem recebida</div>
+    <h1 class="h4 mb-1">{{ item.assunto|default:"Mensagem recebida" }}</h1>
+    <div class="text-body-secondary small">
+      {{ item.remetente }}{% if item.momento_da_mensagem %} <span aria-hidden="true">·</span> {{ item.momento_da_mensagem|date:"d/m/Y H:i" }}{% endif %}
+    </div>
+  </div>
+
+  {% if falha_de_leitura %}
+    {% include "components/state.html" with state_icon="bx-error-circle" state_tone="warning" state_title="Não conseguimos ler esta mensagem agora" state_message="A origem não respondeu como esperado. Tente novamente em instantes." %}
+  {% else %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">O que o EITHRA identificou</h2>
+      {% if consequencia %}
+        <p class="mb-2"><span class="badge bg-label-info">{{ consequencia }}</span></p>
+      {% endif %}
+      <p class="eithra-detail-leitura mb-0">{{ leitura.proposta.motivo }}</p>
+    </section>
+
+    {% if fatos %}
+      <section class="eithra-detail-section">
+        <h2 class="h6 mb-3">O que a mensagem diz</h2>
+        <dl class="eithra-detail-meta">
+          {% for fato in fatos %}
+            <dt>{{ fato.rotulo }}</dt>
+            <dd>
+              {{ fato.valor }}
+              {% if fato.do_cadastro %}
+                <div class="small text-body-secondary">Confere com o cadastro do condomínio.</div>
+              {% endif %}
+            </dd>
+          {% endfor %}
+        </dl>
+      </section>
+    {% endif %}
+
+    {% if contexto %}
+      <section class="eithra-detail-section">
+        <h2 class="h6 mb-3">Onde isto se encaixa</h2>
+        <p class="eithra-detail-leitura mb-0">{{ contexto }}</p>
+      </section>
+    {% endif %}
+
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">O que dá para fazer</h2>
+      <p class="mb-1">{{ leitura.proposta.rotulo }}</p>
+      <p class="text-body-secondary small mb-0">{{ leitura.proposta.motivo }}</p>
+
+      {% if acao %}
+        <form
+          method="post"
+          action="{% url 'core:confirmar' item.pk %}"
+          class="mt-3"
+          data-eithra-confirm
+          data-eithra-confirm-title="Confirmar esta ação"
+          data-eithra-confirm-message="{{ leitura.proposta.rotulo }}"
+          data-eithra-confirm-label="{{ rotulo_da_acao }}"
+          data-eithra-confirm-class="btn-primary">
+          {% csrf_token %}
+          <input type="hidden" name="acao" value="{{ acao }}">
+          <button type="submit" class="btn btn-primary">{{ rotulo_da_acao }}</button>
+        </form>
+      {% else %}
+        <p class="text-body-secondary small mt-3 mb-0">
+          Este caso segue pelo fluxo do módulo correspondente. Nada é alterado por aqui.
+        </p>
+      {% endif %}
+
+      <a class="btn btn-sm btn-label-secondary mt-3" href="{% url 'core:confirmacao' item.pk %}">
+        <i class="bx bx-refresh me-1" aria-hidden="true"></i>Reavaliar
+      </a>
+    </section>
+  {% endif %}
+{% endblock %}

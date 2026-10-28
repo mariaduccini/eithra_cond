@@ -10,5 +10,36 @@
     </div>
   </div>
 
-  {% include "components/state.html" with state_icon="bx-check-circle" state_title="Nada precisa da sua atenção agora" state_message="Quando houver algo que exija decisão ou acompanhamento, vai aparecer aqui." %}
+  {% comment %}
+    O que entrou e ainda depende de alguém. Não é caixa de entrada de e-mail:
+    é a lista curta do que a leitura identificou e não pôde seguir sozinha.
+  {% endcomment %}
+  {% if pendencias %}
+    <div class="card mt-3">
+      <div class="card-body">
+        <h2 class="h6 mb-1">Mensagens que pedem uma decisão</h2>
+        <p class="text-body-secondary small mb-0">
+          O EITHRA leu estas mensagens e separou o que pode precisar da sua atenção.
+        </p>
+        <ul class="eithra-lista mt-3 mb-0">
+          {% for item in pendencias %}
+            <li class="eithra-linha">
+              <div class="eithra-linha-corpo">
+                <a class="eithra-linha-nome eithra-duas-linhas text-decoration-none" href="{% url 'core:confirmacao' item.pk %}">
+                  {{ item.assunto|default:"Mensagem recebida" }}
+                </a>
+                <div class="eithra-linha-contexto">{{ item.remetente }}</div>
+              </div>
+              <span class="eithra-linha-hora">{{ item.momento_da_mensagem|date:"d/m H:i" }}</span>
+              <div class="eithra-linha-acao">
+                <a class="btn btn-sm btn-label-secondary" href="{% url 'core:confirmacao' item.pk %}">Revisar</a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% else %}
+    {% include "components/state.html" with state_icon="bx-check-circle" state_title="Nada precisa da sua atenção agora" state_message="Quando houver algo que exija decisão ou acompanhamento, vai aparecer aqui." %}
+  {% endif %}
 {% endblock %}
