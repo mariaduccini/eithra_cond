@@ -45,9 +45,7 @@
           </thead>
           <tbody>
             {% for checklist in checklists %}
-              <tr
-                data-href="{% url 'rotinas:checklist' checklist.pk %}"
-                style="cursor: pointer;">
+              <tr data-href="{% url 'rotinas:checklist' checklist.pk %}">
                 <td>
                   <a
                     href="{% url 'rotinas:checklist' checklist.pk %}"
@@ -65,7 +63,7 @@
                 <td class="text-end text-nowrap">
                   {% if checklist.acoes %}
                     <div class="dropdown">
-                      {% include "pages/rotinas/acoes.html" with alvo=checklist %}
+                      {% include "pages/rotinas/acoes.html" with alvo=checklist pontos=1 %}
                     </div>
                   {% endif %}
                 </td>
@@ -77,7 +75,7 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for checklist in checklists %}
-          <div class="list-group-item">
+          <div class="list-group-item" data-href="{% url 'rotinas:checklist' checklist.pk %}">
             <div class="d-flex justify-content-between align-items-start gap-2">
               <a
                 href="{% url 'rotinas:checklist' checklist.pk %}"
@@ -165,18 +163,3 @@
   </div>
 {% endblock %}
 
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre o checklist. A navegação por teclado continua pelo
-    // link do nome, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
-{% endblock %}

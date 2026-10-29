@@ -42,9 +42,7 @@
           </thead>
           <tbody>
             {% for unidade in unidades %}
-              <tr
-                data-href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
-                style="cursor: pointer;">
+              <tr data-href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}">
                 <td>
                   <a
                     href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
@@ -57,21 +55,33 @@
                 <td class="text-body-secondary">{{ unidade.pessoas_resumo }}</td>
                 <td><span class="badge bg-label-{{ unidade.tom }}">{{ unidade.texto }}</span></td>
                 {% if pode_operar %}
+                  {% comment %}A linha abre a unidade; o que resta — ativar ou desativar —
+                  fica no menu, para a coluna não virar fileira de ícones (§47.2).{% endcomment %}
                   <td class="text-end text-nowrap">
-                    <form
-                      class="d-inline"
-                      method="post"
-                      action="{% url 'comunidade:alternar_unidade' unidade.pk %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <div class="dropdown">
                       <button
-                        type="submit"
-                        class="btn btn-icon btn-text-warning rounded-pill"
-                        title="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}"
-                        aria-label="{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %} a unidade {{ unidade.identificador }}">
-                        <i class="bx {% if unidade.ativo %}bx-block{% else %}bx-check-circle{% endif %}" aria-hidden="true"></i>
+                        type="button"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Mais ações"
+                        aria-label="Mais ações para a unidade {{ unidade.identificador }}">
+                        <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
                       </button>
-                    </form>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                          <form
+                            method="post"
+                            action="{% url 'comunidade:alternar_unidade' unidade.pk %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                            <button type="submit" class="dropdown-item">
+                              <i class="bx {% if unidade.ativo %}bx-block{% else %}bx-check-circle{% endif %} me-2" aria-hidden="true"></i>{% if unidade.ativo %}Desativar{% else %}Ativar{% endif %}
+                            </button>
+                          </form>
+                        </li>
+                      </ul>
+                    </div>
                   </td>
                 {% endif %}
               </tr>
@@ -82,7 +92,7 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for unidade in unidades %}
-          <div class="list-group-item">
+          <div class="list-group-item" data-href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}">
             <a
               href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}"
               class="d-flex justify-content-between align-items-start gap-2 text-decoration-none text-body">
@@ -92,11 +102,6 @@
             <div class="text-body-secondary small mt-1">{{ unidade.pessoas_resumo }}</div>
             {% if pode_operar %}
               <div class="d-flex align-items-center gap-2 mt-2">
-                <a
-                  class="btn btn-sm btn-label-secondary"
-                  href="{% url 'comunidade:unidade' unidade.pk %}?condominio={{ condominio_atual.pk }}">
-                  Abrir
-                </a>
                 <form
                   class="d-inline"
                   method="post"
@@ -172,18 +177,3 @@
   {% endif %}
 {% endblock %}
 
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre a unidade. A navegação por teclado continua pelo link
-    // do identificador, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
-{% endblock %}

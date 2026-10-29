@@ -134,9 +134,7 @@
           </thead>
           <tbody>
             {% for manutencao in manutencoes %}
-              <tr
-                data-href="{% url 'manutencoes:detalhe' manutencao.pk %}"
-                style="cursor: pointer;">
+              <tr data-href="{% url 'manutencoes:detalhe' manutencao.pk %}">
                 <td>
                   <a
                     href="{% url 'manutencoes:detalhe' manutencao.pk %}"
@@ -159,17 +157,32 @@
                 <td>
                   <span class="badge bg-label-{{ manutencao.status_tom }}">{{ manutencao.status }}</span>
                 </td>
+                {% comment %}A linha já abre a manutenção. O que sobra — editar, mudar
+                situação — fica no menu, para a coluna não virar fileira de ícones
+                (§47.2).{% endcomment %}
                 <td class="text-end text-nowrap">
-                  {% for acao in manutencao.acoes %}
-                    <a
-                      class="btn btn-icon btn-text-secondary rounded-pill"
-                      href="{{ acao.url }}"
-                      data-acao
-                      title="{{ acao.label }}"
-                      aria-label="{{ acao.label }}">
-                      <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                    </a>
-                  {% endfor %}
+                  {% if manutencao.acoes %}
+                    <div class="dropdown">
+                      <button
+                        type="button"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Mais ações"
+                        aria-label="Mais ações para {{ manutencao.titulo }}">
+                        <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        {% for acao in manutencao.acoes %}
+                          <li>
+                            <a class="dropdown-item" href="{{ acao.url }}">
+                              <i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}
+                            </a>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -365,18 +378,3 @@
   {% endif %}
 {% endblock %}
 
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre a manutenção. A navegação por teclado continua pelo
-    // link do título, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
-{% endblock %}

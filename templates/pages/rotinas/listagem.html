@@ -109,9 +109,7 @@
           </thead>
           <tbody>
             {% for rotina in rotinas %}
-              <tr
-                data-href="{% url 'rotinas:detalhe' rotina.pk %}"
-                style="cursor: pointer;">
+              <tr data-href="{% url 'rotinas:detalhe' rotina.pk %}">
                 <td>
                   <a
                     href="{% url 'rotinas:detalhe' rotina.pk %}"
@@ -129,7 +127,7 @@
                 <td class="text-end text-nowrap">
                   {% if rotina.acoes %}
                     <div class="dropdown">
-                      {% include "pages/rotinas/acoes.html" with alvo=rotina %}
+                      {% include "pages/rotinas/acoes.html" with alvo=rotina pontos=1 %}
                     </div>
                   {% endif %}
                 </td>
@@ -141,7 +139,7 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for rotina in rotinas %}
-          <div class="list-group-item">
+          <div class="list-group-item" data-href="{% url 'rotinas:detalhe' rotina.pk %}">
             <div class="d-flex justify-content-between align-items-start gap-2">
               <a
                 href="{% url 'rotinas:detalhe' rotina.pk %}"
@@ -406,18 +404,3 @@
   {% endif %}
 {% endblock %}
 
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre a rotina. A navegação por teclado continua pelo link
-    // do título, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
-{% endblock %}

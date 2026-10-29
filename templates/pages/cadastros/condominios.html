@@ -39,10 +39,7 @@
           </thead>
           <tbody>
             {% for item in condominios_lista %}
-              <tr
-                class="position-relative"
-                data-href="{{ item.url }}"
-                style="cursor: pointer;">
+              <tr class="position-relative" data-href="{{ item.url }}">
                 <td>
                   <a href="{{ item.url }}" class="fw-medium text-body">
                     {{ item.nome }}
@@ -70,14 +67,30 @@
                   </div>
                 </td>
                 <td><span class="badge bg-label-{{ item.tom }}">{{ item.texto }}</span></td>
+                {% comment %}A linha já abre a ficha — editável para quem gerencia,
+                somente leitura para quem não gerencia. A coluna guarda o que a linha
+                não faz sozinha, e num menu, para não virar fileira de ícones (§47.2).{% endcomment %}
                 <td class="text-end text-nowrap">
-                  <a
-                    class="btn btn-icon btn-text-secondary rounded-pill position-relative"
-                    href="{{ item.url }}"
-                    title="{{ item.acao_label }}"
-                    aria-label="{{ item.acao_label }} {{ item.nome }}">
-                    <i class="bx {{ item.acao_icone }}" aria-hidden="true"></i>
-                  </a>
+                  {% if item.acao_label %}
+                    <div class="dropdown">
+                      <button
+                        type="button"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        title="Mais ações"
+                        aria-label="Mais ações para {{ item.nome }}">
+                        <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                          <a class="dropdown-item" href="{{ item.url }}">
+                            <i class="bx {{ item.acao_icone }} me-2" aria-hidden="true"></i>{{ item.acao_label }}
+                          </a>
+                        </li>
+                      </ul>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -124,15 +137,6 @@
   {{ block.super }}
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-        linha.addEventListener("click", function (event) {
-          if (event.target.closest("a, button, form")) {
-            return;
-          }
-          window.location.assign(linha.dataset.href);
-        });
-      });
-
       // A logo escolhida aparece ao lado do próprio campo, antes de salvar:
       // quem trocou o arquivo errado percebe ali, e não depois de gravar. O
       // arquivo só sobe quando o cadastro é submetido — a prévia vive no

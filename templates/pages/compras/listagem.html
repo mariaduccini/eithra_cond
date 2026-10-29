@@ -78,9 +78,7 @@
           </thead>
           <tbody>
             {% for compra in compras %}
-              <tr
-                data-href="{% url 'compras:detalhe' compra.pk %}"
-                style="cursor: pointer;">
+              <tr data-href="{% url 'compras:detalhe' compra.pk %}">
                 <td>
                   <a
                     href="{% url 'compras:detalhe' compra.pk %}"
@@ -236,18 +234,3 @@
   {% endif %}
 {% endblock %}
 
-{% block scripts %}
-  {{ block.super }}
-  <script>
-    // A linha inteira abre a compra. A navegação por teclado continua pelo link
-    // da data, para quem não usa mouse.
-    document.querySelectorAll("tr[data-href]").forEach(function (linha) {
-      linha.addEventListener("click", function (evento) {
-        if (evento.target.closest("a, button")) {
-          return;
-        }
-        window.location.href = linha.dataset.href;
-      });
-    });
-  </script>
-{% endblock %}

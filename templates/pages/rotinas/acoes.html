@@ -1,7 +1,12 @@
-{% comment %}Ações de uma rotina na lista. Um ou dois ícones sem borda; três ou mais vão
-   para um menu de três pontos, para a linha não virar uma fileira de botões.
-   Usa `alvo`, o dicionário da rotina montado pela view.{% endcomment %}
-{% if alvo.acoes|length > 2 %}
+{% comment %}Ações de um registro na lista.
+
+   Na grid, a coluna de ações é só `⋮` (§47.2): quem chama passa `pontos` e o
+   menu aparece mesmo com uma ação só. Fora da grid — o cartão do celular, a
+   página de detalhe —, segue valendo §7: um ou dois ícones sem borda; três ou
+   mais vão para o menu, para não virar fileira de botões.
+
+   Usa `alvo`, o dicionário do registro montado pela view.{% endcomment %}
+{% if pontos or alvo.acoes|length > 2 %}
   <button
     type="button"
     class="btn btn-icon btn-text-secondary rounded-pill"

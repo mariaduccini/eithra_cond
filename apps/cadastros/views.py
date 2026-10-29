@@ -1692,15 +1692,13 @@ def _condominio_para_tela(vinculo) -> dict:
         "pode_gerenciar": pode_gerenciar_cadastros(vinculo.usuario, condominio),
         "texto": "Ativo" if condominio.ativo else "Inativo",
         "tom": "success" if condominio.ativo else "secondary",
+        # Abrir o condomínio é a própria linha: a ficha em modal é o destino
+        # dela. O que sobra na coluna é o que a linha não faz sozinha.
         "acao_label": (
-            "Editar"
-            if pode_gerenciar_cadastros(vinculo.usuario, condominio)
-            else "Visualizar"
+            "Editar" if pode_gerenciar_cadastros(vinculo.usuario, condominio) else ""
         ),
         "acao_icone": (
-            "bx-edit"
-            if pode_gerenciar_cadastros(vinculo.usuario, condominio)
-            else "bx-show"
+            "bx-edit" if pode_gerenciar_cadastros(vinculo.usuario, condominio) else ""
         ),
         "url": f"{reverse('cadastros:condominios')}?abrir=editar&item={condominio.pk}",
     }
