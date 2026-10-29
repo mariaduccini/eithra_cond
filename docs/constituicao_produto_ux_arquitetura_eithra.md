@@ -25,7 +25,7 @@ perguntar:
 2. Isto aumenta a complexidade percebida (§3, §33)?
 3. Isto usa a linguagem do §4?
 4. Isto pede informação que o Eithra já tem (§5)?
-5. Isto cabe nos padrões de ação (§6, §7) e de menu (§8)?
+5. Isto cabe nos padrões de ação (§6, §7), de menu (§8) e de listagem (§47)?
 6. Isto duplica um conceito que já tem dono (§9, §10)?
 7. Isto persiste o que pode ser derivado (§30)?
 8. Isto expõe dado que não precisa ser exposto (§36)?
@@ -126,6 +126,9 @@ Padrão de UX, sem exceção:
 - **Ação crítica:** texto explícito + confirmação quando necessária.
 
 Evitar fileiras de botões.
+
+**Na grid, a coluna de ações é só `⋮`.** Como o registro já abre pelo clique na
+linha, não há ícones soltos na coluna: ver §47.
 
 **A cor comunica significado; não serve para ornamentar.** Cada tipo de ação tem
 um tom estável — editar, adicionar, encerrar/inativar e excluir não se confundem
@@ -616,3 +619,82 @@ institucional · radar de risco · reincidência · checagem de contrato/garanti
 financeiro explicável · cobrança rastreável · fornecedores indicados · portaria
 inteligente · integração futura com câmeras · IA por confirmação · síndica com
 visão transversal.
+
+---
+
+## 47. Interação de listagens
+
+> **Visualizar pelo registro. Agir pelo `⋮`. Executar ações rápidas em modal.**
+
+Padrão transversal de UX. Vale para **todas** as grids e listagens do Eithra.
+As telas existentes migram quando forem tocadas; as novas já nascem assim.
+
+### 47.1 Visualização
+
+Havendo detalhe natural, o registro é o caminho:
+
+- clicar na linha ou no corpo do cartão abre o detalhe;
+- clicar no título abre o detalhe;
+- **não existe** ação "Visualizar", "Abrir" ou ícone de olho equivalente.
+
+Onde não há detalhe natural, a listagem permanece como está — não se cria tela
+nova só para atender o padrão (§31). Interatividade dentro da linha (link, botão,
+`⋮`, caixa de seleção, campo) manda mais que a linha: o clique que nasce ali
+pertence ao controle, não à navegação.
+
+### 47.2 Ações
+
+A coluna de ações de uma grid exibe **somente** `⋮`
+(`bx-dots-vertical-rounded`), alinhado à direita, abrindo menu curto de ações
+contextuais reais — poucas, com a destrutiva separada no fim. Isso especializa
+§7 para listagens: fora da grid (detalhe, seção, cabeçalho), segue valendo 1–2
+ações como ícones.
+
+### 47.3 Modal
+
+Ação adequada escolhida no menu abre em **modal grande responsivo**: editar,
+registrar atualização, atualizar acompanhamento, adicionar evidência, registrar
+observação, alterar configuração simples, confirmar ação.
+
+### 47.4 Quando não usar modal
+
+Página própria quando a ação exige fluxo longo, tem muitas etapas, precisa
+comparar grande volume de informação, depende do contexto amplo da página, ou
+ficaria apertada e confusa. Na dúvida, página própria.
+
+### 47.5 Tamanho
+
+- **Desktop:** preferir `modal-xl`, largura próxima de 90–95% da viewport, altura
+  limitada à viewport, cabeçalho e rodapé visíveis, rolando apenas o corpo (§38).
+- **Mobile:** quase toda a largura disponível, conteúdo em uma coluna, sem
+  rolagem horizontal, ações sempre acessíveis.
+
+### 47.6 Hierarquia
+
+- **Cabeçalho:** nome da ação e identificação discreta do registro.
+- **Corpo:** somente o necessário; sem card dentro de card; sem repetição.
+- **Rodapé:** uma ação principal; cancelar/fechar como secundária.
+
+### 47.7 Estados
+
+- **erro:** o modal permanece aberto e preserva o que foi preenchido;
+- **sucesso:** salva, fecha e atualiza a tela;
+- **cancelar:** não persiste nada;
+- **carregando:** sinal curto, sem travar a tela;
+- **nunca** abrir modal sobre modal.
+
+### 47.8 Reutilização
+
+Partial, formulário, serviço e componente existentes são reaproveitados: o mesmo
+formulário serve à página e ao modal — o invólucro não justifica duplicar
+implementação.
+
+### 47.9 Segurança
+
+O JavaScript coordena a experiência; **não decide regra de negócio**. Permissão e
+validação continuam no backend (§15, §43).
+
+### 47.10 Consistência
+
+Este é o padrão preferencial para novas grids e listagens. Exceção só com
+justificativa clara de UX, registrada **antes** da implementação.
