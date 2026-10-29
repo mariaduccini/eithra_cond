@@ -13,26 +13,43 @@
  * - não aparece onde não funciona: o botão nasce escondido e só se mostra se o
  *   navegador souber gravar, para que o relato por texto siga idêntico onde a
  *   voz não existe;
- * - não engole o que foi dito: se a transcrição falhar, o campo continua com o
- *   que já havia e a mensagem diz o que fazer;
+ * - não engole o que foi dito: o que já estava escrito continua ali, e a
+ *   transcrição entra depois, em linha própria. Falhar não apaga nada;
+ * - não mostra dois erros ao mesmo tempo: enquanto a voz fala pelo campo, o
+ *   aviso do campo cala. A cobrança de relato só volta quando a pessoa tenta
+ *   seguir sem ter escrito nada;
  * - não expõe o serviço: nada de nome de modelo, endereço ou formato técnico
- *   chega à tela.
+ *   chega à tela;
+ * - não decide por conta própria quando seguir: quando a fala basta, quem diz
+ *   isso é o backend, na resposta da transcrição — e o que este controlador
+ *   faz é apertar o mesmo Continuar que a pessoa apertaria;
+ * - não grava com o modal fora da tela: quem fecha o modal avisa, e o
+ *   microfone é encerrado e liberado — o áudio pela metade não vira transcrição.
  *
- * Como usar:
+ * Como usar — o microfone mora dentro do próprio campo, como um atalho dele:
  *
- *   <button
- *     type="button"
- *     data-eithra-ditar
- *     data-eithra-ditar-url="/caminho/transcrever/"
- *     data-eithra-ditar-campo="#id_relato"
- *     aria-pressed="false"
- *     hidden>
- *     <i class="bx bx-microphone"></i>Falar
- *   </button>
+ *   <div class="eithra-campo-voz">
+ *     <textarea id="id_relato"></textarea>
+ *     <button
+ *       type="button"
+ *       class="eithra-ditar"
+ *       data-eithra-ditar
+ *       data-eithra-ditar-url="/caminho/transcrever/"
+ *       data-eithra-ditar-campo="#id_relato"
+ *       aria-label="Gravar relato por voz"
+ *       aria-pressed="false"
+ *       hidden>
+ *       <i class="bx bx-microphone" aria-hidden="true"></i>
+ *     </button>
+ *   </div>
  *   <p data-eithra-ditar-recado hidden aria-live="polite"></p>
  *
  * O campo de condomínio, quando houver, é lido do próprio formulário do botão
  * (``[name="condominio"]``) — a autorização continua sendo decidida no backend.
+ *
+ * Quem fecha o modal anuncia ``eithra:descartar`` no documento, e é assim que
+ * a gravação em curso é encerrada sem que este controlador precise conhecer
+ * modal nenhum.
  */
 (function () {
   "use strict";
@@ -47,12 +64,13 @@
     "audio/mp4"
   ];
 
-  var TEXTO_REPOUSO = "Falar o que aconteceu";
-  var TEXTO_OUVINDO = "Ouvindo… fale e toque para parar.";
+  var ROTULO_PRONTO = "Gravar relato por voz";
+  var ROTULO_GRAVANDO = "Parar a gravação";
+  var TEXTO_GRAVANDO = "Gravando…";
   var TEXTO_TRANSCREVENDO = "Transcrevendo…";
-  var TEXTO_PRONTO = "Transcrição pronta. Revise e toque em Continuar.";
+  var TEXTO_PRONTO = "Transcrição pronta. Revise antes de continuar.";
   var TEXTO_FALHA =
-    "Não foi possível entender o áudio agora. Tente de novo ou escreva.";
+    "Não foi possível transcrever o áudio. Tente novamente ou digite o relato.";
   var TEXTO_SEM_FORMATO =
     "Este navegador não grava num formato que o Eithra entende. Escreva o que aconteceu.";
   var TEXTO_SEM_MICROFONE =
@@ -90,6 +108,13 @@
     return "webm";
   }
 
+  // O que já estava escrito continua escrito: a fala entra depois, em linha
+  // própria, e quem ditou decide o que fazer com o resto.
+  function juntar(existente, novo) {
+    var atual = (existente || "").trim();
+    return atual ? atual + "\n" + novo : novo;
+  }
+
   function configurar(botao) {
     var formulario = botao.closest("form");
     var campo = document.querySelector(botao.dataset.eithraDitarCampo || "");
@@ -103,26 +128,56 @@
     var gravador = null;
     var fluxo = null;
     var pedacos = [];
+    // O que foi dito enquanto o modal estava de pé é do modal: quando ele sai,
+    // o áudio já reunido perde o sentido e o microfone é liberado.
+    var descartando = false;
+
+    // Enquanto a voz responde pelo campo, a cobrança do campo fica quieta: dois
+    // avisos ao mesmo tempo dizem duas coisas e não ajudam em nenhuma. Se a
+    // pessoa seguir sem escrever, o envio traz a cobrança de volta — do jeito
+    // de sempre, decidida no backend.
+    function calarAvisoDoCampo() {
+      var caixa = botao.closest("[data-eithra-campo-voz]");
+      if (!caixa) {
+        return;
+      }
+      caixa.querySelectorAll("[data-eithra-erro-de-campo]").forEach(function (erro) {
+        erro.hidden = true;
+      });
+    }
 
     function avisar(texto, tom) {
+      if (!texto) {
+        return;
+      }
+      calarAvisoDoCampo();
       if (!recado) {
         return;
       }
-      recado.textContent = texto || "";
-      recado.hidden = !texto;
+      recado.textContent = texto;
+      recado.hidden = false;
       recado.classList.toggle("text-danger", tom === "erro");
       recado.classList.toggle("text-success", tom === "pronto");
+    }
+
+    function limparRecado() {
+      if (!recado) {
+        return;
+      }
+      recado.textContent = "";
+      recado.hidden = true;
+      recado.classList.remove("text-danger", "text-success");
     }
 
     function repousar() {
       botao.disabled = false;
       botao.classList.remove("eithra-ditar--ouvindo");
       botao.setAttribute("aria-pressed", "false");
-      botao.setAttribute("aria-label", TEXTO_REPOUSO);
-      botao.setAttribute("title", TEXTO_REPOUSO);
+      botao.setAttribute("aria-label", ROTULO_PRONTO);
+      botao.setAttribute("title", ROTULO_PRONTO);
       var icone = botao.querySelector("i");
       if (icone) {
-        icone.className = "bx bx-microphone me-1";
+        icone.className = "bx bx-microphone";
       }
     }
 
@@ -138,6 +193,25 @@
       fluxo = null;
     }
 
+    // Segue adiante apertando o mesmo Continuar que a pessoa apertaria. Quem
+    // diz se a fala já bastou é o backend, na resposta da transcrição: aqui não
+    // mora nenhuma regra de demanda — só o caminho até o botão que já existe.
+    // Sem botão de etapa (fora do registro, como na atualização de uma
+    // demanda), não há para onde seguir.
+    function seguirComoSeApertasseContinuar() {
+      var continuar = formulario.querySelector(
+        "button[name='wizard'][type='submit']"
+      );
+      if (!continuar) {
+        return;
+      }
+      if (typeof formulario.requestSubmit === "function") {
+        formulario.requestSubmit(continuar);
+        return;
+      }
+      continuar.click();
+    }
+
     function transcrever(blob) {
       var dados = new FormData();
       dados.append("audio", blob, "relato." + extensaoDo(blob.type || ""));
@@ -148,7 +222,7 @@
       botao.classList.remove("eithra-ditar--ouvindo");
       var icone = botao.querySelector("i");
       if (icone) {
-        icone.className = "bx bx-loader-alt bx-spin me-1";
+        icone.className = "bx bx-loader-alt bx-spin";
       }
       avisar(TEXTO_TRANSCREVENDO, "");
 
@@ -166,9 +240,19 @@
         .then(function (leitura) {
           repousar();
           if (leitura && leitura.texto) {
-            campo.value = leitura.texto;
+            // Não substitui: acrescenta. O que a pessoa já tinha escrito é
+            // dela, e a fala vem depois.
+            campo.value = juntar(campo.value, leitura.texto);
             campo.focus();
             avisar(TEXTO_PRONTO, "pronto");
+            // A fala bastou? Então o EITHRA já leu o relato e segue adiante: a
+            // etapa das informações chega preenchida, e quem ditou só confere —
+            // sem mais um clique. Quando a fala veio vazia ou sem fato
+            // operacional, o backend não manda seguir, e a descrição continua
+            // aberta para ser completada.
+            if (leitura.avancar) {
+              seguirComoSeApertasseContinuar();
+            }
             return;
           }
           avisar((leitura && leitura.mensagem) || TEXTO_FALHA, "erro");
@@ -202,18 +286,24 @@
         var tipo = gravador ? gravador.mimeType || formato : formato;
         gravador = null;
         liberarMicrofone();
+        if (descartando) {
+          // O modal foi fechado no meio: o que foi reunido não vira
+          // transcrição, porque não há mais tela para receber o texto.
+          pedacos = [];
+          return;
+        }
         transcrever(new Blob(pedacos, tipo ? { type: tipo } : undefined));
       });
       gravador.start();
       botao.classList.add("eithra-ditar--ouvindo");
       botao.setAttribute("aria-pressed", "true");
-      botao.setAttribute("aria-label", "Parar a gravação");
-      botao.setAttribute("title", "Parar a gravação");
+      botao.setAttribute("aria-label", ROTULO_GRAVANDO);
+      botao.setAttribute("title", ROTULO_GRAVANDO);
       var icone = botao.querySelector("i");
       if (icone) {
-        icone.className = "bx bx-stop-circle me-1";
+        icone.className = "bx bx-stop-circle";
       }
-      avisar(TEXTO_OUVINDO, "");
+      avisar(TEXTO_GRAVANDO, "");
     }
 
     function pararGravacao() {
@@ -225,6 +315,22 @@
       repousar();
     }
 
+    // O modal saiu da tela: encerra a gravação em curso, libera o microfone e
+    // devolve o botão ao repouso. O que já estava escrito no campo é da pessoa
+    // e não é tocado aqui — a tela inteira está indo embora com o fechamento.
+    function descartar() {
+      descartando = true;
+      var ativo = gravador;
+      gravador = null;
+      pedacos = [];
+      if (ativo && ativo.state === "recording") {
+        ativo.stop();
+      }
+      liberarMicrofone();
+      repousar();
+      limparRecado();
+    }
+
     // Só agora o microfone se oferece: se o navegador não grava, ele continua
     // escondido e o relato por texto não muda em nada.
     if (!podeGravar() || !formatoEscolhido()) {
@@ -232,13 +338,20 @@
     }
     botao.hidden = false;
 
+    // Quem fecha o modal avisa: a gravação em curso é encerrada e o microfone
+    // é liberado, para o navegador não seguir gravando depois de o modal sair.
+    document.addEventListener("eithra:descartar", descartar);
+
     botao.addEventListener("click", function () {
       if (gravador && gravador.state === "recording") {
         pararGravacao();
         return;
       }
+      // Uma fala nova é um recomeço: o descarte anterior não vale mais.
+      descartando = false;
       // A permissão só é pedida aqui, depois do clique — nunca ao abrir a tela.
       botao.disabled = true;
+      limparRecado();
       window.navigator.mediaDevices
         .getUserMedia({ audio: true })
         .then(function (recebido) {

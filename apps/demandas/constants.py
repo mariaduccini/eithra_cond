@@ -126,13 +126,58 @@ class RecorrenciaDemanda(models.TextChoices):
     OBSERVADA = "observada", "Há ocorrência anterior no histórico"
 
 
+class AguardandoTipo(models.TextChoices):
+    """Por quem — ou pelo quê — a demanda espera agora.
+
+    Isto não é situação da demanda. O ciclo continua o de sempre, e uma demanda
+    pode estar "Em andamento" enquanto aguarda o fornecedor: são duas perguntas
+    diferentes, e misturá-las encheria o ciclo de estados que não são ciclo.
+
+    A lista é curta e fechada de propósito. O que a gestão precisa saber é a
+    quem cobrar; o resto vai na descrição do que se espera.
+    """
+
+    NINGUEM = "", "Ninguém"
+    FORNECEDOR = "fornecedor", "Fornecedor"
+    MORADOR = "morador", "Morador"
+    ADMINISTRACAO = "administracao", "Administração"
+    APROVACAO = "aprovacao", "Aprovação"
+    MATERIAL = "material", "Material"
+    TERCEIRO = "terceiro", "Terceiro"
+    OUTRO = "outro", "Outro"
+
+
+class TipoMidiaEvidencia(models.TextChoices):
+    """O que a evidência é, do ponto de vista de quem vai olhar.
+
+    Foto e vídeo são a mesma coisa — prova do que se sabe — ditas em duas
+    linguagens. O tipo existe porque a tela mostra cada uma do seu jeito:
+    miniatura e ampliação para a foto, reprodução sob ação para o vídeo.
+    """
+
+    FOTO = "foto", "Foto"
+    VIDEO = "video", "Vídeo"
+
+
+# O que a evidência pode ser, no banco e na borda. A mesma lista serve à
+# validação do upload e à restrição do modelo, para que aplicação e banco não
+# divirjam sobre o que é uma evidência aceita.
+MIMES_DE_EVIDENCIA = (
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+)
+
+
 class TipoEventoDemanda(models.TextChoices):
     """O que aconteceu com a demanda, como ela é lembrada depois.
 
     O histórico registra decisão, não ruído técnico. Só entra aqui o que muda o
     entendimento da demanda: quem responde por ela, quanto pesa, quando vence,
-    em que situação está, o que foi observado sobre ela e o que foi editado de
-    relevante.
+    em que situação está, o que foi observado sobre ela, o que foi editado de
+    relevante e a prova que passou a sustentá-la.
     """
 
     CRIADA = "criada", "Demanda criada"
@@ -142,5 +187,7 @@ class TipoEventoDemanda(models.TextChoices):
     PRAZO = "prazo", "Prazo alterado"
     EDICAO = "edicao", "Edição"
     OBSERVACAO = "observacao", "Observação"
+    EVIDENCIA = "evidencia", "Evidência anexada"
+    ACOMPANHAMENTO = "acompanhamento", "Acompanhamento atualizado"
     CONCLUIDA = "concluida", "Demanda concluída"
     CANCELADA = "cancelada", "Demanda cancelada"

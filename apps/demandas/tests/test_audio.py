@@ -12,10 +12,12 @@ verifica aqui é o que as Demandas fazem com o áudio, não o que o provedor far
 com ele.
 """
 import json
+from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from apps.condominios.constants import Papel
@@ -146,13 +148,13 @@ class DemandaPorAudioTests(TestCase):
 
     @override_settings(**CONFIGURADO)
     @patch("apps.core.audio.urllib.request.urlopen")
-    def test_audio_valido_devolve_apenas_o_texto(self, urlopen):
+    def test_audio_valido_devolve_o_texto_e_o_sinal_de_seguir(self, urlopen):
         urlopen.return_value = RespostaFalsa(corpo_json({"text": SENTENCA}))
 
         resposta = self._ditar(recado())
 
         self.assertEqual(resposta.status_code, 200)
-        self.assertEqual(resposta.json(), {"texto": SENTENCA})
+        self.assertEqual(resposta.json(), {"texto": SENTENCA, "avancar": True})
         self.assertEqual(Demanda.objects.count(), 0)
 
     @override_settings(**CONFIGURADO)
@@ -282,20 +284,163 @@ class DemandaPorAudioTests(TestCase):
         self.assertEqual(etapa.context["registro_etapa"], "informacoes")
         self.assertFalse(etapa.context["voz_disponivel"])
 
-    # --- a tela --------------------------------------------------------------
+    # --- a tela do registro: o microfone mora no campo ----------------------
 
     @override_settings(**CONFIGURADO)
-    def test_a_etapa_da_descricao_oferece_falar(self):
+    def test_a_etapa_da_descricao_oferece_o_microfone(self):
         resposta = self.client.get(reverse("demandas:listagem"))
 
         self.assertTrue(resposta.context["voz_disponivel"])
         self.assertContains(resposta, "data-eithra-ditar-url")
         self.assertContains(resposta, reverse("demandas:transcrever"))
 
-    @override_settings(**SEM_VOZ)
-    def test_sem_servico_a_tela_nao_oferece_falar(self):
+    @override_settings(**CONFIGURADO)
+    def test_o_microfone_esta_dentro_do_campo_do_relato(self):
+        """Falar não é ação do rodapé: é um jeito de preencher o relato."""
+        conteudo = self.client.get(reverse("demandas:listagem")).content.decode()
+
+        inicio = conteudo.index('<div class="eithra-campo-voz">')
+        fim = conteudo.index("</div>", inicio)
+
+        self.assertIn("data-eithra-ditar", conteudo[inicio:fim])
+        self.assertIn('data-eithra-ditar-campo="#id_relato"', conteudo)
+
+    @override_settings(**CONFIGURADO)
+    def test_o_rodape_do_percurso_nao_tem_mais_o_botao_falar(self):
+        """O rodapé é Cancelar e Continuar — voz não é passo do formulário."""
+        conteudo = self.client.get(reverse("demandas:listagem")).content.decode()
+
+        self.assertNotIn(">Falar<", conteudo)
+        self.assertIn(">Cancelar<", conteudo)
+        self.assertIn(">Continuar<", conteudo)
+
+    @override_settings(**CONFIGURADO)
+    def test_o_microfone_tem_rotulo_proprio_e_icone(self):
+        """Quem chega de leitor de tela sabe o que o botão faz."""
         resposta = self.client.get(reverse("demandas:listagem"))
+
+        self.assertContains(resposta, 'aria-label="Gravar relato por voz"')
+        self.assertContains(resposta, "bx bx-microphone")
+
+    @override_settings(**CONFIGURADO)
+    def test_o_campo_do_relato_continua_editavel(self):
+        """A transcrição é ponto de partida: o texto é corrigível até Continuar."""
+        campo = self.client.get(reverse("demandas:listagem")).context[
+            "formulario_demanda"
+        ]["relato"]
+        html = str(campo)
+
+        self.assertIn("<textarea", html)
+        self.assertNotIn("readonly", html)
+        self.assertNotIn("disabled", html)
+
+    @override_settings(**SEM_VOZ)
+    def test_sem_servico_a_tela_nao_oferece_microfone(self):
+        resposta = self.client.get(reverse("demandas:listagem"))
+        conteudo = resposta.content.decode()
 
         self.assertFalse(resposta.context["voz_disponivel"])
         self.assertNotContains(resposta, "data-eithra-ditar-url")
+        self.assertNotContains(resposta, "data-eithra-campo-voz")
         self.assertNotContains(resposta, "js/eithra-ditar.js")
+
+    # --- um erro por vez: o áudio fala pelo campo ----------------------------
+
+    @override_settings(**CONFIGURADO)
+    @patch("apps.core.audio.urllib.request.urlopen")
+    def test_falha_do_audio_nao_dispara_o_erro_de_relato(self, urlopen):
+        """A falha de transcrição responde por si; a cobrança de relato é do envio."""
+        urlopen.side_effect = OSError("rede fora")
+
+        resposta = self._ditar(recado())
+        conteudo = resposta.content.decode()
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.json()["mensagem"], audio.MENSAGEM_FALHA)
+        self.assertNotIn("texto", resposta.json())
+        self.assertNotIn("Escreva o que aconteceu para registrar a demanda.", conteudo)
+        self.assertEqual(Demanda.objects.count(), 0)
+
+    def test_continuar_sem_relato_dispara_a_validacao_normal(self):
+        """Sem texto e sem fala, quem cobra é o próprio formulário — como sempre."""
+        resposta = self._relatar("")
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertContains(
+            resposta,
+            "Escreva o que aconteceu para registrar a demanda.",
+            status_code=400,
+        )
+        self.assertEqual(Demanda.objects.count(), 0)
+
+    # --- o formato que o navegador realmente produz ---------------------------
+
+    @override_settings(**CONFIGURADO)
+    @patch("apps.core.audio.urllib.request.urlopen")
+    def test_o_formato_do_navegador_e_aceito(self, urlopen):
+        """O Chrome grava ``audio/webm;codecs=opus`` em ``relato.webm``."""
+        urlopen.return_value = RespostaFalsa(corpo_json({"text": SENTENCA}))
+
+        resposta = self._ditar(
+            recado(tipo="audio/webm;codecs=opus", nome="relato.webm")
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(resposta.json(), {"texto": SENTENCA, "avancar": True})
+        urlopen.assert_called_once()
+
+
+class ControladorDeVozTests(SimpleTestCase):
+    """O contrato do controlador de voz, preso no código que a tela baixa.
+
+    Sem um executor de JavaScript no projeto, a garantia de que a fala
+    acrescenta em vez de substituir — e de que falhar não apaga nada — vive no
+    próprio controlador. Estes testes leem o arquivo servido e prendem os
+    compromissos que o núcleo não pode cobrir sozinho.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.fonte = (
+            Path(settings.BASE_DIR) / "static" / "js" / "eithra-ditar.js"
+        ).read_text(encoding="utf-8")
+
+    def test_a_fala_acrescenta_em_vez_de_substituir(self):
+        self.assertIn("campo.value = juntar(campo.value, leitura.texto)", self.fonte)
+        self.assertIn('return atual ? atual + "\\n" + novo : novo', self.fonte)
+        self.assertNotIn("campo.value = leitura.texto", self.fonte)
+
+    def test_falhar_nao_toca_no_texto_existente(self):
+        """Só o sucesso escreve no campo: o resto do caminho não mexe nele."""
+        self.assertEqual(self.fonte.count("campo.value ="), 1)
+
+    def test_a_gravacao_comeca_e_termina_pelo_mesmo_controle(self):
+        self.assertIn("gravador.start()", self.fonte)
+        self.assertIn("gravador.stop()", self.fonte)
+        self.assertIn("Gravando…", self.fonte)
+        self.assertIn("Transcrevendo…", self.fonte)
+
+    def test_nao_mostra_dois_erros_ao_mesmo_tempo(self):
+        self.assertIn("calarAvisoDoCampo", self.fonte)
+        self.assertIn("[data-eithra-erro-de-campo]", self.fonte)
+
+    def test_os_formatos_do_navegador_estao_previstos(self):
+        for formato in (
+            "audio/webm;codecs=opus",
+            "audio/webm",
+            "audio/ogg;codecs=opus",
+            "audio/ogg",
+            "audio/mp4",
+        ):
+            self.assertIn(f'"{formato}"', self.fonte)
+
+    def test_a_mensagem_de_falha_e_a_da_tela(self):
+        self.assertIn(
+            "Não foi possível transcrever o áudio. Tente novamente ou digite o relato.",
+            self.fonte,
+        )
+
+    def test_o_rotulo_de_gravacao_e_humano(self):
+        self.assertIn('var ROTULO_PRONTO = "Gravar relato por voz"', self.fonte)
+        self.assertIn('var ROTULO_GRAVANDO = "Parar a gravação"', self.fonte)

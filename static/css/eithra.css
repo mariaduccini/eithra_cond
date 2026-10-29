@@ -703,11 +703,38 @@
   border-color: var(--eithra-primary);
 }
 
+/* A linha de provas de uma movimentação: fica dentro do próprio evento, com a
+   mesma discrição de um selo. Nada de galeria — o que não se lê não ocupa. */
+.eithra-evidencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+/* O vídeo não tem miniatura pronta: o botão diz o que ele é, e o arquivo só é
+   buscado quando alguém decide assistir. */
+.eithra-thumb-video {
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  color: var(--bs-secondary-color);
+  font-size: 1.25rem;
+}
+
 .eithra-evidencia-imagem {
   display: block;
   inline-size: 100%;
   max-block-size: 60vh;
   object-fit: contain;
+  border-radius: 0.5rem;
+  background-color: var(--bs-secondary-bg-subtle);
+}
+
+.eithra-evidencia-video {
+  display: block;
+  inline-size: 100%;
+  max-block-size: 60vh;
   border-radius: 0.5rem;
   background-color: var(--bs-secondary-bg-subtle);
 }
@@ -779,8 +806,16 @@
   --bs-table-bg-state: var(--bs-table-hover-bg);
 }
 
-.table tbody tr[data-href] {
+.table tbody tr[data-href],
+.list-group-item[data-href] {
   cursor: pointer;
+}
+
+/* O cartão do celular responde ao toque como a linha responde ao mouse. O
+   realce é o mesmo dos cartões que já são link, para o padrão ser um só. */
+.list-group-item[data-href]:hover,
+.list-group-item[data-href]:focus-within {
+  background-color: var(--bs-list-group-action-hover-bg);
 }
 
 /* Busca contextual ------------------------------------------------------- */
@@ -1441,31 +1476,35 @@
  * recado discreto embaixo —, mas o nome acompanha a tela que o usa. Demandas
  * não é Portaria, e uma classe chamada "portaria" na lista de demandas
  * confundiria quem for mexer nela depois. As regras da Portaria ficam
- * exatamente como estavam. */
+ * exatamente como estavam.
+ *
+ * Aqui o microfone mora dentro do próprio campo, no canto de baixo à direita:
+ * falar é uma forma de preencher o relato, não uma ação do rodapé. A área é de
+ * 40px para caber no dedo sem virar um botão grande na tela. */
+.eithra-campo-voz {
+  position: relative;
+}
+
+.eithra-campo-voz .form-control {
+  padding-right: 3rem;
+}
+
 .eithra-ditar {
   position: absolute;
   right: 0.5rem;
+  bottom: 0.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: none;
   color: var(--bs-secondary-color);
-  font-size: 1.125rem;
-}
-
-/* No rodapé do modal o botão é textual: ele carrega rótulo ao lado do ícone e
-   por isso não pode ficar posicionado nem do tamanho de um ícone solto. */
-.modal-footer .eithra-ditar {
-  position: static;
-  inline-size: auto;
-  block-size: auto;
-  gap: 0;
-  font-size: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
 .eithra-ditar:hover,
@@ -1474,19 +1513,10 @@
   color: var(--bs-body-color);
 }
 
-.modal-footer .eithra-ditar:hover,
-.modal-footer .eithra-ditar:focus-visible {
-  background-color: transparent;
-}
-
 /* Gravando: a cor diz o que está acontecendo sem precisar de texto ao lado. */
 .eithra-ditar--ouvindo {
   background-color: rgba(var(--bs-danger-rgb), 0.12);
   color: var(--bs-danger);
-}
-
-.modal-footer .eithra-ditar--ouvindo {
-  background-color: transparent;
 }
 
 .eithra-ditar-recado {
@@ -1747,10 +1777,21 @@
    que o seu papel pede. Sem isto, uma descrição longa estica a coluna e obriga
    todas as linhas da lista a crescer na vertical.
 
-   As larguras são declaradas duas vezes de propósito. Até 1200px a lista tem
-   oito colunas — a descrição sai, porque nessa largura ela roubaria espaço do
-   título sem conseguir mostrar texto útil. A partir de 1200px a tabela
-   recompõe as nove colunas e a soma volta a fechar em 100%. */
+   A ordem de prioridade é a da leitura: título primeiro, descrição depois, e
+   por último o código. Por isso o código é a única coluna de largura fixa —
+   ele tem sempre o mesmo conteúdo ("D-F810B566"), então ceder-lhe porcentagem
+   seria deixá-lo engordar nas telas largas enquanto o título continua espremido.
+   Medida em `rem`, ele fica do tamanho do próprio texto em qualquer resolução,
+   e todo o resto da largura sobra para o que varia de tamanho.
+
+   As demais larguras são declaradas duas vezes de propósito. Até 1200px a
+   lista tem oito colunas — a descrição sai, porque nessa largura ela roubaria
+   espaço do título sem conseguir mostrar texto útil. A partir de 1200px a
+   tabela recompõe as nove colunas.
+
+   Em nenhum dos dois conjuntos a soma fecha em 100%: a coluna fixa do código
+   já ocupa uma faixa em pixels, e a sobra fica pequena o bastante para caber em
+   qualquer largura de desktop sem empurrar a linha para o scroll horizontal. */
 .eithra-operational-table {
   table-layout: fixed;
   inline-size: 100%;
@@ -1758,88 +1799,86 @@
 
 /* O tema reserva 20px de cada lado de cada célula: nas nove colunas seriam
    360px, mais de um quarto da tabela, gastos só em respiro. O recuo continua,
-   apenas proporcional ao que cada coluna tem para mostrar. */
+   apenas proporcional ao que cada coluna tem para mostrar — e igual no
+   cabeçalho e no corpo, para o título da coluna começar exatamente onde o
+   conteúdo dela começa. */
 .eithra-operational-table thead th,
 .eithra-operational-table tbody td {
   padding-inline: 0.5rem;
 }
 
-/* O código identifica e nada mais: uma coluna estreita, de uma linha só, para
-   o olho descer a coluna inteira sem esbarrar em quebra. */
+/* O código identifica e nada mais: largura do próprio texto, uma linha só. */
 .eithra-operational-table .eithra-col-codigo {
-  inline-size: 8%;
+  inline-size: 6.5rem;
 }
 
 /* O título é o que se lê primeiro na linha; por isso é ele que cresce quando
    as outras colunas cedem espaço. */
 .eithra-operational-table .eithra-col-titulo {
-  inline-size: 24%;
+  inline-size: 30%;
 }
 
 .eithra-operational-table .eithra-col-local {
-  inline-size: 12%;
-}
-
-.eithra-operational-table .eithra-col-prioridade {
-  inline-size: 9%;
-}
-
-.eithra-operational-table .eithra-col-prazo {
   inline-size: 10%;
 }
 
+.eithra-operational-table .eithra-col-prioridade {
+  inline-size: 7%;
+}
+
+.eithra-operational-table .eithra-col-prazo {
+  inline-size: 8%;
+}
+
 .eithra-operational-table .eithra-col-responsavel {
-  inline-size: 13%;
+  inline-size: 11%;
 }
 
 /* "Em andamento" é o rótulo mais longo da lista: um badge cortado informa menos
    do que um badge largo. A coluna cede o mínimo que o selo exige em uma linha. */
 .eithra-operational-table .eithra-col-situacao {
-  inline-size: 13%;
+  inline-size: 12%;
 }
 
-/* Dois ícones de ação lado a lado são o caso mais largo desta coluna. */
+/* Um ícone de ação é o caso mais largo desta coluna; o menu de três pontos
+   ocupa menos. O que não couber vira menu, não segundo ícone. */
 .eithra-operational-table .eithra-col-acoes {
-  inline-size: 11%;
+  inline-size: 10%;
 }
 
 @media (min-width: 1200px) {
-  /* Aqui a descrição cabe. O título e o código devolvem parte do que ocupavam
-     para que ela entre sem empurrar a linha para o scroll horizontal. */
-  .eithra-operational-table .eithra-col-codigo {
-    inline-size: 7%;
-  }
-
+  /* Aqui a descrição cabe, e é ela e o título que dividem o que as colunas
+     curtas devolvem — o código continua no tamanho do próprio texto. */
   .eithra-operational-table .eithra-col-titulo {
-    inline-size: 16%;
+    inline-size: 22%;
   }
 
   .eithra-operational-table .eithra-col-descricao {
-    inline-size: 24%;
+    inline-size: 25%;
   }
 
   .eithra-operational-table .eithra-col-local {
-    inline-size: 10%;
-  }
-
-  .eithra-operational-table .eithra-col-prioridade {
     inline-size: 7%;
   }
 
+  .eithra-operational-table .eithra-col-prioridade {
+    inline-size: 6%;
+  }
+
   .eithra-operational-table .eithra-col-prazo {
-    inline-size: 8%;
+    inline-size: 7%;
   }
 
   .eithra-operational-table .eithra-col-responsavel {
-    inline-size: 10%;
+    inline-size: 8%;
   }
 
   .eithra-operational-table .eithra-col-situacao {
-    inline-size: 10%;
+    inline-size: 9%;
   }
 
   .eithra-operational-table .eithra-col-acoes {
-    inline-size: 8%;
+    inline-size: 6%;
   }
 }
 
@@ -1854,9 +1893,11 @@
 }
 
 /* O código acompanha a demanda sem competir com o assunto: corpo menor que o
-   do título e tom de apoio. Partido em pedaços ele não identifica mais nada. */
+   do título, peso normal e tom de apoio. Partido em pedaços ele não identifica
+   mais nada. */
 .eithra-operational-table .eithra-demanda-codigo {
   font-size: 0.75rem;
+  font-weight: 400;
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -1955,6 +1996,44 @@
   margin-top: -0.5rem;
   font-size: 0.75rem;
   color: var(--bs-secondary-color);
+}
+
+/* A etapa de informações não é um formulário: é o resultado da leitura,
+   apresentado para conferência. O espaço aqui vem do agrupamento — a síntese é
+   um bloco só, e os campos que se relacionam ficam juntos —, e não de um
+   respiro repetido a cada linha. É isso que deixa a etapa caber na altura do
+   modal, em vez de empurrar o rodapé para fora da tela. */
+.eithra-etapa-informacoes {
+  padding-block: 1rem;
+}
+
+.eithra-sintese {
+  overflow-wrap: anywhere;
+}
+
+/* Entre as linhas da síntese a distância é a de uma leitura, não a de um
+   campo: elas contam o mesmo caso, e não são entradas independentes. */
+.eithra-sintese > * + * {
+  margin-block-start: 0.25rem;
+}
+
+/* Quem responde fecha a leitura, e um respiro a mais o separa do que descreve
+   o caso. */
+.eithra-sintese .eithra-sintese-responsavel {
+  margin-block-start: 0.5rem;
+}
+
+.eithra-sintese-pergunta {
+  margin-block-start: 0.75rem;
+}
+
+/* O ajuste é exceção, e por isso encosta no que ele corrige. */
+.eithra-sintese-ajuste {
+  margin-block-start: 1rem;
+}
+
+.eithra-ajuste-campos {
+  margin-block-start: 0.75rem;
 }
 
 /* O detalhe começa cedo. Entre a barra do topo e a primeira linha da página há

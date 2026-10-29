@@ -309,12 +309,15 @@ class BaseDaMovimentacao(TestCase):
         etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
         confirmacao = etapa.context["confirmacao"]
 
+        # O relato sustenta duas coisas agora: o que aconteceu (observação) e
+        # por quem a demanda passa a esperar (acompanhamento). São dois eventos,
+        # e uma movimentação continua valendo uma confirmação.
         self._confirmar(RELATO_SEM_CONSEQUENCIA, confirmacao)
-        self.assertEqual(self.demanda.historico.count(), 2)
+        self.assertEqual(self.demanda.historico.count(), 3)
 
         repetida = self._confirmar(RELATO_SEM_CONSEQUENCIA, confirmacao)
 
         self.assertEqual(repetida.status_code, 302)
         self.demanda.refresh_from_db()
         self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
-        self.assertEqual(self.demanda.historico.count(), 2)
+        self.assertEqual(self.demanda.historico.count(), 3)

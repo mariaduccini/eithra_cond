@@ -11,7 +11,8 @@ from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -22,15 +23,18 @@ from django.views.decorators.http import require_POST
 from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
+from apps.core.storage import ErroDeStorage
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
-from . import movimentacao
+from . import movimentacao, prazos
 from .constants import (
+    AguardandoTipo,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
     RiscoDemanda,
     StatusDemanda,
+    TipoMidiaEvidencia,
     TipoProblema,
 )
 from .derivacao import (
@@ -39,14 +43,23 @@ from .derivacao import (
     area_do_contexto,
     assunto_do_relato,
     prioridade_do_relato,
+    sustenta_registro,
+)
+from .evidencias import (
+    ErroDeEvidencia,
+    acesso_temporario,
+    anexar_evidencias,
+    limites_legiveis,
 )
 from .forms import (
+    AcompanhamentoDaDemandaForm,
     AcaoDeStatusForm,
     DemandaForm,
+    EvidenciaDaDemandaForm,
     FiltroDeDemandasForm,
     ObservacaoDaDemandaForm,
 )
-from .models import Demanda
+from .models import Demanda, EvidenciaDemanda
 from .permissoes import (
     condominios_para_criar,
     condominios_para_ver,
@@ -59,9 +72,11 @@ from .permissoes import (
 from .services import (
     ErroDeDemanda,
     alterar_status,
+    atualizar_acompanhamento,
     contexto_de_governanca,
     criar_demanda,
     editar_demanda,
+    registrar_evidencia_anexada,
     registrar_observacao,
 )
 
@@ -215,7 +230,17 @@ def transcrever_audio(request):
     # situação comum, com frase pronta para a tela. A resposta é sempre a
     # mesma forma — ou vem o texto, ou vem o que dizer sobre ele.
     if resultado.obtida:
-        return JsonResponse({"texto": resultado.texto})
+        return JsonResponse(
+            {
+                "texto": resultado.texto,
+                # A fala bastou para registrar? Quem responde é o domínio, não o
+                # navegador: é isso que deixa a tela seguir para as informações
+                # sem exigir mais um clique. Fala vazia ou sem fato operacional
+                # devolve ``False``, e a etapa da descrição continua aberta para
+                # ser completada.
+                "avancar": sustenta_registro(resultado.texto),
+            }
+        )
     return JsonResponse({"mensagem": resultado.erro})
 
 
@@ -336,18 +361,23 @@ def atualizar(request, pk):
         request.POST, permitidos=permitidos, demanda=demanda
     )
     texto = " ".join((request.POST.get("texto") or "").split())
-    precisa_validar_observacao = bool(texto)
+    # A foto e o vídeo acompanham o relato: são a prova do que ele diz. Vêm
+    # como arquivos, e não como campo do formulário, porque um envio pode
+    # trazer vários sob a mesma chave.
+    arquivos = [arquivo for arquivo in request.FILES.getlist("evidencias") if arquivo]
+    tem_arquivos = bool(arquivos)
+    precisa_validar_observacao = bool(texto) or tem_arquivos
     if precisa_validar_observacao and not pode_observar:
         raise PermissionDenied("Esta pessoa não pode registrar observação nesta demanda.")
 
     formulario_observacao = (
         ObservacaoDaDemandaForm(request.POST)
-        if precisa_validar_observacao
+        if bool(texto)
         else ObservacaoDaDemandaForm(initial={"texto": texto})
     )
 
     invalido = bool(permitidos) and not formulario_status.is_valid()
-    invalido = invalido or (precisa_validar_observacao and not formulario_observacao.is_valid())
+    invalido = invalido or (bool(texto) and not formulario_observacao.is_valid())
     if invalido:
         return _render_detalhe(
             request,
@@ -404,7 +434,7 @@ def atualizar(request, pk):
         )
 
     mudou_status = proximo_status != demanda.status
-    if not mudou_status and not texto:
+    if not mudou_status and not texto and not tem_arquivos:
         messages.error(request, "Informe uma atualização antes de salvar.")
         return _render_detalhe(
             request,
@@ -424,14 +454,66 @@ def atualizar(request, pk):
         messages.info(request, "Esta atualização já tinha sido registrada.")
         return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
 
+    # Relato, situação, acompanhamento e arquivos são uma coisa só: ou tudo
+    # entra, ou nada entra. Sem a transação, um arquivo recusado deixaria a
+    # situação já mudada e o relato já escrito — uma movimentação pela metade.
     try:
-        if mudou_status:
-            alterar_status(demanda=demanda, usuario=request.user, novo_status=proximo_status)
-        if texto:
-            registrar_observacao(demanda=demanda, usuario=request.user, texto=texto)
-    except ErroDeDemanda as erro:
-        messages.error(request, str(erro))
-        return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+        with transaction.atomic():
+            evento = None
+            if mudou_status:
+                evento = alterar_status(
+                    demanda=demanda, usuario=request.user, novo_status=proximo_status
+                )
+            if texto:
+                evento = registrar_observacao(
+                    demanda=demanda, usuario=request.user, texto=texto
+                )
+            # O relato também pode dizer por quem a demanda passa a esperar, o
+            # que vem depois e o que deixou de travar. Só o que ele sustenta é
+            # proposto — e só agora, depois da confirmação, isso é aplicado ao
+            # acompanhamento. Nada aqui move a situação da demanda.
+            proposta = leitura.acompanhamento_proposto()
+            if proposta:
+                atualizar_acompanhamento(
+                    demanda=demanda, usuario=request.user, **proposta
+                )
+            if tem_arquivos:
+                # Sem relato, a evidência precisa de um lugar próprio na linha
+                # do tempo: o evento que diz que ela passou a existir.
+                evento = evento or registrar_evidencia_anexada(
+                    demanda=demanda, usuario=request.user
+                )
+                anexar_evidencias(
+                    demanda=demanda,
+                    arquivos=arquivos,
+                    usuario=request.user,
+                    evento=evento,
+                )
+    except (ErroDeDemanda, ErroDeEvidencia, ErroDeStorage) as erro:
+        if isinstance(erro, ErroDeDemanda):
+            messages.error(request, str(erro))
+            return redirect(
+                f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico"
+            )
+        # O arquivo recusado volta para o lugar onde ele foi escolhido, com o
+        # relato e a situação ainda escritos: a atualização não ficou pela
+        # metade, e ninguém precisa digitar de novo o que já tinha dito.
+        formulario_evidencia = EvidenciaDaDemandaForm(request.POST, request.FILES)
+        formulario_evidencia.is_valid()
+        formulario_evidencia.add_error("evidencias", str(erro))
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_status=formulario_status,
+            formulario_observacao=formulario_observacao,
+            formulario_evidencia=formulario_evidencia,
+            modal="atualizar",
+            aba=request.GET.get("aba") or "visao_geral",
+            etapa_atualizacao="conclusao",
+            resumo_atualizacao=resumo,
+            confirmacao=confirmacao or uuid.uuid4().hex,
+            status=400,
+        )
 
     if confirmacao:
         _lembrar_confirmacao(request, confirmacao)
@@ -520,6 +602,110 @@ def observar(request, pk):
     return redirect("demandas:detalhe", pk=demanda.pk)
 
 
+@login_required
+@require_POST
+def acompanhar(request, pk):
+    """Atualiza o acompanhamento operacional, sem tocar na situação.
+
+    Aqui se responde a outra pergunta, diferente do ciclo da demanda: por quem
+    ela espera, qual é o próximo passo, para quando foi prometida, o que a trava
+    e quem a segue de perto. Salvar isto não move a demanda — previsão vencida
+    não conclui, espera pelo fornecedor não altera situação, e tirar o
+    impedimento não encerra nada. Quem acompanha a demanda é quem diz o que sabe
+    sobre ela, e é essa a autorização que vale aqui.
+    """
+    demanda = _demanda_para_acompanhar(request, pk)
+    formulario = AcompanhamentoDaDemandaForm(request.POST, demanda=demanda)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_acompanhamento=formulario,
+            modal="acompanhamento",
+            status=400,
+        )
+
+    try:
+        atualizar_acompanhamento(
+            demanda=demanda,
+            usuario=request.user,
+            **formulario.mudancas(),
+        )
+    except ErroDeDemanda as erro:
+        messages.error(request, str(erro))
+        return redirect("demandas:detalhe", pk=demanda.pk)
+
+    messages.success(request, "Acompanhamento atualizado.")
+    return redirect("demandas:detalhe", pk=demanda.pk)
+
+
+@login_required
+@require_POST
+def adicionar_evidencia(request, pk):
+    """Anexa foto ou vídeo à demanda sem mexer na situação dela.
+
+    É a mesma evidência da atualização, por outra porta: quem só quer guardar a
+    prova do que já sabe não precisa mover a demanda para isso. O arquivo ganha
+    um evento próprio no histórico — o que diz que ele passou a existir — e
+    nunca aparece solto, sem quando nem por quem. Anexar não conclui, não
+    cancela e não cria demanda.
+    """
+    demanda = _demanda_para_observar(request, pk)
+    formulario = EvidenciaDaDemandaForm(request.POST, request.FILES)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_evidencia=formulario,
+            modal="evidencia",
+            aba="historico",
+            status=400,
+        )
+
+    # O arquivo e o evento que o anuncia entram juntos: se o arquivo for
+    # recusado, o evento também não fica.
+    try:
+        with transaction.atomic():
+            evento = registrar_evidencia_anexada(demanda=demanda, usuario=request.user)
+            anexar_evidencias(
+                demanda=demanda,
+                arquivos=formulario.arquivos_enviados(),
+                usuario=request.user,
+                evento=evento,
+            )
+    except (ErroDeEvidencia, ErroDeStorage) as erro:
+        formulario.add_error("evidencias", str(erro))
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_evidencia=formulario,
+            modal="evidencia",
+            aba="historico",
+            status=400,
+        )
+
+    messages.success(request, "Evidência anexada.")
+    return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+
+
+@login_required
+def evidencia_arquivo(request, pk, evidencia_id):
+    """Entrega o arquivo de uma evidência a quem pode acompanhar a demanda.
+
+    A autorização é a da própria demanda: quem não a acompanha não descobre que
+    a evidência existe — a resposta é 404, e não uma negativa que confirmaria o
+    arquivo. O endereço devolvido é temporário, gerado na hora: nunca fica
+    guardado nem circula.
+    """
+    demanda = _demanda_autorizada(request, pk)
+    evidencia = get_object_or_404(EvidenciaDemanda, pk=evidencia_id, demanda=demanda)
+    try:
+        destino = acesso_temporario(evidencia)
+    except (ErroDeStorage, ImproperlyConfigured) as erro:
+        raise Http404("O arquivo desta evidência não está disponível.") from erro
+    return redirect(destino)
+
+
 # -- Autorização ----------------------------------------------------------------
 #
 # Toda pergunta passa pelo domínio. Quem não enxerga o módulo não descobre que a
@@ -543,6 +729,7 @@ def _demanda_autorizada(request, pk):
             "condominio",
             "responsavel",
             "criado_por",
+            "responsavel_acompanhamento",
             "local",
             "local__tipo_local",
             # A área sai do tipo do lugar onde o equipamento fica: trazer esse
@@ -577,6 +764,16 @@ def _demanda_para_observar(request, pk):
     if not pode_adicionar_observacao(request.user, demanda):
         raise PermissionDenied("Esta pessoa não acompanha esta demanda.")
     return demanda
+
+
+def _demanda_para_acompanhar(request, pk):
+    """Resolve a demanda e exige o direito de dizer o que se sabe sobre ela.
+
+    Acompanhar é a mesma autorização de observar: quem enxerga a demanda diz o
+    que sabe dela. Quem não a acompanha não descobre que ela existe — a resposta
+    é 404, e não uma negativa que confirmaria o registro.
+    """
+    return _demanda_para_observar(request, pk)
 
 
 # -- Montagem das telas ---------------------------------------------------------
@@ -618,6 +815,10 @@ def _render_listagem(
         "formulario_demanda": formulario
         or (DemandaForm(condominios=pode_criar_condominios) if pode_criar else None),
         "modal_aberto": modal,
+        # O registro não guarda rascunho: cada etapa é a resposta do envio
+        # anterior. Fechar uma etapa descarta o envio, e o lugar de onde a tela
+        # volta a viver é a leitura limpa dela mesma.
+        "descartar_url": reverse("demandas:listagem"),
         "registro_etapa": registro_etapa,
         "etapas_do_registro": _etapas_para_tela(ETAPAS_DO_REGISTRO, registro_etapa),
         "sugestoes": sugestoes,
@@ -638,6 +839,8 @@ def _render_detalhe(
     formulario=None,
     formulario_status=None,
     formulario_observacao=None,
+    formulario_evidencia=None,
+    formulario_acompanhamento=None,
     modal=None,
     aba=None,
     etapa_atualizacao="informacoes",
@@ -649,21 +852,32 @@ def _render_detalhe(
     permitidos = status_permitidos_para(request.user, demanda)
     pode_editar = pode_editar_demanda(request.user, demanda)
     pode_observar = pode_adicionar_observacao(request.user, demanda)
+    # Acompanhar é a mesma autorização de observar: quem enxerga a demanda diz o
+    # que sabe dela — por quem espera, o próximo passo, o que a trava.
+    pode_acompanhar = pode_observar
     manutencao = _manutencao_da_demanda(demanda)
     aba_atual = _aba_da_demanda(aba)
+    historico = _historico_para_tela(demanda)
 
     if (modal == "editar" and not pode_editar) or (
         modal == "status" and not permitidos
     ) or (modal == "observacao" and not pode_observar) or (
+        modal == "evidencia" and not pode_observar
+    ) or (modal == "acompanhamento" and not pode_acompanhar) or (
         modal == "atualizar" and not (permitidos or pode_observar)
     ):
         modal = None
 
+    provas = [item for evento in historico for item in evento["evidencias"]]
     contexto = {
         "demanda": _demanda_para_detalhe(demanda),
         "aba": aba_atual,
         "abas": _abas_para_tela(aba_atual),
-        "historico": _historico_para_tela(demanda),
+        "historico": historico,
+        # As janelas de ampliação só existem quando há o que ampliar: sem prova
+        # no histórico, nenhuma delas ocupa a página.
+        "tem_evidencias": bool(provas),
+        "tem_videos": any(item["eh_video"] for item in provas),
         # O que a Governança já sabe sobre o lugar e o equipamento desta demanda:
         # contrato vigente e garantia, quando existem. Vem do domínio de
         # Governança por consulta, sem criar vínculo novo aqui.
@@ -675,6 +889,12 @@ def _render_detalhe(
         "pode_editar": pode_editar,
         "pode_observar": pode_observar,
         "pode_atualizar": bool(permitidos or pode_observar),
+        # Acompanhar é dizer o que se sabe sobre a demanda — por quem ela espera,
+        # o próximo passo, o que a trava. Não move a situação dela.
+        "pode_acompanhar": pode_acompanhar,
+        # Anexar uma prova é observar a demanda, não movê-la: quem acompanha
+        # pode guardar a foto ou o vídeo sem mexer na situação.
+        "pode_adicionar_evidencia": pode_observar,
         "pode_concluir": StatusDemanda.CONCLUIDA in permitidos and not demanda.esta_encerrada,
         "proximo_passo": _proximo_passo(demanda, request.user, manutencao),
         "mais_acoes": _mais_acoes_da_demanda(demanda, request.user),
@@ -683,6 +903,12 @@ def _render_detalhe(
         "formulario_status": formulario_status
         or AcaoDeStatusForm(permitidos=permitidos, demanda=demanda),
         "formulario_observacao": formulario_observacao or ObservacaoDaDemandaForm(),
+        "formulario_evidencia": formulario_evidencia or EvidenciaDaDemandaForm(),
+        "formulario_acompanhamento": formulario_acompanhamento
+        or AcompanhamentoDaDemandaForm(demanda=demanda),
+        # O que a tela pode dizer sobre o arquivo sem expor bytes nem termos
+        # técnicos: os formatos aceitos e o tamanho que cada um pode ter.
+        "limites_evidencia": limites_legiveis(),
         "modal_aberto": modal,
         "etapa_atualizacao": etapa_atualizacao,
         "etapas_da_atualizacao": _etapas_para_tela(
@@ -896,68 +1122,57 @@ def _classificacao_identificada(leitura):
     return itens
 
 
+def _origem_do_prazo(prazo, leitura) -> str:
+    """De onde veio a data prevista, na linguagem humana que a tela mostra.
+
+    A data que é a mesma que a política derivou é regra; qualquer outra que
+    esteja preenchida foi decidida por quem registrou. Não há terceiro caso: a
+    leitura do relato não cria data.
+    """
+    if not prazo:
+        return "Não identificado"
+    if prazo == leitura.prazo:
+        return "Derivado por regra"
+    return "Definido por quem registrou"
+
+
 def _sugestoes_para_tela(formulario, usuario):
-    """As sugestões da etapa 2 com origem e explicação humana."""
+    """O que a etapa de informações apresenta, já em linguagem humana.
+
+    A etapa existe para revisar e corrigir, não para classificar: por isso ela
+    traz o resultado da leitura montado — assunto, lugar e tipo de problema,
+    peso e prazo, responsável —, e o ajuste fica atrás de uma ação discreta.
+    Cada campo guarda o motivo do domínio, para quem quiser saber de onde
+    aquilo veio; a tela mostra o motivo onde ele ajuda, e não em cada linha.
+    """
     leitura = formulario.leitura
     dados = formulario.cleaned_data
     responsavel = dados.get("responsavel") or formulario.responsavel_sugerido(usuario)
     prioridade = dados.get("prioridade") or ""
     propostas = leitura.sugestoes
     return {
-        "assunto": {
-            "valor": dados.get("titulo") or leitura.assunto,
-            "origem": "Identificado no relato" if leitura.assunto else "Não identificado",
-            "motivo": "Pode ser ajustado antes do registro." if leitura.assunto else "",
-        },
+        "assunto": {"valor": dados.get("titulo") or leitura.assunto},
         "local": {
             "valor": leitura.local.nome if leitura.local else dados.get("local_texto") or "",
-            "origem": "Identificado no relato" if leitura.local else "Não identificado",
-            "motivo": "Usa o cadastro do condomínio quando o local é reconhecido."
-            if leitura.local
-            else "",
         },
         # A área não é campo: é a leitura do tipo do lugar onde o problema está.
-        # Aparece junto de onde as coisas acontecem porque é ali que ela explica.
-        "area": _proposta_para_tela(
-            propostas["area"], None, "Não identificada pelo lugar."
-        ),
-        "equipamento": _proposta_para_tela(
-            propostas["equipamento"], None, "Nenhum equipamento identificado no relato."
-        ),
-        "tipo_problema": _proposta_para_tela(
-            propostas["tipo_problema"],
-            TipoProblema,
-            "Não identificado no relato.",
-        ),
-        "impacto": _proposta_para_tela(
-            propostas["impacto"], ImpactoDemanda, "Não avaliado."
-        ),
-        "risco": _proposta_para_tela(propostas["risco"], RiscoDemanda, "Não avaliado."),
+        # Vem pronta do backend, e some quando o cadastro não a sustenta.
+        "area": _proposta_para_tela(propostas["area"]),
+        "equipamento": _proposta_para_tela(propostas["equipamento"]),
+        "tipo_problema": _proposta_para_tela(propostas["tipo_problema"], TipoProblema),
+        "impacto": _proposta_para_tela(propostas["impacto"], ImpactoDemanda),
+        "risco": _proposta_para_tela(propostas["risco"], RiscoDemanda),
         "prioridade": {
             "valor": PrioridadeDemanda(prioridade).label if prioridade else "",
-            "origem": (
-                "Sugerida pelo EITHRA"
-                if leitura.motivo
-                else "Não identificada"
-            ),
             "motivo": leitura.motivo,
         },
         "prazo": {
             "valor": _prazo_por_extenso(dados.get("prazo")) if dados.get("prazo") else "",
-            "origem": "Informado manualmente" if dados.get("prazo") else "Não identificado",
-            "motivo": "",
+            "texto": _prazo_da_sintese(dados.get("prazo"), leitura),
+            "origem": _origem_do_prazo(dados.get("prazo"), leitura),
+            "motivo": leitura.motivo_do_prazo if dados.get("prazo") == leitura.prazo else "",
         },
-        "responsavel": {
-            "valor": _nome_de(responsavel),
-            "origem": (
-                "Sugerido pelo contexto"
-                if responsavel is not None and getattr(responsavel, "pk", None) == getattr(usuario, "pk", None)
-                else "Não identificado"
-            ),
-            "motivo": "Quem registrou também pode acompanhar esta demanda."
-            if responsavel is not None and getattr(responsavel, "pk", None) == getattr(usuario, "pk", None)
-            else "",
-        },
+        "responsavel": {"valor": _nome_de(responsavel)},
         # A classificação, campo a campo, e a pergunta que o relato deixou em
         # aberto — no máximo uma. Quando nada ficou ambíguo, ela vem vazia e a
         # tela não pergunta nada.
@@ -986,7 +1201,11 @@ def _resumo_do_registro(formulario, usuario):
         },
         "prazo": {
             "valor": _prazo_por_extenso(dados.get("prazo")),
-            "origem": "Informado manualmente" if dados.get("prazo") else "Sem prazo definido",
+            "origem": (
+                _origem_do_prazo(dados.get("prazo"), leitura)
+                if dados.get("prazo")
+                else "Sem prazo definido"
+            ),
         },
         # A mesma classificação que a etapa anterior mostrou: quem revisa
         # confere o que o EITHRA identificou antes de registrar, e não descobre
@@ -1063,6 +1282,64 @@ def _mais_acoes_da_demanda(demanda, usuario):
     return acoes
 
 
+def _sinal_do_acompanhamento(demanda):
+    """O sinal compacto do acompanhamento na lista, ou nada quando não há.
+
+    A grade não é o lugar do acompanhamento inteiro: o que aparece aqui é o que
+    muda uma decisão de quem olha a lista — o que está parado à espera de
+    alguém, ou uma data prometida que já passou. Sem nada relevante, nenhum
+    sinal ocupa a linha.
+    """
+    if demanda.esta_encerrada or not demanda.tem_acompanhamento:
+        return "", ""
+    if demanda.previsao_vencida:
+        return "Previsão vencida", "danger"
+    if demanda.aguardando_tipo:
+        return f"Aguardando {demanda.get_aguardando_tipo_display().lower()}", "warning"
+    if demanda.aguardando_descricao:
+        return f"Aguardando {demanda.aguardando_descricao}", "warning"
+    return "", ""
+
+
+def _acompanhamento_para_tela(demanda):
+    """O acompanhamento como o bloco compacto do detalhe o lê.
+
+    Só o que existe vira linha: campo sem resposta não aparece vazio. A previsão
+    vem por extenso e, quando já passou, marcada como vencida — um sinal para
+    quem acompanha, sem que isso mude nada na demanda.
+    """
+    linhas = []
+    if demanda.aguardando_tipo or demanda.aguardando_descricao:
+        linhas.append(
+            {"rotulo": "Aguardando", "valor": demanda.aguardando_para_exibir, "tom": ""}
+        )
+    if demanda.proxima_acao:
+        linhas.append({"rotulo": "Próxima ação", "valor": demanda.proxima_acao, "tom": ""})
+    if demanda.previsao:
+        vencida = demanda.previsao_vencida
+        linhas.append(
+            {
+                "rotulo": "Previsão",
+                "valor": _prazo_por_extenso(demanda.previsao),
+                "nota": "Vencida" if vencida else "",
+                "tom": "danger" if vencida else "",
+            }
+        )
+    if demanda.impedimento:
+        linhas.append(
+            {"rotulo": "Impedimento", "valor": demanda.impedimento, "tom": "warning"}
+        )
+    if demanda.responsavel_acompanhamento_id:
+        linhas.append(
+            {
+                "rotulo": "Quem acompanha",
+                "valor": _nome_de(demanda.responsavel_acompanhamento),
+                "tom": "",
+            }
+        )
+    return linhas
+
+
 def _nome_de(usuario) -> str:
     """O nome pelo qual a pessoa é reconhecida na tela."""
     return (
@@ -1074,6 +1351,28 @@ def _nome_de(usuario) -> str:
 
 def _prazo_por_extenso(prazo) -> str:
     return prazo.strftime("%d/%m/%Y") if prazo else "Sem prazo"
+
+
+def _prazo_da_sintese(prazo, leitura) -> str:
+    """O prazo como a síntese do registro o diz.
+
+    Quando a data vem da política, ela aparece com os dias que a regra
+    concedeu e o dia em que vence — é o que quem registra precisa saber, e o
+    número sai da própria política, não de uma cópia. Quando não há data
+    nenhuma, a resposta é a ausência dita em linguagem humana: o registro
+    segue sem prazo, e ninguém precisa escolher uma data para continuar.
+    """
+    if not prazo:
+        return "Sem prazo definido"
+
+    data = _prazo_por_extenso(prazo)
+    if prazo != leitura.prazo:
+        return f"Prazo {data}"
+
+    dias = prazos.dias_do_prazo(leitura.prioridade)
+    if not dias:
+        return f"Prazo {data}"
+    return f"Prazo {'1 dia' if dias == 1 else f'{dias} dias'} · {data}"
 
 
 def _situacao_do_prazo(prazo, encerrada: bool, hoje):
@@ -1102,6 +1401,19 @@ def _momento_por_extenso(momento, hoje) -> str:
     return f"{prefixo} {local.strftime('%H:%M')}"
 
 
+def _momento_da_ultima_movimentacao(demanda) -> str:
+    """Quando a demanda se moveu pela última vez, como a gestão lê.
+
+    A fonte é o histórico — a memória do que mudou. Nunca o carimbo de
+    atualização, que anda por qualquer gravação e por isso não responde a esta
+    pergunta.
+    """
+    evento = demanda.ultima_movimentacao
+    if evento is None:
+        return ""
+    return _momento_por_extenso(evento.data_hora, timezone.localdate())
+
+
 def _demanda_para_tela(demanda, usuario=None):
     """A demanda como a linha da lista precisa dela.
 
@@ -1110,6 +1422,7 @@ def _demanda_para_tela(demanda, usuario=None):
     """
     hoje = timezone.localdate()
     situacao, tom = _situacao_do_prazo(demanda.prazo, demanda.esta_encerrada, hoje)
+    sinal = _sinal_do_acompanhamento(demanda)
     return {
         "pk": demanda.pk,
         "referencia": _referencia_curta(demanda),
@@ -1137,6 +1450,11 @@ def _demanda_para_tela(demanda, usuario=None):
         "status_tom": TOM_POR_STATUS.get(demanda.status, "secondary"),
         "encerrada": demanda.esta_encerrada,
         "local": demanda.local_para_exibir or "Sem local",
+        # O acompanhamento não ocupa coluna própria na lista: o que muda uma
+        # decisão de quem olha a grade cabe em um sinal discreto ao lado da
+        # situação. O resto vive no detalhe da demanda.
+        "sinal_acompanhamento": sinal[0],
+        "sinal_acompanhamento_tom": sinal[1],
         "acoes": _acoes_da_linha(demanda, usuario),
     }
 
@@ -1144,20 +1462,15 @@ def _demanda_para_tela(demanda, usuario=None):
 def _acoes_da_linha(demanda, usuario):
     """As ações oferecidas na linha, já decididas pelo domínio.
 
-    Só o apoio: abrir a demanda é a própria linha, e o que muda a demanda
+    Abrir a demanda não é ação: a linha inteira leva até ela. O que sobra é o
+    que a própria linha não faz — editar, por exemplo. O que muda a demanda
     acontece dentro dela, por ação, não por escolha de situação na lista.
     """
     if usuario is None:
         return []
 
     destino = reverse("demandas:detalhe", args=[demanda.pk])
-    acoes = [
-        {
-            "label": "Abrir demanda",
-            "icon": "bx-show",
-            "url": destino,
-        }
-    ]
+    acoes = []
     if pode_editar_demanda(usuario, demanda):
         acoes.append(
             {
@@ -1193,6 +1506,10 @@ def _demanda_para_detalhe(demanda):
             "tipo_problema": _rotulo_de(TipoProblema, demanda.tipo_problema),
             "impacto": _rotulo_de(ImpactoDemanda, demanda.impacto),
             "risco": _rotulo_de(RiscoDemanda, demanda.risco),
+            # O acompanhamento operacional: outra pergunta que não a situação.
+            # Só o que existe vira linha no bloco compacto da tela.
+            "acompanhamento": _acompanhamento_para_tela(demanda),
+            "ultima_movimentacao": _momento_da_ultima_movimentacao(demanda),
         }
     )
     return dados
@@ -1218,6 +1535,13 @@ ROTULOS_DO_HISTORICO = (
     ("impacto", "Impacto"),
     ("risco", "Risco"),
     ("prazo", "Prazo"),
+    # O acompanhamento também aparece com o antes e o depois: por quem se
+    # espera, o próximo passo, a data prometida, o que trava e quem acompanha.
+    ("aguardando_tipo", "Aguardando"),
+    ("aguardando_descricao", "O que se espera"),
+    ("proxima_acao", "Próxima ação"),
+    ("previsao", "Previsão"),
+    ("impedimento", "Impedimento"),
 )
 
 ESCOLHAS_DO_HISTORICO = {
@@ -1226,14 +1550,17 @@ ESCOLHAS_DO_HISTORICO = {
     "tipo_problema": TipoProblema,
     "impacto": ImpactoDemanda,
     "risco": RiscoDemanda,
+    "aguardando_tipo": AguardandoTipo,
 }
 
 
 def _valor_do_historico(campo, valor) -> str:
     """Um valor guardado, como a gestão o lê agora — ou a ausência dele."""
+    if campo == "aguardando_tipo":
+        return _rotulo_de(AguardandoTipo, valor) or "ninguém"
     if not valor:
         return "não informado"
-    if campo == "prazo":
+    if campo in ("prazo", "previsao"):
         try:
             return _prazo_por_extenso(date.fromisoformat(valor))
         except (TypeError, ValueError):
@@ -1264,9 +1591,16 @@ def _historico_para_tela(demanda):
     """O que aconteceu com a demanda, do começo para o fim.
 
     Cada evento vem com a frase que o descreve e, quando a mudança foi de um
-    campo com vocabulário próprio, com o antes e o depois já traduzidos.
+    campo com vocabulário próprio, com o antes e o depois já traduzidos. As
+    evidências que aquele evento trouxe aparecem presas a ele: a foto fica onde
+    o relato ficou, e não numa galeria à parte.
     """
     hoje = timezone.localdate()
+    eventos = (
+        demanda.historico.select_related("usuario")
+        .prefetch_related("evidencias")
+        .order_by("-data_hora")
+    )
     return [
         {
             "momento": _momento_por_extenso(evento.data_hora, hoje),
@@ -1274,9 +1608,27 @@ def _historico_para_tela(demanda):
             "descricao": evento.descricao,
             "quem": _nome_de(evento.usuario),
             "mudancas": _mudancas_do_evento(evento),
+            "evidencias": [
+                _evidencia_para_tela(item) for item in evento.evidencias.all()
+            ],
         }
-        for evento in demanda.historico.select_related("usuario").order_by("-data_hora")
+        for evento in eventos
     ]
+
+
+def _evidencia_para_tela(evidencia):
+    """O mínimo para a tela: o que é e como pedir o arquivo.
+
+    O endereço do arquivo não é resolvido aqui — quem o entrega é a view que
+    confere a autorização. Guardar o endereço temporário no contexto só criaria
+    uma URL assinada a mais para expirar sem uso.
+    """
+    return {
+        "pk": evidencia.pk,
+        "eh_video": evidencia.tipo_midia == TipoMidiaEvidencia.VIDEO,
+        "tipo": evidencia.get_tipo_midia_display(),
+        "nome": evidencia.nome_original,
+    }
 
 
 def _indicadores_da_listagem(condominios):

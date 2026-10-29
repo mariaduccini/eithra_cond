@@ -35,6 +35,7 @@ from django.utils import timezone
 from apps.cadastros.constants import TipoLocal
 from apps.cadastros.models import Equipamento, LocalOperacional
 
+from . import prazos
 from .constants import (
     ImpactoDemanda,
     PrioridadeDemanda,
@@ -61,6 +62,8 @@ LIMITE_DO_ASSUNTO = 120
 LIMITE_DO_ASSUNTO_NO_CABECALHO = 64
 
 # Nome de lugar curto demais casaria por acidente dentro de qualquer frase.
+# Vale para a busca por dentro do texto; um nome curto que o cadastro confirma
+# continua sendo reconhecido, mas por palavra inteira (ver ``_menciona``).
 MINIMO_DO_NOME_DE_LOCAL = 3
 
 # O que pode machucar alguém ou comprometer o prédio: não espera.
@@ -339,6 +342,24 @@ SINAIS_DE_EQUIPAMENTO = (
     "controlador",
 )
 
+# A saudação abre o relato e não é o fato: quem cumprimenta antes de contar o
+# que aconteceu não está falando do problema. Estas palavras, quando abrem o
+# relato, saem da frente antes de o assunto ser lido — nada mais é reescrito.
+SAUDACOES = (
+    "ola",
+    "oi",
+    "bom dia",
+    "boa tarde",
+    "boa noite",
+    "boa madrugada",
+    "tudo bem",
+    "tudo bom",
+    "por favor",
+    "por gentileza",
+    "obrigado",
+    "obrigada",
+)
+
 
 @dataclass(frozen=True)
 class Leitura:
@@ -354,6 +375,9 @@ class Leitura:
     prioridade: str = PrioridadeDemanda.NORMAL
     motivo: str = ""
     prazo: date | None = None
+    # Por que o prazo é o que é. Vazio quando não há política configurada — e a
+    # data só existe quando existe regra; a leitura do relato nunca a inventa.
+    motivo_do_prazo: str = ""
     local: LocalOperacional | None = None
     # De onde o local veio. Quase sempre é o próprio relato, que nomeia o
     # lugar; quando a leitura semântica é quem o reconhece, a origem muda para
@@ -467,6 +491,32 @@ def _contem(texto_normalizado: str, palavras) -> bool:
     )
 
 
+def _palavras(texto_normalizado: str) -> list[str]:
+    """As palavras do texto, sem a pontuação que veio colada nelas.
+
+    A comparação de um nome curto é por palavra inteira, então "no G2." precisa
+    valer como "g2": a pontuação do entorno sai antes de comparar, e o que fica
+    é a unidade lexical dita na frase.
+    """
+    return [re.sub(r"^\W+|\W+$", "", palavra) for palavra in texto_normalizado.split()]
+
+
+def _menciona(texto_normalizado: str, nome: str) -> bool:
+    """Se o nome do lugar aparece no relato como unidade lexical.
+
+    Nome com tamanho de sobra é procurado inteiro no texto — a busca de sempre.
+    Nome curto — "G2", "P1", "12" — é curto demais para essa busca, porque a
+    sequência de caracteres casaria dentro de "G20", "AG2" e "G2X". Ele só
+    entra quando o cadastro o confirma, e entra por palavra inteira: existe de
+    fato como lugar do condomínio, então pode ser dito no relato; e é palavra
+    inteira, então não casa por dentro de outra. Nada é escolhido por
+    semelhança frouxa — quem autoriza o nome curto é o cadastro.
+    """
+    if len(nome) >= MINIMO_DO_NOME_DE_LOCAL:
+        return _contem(texto_normalizado, (nome,))
+    return nome in _palavras(texto_normalizado)
+
+
 def _equipamento_mencionado(texto_normalizado: str) -> str:
     """O rótulo do equipamento essencial citado no relato, se algum foi."""
     for rotulo, variantes in EQUIPAMENTOS_ESSENCIAIS:
@@ -475,17 +525,41 @@ def _equipamento_mencionado(texto_normalizado: str) -> str:
     return ""
 
 
+def _sem_saudacao(linha: str) -> str:
+    """O relato sem a saudação da frente, para que o assunto seja o fato.
+
+    Só a abertura sai, e só quando ela é exatamente um cumprimento: "boa tarde
+    para todos" continua sendo o relato, porque não é saudação. O que sobra é
+    devolvido como estava — a limpeza é de abertura, não uma reescrita.
+
+    Quando só havia cumprimento, o resultado é vazio: não há assunto, e a
+    etapa da descrição continua aberta esperando o fato.
+    """
+    restante = linha
+    while True:
+        partes = re.split(r"\s*[,;:.!?]\s*", restante, maxsplit=1)
+        if _normalizado(partes[0]) not in SAUDACOES:
+            return restante
+        if len(partes) < 2:
+            return ""
+        restante = partes[1].strip()
+
+
 def assunto_do_relato(texto: str | None, *, limite: int = LIMITE_DO_ASSUNTO) -> str:
     """A primeira ideia do relato, em uma linha.
 
-    Quem escreve começa pelo que aconteceu, então a primeira frase já é o
-    assunto. Se ela não couber, o corte é na última palavra inteira.
+    Quem escreve começa pelo que aconteceu — e a saudação, quando abre o
+    relato, não conta: o assunto é o fato, não o cumprimento. Se a frase não
+    couber, o corte é na última palavra inteira.
 
     O limite muda com a superfície que mostra o assunto: a linha da lista
     comporta mais do que o cabeçalho do detalhe. O corte é sempre o mesmo —
     na palavra inteira — e nunca toca no que está guardado.
     """
     linha = " ".join((texto or "").replace("\n", " ").split())
+    if not linha:
+        return ""
+    linha = _sem_saudacao(linha)
     if not linha:
         return ""
     for corte in (". ", "! ", "? ", ";"):
@@ -496,6 +570,16 @@ def assunto_do_relato(texto: str | None, *, limite: int = LIMITE_DO_ASSUNTO) -> 
     if len(linha) <= limite:
         return linha
     return linha[:limite].rsplit(" ", 1)[0].rstrip(" ,;:")
+
+
+def sustenta_registro(relato: str | None) -> bool:
+    """Se o relato já sustenta seguir para as informações.
+
+    É a mesma régua do registro: sem assunto não há demanda. Serve à fala, que
+    precisa saber se pode levar a tela adiante sem mais um clique — e a
+    resposta é do domínio, não do navegador.
+    """
+    return bool(assunto_do_relato(relato))
 
 
 def prioridade_do_relato(texto: str | None) -> tuple[str, str]:
@@ -528,8 +612,14 @@ def prioridade_do_relato(texto: str | None) -> tuple[str, str]:
 def local_do_relato(texto: str | None, condominio) -> LocalOperacional | None:
     """O lugar cadastrado que o relato cita, quando cita algum.
 
-    Só nome inteiro conta. Entre dois cadastros que casam — "Garagem" e
-    "Garagem do bloco B" —, vence o mais específico, que é o mais longo.
+    Só nome inteiro conta, e só cadastro ativo deste condomínio. Entre dois
+    cadastros que casam — "Garagem" e "Garagem do bloco B" —, vence o mais
+    específico, que é o mais longo. Nome curto, como "G2", também é
+    reconhecido desde que exista no cadastro: ele não é procurado por dentro
+    do texto, e sim como palavra inteira do relato (ver ``_menciona``).
+
+    Empatados na especificidade, não há escolha: dois lugares igualmente
+    prováveis seriam uma aposta, e o silêncio é a resposta honesta.
     """
     lido = _normalizado(texto)
     if not lido or condominio is None or not getattr(condominio, "pk", None):
@@ -546,13 +636,13 @@ def local_do_relato(texto: str | None, condominio) -> LocalOperacional | None:
             return local
 
     candidatos = [
-        (local, nome)
-        for local, nome in nomeados
-        if len(nome) >= MINIMO_DO_NOME_DE_LOCAL and _contem(lido, (nome,))
+        (local, nome) for local, nome in nomeados if _menciona(lido, nome)
     ]
     if not candidatos:
         return None
     candidatos.sort(key=lambda par: len(par[1]), reverse=True)
+    if len(candidatos) > 1 and len(candidatos[0][1]) == len(candidatos[1][1]):
+        return None
     return candidatos[0][0]
 
 
@@ -573,6 +663,42 @@ def _tipo_do_local(local) -> str:
     if local.tipo and local.tipo != TipoLocal.OUTRO:
         return local.get_tipo_display()
     return ""
+
+
+def _nomeia_outro_lugar(nome: str, local) -> bool:
+    """Se o rótulo do tipo é, na verdade, o nome de outro lugar do condomínio.
+
+    O tipo do lugar existe para agrupar lugares parecidos — "Área comum",
+    "Fachada", "Garagem". Quando o rótulo coincide com o nome de um lugar
+    cadastrado, ele não agrupa nada: nomeia um lugar do mesmo nível. Aí dizer
+    "o local G2 pertence à área G1" seria contradizer o cadastro, que já disse
+    onde G2 fica. Nada é reclassificado nem inventado: a área simplesmente não
+    se sustenta, e o silêncio é a resposta.
+    """
+    condominio = getattr(local, "condominio", None)
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+    alvo = _normalizado(nome)
+    if not alvo:
+        return False
+
+    outros = LocalOperacional.objects.do_condominio(condominio).ativos()
+    if getattr(local, "pk", None):
+        outros = outros.exclude(pk=local.pk)
+    return any(_normalizado(item.nome) == alvo for item in outros)
+
+
+def _area_do_local(local) -> str:
+    """O rótulo do tipo do lugar, quando ele de fato agrupa o lugar.
+
+    A área é derivada do relacionamento real do cadastro e de mais nada: a
+    informação explícita e a inferência semântica não entram aqui, porque uma
+    área não pode contrariar o lugar que o cadastro já confirmou.
+    """
+    nome = _tipo_do_local(local)
+    if not nome or _nomeia_outro_lugar(nome, local):
+        return ""
+    return nome
 
 
 def _equipamento_confirmado(equipamento) -> Sugestao:
@@ -648,9 +774,11 @@ def area_do_contexto(local, equipamento) -> Sugestao:
 
     Vem do tipo do local quando ele está classificado; e, quando só o
     equipamento se sabe, do local onde ele fica. É derivada, não declarada —
-    por isso a origem é o cadastro, e não o relato.
+    por isso a origem é o cadastro, e não o relato. Quando o vínculo do
+    cadastro não sustenta uma área — porque o rótulo nomeia outro lugar —,
+    não há área a mostrar: a área nunca contradiz o lugar confirmado.
     """
-    nome = _tipo_do_local(local)
+    nome = _area_do_local(local)
     if nome:
         return Sugestao(
             valor=nome,
@@ -660,7 +788,7 @@ def area_do_contexto(local, equipamento) -> Sugestao:
         )
 
     if equipamento is not None and getattr(equipamento, "local_id", None):
-        nome = _tipo_do_local(equipamento.local)
+        nome = _area_do_local(equipamento.local)
         if nome:
             return Sugestao(
                 valor=nome,
@@ -894,9 +1022,10 @@ def interpretar(
 ) -> Leitura:
     """Lê o relato e devolve o que ele sustenta.
 
-    Nesta fase, o relato não cria prazo automático. Sem data expressa ou outra
-    base objetiva já aprovada no domínio, preencher prazo seria transformar
-    heurística em regra de negócio.
+    O prazo não sai do relato: ele sai da política configurada, aplicada ao
+    peso que o relato sustenta (ver ``.prazos``). Sem regra configurada, não há
+    data — o relato nunca inventa uma. O que a pessoa informar na tela vale
+    mais do que a derivação, e é o formulário que faz essa parte valer.
 
     ``ignorar`` é a demanda que já existe e está sendo revista: ela não conta
     como histórico dela mesma.
@@ -913,6 +1042,8 @@ def interpretar(
         assunto=assunto_do_relato(texto),
         prioridade=prioridade,
         motivo=motivo,
+        prazo=prazos.prazo_do_registro(prioridade, base=hoje),
+        motivo_do_prazo=prazos.motivo_do_prazo(prioridade),
         local=local,
         equipamento=equipamento,
         area=area_do_contexto(local, equipamento),

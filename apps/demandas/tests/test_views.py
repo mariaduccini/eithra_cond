@@ -437,8 +437,10 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
     def test_o_que_a_leitura_nao_sustentou_permanece_sem_resposta(self):
         resposta = self._descricao(relato="Comprar lâmpadas para o corredor")
         sugestoes = resposta.context["sugestoes"]
-        self.assertEqual(sugestoes["prioridade"]["origem"], "Não identificada")
-        self.assertEqual(sugestoes["prazo"]["valor"], "")
+        # Sem sinal objetivo o peso fica no padrão do domínio, e não há data a
+        # inventar: a etapa também não exige que a pessoa escolha a outra.
+        self.assertEqual(sugestoes["prioridade"]["valor"], "Normal")
+        self.assertEqual(sugestoes["prazo"]["texto"], "Sem prazo definido")
         self.assertEqual(sugestoes["local"]["valor"], "")
 
     def test_local_reconhecido_no_relato_aparece_nas_informacoes(self):

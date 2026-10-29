@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from apps.cadastros.models import Fornecedor
 
+from .constants import AguardandoTipo
 from .derivacao import _contem, _normalizado
 
 # Frases que dizem, com todas as letras, que o serviço acabou. Nenhuma delas
@@ -103,6 +104,126 @@ SINAIS_DE_PREVISAO = (
     "avisou que",
 )
 
+# O que diz, com todas as letras, que a demanda está esperando alguém. Sem uma
+# dessas — ou sem algo prometido para depois —, um nome citado é só um nome
+# citado: não se inventa espera onde o relato não declarou nenhuma.
+SINAIS_DE_ESPERA = (
+    "aguardando",
+    "aguardo",
+    "aguardamos",
+    "no aguardo",
+    "esperando",
+    "espero",
+    "esperamos",
+    "sem resposta",
+    "nao respondeu",
+    "nao responderam",
+    "nao retornou",
+    "nao retornaram",
+    "pendente",
+    "pendentes",
+    "nao recebi",
+    "nao recebemos",
+    "nao chegou",
+    "nao chegaram",
+    "prazo de entrega",
+    "cobrando",
+    "cobrei",
+    "vou cobrar",
+)
+
+# O que a demanda espera, na ordem em que se decide. A primeira que casar
+# responde, e a ordem é a leitura: quem espera o técnico espera o fornecedor,
+# mesmo citando "peça" no mesmo relato.
+ESPERA_POR_FORNECEDOR = (
+    "fornecedor",
+    "fornecedores",
+    "empresa",
+    "empresas",
+    "tecnico",
+    "tecnicos",
+    "orcamento",
+    "orcamentos",
+    "proposta",
+    "assistencia",
+    "prestador",
+    "visita",
+)
+
+CLASSIFICACAO_DA_ESPERA = (
+    (
+        AguardandoTipo.MORADOR,
+        (
+            "morador",
+            "moradores",
+            "condomino",
+            "condominos",
+            "proprietario",
+            "proprietarios",
+            "inquilino",
+            "inquilinos",
+        ),
+    ),
+    (
+        AguardandoTipo.APROVACAO,
+        ("aprovacao", "aprovar", "autorizacao", "autorizar", "assembleia"),
+    ),
+    (AguardandoTipo.FORNECEDOR, ESPERA_POR_FORNECEDOR),
+    (
+        AguardandoTipo.MATERIAL,
+        ("material", "peca", "pecas", "insumo", "insumos", "entrega", "sobressalente"),
+    ),
+    (
+        AguardandoTipo.ADMINISTRACAO,
+        ("administracao", "administradora", "sindico", "sindica", "gestao"),
+    ),
+    (
+        AguardandoTipo.TERCEIRO,
+        ("terceiro", "terceiros", "engenheiro", "perito", "vistoriador", "seguradora"),
+    ),
+)
+
+# O próximo passo que cada espera pede. É uma frase de operação, não uma
+# obrigação: quem confirma na tela pode ajustá-la antes de gravar.
+ACOES_POR_ESPERA = {
+    AguardandoTipo.MORADOR: "Cobrar retorno do morador",
+    AguardandoTipo.APROVACAO: "Cobrar a aprovação",
+    AguardandoTipo.MATERIAL: "Conferir a entrega do material",
+    AguardandoTipo.ADMINISTRACAO: "Cobrar retorno da administração",
+    AguardandoTipo.TERCEIRO: "Cobrar retorno do terceiro",
+    AguardandoTipo.OUTRO: "Cobrar retorno",
+}
+
+# O que o relato diz que deixou de travar a demanda. Só vale sobre um
+# impedimento que existe: sem nada travando, não há o que resolver.
+FRASES_DE_RESOLUCAO = (
+    "chegou",
+    "chegaram",
+    "entregue",
+    "entregaram",
+    "recebido",
+    "recebida",
+    "recebemos",
+    "recebi",
+    "liberado",
+    "liberada",
+    "liberaram",
+    "aprovado",
+    "aprovada",
+    "aprovaram",
+    "autorizado",
+    "autorizada",
+    "autorizaram",
+    "disponivel",
+    "disponiveis",
+    "retirado",
+    "retirada",
+    "retiramos",
+    "instalado",
+    "instalada",
+    "instalaram",
+)
+
 # As expressões relativas mais diretas. A ordem importa: "depois de amanhã"
 # contém "amanhã", e a leitura fica com a primeira que casar.
 DIAS_RELATIVOS = (
@@ -182,12 +303,57 @@ class Movimentacao:
 
     Vazia é uma resposta legítima: um relato que só conta um fato não propõe
     consequência nenhuma, e a movimentação registra apenas o que foi dito.
+
+    ``conclusao``, ``previsao`` e ``fornecedor`` são a consequência sobre o
+    ciclo. ``aguardando_tipo``, ``aguardando_descricao``, ``proxima_acao`` e
+    ``impedimento_resolvido`` são a consequência sobre o acompanhamento — o que
+    a demanda espera, o que vem depois e o que deixou de travar. São coisas
+    diferentes e continuam separadas: esperar o fornecedor não muda a situação.
     """
 
     texto: str = ""
     conclusao: bool = False
     previsao: Previsao | None = None
     fornecedor: str = ""
+    aguardando_tipo: str = ""
+    aguardando_descricao: str = ""
+    proxima_acao: str = ""
+    impedimento_resolvido: bool = False
+
+    @property
+    def tem_acompanhamento(self) -> bool:
+        """Se o relato sustenta alguma mudança de acompanhamento."""
+        return bool(
+            self.aguardando_tipo
+            or self.aguardando_descricao
+            or self.proxima_acao
+            or self.impedimento_resolvido
+        )
+
+    def acompanhamento_proposto(self) -> dict:
+        """Só os campos que o relato sustenta, prontos para o serviço oficial.
+
+        Campo ausente quer dizer "o relato não falou disso", e o que não foi
+        dito não é tocado. Só o impedimento aparece como limpeza explícita, e
+        apenas quando o relato dá como resolvido o que travava a demanda.
+        """
+        proposto = {}
+        if self.aguardando_tipo or self.aguardando_descricao:
+            proposto["aguardando_tipo"] = self.aguardando_tipo
+            proposto["aguardando_descricao"] = self.aguardando_descricao
+        if self.proxima_acao:
+            proposto["proxima_acao"] = self.proxima_acao
+        if self.previsao is not None:
+            proposto["previsao"] = self.previsao.data
+        if self.impedimento_resolvido:
+            proposto["impedimento"] = ""
+        return proposto
+
+    def aguardando_por_extenso(self) -> str:
+        """Por quem se espera, como a gestão lê — o nome, quando houver."""
+        if self.aguardando_descricao:
+            return self.aguardando_descricao
+        return AguardandoTipo(self.aguardando_tipo).label if self.aguardando_tipo else ""
 
     @property
     def identificado(self):
@@ -200,6 +366,12 @@ class Movimentacao:
             itens.append(f"Fornecedor reconhecido no cadastro: {self.fornecedor}")
         if self.previsao is not None:
             itens.append(f"Previsão informada: {self.previsao.por_extenso()}")
+        if self.aguardando_tipo or self.aguardando_descricao:
+            itens.append(f"Aguardando: {self.aguardando_por_extenso()}")
+        if self.proxima_acao:
+            itens.append(f"Próxima ação: {self.proxima_acao}")
+        if self.impedimento_resolvido:
+            itens.append("O impedimento anterior foi dado como resolvido.")
         if self.conclusao:
             itens.append("O serviço foi dado como concluído.")
         return itens
@@ -208,34 +380,99 @@ class Movimentacao:
 def ler(texto: str, *, demanda=None, hoje: date | None = None) -> Movimentacao:
     """Lê o relato novo e devolve só o que ele sustenta.
 
-    ``demanda`` entra por uma razão só: reconhecer o fornecedor exige o cadastro
-    do condomínio onde a demanda vive. Sem relato, a leitura é vazia, e a
-    movimentação registra apenas o fato — nunca o que ninguém escreveu.
+    ``demanda`` entra por duas razões: reconhecer o fornecedor exige o cadastro
+    do condomínio onde a demanda vive, e dar um impedimento por resolvido exige
+    que exista um impedimento. Sem relato, a leitura é vazia, e a movimentação
+    registra apenas o fato — nunca o que ninguém escreveu.
     """
     limpo = _normalizado(texto)
     if not limpo:
         return Movimentacao()
 
     referencia = hoje or timezone.localdate()
+    previsao = _previsao(limpo, referencia)
+    fornecedor = _fornecedor_do_relato(limpo, demanda)
+    aguardando_tipo, aguardando_descricao = _aguardando(
+        limpo, fornecedor=fornecedor, previsao=previsao
+    )
     return Movimentacao(
         texto=texto,
         conclusao=_concluido(limpo),
-        previsao=_previsao(limpo, referencia),
-        fornecedor=_fornecedor_do_relato(limpo, demanda),
+        previsao=previsao,
+        fornecedor=fornecedor,
+        aguardando_tipo=aguardando_tipo,
+        aguardando_descricao=aguardando_descricao,
+        proxima_acao=_proxima_acao(limpo, tipo=aguardando_tipo, previsao=previsao),
+        impedimento_resolvido=_impedimento_resolvido(limpo, demanda),
     )
 
 
-def _concluido(texto_normalizado: str) -> bool:
-    """Se o relato afirma o encerramento — e não o contrário dele."""
-    for frase in FRASES_DE_CONCLUSAO:
-        for encontro in re.finditer(
-            rf"\b{re.escape(frase)}s?\b", texto_normalizado
-        ):
+def _afirma(texto_normalizado: str, frases) -> bool:
+    """Se alguma das frases aparece afirmada — e não negada logo antes dela."""
+    for frase in frases:
+        for encontro in re.finditer(rf"\b{re.escape(frase)}s?\b", texto_normalizado):
             antes = texto_normalizado[: encontro.start()].split()
             if any(palavra in PALAVRAS_DE_NEGACAO for palavra in antes[-2:]):
                 continue
             return True
     return False
+
+
+def _concluido(texto_normalizado: str) -> bool:
+    """Se o relato afirma o encerramento — e não o contrário dele."""
+    return _afirma(texto_normalizado, FRASES_DE_CONCLUSAO)
+
+
+def _aguardando(
+    texto_normalizado: str, *, fornecedor: str, previsao: Previsao | None
+) -> tuple[str, str]:
+    """Por quem a demanda passa a esperar, quando o relato diz que espera.
+
+    Duas coisas autorizam a espera: as palavras de espera, ou algo prometido
+    para depois — quem prometeu vir é por quem se espera. Sem nenhuma das duas,
+    não há espera: uma data sozinha só diz quando um fato aconteceu.
+
+    O fornecedor reconhecido no cadastro responde antes das palavras, porque o
+    nome é a resposta mais exata para "quem". Sem nome, a categoria mais
+    próxima do que o relato diz é que responde; sem nenhuma, resta o genérico.
+    """
+    if not (_contem(texto_normalizado, SINAIS_DE_ESPERA) or previsao is not None):
+        return "", ""
+
+    if fornecedor:
+        return AguardandoTipo.FORNECEDOR, fornecedor
+
+    for tipo, palavras in CLASSIFICACAO_DA_ESPERA:
+        if _contem(texto_normalizado, palavras):
+            return tipo, ""
+    return AguardandoTipo.OUTRO, ""
+
+
+def _proxima_acao(
+    texto_normalizado: str, *, tipo: str, previsao: Previsao | None
+) -> str:
+    """O próximo passo que a espera pede — vazio quando não há espera."""
+    if not tipo:
+        return ""
+    if tipo == AguardandoTipo.FORNECEDOR:
+        if _contem(texto_normalizado, ("orcamento", "orcamentos", "proposta")):
+            return "Cobrar o orçamento"
+        if previsao is not None:
+            return "Acompanhar a visita"
+        return "Cobrar retorno do fornecedor"
+    return ACOES_POR_ESPERA[tipo]
+
+
+def _impedimento_resolvido(texto_normalizado: str, demanda) -> bool:
+    """Se o relato dá como resolvido o que estava travando a demanda.
+
+    Só vale sobre um impedimento que existe: sem nada travando, não há o que
+    resolver. E a negação continua valendo — "a peça não chegou" é o contrário
+    de "a peça chegou".
+    """
+    if not (getattr(demanda, "impedimento", "") or "").strip():
+        return False
+    return _afirma(texto_normalizado, FRASES_DE_RESOLUCAO)
 
 
 def _previsao(texto_normalizado: str, hoje: date) -> Previsao | None:

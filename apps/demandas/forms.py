@@ -33,6 +33,7 @@ from . import derivacao, interpretacao
 from .constants import (
     ACAO_DE_REABERTURA,
     ACOES_DE_STATUS,
+    AguardandoTipo,
     ImpactoDemanda,
     PrioridadeDemanda,
     RiscoDemanda,
@@ -40,8 +41,9 @@ from .constants import (
     TipoProblema,
 )
 from .derivacao import Leitura, local_do_relato
+from .evidencias import ACEITE_DE_EVIDENCIA, limites_legiveis
 from .permissoes import usuarios_elegiveis_como_responsavel
-from .services import LIMITE_DA_OBSERVACAO
+from .services import CAMPOS_DO_ACOMPANHAMENTO, LIMITE_DA_OBSERVACAO
 
 
 def _linha(valor: str | None) -> str:
@@ -178,7 +180,7 @@ class DemandaForm(forms.Form):
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
     )
     responsavel = forms.ModelChoiceField(
-        label="Quem acompanha?",
+        label="Responsável",
         queryset=User.objects.none(),
         required=False,
         empty_label="Ninguém ainda",
@@ -337,7 +339,7 @@ class DemandaForm(forms.Form):
         return self._leitura
 
     def responsavel_sugerido(self, usuario):
-        """Quem acompanha, quando o próprio contexto já responde.
+        """Quem responde pela demanda, quando o próprio contexto já responde.
 
         Quem registra costuma ser quem acompanha o que registrou — desde que
         tenha vínculo que o permita. Fora disso não há sugestão: apontar
@@ -396,6 +398,13 @@ class DemandaForm(forms.Form):
         # O peso não se escolhe: ele é o que o relato sustenta. Corrigir o fato
         # é o que muda a prioridade — por isso ela nunca vem do navegador.
         dados["prioridade"] = self._leitura.prioridade
+
+        # O prazo é derivado pela política do sistema, e nunca pela leitura do
+        # relato: a regra configurada é quem define a data. O que a pessoa
+        # informou na tela vale mais do que a derivação — a correção humana
+        # prevalece —, e a edição de uma demanda existente não reclassifica.
+        if self._instancia is None and not dados.get("prazo"):
+            dados["prazo"] = self._leitura.prazo
 
         self._resolver_local(dados)
         self._classificar(dados)
@@ -541,6 +550,166 @@ class ObservacaoDaDemandaForm(forms.Form):
         if not texto:
             raise forms.ValidationError("Escreva a observação antes de registrar.")
         return texto
+
+
+class AcompanhamentoDaDemandaForm(forms.Form):
+    """Registra o acompanhamento operacional — sem tocar na situação.
+
+    Pergunta o que a operação precisa saber para agir: por quem a demanda
+    espera, o próximo passo, a data prometida, o que a trava e quem a segue de
+    perto. Nada aqui é situação — os mesmos campos convivem com qualquer um dos
+    estados do ciclo, e salvá-los não move a demanda.
+
+    Tudo é opcional e o formulário devolve o conjunto inteiro: limpar um campo é
+    uma decisão, e o serviço do domínio registra a diferença entre o que havia e
+    o que passou a haver. O que ninguém mudou não vira evento.
+    """
+
+    aguardando_tipo = forms.ChoiceField(
+        label="Aguardando",
+        choices=AguardandoTipo.choices,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    aguardando_descricao = forms.CharField(
+        label="O que se espera",
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Quem ou o que exatamente (ex.: Atlas Elevadores)",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    proxima_acao = forms.CharField(
+        label="Próxima ação",
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "O próximo passo combinado",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    previsao = forms.DateField(
+        label="Previsão",
+        required=False,
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"},
+            format="%Y-%m-%d",
+        ),
+        help_text="A data prometida por quem está sendo aguardado. Não é o prazo "
+        "da demanda e vencê-la não muda a situação.",
+    )
+    impedimento = forms.CharField(
+        label="Impedimento",
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "O que está travando a demanda, se houver",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    responsavel_acompanhamento = forms.ModelChoiceField(
+        label="Quem acompanha",
+        queryset=User.objects.none(),
+        required=False,
+        empty_label="Ninguém definido",
+        widget=forms.Select(attrs={"class": "form-select"}),
+        help_text="Quem segue a demanda de perto. É diferente de quem responde "
+        "por ela.",
+    )
+
+    def __init__(self, *args, demanda=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.demanda = demanda
+        self.fields["responsavel_acompanhamento"].queryset = (
+            usuarios_elegiveis_como_responsavel(getattr(demanda, "condominio", None))
+        )
+        if demanda is not None and not self.is_bound:
+            self.initial = {**self.initial, **self._iniciais_da_demanda(demanda)}
+
+    @staticmethod
+    def _iniciais_da_demanda(demanda) -> dict:
+        """O que a janela já deve trazer quando é aberta para corrigir."""
+        return {
+            "aguardando_tipo": demanda.aguardando_tipo or "",
+            "aguardando_descricao": demanda.aguardando_descricao,
+            "proxima_acao": demanda.proxima_acao,
+            "previsao": demanda.previsao,
+            "impedimento": demanda.impedimento,
+            "responsavel_acompanhamento": demanda.responsavel_acompanhamento_id,
+        }
+
+    def mudancas(self) -> dict:
+        """Os campos do acompanhamento prontos para o serviço oficial do domínio.
+
+        Devolve o conjunto inteiro, e não só o que mudou: quem decidiu limpar um
+        campo precisa que a limpeza chegue ao domínio, que é quem sabe comparar
+        com o que havia e registrar apenas a diferença.
+        """
+        return {campo: self.cleaned_data.get(campo) for campo in CAMPOS_DO_ACOMPANHAMENTO}
+
+
+class _VariosArquivosInput(forms.FileInput):
+    """O campo de arquivo que aceita mais de um, como o navegador já oferece."""
+
+    allow_multiple_selected = True
+
+
+class _VariosArquivos(forms.FileField):
+    """Aceita um ou vários arquivos sob a mesma chave, na ordem em que chegaram.
+
+    O campo de arquivo do Django guarda um valor só. Quem escolhe vários manda a
+    mesma chave repetida, e é isso que esta régua lê: o formulário passa a
+    devolver a lista, em vez do último arquivo escolhido.
+    """
+
+    widget = _VariosArquivosInput
+
+    def clean(self, data, initial=None):
+        limpar_um = super().clean
+        if isinstance(data, (list, tuple)):
+            return [limpar_um(arquivo, initial) for arquivo in data]
+        return limpar_um(data, initial)
+
+
+class EvidenciaDaDemandaForm(forms.Form):
+    """Recebe as fotos e os vídeos que sustentam o que se sabe da demanda.
+
+    Uma atualização pode trazer mais de um arquivo, e a pergunta é a mesma para
+    todos: o que prova o que foi relatado. Nada aqui decide o tipo real — ele é
+    conferido pelo conteúdo, no momento de guardar; o ``accept`` do navegador é
+    conveniência, não autorização.
+    """
+
+    evidencias = _VariosArquivos(
+        label="Fotos ou vídeos",
+        error_messages={"required": "Escolha ao menos uma foto ou um vídeo."},
+        widget=_VariosArquivosInput(attrs={"class": "form-control"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        limites = limites_legiveis()
+        self.fields["evidencias"].widget.attrs["accept"] = ACEITE_DE_EVIDENCIA
+        self.fields["evidencias"].help_text = (
+            f"{limites['formatos']}. Até {limites['foto']} por foto e "
+            f"{limites['video']} por vídeo."
+        )
+
+    def arquivos_enviados(self) -> list:
+        """Os arquivos escolhidos, na ordem em que chegaram."""
+        arquivos = self.cleaned_data.get("evidencias") or []
+        return [arquivo for arquivo in arquivos if arquivo]
 
 
 class FiltroDeDemandasForm(forms.Form):

@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.cadastros.constants import TipoLocal
+from apps.cadastros.models import TipoLocalOperacional
 from apps.core import llm
 from apps.demandas import derivacao, interpretacao
 from apps.demandas.constants import (
@@ -168,6 +169,52 @@ class ContextoDoCadastroTests(LeituraDoRelatoTests):
         self.assertEqual(leitura.area.origem, OrigemSugestao.EQUIPAMENTO)
         self.assertEqual(leitura.area.confianca, Confianca.MEDIA)
 
+    def test_area_nao_contradiz_o_local_quando_o_tipo_nomeia_outro_lugar(self):
+        """Regressão: um lugar classificado com o nome de outro lugar.
+
+        O condomínio tinha o G2 cadastrado com um tipo chamado "G1", que também
+        é o nome de um lugar seu. Dizer "G2 pertence a G1" seria contradizer o
+        cadastro, que já disse onde cada um fica — então a área não se sustenta,
+        e o silêncio é a resposta. Nada é reclassificado nem inventado.
+        """
+        tipo_g1 = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="G1"
+        )
+        criar_local(self.condominio, "G1")
+        g2 = criar_local(self.condominio, "G2", tipo_local=tipo_g1)
+
+        area = derivacao.area_do_contexto(g2, None)
+
+        self.assertFalse(area.existe)
+        self.assertEqual(area.valor, "")
+
+    def test_area_segue_o_relacionamento_real_do_local(self):
+        """Quando o tipo de fato agrupa o lugar, a área vem do cadastro."""
+        torre = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="Torre A"
+        )
+        criar_local(self.condominio, "Garagem G2", tipo_local=torre)
+
+        leitura = self._ler("Vazamento na Garagem G2.")
+
+        self.assertEqual(leitura.local.nome, "Garagem G2")
+        self.assertEqual(leitura.area.valor, "Torre A")
+        self.assertEqual(leitura.area.origem, OrigemSugestao.LOCAL)
+        self.assertEqual(leitura.area.confianca, Confianca.ALTA)
+
+    def test_lampada_queimada_sem_cadastro_nao_inventa_equipamento(self):
+        """A luz queimada sustenta lugar e tipo — não sustenta equipamento."""
+        criar_local(self.condominio, "Garagem G2")
+
+        leitura = self._ler("Uma das lâmpadas da Garagem G2 está queimada.")
+
+        self.assertEqual(leitura.local.nome, "Garagem G2")
+        self.assertEqual(leitura.tipo_problema.valor, TipoProblema.ILUMINACAO)
+        self.assertIsNone(leitura.equipamento)
+        self.assertFalse(leitura.sugestoes["equipamento"].existe)
+        self.assertEqual(leitura.prioridade, PrioridadeDemanda.NORMAL)
+        self.assertEqual(leitura.pergunta, "")
+
     def test_impacto_acompanha_o_alcance_que_o_relato_aponta(self):
         equipamento = criar_equipamento(self.condominio, "Elevador de serviço")
 
@@ -185,6 +232,127 @@ class ContextoDoCadastroTests(LeituraDoRelatoTests):
         self.assertEqual(leitura.impacto.valor, ImpactoDemanda.COLETIVO)
         self.assertEqual(leitura.impacto.origem, OrigemSugestao.RELATO)
         self.assertEqual(leitura.impacto.confianca, Confianca.ALTA)
+
+
+class LocalCurtoTests(LeituraDoRelatoTests):
+    """Nome curto no relato: só vale quando o cadastro o confirma (§1 a §5).
+
+    "G2" não é procurado por dentro do texto — aí casaria em "G20", "AG2" e
+    "G2X". Ele entra por palavra inteira e só porque existe como lugar deste
+    condomínio: quem autoriza o nome curto é o cadastro, nunca a semelhança.
+    """
+
+    def test_o_nome_curto_sozinho_identifica_o_lugar(self):
+        g2 = criar_local(self.condominio, "G2")
+
+        leitura = self._ler("G2")
+
+        self.assertEqual(leitura.local, g2)
+        self.assertEqual(leitura.sugestoes["local"].valor, "G2")
+
+    def test_o_nome_curto_aparece_no_meio_da_frase(self):
+        g2 = criar_local(self.condominio, "G2")
+
+        leitura = self._ler("Uma das lâmpadas queimada no G2")
+
+        self.assertEqual(leitura.local, g2)
+
+    def test_o_nome_curto_vem_depois_da_expressao_do_lugar(self):
+        g2 = criar_local(self.condominio, "G2")
+
+        leitura = self._ler("Problema na garagem do G2")
+
+        self.assertEqual(leitura.local, g2)
+
+    def test_os_dois_nomes_curtos_cadastrados_sao_reconhecidos(self):
+        g1 = criar_local(self.condominio, "G1")
+        g2 = criar_local(self.condominio, "G2")
+
+        self.assertEqual(self._ler("Portão do G1 com defeito").local, g1)
+        self.assertEqual(self._ler("Vazamento no G2").local, g2)
+
+    def test_a_pontuacao_do_entorno_nao_impede_o_reconhecimento(self):
+        g2 = criar_local(self.condominio, "G2")
+
+        self.assertEqual(self._ler("Ocorrência no G2.").local, g2)
+        self.assertEqual(self._ler("Ocorrência no G2, no térreo.").local, g2)
+
+    def test_o_nome_curto_nao_casa_por_dentro_de_outra_palavra(self):
+        criar_local(self.condominio, "G2")
+
+        for relato in ("Problema no G20.", "Vazamento no AG2.", "Falha no G2X."):
+            with self.subTest(relato=relato):
+                leitura = self._ler(relato)
+                self.assertIsNone(leitura.local)
+                self.assertFalse(leitura.sugestoes["local"].existe)
+
+    def test_nome_curto_fora_do_cadastro_nao_e_reconhecido(self):
+        criar_local(self.condominio, "G2")
+
+        leitura = self._ler("Problema no G7.")
+
+        self.assertIsNone(leitura.local)
+
+    def test_o_mesmo_nome_nao_atravessa_condominios(self):
+        criar_local(self.condominio, "G2")
+        outro = criar_condominio("Beta")
+
+        leitura_do_dono = derivacao.local_do_relato("Problema no G2", self.condominio)
+
+        self.assertEqual(leitura_do_dono.nome, "G2")
+        self.assertIsNone(derivacao.local_do_relato("Problema no G2", outro))
+
+    def test_o_lugar_mais_especifico_vence_quando_os_dois_casam(self):
+        criar_local(self.condominio, "G2")
+        completo = criar_local(self.condominio, "Garagem do G2")
+
+        leitura = self._ler("Vazamento na Garagem do G2.")
+
+        self.assertEqual(leitura.local, completo)
+
+    def test_empatados_na_especificidade_nao_ha_escolha(self):
+        criar_local(self.condominio, "G1")
+        criar_local(self.condominio, "G2")
+
+        leitura = self._ler("Problemas no G1 e no G2.")
+
+        self.assertIsNone(leitura.local)
+        self.assertFalse(leitura.sugestoes["local"].existe)
+
+    def test_a_area_do_lugar_curto_segue_o_cadastro(self):
+        torre = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="Torre A"
+        )
+        g2 = criar_local(self.condominio, "G2", tipo_local=torre)
+
+        leitura = self._ler("Vazamento no G2.")
+
+        self.assertEqual(leitura.local, g2)
+        self.assertEqual(leitura.area.valor, "Torre A")
+
+    def test_a_area_nao_contradiz_o_lugar_curto(self):
+        """O caso do cadastro inconsistente: "G2" classificado como "G1"."""
+        tipo_g1 = TipoLocalOperacional.objects.create(
+            condominio=self.condominio, nome="G1"
+        )
+        criar_local(self.condominio, "G1")
+        criar_local(self.condominio, "G2", tipo_local=tipo_g1)
+
+        leitura = self._ler("Vazamento no G2.")
+
+        self.assertEqual(leitura.local.nome, "G2")
+        self.assertFalse(leitura.area.existe)
+
+    def test_o_lugar_curto_nao_inventa_equipamento(self):
+        """§9: lugar e tipo vêm do relato; o equipamento, só do cadastro."""
+        criar_local(self.condominio, "G2")
+
+        leitura = self._ler("Uma das lâmpadas da garagem do G2 está queimada.")
+
+        self.assertEqual(leitura.local.nome, "G2")
+        self.assertEqual(leitura.tipo_problema.valor, TipoProblema.ILUMINACAO)
+        self.assertIsNone(leitura.equipamento)
+        self.assertFalse(leitura.sugestoes["equipamento"].existe)
 
 
 class RiscoTests(LeituraDoRelatoTests):
@@ -447,13 +615,14 @@ class ClassificacaoNoRegistroTests(TestCase):
         self.assertEqual(
             identificados["Equipamento"]["origem"], OrigemSugestao.EITHRA.label
         )
-        # A sugestão aparece ao lado do campo que ela preencheu — o lugar, o que
-        # fica nele e o contexto —, com a origem junto: quem registra confere ali
-        # mesmo, sem uma segunda lista repetindo os mesmos campos.
+        # A etapa apresenta a leitura como resultado — o lugar com o tipo de
+        # problema, o peso e o prazo, o responsável, e o equipamento só quando o
+        # cadastro o confirmou. O ajuste dos campos fica atrás de uma ação
+        # discreta, e não compete com a síntese.
         conteudo = resposta.content.decode()
-        self.assertIn("Onde", conteudo)
-        self.assertIn("Contexto", conteudo)
-        self.assertIn(OrigemSugestao.EITHRA.label, conteudo)
+        self.assertIn("Informações identificadas", conteudo)
+        self.assertIn("Equipamento: Portão social", conteudo)
+        self.assertIn("Ajustar informações", conteudo)
 
     def test_as_informacoes_nao_despejam_a_confianca_na_tela(self):
         criar_equipamento(self.condominio, "Portão social")

@@ -236,6 +236,16 @@
       // os modais que já vêm abertos ficam marcados, e quem os fecha é daqui.
       document.querySelectorAll(".modal.show").forEach(function (modal) {
         modal.setAttribute("data-eithra-reaberto", "true");
+
+        // Um passo de wizard que o servidor devolve pronto carrega, no corpo da
+        // página, o estado que a tela está mostrando — e o envio que o trouxe
+        // fica plantado no endereço. Enquanto esse endereço estiver na barra,
+        // recarregar repete o envio e devolve o mesmo passo. Aqui a barra volta
+        // para o endereço de leitura da própria tela: recarregar passa a ser uma
+        // leitura limpa, e o wizard só existe enquanto está na frente.
+        if (modal.dataset.eithraDescartar) {
+          window.history.replaceState(null, "", modal.dataset.eithraDescartar);
+        }
       });
 
       function fecharModal(modal) {
@@ -263,13 +273,29 @@
 
         event.preventDefault();
 
-        // Com ?abrir=... na URL, fechar é voltar à mesma tela sem o parâmetro
-        // que mantém o modal aberto.
         var url = new URL(window.location.href);
+        var destino = "";
         if (url.searchParams.has("abrir")) {
+          // Com ?abrir=... na URL, fechar é voltar à mesma tela sem o parâmetro
+          // que mantém o modal aberto.
           url.searchParams.delete("abrir");
           url.searchParams.delete("item");
-          window.location.assign(url.toString());
+          destino = url.toString();
+        } else if (modal.dataset.eithraDescartar) {
+          // Wizard de criação: o passo que está na tela não é um rascunho
+          // guardado, é a resposta do envio anterior. Fechar descarta esse
+          // passo e volta à tela de leitura — a próxima abertura começa do
+          // zero, na primeira etapa. Cancelar e o X chegam aqui do mesmo jeito,
+          // porque os dois são o mesmo gesto: `data-bs-dismiss="modal"`.
+          destino = modal.dataset.eithraDescartar;
+        }
+
+        if (destino) {
+          // Quem estiver com trabalho em curso na tela é avisado antes de a
+          // página sair — hoje, só o microfone: uma gravação ativa precisa ser
+          // encerrada para o navegador não seguir gravando com o modal fora.
+          document.dispatchEvent(new Event("eithra:descartar"));
+          window.location.assign(destino);
           return;
         }
 

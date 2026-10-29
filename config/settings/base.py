@@ -269,6 +269,56 @@ EITHRA_CONDOMINIO_LOGO_MAX_BYTES = env.int(
     "EITHRA_CONDOMINIO_LOGO_MAX_BYTES", default=1 * 1024 * 1024
 )
 
+# A evidência de uma demanda — a foto ou o vídeo que sustenta o que foi
+# relatado — fica em um bucket privado próprio, pelo mesmo motivo dos demais: o
+# arquivo de um domínio não se mistura com o de outro. O acesso é temporário e
+# gerado na hora, nunca uma URL pública guardada.
+DEMANDAS_STORAGE_BUCKET = env("DEMANDAS_STORAGE_BUCKET", default="")
+# 10 MB por foto. É uma imagem para mostrar o que aconteceu, não um arquivo de
+# trabalho: um limite que recusa cedo a foto errada sem apertar a legítima.
+DEMANDAS_MAX_FOTO_BYTES = env.int(
+    "DEMANDAS_MAX_FOTO_BYTES", default=10 * 1024 * 1024
+)
+# 25 MB por vídeo. Vídeo curto — o suficiente para mostrar o problema em
+# movimento —, com espaço para um clipe de celular sem abrir a porta para
+# arquivos longos de câmera.
+DEMANDAS_MAX_VIDEO_BYTES = env.int(
+    "DEMANDAS_MAX_VIDEO_BYTES", default=25 * 1024 * 1024
+)
+# Quantos arquivos a gestão pode anexar numa mesma atualização. Em excesso, o
+# histórico vira galeria e deixa de ser memória.
+DEMANDAS_MAX_EVIDENCIAS_POR_ENVIO = env.int(
+    "DEMANDAS_MAX_EVIDENCIAS_POR_ENVIO", default=10
+)
+# Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
+# para abrir a foto ou o vídeo, não para deixar um endereço circulando.
+DEMANDAS_URL_ACESSO_SEGUNDOS = env.int("DEMANDAS_URL_ACESSO_SEGUNDOS", default=60)
+
+
+def _dias_por_prioridade(bruto: str) -> dict[str, int]:
+    """A política de prazo no formato ``prioridade:dias``, separada por vírgula.
+
+    Lida do ambiente para que o valor seja configuração do sistema, e não
+    constante no código. O que não estiver no formato certo é ignorado em
+    silêncio — a ausência de regra é um estado legítimo (ver
+    ``apps/demandas/prazos.py``).
+    """
+    politica: dict[str, int] = {}
+    for parte in (bruto or "").split(","):
+        prioridade, _, dias = parte.partition(":")
+        prioridade, dias = prioridade.strip().lower(), dias.strip()
+        if prioridade and dias.isdigit() and int(dias) > 0:
+            politica[prioridade] = int(dias)
+    return politica
+
+
+# Quantos dias cada prioridade concede a uma demanda, a partir do dia do
+# registro. Vazio — o padrão — significa "sem prazo automático": nenhuma data é
+# inventada sem regra configurada. Exemplo: "baixa:30,normal:15,alta:5,urgente:1".
+EITHRA_DEMANDAS_PRAZO_DIAS = _dias_por_prioridade(
+    env("EITHRA_DEMANDAS_PRAZO_DIAS", default="")
+)
+
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 

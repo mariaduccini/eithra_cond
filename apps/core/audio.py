@@ -302,8 +302,12 @@ def _pedir_transcricao(pedido: PedidoDeAudio, *, formato: str) -> dict:
     """Envia o áudio e devolve a resposta crua do serviço."""
     campos = {
         "model": getattr(settings, "EITHRA_AUDIO_MODEL", ""),
-        # verbose_json é o que traz idioma e duração junto do texto.
-        "response_format": "verbose_json",
+        # `json` é o único formato que todos os modelos de transcrição aceitam
+        # hoje. O `verbose_json`, que trazia idioma e duração junto do texto, é
+        # recusado pelos modelos `gpt-4o-*-transcribe` — e recusar o pedido
+        # inteiro por causa de metadados que o domínio não usa seria trocar a
+        # fala por nada. O texto é o que importa; o resto é opcional.
+        "response_format": "json",
         "language": pedido.idioma
         or getattr(settings, "EITHRA_AUDIO_IDIOMA", IDIOMA_PADRAO)
         or IDIOMA_PADRAO,

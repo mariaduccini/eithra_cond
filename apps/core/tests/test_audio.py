@@ -155,18 +155,30 @@ class TranscricaoValidaTests(SimpleTestCase):
 
     @override_settings(**CONFIGURADO)
     @patch("apps.core.audio.urllib.request.urlopen")
-    def test_devolve_o_texto_com_idioma_e_duracao(self, urlopen):
+    def test_devolve_o_texto_ainda_que_venha_so_ele(self, urlopen):
+        """O formato aceito pelos modelos atuais devolve o texto, e só ele."""
+        urlopen.return_value = RespostaFalsa(corpo_json({"text": SENTENCA}))
+
+        resultado = audio.transcrever(pedido())
+
+        self.assertTrue(resultado.obtida)
+        self.assertEqual(resultado.texto, SENTENCA)
+        self.assertEqual(resultado.idioma, "")
+        self.assertIsNone(resultado.duracao)
+        self.assertEqual(resultado.erro, "")
+
+    @override_settings(**CONFIGURADO)
+    @patch("apps.core.audio.urllib.request.urlopen")
+    def test_le_idioma_e_duracao_quando_o_servico_informa(self, urlopen):
+        """Quando o serviço manda os metadados junto do texto, eles são lidos."""
         urlopen.return_value = RespostaFalsa(
             corpo_json({"text": SENTENCA, "language": "portuguese", "duration": 4.2})
         )
 
         resultado = audio.transcrever(pedido())
 
-        self.assertTrue(resultado.obtida)
-        self.assertEqual(resultado.texto, SENTENCA)
         self.assertEqual(resultado.idioma, "portuguese")
         self.assertEqual(resultado.duracao, 4.2)
-        self.assertEqual(resultado.erro, "")
 
     @override_settings(**CONFIGURADO)
     @patch("apps.core.audio.urllib.request.urlopen")
@@ -205,10 +217,27 @@ class EnvioAoServicoTests(SimpleTestCase):
 
         requisicao = urlopen.call_args.args[0]
         corpo = requisicao.data
-        self.assertIn(f'name="model"'.encode(), corpo)
+        self.assertIn(b'name="model"', corpo)
         self.assertIn(MODELO.encode(), corpo)
-        self.assertIn(b"verbose_json", corpo)
+        self.assertIn(b'name="response_format"\r\n\r\njson\r\n', corpo)
         self.assertIn(b'name="file"; filename="recado.webm"', corpo)
+
+    @override_settings(**CONFIGURADO)
+    @patch("apps.core.audio.urllib.request.urlopen")
+    def test_nao_pede_um_formato_que_os_modelos_atuais_recusam(self, urlopen):
+        """Regressão: `verbose_json` fazia o provedor recusar o pedido inteiro.
+
+        Os modelos `gpt-4o-*-transcribe` respondem 400 a `verbose_json` —
+        "use 'json' ou 'text'" —, e a fala nunca chegava. O pedido só pode
+        carregar um formato que todo modelo configurável aceita.
+        """
+        urlopen.return_value = RespostaFalsa(corpo_json({"text": SENTENCA}))
+
+        audio.transcrever(pedido())
+
+        corpo = urlopen.call_args.args[0].data
+        self.assertNotIn(b"verbose_json", corpo)
+        self.assertIn(b'name="response_format"\r\n\r\njson\r\n', corpo)
 
     @override_settings(**CONFIGURADO, EITHRA_AUDIO_TIMEOUT=12.5)
     @patch("apps.core.audio.urllib.request.urlopen")

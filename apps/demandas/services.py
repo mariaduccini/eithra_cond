@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .constants import (
+    AguardandoTipo,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
@@ -22,6 +23,18 @@ from .models import Demanda, HistoricoDemanda
 # A descrição do evento cabe no histórico como uma frase curta. Observações
 # longas são cortadas aqui, e não na tela.
 LIMITE_DA_OBSERVACAO = 255
+
+# Os campos do acompanhamento operacional, na ordem em que a frase do evento os
+# lê. Nenhum deles é situação: o ciclo da demanda continua exatamente onde está.
+ROTULOS_DO_ACOMPANHAMENTO = {
+    "aguardando_tipo": "Aguardando",
+    "aguardando_descricao": "O que se espera",
+    "proxima_acao": "Próxima ação",
+    "previsao": "Previsão",
+    "impedimento": "Impedimento",
+    "responsavel_acompanhamento": "Quem acompanha",
+}
+CAMPOS_DO_ACOMPANHAMENTO = tuple(ROTULOS_DO_ACOMPANHAMENTO)
 
 # Marca de "o chamador não falou sobre este campo". É diferente de ``None``, que
 # é uma decisão: limpar o equipamento ou tirar o tipo de problema. Sem essa
@@ -363,19 +376,24 @@ def editar_demanda(
 
 
 @transaction.atomic
-def alterar_status(*, demanda: Demanda, usuario, novo_status: str) -> Demanda:
+def alterar_status(
+    *, demanda: Demanda, usuario, novo_status: str
+) -> HistoricoDemanda | None:
     """Move a demanda para outra situação, ajustando as datas que a acompanham.
 
     Concluir registra quando; cancelar registra quando; voltar a andar limpa as
     duas. A situação e as datas nunca se contradizem — e o evento que descreve a
     mudança é do tipo certo: conclusão, cancelamento ou simples movimento.
+
+    Devolve o evento que a mudança produziu — é ele que uma evidência anexada na
+    mesma atualização acompanha —, ou ``None`` quando nada mudou.
     """
     if novo_status not in StatusDemanda.values:
         raise ErroDeDemanda("Situação inválida.")
 
     anterior = demanda.status
     if novo_status == anterior:
-        return demanda
+        return None
 
     campos = ["status", "atualizado_em"]
 
@@ -401,7 +419,7 @@ def alterar_status(*, demanda: Demanda, usuario, novo_status: str) -> Demanda:
             f"{StatusDemanda(novo_status).label}"
         )
 
-    _registrar(
+    evento = _registrar(
         demanda,
         usuario,
         tipo_evento,
@@ -411,7 +429,7 @@ def alterar_status(*, demanda: Demanda, usuario, novo_status: str) -> Demanda:
     )
     demanda.status = novo_status
     demanda.save(update_fields=campos)
-    return demanda
+    return evento
 
 
 @transaction.atomic
@@ -422,6 +440,102 @@ def registrar_observacao(*, demanda: Demanda, usuario, texto: str):
         raise ErroDeDemanda("Escreva a observação antes de registrar.")
 
     return _registrar(demanda, usuario, TipoEventoDemanda.OBSERVACAO, texto)
+
+
+@transaction.atomic
+def registrar_evidencia_anexada(*, demanda: Demanda, usuario):
+    """Registra na memória da demanda que uma prova passou a sustentá-la.
+
+    Existe para o caso em que a gestão anexa uma foto ou um vídeo sem escrever
+    relato e sem mexer na situação: o arquivo precisa de um lugar na linha do
+    tempo, e esse lugar é um evento — nunca uma imagem solta, sem quando nem
+    por quem. A frase do evento é o próprio nome do tipo; repeti-la aqui seria
+    guardar duas versões da mesma explicação.
+    """
+    return _registrar(demanda, usuario, TipoEventoDemanda.EVIDENCIA, "")
+
+
+@transaction.atomic
+def atualizar_acompanhamento(
+    *, demanda: Demanda, usuario, **mudancas
+) -> HistoricoDemanda | None:
+    """Atualiza o acompanhamento operacional, sem tocar na situação.
+
+    O acompanhamento responde outra pergunta que a situação: o que a demanda
+    espera agora, qual é o próximo passo, para quando foi prometida, o que está
+    travando e quem a segue de perto. Por isso nada aqui muda o ciclo — esperar
+    o fornecedor não move a demanda, previsão vencida não conclui, impedimento
+    resolvido não encerra.
+
+    Só os campos que o chamador nomeia são considerados: quem não fala de um
+    campo não o apaga, e quem manda vazio está decidindo limpá-lo. Só o que
+    realmente mudou vira evento, e o evento guarda o antes e o depois.
+
+    Devolve o evento produzido, ou ``None`` quando nada mudou.
+    """
+    anteriores, novos, frases = {}, {}, []
+
+    for campo in CAMPOS_DO_ACOMPANHAMENTO:
+        if campo not in mudancas:
+            continue
+        novo = _normalizar_do_acompanhamento(campo, mudancas[campo])
+        atual = getattr(demanda, campo)
+        if novo == atual:
+            continue
+        frases.append(
+            f"{ROTULOS_DO_ACOMPANHAMENTO[campo]}: "
+            f"{_valor_do_acompanhamento(campo, atual)} → "
+            f"{_valor_do_acompanhamento(campo, novo)}"
+        )
+        anteriores[campo] = _guardado_do_acompanhamento(campo, atual)
+        novos[campo] = _guardado_do_acompanhamento(campo, novo)
+        setattr(demanda, campo, novo)
+
+    if not frases:
+        return None
+
+    demanda.save(update_fields=[*anteriores, "atualizado_em"])
+    return _registrar(
+        demanda,
+        usuario,
+        TipoEventoDemanda.ACOMPANHAMENTO,
+        "; ".join(frases),
+        anteriores=anteriores,
+        novos=novos,
+    )
+
+
+def _normalizar_do_acompanhamento(campo: str, valor):
+    """O valor como ele deve ser guardado — vazio é ausência, nunca sujeira."""
+    if campo == "previsao":
+        return valor or None
+    if campo == "responsavel_acompanhamento":
+        return valor or None
+    if campo == "aguardando_tipo":
+        if valor not in AguardandoTipo.values:
+            raise ErroDeDemanda("Tipo de espera inválido.")
+        return valor
+    return _texto(valor)
+
+
+def _guardado_do_acompanhamento(campo: str, valor):
+    """O que vai para o histórico: valor simples, sem objeto nem identificador."""
+    if campo == "previsao":
+        return valor.isoformat() if valor else None
+    if campo == "responsavel_acompanhamento":
+        return str(valor.pk) if getattr(valor, "pk", None) else None
+    return valor if valor else None
+
+
+def _valor_do_acompanhamento(campo: str, valor) -> str:
+    """Um valor do acompanhamento como a gestão lê na frase do evento."""
+    if campo == "aguardando_tipo":
+        return _rotulo(AguardandoTipo, valor, vazio="ninguém")
+    if campo == "previsao":
+        return valor.strftime("%d/%m/%Y") if valor else "sem previsão"
+    if campo == "responsavel_acompanhamento":
+        return _nome_de(valor) if valor is not None else "ninguém"
+    return valor or "não informado"
 
 
 def contexto_de_governanca(*, demanda: Demanda, usuario) -> dict:

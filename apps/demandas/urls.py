@@ -1,8 +1,10 @@
 """Endereços das demandas operacionais.
 
 A lista é a porta de entrada; cada demanda tem sua própria página. As ações —
-registrar, editar, mudar situação, observar — são decisões da gestão e chegam
-sempre por POST, nunca por link.
+registrar, editar, mudar situação, observar, anexar evidência — são decisões da
+gestão e chegam sempre por POST, nunca por link. Só a leitura do arquivo de uma
+evidência é um GET: ela não muda nada, apenas entrega o que já está guardado a
+quem pode ver a demanda.
 """
 from django.urls import path
 
@@ -19,4 +21,11 @@ urlpatterns = [
     path("<uuid:pk>/atualizar/", views.atualizar, name="atualizar"),
     path("<uuid:pk>/situacao/", views.mudar_status, name="mudar_status"),
     path("<uuid:pk>/observar/", views.observar, name="observar"),
+    path("<uuid:pk>/acompanhamento/", views.acompanhar, name="acompanhar"),
+    path("<uuid:pk>/evidencia/adicionar/", views.adicionar_evidencia, name="adicionar_evidencia"),
+    path(
+        "<uuid:pk>/evidencia/<uuid:evidencia_id>/arquivo/",
+        views.evidencia_arquivo,
+        name="evidencia_arquivo",
+    ),
 ]

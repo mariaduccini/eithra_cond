@@ -99,7 +99,7 @@
         <dd>
           {{ demanda.prazo }}{% if demanda.prazo_destaque %} <span class="text-body-secondary" aria-hidden="true">·</span> <span class="text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</span>{% endif %}
         </dd>
-        <dt>Quem acompanha</dt>
+        <dt>Responsável</dt>
         <dd>{{ demanda.responsavel }}</dd>
         <dt>Registrado por</dt>
         <dd>{{ demanda.criado_por }}</dd>
@@ -108,6 +108,46 @@
         <dt>Situação</dt>
         <dd>{{ demanda.status }}</dd>
       </dl>
+    </section>
+
+    {% comment %}
+      O acompanhamento responde a outra pergunta, diferente da situação: por quem
+      a demanda espera agora, qual é o próximo passo, para quando foi prometida, o
+      que a trava e quem a segue de perto. Nada aqui muda o ciclo da demanda — a
+      previsão vencida não conclui, e tirar o impedimento não encerra.
+    {% endcomment %}
+    <section class="eithra-detail-section">
+      <div class="d-flex align-items-start justify-content-between gap-3">
+        <h2 class="h6 mb-0">Acompanhamento</h2>
+        {% if pode_acompanhar %}
+          <a class="btn btn-sm btn-text-primary" href="{% url 'demandas:detalhe' demanda.pk %}?abrir=acompanhamento&aba=visao_geral">
+            <i class="bx bx-pencil me-1" aria-hidden="true"></i>Atualizar acompanhamento
+          </a>
+        {% endif %}
+      </div>
+      {% if demanda.acompanhamento %}
+        <dl class="eithra-detail-meta mt-3 mb-0">
+          {% for linha in demanda.acompanhamento %}
+            <dt>{{ linha.rotulo }}</dt>
+            <dd>
+              {% if linha.tom %}<span class="text-{{ linha.tom }}-emphasis">{{ linha.valor }}</span>{% else %}{{ linha.valor }}{% endif %}
+              {% if linha.nota %} <span class="text-body-secondary" aria-hidden="true">·</span> <span class="text-{{ linha.tom }}-emphasis">{{ linha.nota }}</span>{% endif %}
+            </dd>
+          {% endfor %}
+        </dl>
+      {% else %}
+        <p class="text-body-secondary small mb-0 mt-3">
+          Nada em acompanhamento: a demanda não espera ninguém, não há próximo passo
+          nem impedimento registrado.
+        </p>
+      {% endif %}
+      {% comment %}Quando a demanda se moveu pela última vez vem do histórico — a
+      memória do que mudou —, nunca do carimbo de atualização.{% endcomment %}
+      {% if demanda.ultima_movimentacao %}
+        <p class="text-body-secondary small mb-0 mt-3">
+          Última movimentação: {{ demanda.ultima_movimentacao }}
+        </p>
+      {% endif %}
     </section>
 
     {% comment %}
@@ -175,6 +215,14 @@
           </a>
         {% endif %}
 
+        {% comment %}Guardar a prova é outra coisa que contar o que aconteceu: acontece
+        sem mexer na situação da demanda, e por isso tem porta própria.{% endcomment %}
+        {% if pode_adicionar_evidencia %}
+          <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=evidencia&aba=historico" class="btn btn-label-secondary">
+            <i class="bx bx-image-add me-1" aria-hidden="true"></i>Adicionar evidência
+          </a>
+        {% endif %}
+
         {% if pode_concluir %}
           <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn btn-label-success">
             <i class="bx bx-check-circle me-1" aria-hidden="true"></i>Concluir demanda
@@ -220,6 +268,46 @@
                       <li>{{ mudanca.rotulo }}: {{ mudanca.antes }} <span aria-hidden="true">→</span> {{ mudanca.depois }}</li>
                     {% endfor %}
                   </ul>
+                {% endif %}
+                {% comment %}A prova fica onde o relato ficou, presa à movimentação que a
+                trouxe. A miniatura é discreta de propósito: o histórico conta o
+                que aconteceu, e a imagem só se abre quando alguém a procura.{% endcomment %}
+                {% if evento.evidencias %}
+                  <div class="eithra-evidencias mt-2">
+                    {% for evidencia in evento.evidencias %}
+                      {% if evidencia.eh_video %}
+                        <button
+                          type="button"
+                          class="eithra-thumb eithra-thumb-video"
+                          data-bs-toggle="modal"
+                          data-bs-target="#ver-evidencia"
+                          data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                          data-evidencia-video="1"
+                          data-evidencia-tipo="{{ evidencia.tipo }}"
+                          data-evidencia-nome="{{ evidencia.nome }}"
+                          title="{{ evidencia.nome|default:'Vídeo' }} — assistir">
+                          <i class="bx bx-play" aria-hidden="true"></i>
+                          <span class="visually-hidden">Assistir ao vídeo anexado</span>
+                        </button>
+                      {% else %}
+                        <button
+                          type="button"
+                          class="eithra-thumb"
+                          data-bs-toggle="modal"
+                          data-bs-target="#ver-evidencia"
+                          data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                          data-evidencia-video="0"
+                          data-evidencia-tipo="{{ evidencia.tipo }}"
+                          data-evidencia-nome="{{ evidencia.nome }}"
+                          title="{{ evidencia.nome|default:'Foto' }}">
+                          <img
+                            src="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                            alt="{{ evidencia.nome|default:'Foto anexada à demanda' }}"
+                            loading="lazy">
+                        </button>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
                 {% endif %}
               </div>
             </li>
@@ -318,7 +406,7 @@
       aria-labelledby="atualizar-demanda-titulo"
       aria-hidden="{% if modal_aberto == 'atualizar' %}false{% else %}true{% endif %}">
       <div class="modal-dialog modal-dialog-centered modal-lg eithra-modal-wizard">
-        <form class="modal-content" method="post" action="{% url 'demandas:atualizar' demanda.pk %}?aba={{ aba }}" novalidate>
+        <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'demandas:atualizar' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
           {% comment %}A marca que acompanha este formulário até a confirmação. É ela que
           impede o mesmo envio de virar duas movimentações.{% endcomment %}
@@ -351,33 +439,34 @@
                 {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao %}
               {% endif %}
               {% if pode_observar %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
+                {% comment %}Falar é a outra forma de escrever a atualização: o microfone mora
+                dentro do próprio campo, e a fala vira o texto daqui. No pedido de
+                transcrição vai a demanda, porque é ela que diz quem pode
+                escrever nela.{% endcomment %}
+                {% if voz_disponivel %}
+                  {% url 'demandas:transcrever' as url_da_transcricao %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto voz_url=url_da_transcricao voz_demanda=demanda.pk %}
+                {% else %}
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
+                {% endif %}
                 {% comment %}O que a fala produziu fica logo abaixo do campo: quem ditou
                 confere aqui antes de seguir.{% endcomment %}
                 {% if voz_disponivel %}
                   <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
                 {% endif %}
+                {% comment %}As provas entram na tela da confirmação, que é onde o envio
+                acontece de verdade: um arquivo escolhido aqui não atravessaria a
+                troca de etapa, e pedir duas vezes o mesmo arquivo seria pior do
+                que dizer, desde já, onde ele será anexado.{% endcomment %}
+                {% if pode_adicionar_evidencia %}
+                  <p class="text-body-secondary small mb-0">
+                    Na próxima etapa você pode anexar fotos ou um vídeo curto ao que contou.
+                  </p>
+                {% endif %}
               {% endif %}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-              {% if voz_disponivel and pode_observar %}
-                {% comment %}Falar é a outra forma de escrever a atualização: a fala vira texto
-                neste mesmo campo e o caminho daqui para a frente não muda. O botão
-                começa escondido e só se oferece onde o navegador grava.{% endcomment %}
-                <button
-                  type="button"
-                  class="btn btn-label-secondary"
-                  data-eithra-ditar
-                  data-eithra-ditar-url="{% url 'demandas:transcrever' %}?demanda={{ demanda.pk }}"
-                  data-eithra-ditar-campo="#{{ formulario_observacao.texto.id_for_label }}"
-                  aria-label="Falar o que aconteceu"
-                  title="Falar o que aconteceu"
-                  aria-pressed="false"
-                  hidden>
-                  <i class="bx bx-microphone me-1" aria-hidden="true"></i>Falar
-                </button>
-              {% endif %}
               <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn btn-primary">Continuar</button>
             </div>
           {% else %}
@@ -414,6 +503,32 @@
                   <span class="badge bg-label-{{ resumo_atualizacao.consequencia_tom }}">{{ resumo_atualizacao.consequencia }}</span>
                 </p>
               </div>
+
+              {% comment %}A prova do relato entra aqui, no mesmo envio que confirma: é
+              esta a tela em que os arquivos podem viajar junto com o resto, e o
+              envio é um só — ou entram a movimentação e as provas, ou não entra
+              nada. O campo é escrito à mão porque o mesmo formulário também
+              aparece na janela de evidência, e dois campos com o mesmo nome de
+              tela confundiriam o rótulo de cada um.{% endcomment %}
+              {% if pode_adicionar_evidencia %}
+                <div class="border-top mt-3 pt-3">
+                  <label class="form-label" for="id_evidencias_atualizacao">Provas deste relato</label>
+                  <input
+                    type="file"
+                    name="evidencias"
+                    id="id_evidencias_atualizacao"
+                    class="form-control"
+                    accept="{{ limites_evidencia.aceite }}"
+                    multiple>
+                  <div class="form-text">
+                    Deixe em branco se não houver o que mostrar. {{ limites_evidencia.formatos }},
+                    até {{ limites_evidencia.foto }} por foto e {{ limites_evidencia.video }} por vídeo.
+                  </div>
+                  {% for erro in formulario_evidencia.errors.evidencias %}
+                    <div class="text-danger small mt-1">{{ erro }}</div>
+                  {% endfor %}
+                </div>
+              {% endif %}
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -427,6 +542,112 @@
       </div>
     </div>
   {% endif %}
+
+  {% comment %}A janela de evidência é a porta de quem só quer guardar a prova: ela não
+  pergunta situação nem relato, e o que ela guarda fica preso a uma movimentação
+  do próprio histórico.{% endcomment %}
+  {% if pode_adicionar_evidencia %}
+    <div
+      class="modal fade{% if modal_aberto == 'evidencia' %} show eithra-modal-reaberto{% endif %}"
+      id="adicionar-evidencia"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="adicionar-evidencia-titulo"
+      aria-hidden="{% if modal_aberto == 'evidencia' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'demandas:adicionar_evidencia' demanda.pk %}?aba={{ aba }}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar evidência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small mb-3">
+              Anexe fotos ou um vídeo curto que mostrem o que foi relatado. Isso fica no
+              histórico desta demanda e não muda a situação dela.
+            </p>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_evidencia.evidencias %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Anexar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% comment %}A janela do acompanhamento é onde o que se sabe sobre a espera, o próximo
+  passo, a previsão, o impedimento e quem segue a demanda é corrigido à mão. Salvar
+  aqui não move a situação: acompanhamento e ciclo são perguntas diferentes.{% endcomment %}
+  {% if pode_acompanhar %}
+    <div
+      class="modal fade{% if modal_aberto == 'acompanhamento' %} show eithra-modal-reaberto{% endif %}"
+      id="atualizar-acompanhamento"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="atualizar-acompanhamento-titulo"
+      aria-hidden="{% if modal_aberto == 'acompanhamento' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" method="post" action="{% url 'demandas:acompanhar' demanda.pk %}?aba={{ aba }}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="atualizar-acompanhamento-titulo">Atualizar acompanhamento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small mb-3">
+              Isto não muda a situação da demanda. Serve para dizer por quem ela espera,
+              qual é o próximo passo, para quando foi prometida, o que a trava e quem a
+              acompanha.
+            </p>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_tipo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_descricao %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.previsao %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.impedimento %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.responsavel_acompanhamento %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% comment %}Uma janela só para todas as provas: o botão que a abre diz qual arquivo
+  mostrar. Nada é ampliado sem que alguém peça, e o vídeo não começa sozinho —
+  ele tem controles e só busca o arquivo quando é mandado tocar.{% endcomment %}
+  {% if tem_evidencias %}
+    <div
+      class="modal fade"
+      id="ver-evidencia"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="ver-evidencia-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="ver-evidencia-titulo">Evidência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <img id="evidencia-imagem" class="eithra-evidencia-imagem" alt="" hidden>
+            {% if tem_videos %}
+              <video id="evidencia-video" class="eithra-evidencia-video" controls preload="none" playsinline hidden></video>
+            {% endif %}
+            <p class="text-body-secondary small mb-0 mt-2" id="evidencia-nome" hidden></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Fechar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -436,5 +657,69 @@
   botão que não está na tela.{% endcomment %}
   {% if voz_disponivel %}
     <script src="{% static 'js/eithra-ditar.js' %}"></script>
+  {% endif %}
+  {% if tem_evidencias %}
+    <script>
+      // A prova é mostrada na mesma janela, seja foto ou vídeo: quem a abre diz
+      // qual arquivo trazer. O acesso é curto e nasce a cada pedido — sem o
+      // parâmetro de tempo o navegador reaproveitaria um endereço já expirado.
+      // O vídeo não começa sozinho e não continua tocando depois que a janela
+      // fecha.
+      (function () {
+        var modal = document.getElementById("ver-evidencia");
+        if (!modal) {
+          return;
+        }
+
+        var imagem = document.getElementById("evidencia-imagem");
+        var video = document.getElementById("evidencia-video");
+        var rotulo = document.getElementById("evidencia-nome");
+
+        function esvaziar() {
+          if (video) {
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            video.hidden = true;
+          }
+          if (imagem) {
+            imagem.removeAttribute("src");
+            imagem.hidden = true;
+          }
+          if (rotulo) {
+            rotulo.textContent = "";
+            rotulo.hidden = true;
+          }
+        }
+
+        modal.addEventListener("show.bs.modal", function (evento) {
+          var gatilho = evento.relatedTarget;
+          esvaziar();
+          if (!gatilho) {
+            return;
+          }
+
+          var endereco = gatilho.dataset.evidenciaUrl + "?t=" + Date.now();
+          var ehVideo = gatilho.dataset.evidenciaVideo === "1";
+
+          if (ehVideo && video) {
+            video.src = endereco;
+            video.hidden = false;
+            video.load();
+          } else if (imagem) {
+            imagem.src = endereco;
+            imagem.hidden = false;
+          }
+
+          if (rotulo) {
+            var partes = [gatilho.dataset.evidenciaTipo, gatilho.dataset.evidenciaNome];
+            rotulo.textContent = partes.filter(Boolean).join(" · ");
+            rotulo.hidden = !rotulo.textContent;
+          }
+        });
+
+        modal.addEventListener("hidden.bs.modal", esvaziar);
+      })();
+    </script>
   {% endif %}
 {% endblock %}

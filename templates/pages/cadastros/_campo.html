@@ -10,6 +10,12 @@ próprio formulário — não há segunda lista de regras para manter em sincron
 
 A marcação de escolha (caixa) inverte a ordem do tema: a caixa vem antes do
 rótulo, e não depois.
+
+Quando o campo aceita ser ditado, ``voz_url`` liga o microfone dentro dele:
+  {% include "pages/cadastros/_campo.html" with campo=formulario.relato voz_url=url %}
+  {% include "pages/cadastros/_campo.html" with campo=formulario.texto voz_url=url voz_demanda=demanda.pk %}
+O botão nasce escondido — quem o revela é o controlador de voz, e só onde o
+navegador souber gravar. Sem ``voz_url`` nada muda no campo.
 {% endcomment %}
 {% if campo.field.widget.input_type == "checkbox" %}
   <div class="{{ classe|default:'mb-6' }}">
@@ -24,21 +30,39 @@ rótulo, e não depois.
       <div class="form-text">{{ campo.help_text }}</div>
     {% endif %}
     {% for erro in campo.errors %}
-      <div class="text-danger small mt-1">{{ erro }}</div>
+      <div class="text-danger small mt-1" data-eithra-erro-de-campo>{{ erro }}</div>
     {% endfor %}
   </div>
 {% else %}
-  <div class="{{ classe|default:'mb-6' }}">
+  <div class="{{ classe|default:'mb-6' }}"{% if voz_url %} data-eithra-campo-voz{% endif %}>
     <label class="form-label" for="{{ campo.id_for_label }}">
       {{ campo.label }}
       {% if campo.field.required %}<span class="text-danger ms-1" aria-hidden="true" data-eithra-required-marker="true">*</span>{% endif %}
     </label>
-    {{ campo }}
+    {% if voz_url %}
+      <div class="eithra-campo-voz">
+        {{ campo }}
+        <button
+          type="button"
+          class="eithra-ditar"
+          data-eithra-ditar
+          data-eithra-ditar-url="{{ voz_url }}{% if voz_demanda %}?demanda={{ voz_demanda }}{% endif %}"
+          data-eithra-ditar-campo="#{{ campo.id_for_label }}"
+          aria-label="Gravar relato por voz"
+          title="Gravar relato por voz"
+          aria-pressed="false"
+          hidden>
+          <i class="bx bx-microphone" aria-hidden="true"></i>
+        </button>
+      </div>
+    {% else %}
+      {{ campo }}
+    {% endif %}
     {% if campo.help_text %}
       <div class="form-text">{{ campo.help_text }}</div>
     {% endif %}
     {% for erro in campo.errors %}
-      <div class="text-danger small mt-1">{{ erro }}</div>
+      <div class="text-danger small mt-1" data-eithra-erro-de-campo>{{ erro }}</div>
     {% endfor %}
   </div>
 {% endif %}

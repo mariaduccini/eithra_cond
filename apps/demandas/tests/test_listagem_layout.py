@@ -10,8 +10,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.condominios.constants import Papel
-from apps.demandas.constants import StatusDemanda
-from apps.demandas.services import alterar_status, criar_demanda
+from apps.demandas.constants import PrioridadeDemanda, StatusDemanda
+from apps.demandas.forms import DemandaForm
+from apps.demandas.services import alterar_status, criar_demanda, editar_demanda
 from apps.demandas.tests.apoio import (
     criar_condominio,
     criar_pessoa,
@@ -79,6 +80,29 @@ class ListagemDeDemandasTests(TestCase):
         self.assertContains(
             resposta, 'class="eithra-col-descricao d-none d-xl-table-cell"'
         )
+
+    # -- O código é do sistema, nunca de quem digita ---------------------------
+
+    def test_o_formulario_nao_oferece_campo_de_codigo(self):
+        campos = set(DemandaForm().fields)
+
+        self.assertNotIn("codigo", campos)
+        self.assertNotIn("referencia", campos)
+
+    def test_editar_a_demanda_nao_troca_o_codigo(self):
+        demanda = self._demanda(titulo="Portão travando")
+        codigo = f"D-{str(demanda.pk).split('-')[0].upper()}"
+
+        editar_demanda(
+            demanda=demanda,
+            usuario=self.gestao,
+            titulo="Portão da garagem travando",
+            descricao="Abre pela metade.",
+            prioridade=PrioridadeDemanda.NORMAL,
+        )
+
+        resposta = self._abrir()
+        self.assertEqual(resposta.context["demandas"][0]["referencia"], codigo)
 
     # -- Textos ---------------------------------------------------------------
 

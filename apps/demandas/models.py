@@ -3,7 +3,9 @@
 Uma demanda é algo com consequência operacional que precisa de acompanhamento:
 um vazamento, uma compra, um orçamento a pedir, um equipamento com problema, uma
 reclamação que exige ação. Não é conversa, comentário, feed nem mensagem — por
-isso não existe thread, curtida, menção nem anexo social.
+isso não existe thread, curtida, menção nem anexo social. O que existe é a
+evidência: a foto ou o vídeo que sustenta o que se sabe sobre a demanda, presa a
+ela e, quando houver, ao evento que a trouxe.
 
 O registro guarda o que é preciso para responder por ela: o que é, quem
 responde, quando vence, quanto pesa e em que situação está. O que muda ao longo
@@ -21,14 +23,18 @@ from django.utils import timezone
 
 from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.condominios.models import Condominio
+from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
 
 from .constants import (
+    MIMES_DE_EVIDENCIA,
+    AguardandoTipo,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
     RiscoDemanda,
     StatusDemanda,
     TipoEventoDemanda,
+    TipoMidiaEvidencia,
     TipoProblema,
 )
 
@@ -254,6 +260,55 @@ class Demanda(models.Model):
         "confiança. Nunca é tratado como oficial: existe para comparar sugestão, "
         "confirmação e correção mais adiante.",
     )
+    # O acompanhamento operacional. Não é situação: diz o que a demanda espera
+    # agora, o que vem depois, para quando foi prometida e o que está travando.
+    # Nada aqui muda o ciclo da demanda — previsão vencida não conclui, espera
+    # pelo fornecedor não altera situação, impedimento resolvido não encerra.
+    aguardando_tipo = models.CharField(
+        "Aguardando",
+        max_length=20,
+        choices=AguardandoTipo.choices,
+        blank=True,
+        default=AguardandoTipo.NINGUEM,
+        help_text="Por quem — ou pelo quê — a demanda espera agora. Vazio é não "
+        "estar aguardando ninguém.",
+    )
+    aguardando_descricao = models.CharField(
+        "O que se espera",
+        max_length=200,
+        blank=True,
+        help_text="Quem ou o que exatamente se espera, quando couber um nome.",
+    )
+    proxima_acao = models.CharField(
+        "Próxima ação",
+        max_length=200,
+        blank=True,
+        help_text="O próximo passo combinado, com as palavras da operação.",
+    )
+    previsao = models.DateField(
+        "Previsão",
+        null=True,
+        blank=True,
+        help_text="A data prometida por quem está sendo aguardado. É diferente do "
+        "prazo: não é compromisso da demanda e vencê-la não muda nada.",
+    )
+    impedimento = models.CharField(
+        "Impedimento",
+        max_length=200,
+        blank=True,
+        help_text="O que está travando a demanda, quando houver. Vazio é não haver "
+        "impedimento conhecido.",
+    )
+    responsavel_acompanhamento = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="demandas_acompanhadas",
+        verbose_name="Quem acompanha",
+        help_text="Quem segue a demanda de perto. É diferente de quem responde "
+        "por ela.",
+    )
     ativo = models.BooleanField(
         "Ativa",
         default=True,
@@ -335,6 +390,54 @@ class Demanda(models.Model):
             return self.local.nome
         return self.local_contexto or ""
 
+    @property
+    def tem_acompanhamento(self) -> bool:
+        """Há o que mostrar no bloco de acompanhamento."""
+        return bool(
+            self.aguardando_tipo
+            or self.aguardando_descricao
+            or self.proxima_acao
+            or self.previsao
+            or self.impedimento
+            or self.responsavel_acompanhamento_id
+        )
+
+    @property
+    def aguardando_para_exibir(self) -> str:
+        """Por quem se espera, como deve ser lido.
+
+        O nome próprio diz mais que a categoria; sem nome, a categoria
+        responde. Sem nenhum dos dois, não se está aguardando ninguém.
+        """
+        if self.aguardando_descricao:
+            return self.aguardando_descricao
+        if self.aguardando_tipo:
+            return self.get_aguardando_tipo_display()
+        return ""
+
+    @property
+    def previsao_vencida(self) -> bool:
+        """A data prometida passou e a demanda continua de pé.
+
+        É um sinal para quem acompanha, não uma consequência: nada muda de
+        situação por causa disso.
+        """
+        if not self.previsao or self.esta_encerrada:
+            return False
+        return self.previsao < timezone.localdate()
+
+    @property
+    def ultima_movimentacao(self):
+        """O último evento da demanda, como ele ficou na memória.
+
+        É daqui que sai "quando foi a última movimentação", e não de
+        ``atualizado_em``: o carimbo de atualização anda a cada gravação, sem
+        dizer se alguma coisa de fato aconteceu. A resposta honesta está no
+        histórico, que só guarda o que mudou. Por isso também não existe campo
+        para isso — a informação já está lá, derivada.
+        """
+        return self.historico.order_by("-data_hora").first()
+
 
 class HistoricoDemanda(models.Model):
     """O que aconteceu com a demanda, na ordem em que aconteceu.
@@ -394,3 +497,123 @@ class HistoricoDemanda(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_evento_display()} · {self.demanda}"
+
+
+class EvidenciaDemanda(models.Model):
+    """Uma foto ou um vídeo que sustenta o que se sabe sobre a demanda.
+
+    A evidência não é documento nem anexo social: é a prova do que foi
+    relatado. Por isso ela sempre acompanha uma movimentação — o relato que a
+    trouxe, a mudança de situação que ela explica ou o próprio ato de anexá-la
+    depois —, e nunca aparece solta no histórico. Anexar uma evidência nunca
+    conclui, nunca cancela e nunca cria uma demanda: o arquivo confirma o
+    relato, não decide por ele.
+
+    A frase que a explica vive no evento, e não aqui: guardar a mesma
+    explicação nos dois lugares criaria duas versões da mesma história. O que
+    fica nesta linha é só o necessário para reencontrar o arquivo — a
+    referência do objeto no bucket privado, o tipo real, o tamanho, o resumo do
+    conteúdo e quem anexou, quando. Nunca uma URL pública ou assinada: o acesso
+    é gerado sob demanda, como nos demais arquivos privados.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    demanda = models.ForeignKey(
+        Demanda,
+        on_delete=models.PROTECT,
+        related_name="evidencias",
+        verbose_name="Demanda",
+    )
+    evento = models.ForeignKey(
+        HistoricoDemanda,
+        on_delete=models.PROTECT,
+        related_name="evidencias",
+        verbose_name="Movimentação",
+        help_text="O evento que a evidência acompanha e explica.",
+    )
+    tipo_midia = models.CharField(
+        "Tipo de mídia",
+        max_length=10,
+        choices=TipoMidiaEvidencia.choices,
+    )
+    nome_original = models.CharField(
+        "Nome do arquivo enviado",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Como o arquivo chegou. O nome físico não depende dele.",
+    )
+
+    # Referência do objeto no storage privado. Nunca a URL em si.
+    storage_provider = models.CharField("Provedor", max_length=50, blank=True, default="")
+    storage_bucket = models.CharField(
+        "Local de armazenamento", max_length=150, blank=True, default=""
+    )
+    storage_key = models.CharField("Referência do objeto", max_length=500)
+    mime_type = models.CharField("Tipo do arquivo", max_length=120)
+    tamanho_bytes = models.PositiveBigIntegerField("Tamanho", default=0)
+    sha256 = models.CharField(
+        "Resumo do conteúdo",
+        max_length=64,
+        validators=[FORMATO_SHA256],
+        help_text="Reconhece o mesmo arquivo repetido na mesma demanda.",
+    )
+
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="evidencias_demanda_criadas",
+        verbose_name="Quem anexou",
+        help_text="Preservado para rastreabilidade.",
+    )
+    criado_em = models.DateTimeField("Quando", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Evidência da demanda"
+        verbose_name_plural = "Evidências da demanda"
+        ordering = ["criado_em"]
+        constraints = [
+            # O mesmo arquivo não entra duas vezes na mesma demanda. Sem isso,
+            # um envio repetido encheria o histórico com a mesma prova.
+            models.UniqueConstraint(
+                fields=["demanda", "sha256"],
+                name="demanda_evidencia_unica_por_hash",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(tamanho_bytes__gte=0),
+                name="demanda_evidencia_tamanho_nao_negativo",
+            ),
+            # Só foto e vídeo entram aqui. PDF e executável são recusados no
+            # banco, e não apenas na validação da borda.
+            models.CheckConstraint(
+                condition=models.Q(mime_type__in=MIMES_DE_EVIDENCIA),
+                name="demanda_evidencia_mime_permitido",
+            ),
+        ]
+        indexes = [
+            # Apoio à listagem das evidências de uma demanda.
+            models.Index(
+                fields=["demanda", "criado_em"],
+                name="demanda_evid_data_idx",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        erros: dict[str, str] = {}
+
+        erros.update(erros_de_referencia_de_storage(self))
+
+        if self.tamanho_bytes is not None and self.tamanho_bytes < 0:
+            erros["tamanho_bytes"] = "O tamanho da evidência não pode ser negativo."
+
+        # A prova pertence à mesma demanda que o evento que ela sustenta: sem
+        # isso, uma foto de um caso apareceria no histórico de outro.
+        if self.evento_id and self.evento.demanda_id != self.demanda_id:
+            erros["evento"] = "A movimentação escolhida não é desta demanda."
+
+        if erros:
+            raise ValidationError(erros)
+
+    def __str__(self) -> str:
+        return f"Evidência {self.get_tipo_midia_display()} · {self.demanda}"
