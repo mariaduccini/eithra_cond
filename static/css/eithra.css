@@ -1964,6 +1964,32 @@
   border: 0;
 }
 
+/* As janelas operacionais de uma demanda — acompanhamento e atualização — abrem
+   largas e baixas: os campos se leem em pares, o rodapé fica à vista e o que
+   rola é o corpo, não a página. O respiro entre os campos vem do vão da grade,
+   e não de uma margem repetida embaixo de cada um — era isso que fazia a janela
+   crescer para fora da tela em uma ação curta. */
+.eithra-modal-operacional .modal-title {
+  margin-block-end: 0.125rem;
+}
+
+.eithra-modal-identidade {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-modal-nota {
+  margin-block-end: 0.75rem;
+}
+
+.eithra-modal-operacional .modal-body {
+  padding-block-end: 1rem;
+}
+
+.eithra-modal-operacional .modal-footer {
+  padding-block: 0.875rem;
+}
+
 /* Modal que o servidor devolve já aberto — por `?abrir=...` ou pela volta de um
    formulário com erro. Nesse caso não existe instância viva do Bootstrap, e o
    que o tema faria por script (mostrar o modal e vestir a cortina) vem daqui.

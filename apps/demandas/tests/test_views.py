@@ -523,7 +523,7 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
         conteudo = resposta.content.decode()
 
         self.assertIn("Acompanhar manutenção", conteudo)
-        self.assertIn("Atualizar demanda", conteudo)
+        self.assertIn("Registrar atualização", conteudo)
         self.assertIn("Conclusão", conteudo)
 
 

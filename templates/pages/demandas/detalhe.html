@@ -423,7 +423,7 @@
       role="dialog"
       aria-labelledby="atualizar-demanda-titulo"
       aria-hidden="{% if modal_aberto == 'atualizar' %}false{% else %}true{% endif %}">
-      <div class="modal-dialog modal-dialog-centered modal-lg eithra-modal-wizard">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl eithra-modal-wizard eithra-modal-operacional">
         <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'demandas:atualizar' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
           {% comment %}A marca que acompanha este formulário até a confirmação. É ela que
@@ -431,8 +431,9 @@
           {% if confirmacao %}<input type="hidden" name="confirmacao" value="{{ confirmacao }}">{% endif %}
           <div class="modal-header">
             <div>
-              <h5 class="modal-title" id="atualizar-demanda-titulo">Atualizar demanda</h5>
-              <div class="eithra-step-wizard mt-3">
+              <h5 class="modal-title" id="atualizar-demanda-titulo">Registrar atualização</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+              <div class="eithra-step-wizard mt-2">
                 {% for etapa in etapas_da_atualizacao %}
                   <div class="eithra-step{% if etapa.ativa %} is-active{% elif etapa.concluida %} is-complete{% endif %}">
                     <span class="eithra-step-number">{{ etapa.numero }}</span>
@@ -449,39 +450,51 @@
               {% if pode_observar %}
                 {% comment %}Um relato é a entrada: escrever e falar são a mesma coisa dita
                 de dois jeitos — a fala só produz texto para este campo.{% endcomment %}
-                <p class="text-body-secondary small mb-3">
+                <p class="text-body-secondary small eithra-modal-nota">
                   {% if voz_disponivel %}Escreva o que aconteceu com esta demanda — ou fale, se for mais rápido.{% else %}Escreva o que aconteceu com esta demanda.{% endif %}
                 </p>
               {% endif %}
-              {% if formulario_status.fields.acao.choices %}
-                {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao %}
-              {% endif %}
-              {% if pode_observar %}
-                {% comment %}Falar é a outra forma de escrever a atualização: o microfone mora
-                dentro do próprio campo, e a fala vira o texto daqui. No pedido de
-                transcrição vai a demanda, porque é ela que diz quem pode
-                escrever nela.{% endcomment %}
-                {% if voz_disponivel %}
-                  {% url 'demandas:transcrever' as url_da_transcricao %}
-                  {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto voz_url=url_da_transcricao voz_demanda=demanda.pk %}
-                {% else %}
-                  {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto %}
+              {% comment %}O relato é o que a pessoa veio escrever, então vem primeiro e ocupa
+              a linha inteira; o que aconteceu com a demanda é o complemento, e se
+              lê logo abaixo, ao lado do aviso das provas. O respiro entre um e
+              outro é o vão da grade — não uma margem repetida em cada campo.{% endcomment %}
+              <div class="row g-3">
+                {% if pode_observar %}
+                  <div class="col-12">
+                    {% comment %}Falar é a outra forma de escrever a atualização: o microfone
+                    mora dentro do próprio campo, e a fala vira o texto daqui. No pedido
+                    de transcrição vai a demanda, porque é ela que diz quem pode
+                    escrever nela.{% endcomment %}
+                    {% if voz_disponivel %}
+                      {% url 'demandas:transcrever' as url_da_transcricao %}
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto voz_url=url_da_transcricao voz_demanda=demanda.pk classe="mb-0" %}
+                    {% else %}
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto classe="mb-0" %}
+                    {% endif %}
+                  </div>
+                  {% comment %}O que a fala produziu fica logo abaixo do campo: quem ditou
+                  confere aqui antes de seguir.{% endcomment %}
+                  {% if voz_disponivel %}
+                    <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+                  {% endif %}
                 {% endif %}
-                {% comment %}O que a fala produziu fica logo abaixo do campo: quem ditou
-                confere aqui antes de seguir.{% endcomment %}
-                {% if voz_disponivel %}
-                  <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+                {% if formulario_status.fields.acao.choices %}
+                  <div class="col-12{% if pode_adicionar_evidencia %} col-lg-6{% endif %}">
+                    {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao classe="mb-0" %}
+                  </div>
                 {% endif %}
                 {% comment %}As provas entram na tela da confirmação, que é onde o envio
                 acontece de verdade: um arquivo escolhido aqui não atravessaria a
                 troca de etapa, e pedir duas vezes o mesmo arquivo seria pior do
                 que dizer, desde já, onde ele será anexado.{% endcomment %}
                 {% if pode_adicionar_evidencia %}
-                  <p class="text-body-secondary small mb-0">
-                    Na próxima etapa você pode anexar fotos ou um vídeo curto ao que contou.
-                  </p>
+                  <div class="col-12 col-lg-6">
+                    <p class="text-body-secondary small mb-0">
+                      Na próxima etapa você pode anexar fotos ou um vídeo curto ao que contou.
+                    </p>
+                  </div>
                 {% endif %}
-              {% endif %}
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -563,7 +576,8 @@
 
   {% comment %}A janela de evidência é a porta de quem só quer guardar a prova: ela não
   pergunta situação nem relato, e o que ela guarda fica preso a uma movimentação
-  do próprio histórico.{% endcomment %}
+  do próprio histórico. É a mesma família das demais janelas operacionais da
+  demanda — larga, baixa, com o corpo rolando em vez da página.{% endcomment %}
   {% if pode_adicionar_evidencia %}
     <div
       class="modal fade{% if modal_aberto == 'evidencia' %} show eithra-modal-reaberto{% endif %}"
@@ -572,19 +586,25 @@
       role="dialog"
       aria-labelledby="adicionar-evidencia-titulo"
       aria-hidden="{% if modal_aberto == 'evidencia' %}false{% else %}true{% endif %}">
-      <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl eithra-modal-operacional">
         <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'demandas:adicionar_evidencia' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar evidência</h5>
+            <div>
+              <h5 class="modal-title" id="adicionar-evidencia-titulo">Adicionar evidência</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+            </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
           <div class="modal-body">
-            <p class="text-body-secondary small mb-3">
-              Anexe fotos ou um vídeo curto que mostrem o que foi relatado. Isso fica no
+            {% comment %}Uma linha basta: o que a pessoa precisa saber antes de escolher o
+            arquivo é que isto não mexe no ciclo da demanda. Os formatos e os limites
+            vêm do próprio campo, que os lê da configuração — nada é repetido aqui.{% endcomment %}
+            <p class="text-body-secondary small eithra-modal-nota">
+              Anexe fotos ou um vídeo curto que mostrem o que foi relatado. Isto fica no
               histórico desta demanda e não muda a situação dela.
             </p>
-            {% include "pages/cadastros/_campo.html" with campo=formulario_evidencia.evidencias %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_evidencia.evidencias classe="mb-0" %}
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -597,7 +617,9 @@
 
   {% comment %}A janela do acompanhamento é onde o que se sabe sobre a espera, o próximo
   passo, a previsão, o impedimento e quem segue a demanda é corrigido à mão. Salvar
-  aqui não move a situação: acompanhamento e ciclo são perguntas diferentes.{% endcomment %}
+  aqui não move a situação: acompanhamento e ciclo são perguntas diferentes. Os
+  campos se leem dois a dois, e é essa vizinhança que mantém a janela baixa no
+  desktop — sem empurrar o rodapé para fora da tela.{% endcomment %}
   {% if pode_acompanhar %}
     <div
       class="modal fade{% if modal_aberto == 'acompanhamento' %} show eithra-modal-reaberto{% endif %}"
@@ -606,29 +628,44 @@
       role="dialog"
       aria-labelledby="atualizar-acompanhamento-titulo"
       aria-hidden="{% if modal_aberto == 'acompanhamento' %}false{% else %}true{% endif %}">
-      <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl eithra-modal-operacional">
         <form class="modal-content" method="post" action="{% url 'demandas:acompanhar' demanda.pk %}?aba={{ aba }}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="atualizar-acompanhamento-titulo">Atualizar acompanhamento</h5>
+            <div>
+              <h5 class="modal-title" id="atualizar-acompanhamento-titulo">Atualizar acompanhamento</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+            </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
           <div class="modal-body">
-            <p class="text-body-secondary small mb-3">
-              Isto não muda a situação da demanda. Serve para dizer por quem ela espera,
-              qual é o próximo passo, para quando foi prometida, o que a trava e quem a
-              acompanha.
-            </p>
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_tipo %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_descricao %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.previsao %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.impedimento %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.responsavel_acompanhamento %}
+            {% comment %}Uma linha basta: o que a pessoa precisa saber antes de escrever é que
+            isto não mexe no ciclo da demanda. O resto o rótulo de cada campo diz.{% endcomment %}
+            <p class="text-body-secondary small eithra-modal-nota">Isto não muda a situação da demanda.</p>
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_tipo classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.responsavel_acompanhamento classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_descricao classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.previsao classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.impedimento classe="mb-0" %}
+              </div>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Salvar</button>
+            <button type="submit" class="btn btn-primary">Salvar acompanhamento</button>
           </div>
         </form>
       </div>
