@@ -29,8 +29,19 @@ from django.utils import timezone
 
 from apps.core.constants import Prioridade
 
-from .constants import StatusManutencao, TipoEventoManutencao, TipoManutencao
-from .models import HistoricoManutencao, Manutencao, PlanoPreventivo
+from .constants import (
+    ResultadoCriterio,
+    StatusConferencia,
+    StatusManutencao,
+    TipoEventoManutencao,
+    TipoManutencao,
+)
+from .models import (
+    CriterioConferenciaOcorrencia,
+    HistoricoManutencao,
+    Manutencao,
+    PlanoPreventivo,
+)
 from .periodicidade import proxima_data
 
 # A descrição do evento cabe no histórico como uma frase curta.
@@ -161,6 +172,123 @@ def _validar(manutencao) -> None:
         manutencao.full_clean()
     except ValidationError as erro:
         raise ErroDeManutencao(_primeiro_recado(erro)) from erro
+
+
+def estado_inicial_de_conferencia(exige_conferencia: bool) -> str:
+    """A única autoridade sobre como a conferência nasce numa ocorrência.
+
+    Exigir conferência faz a ocorrência nascer aguardando; não exigir faz a
+    conferência nascer como não exigida. Essa decisão mora aqui e em mais
+    nenhum lugar: quem cria uma ocorrência pergunta a esta função, em vez de
+    repetir o mesmo ``if`` em cada ponto de geração.
+    """
+    if exige_conferencia:
+        return StatusConferencia.PENDENTE
+    return StatusConferencia.NAO_EXIGIDA
+
+
+def _exigir_conferencia_pendente(manutencao) -> None:
+    """Recusa conferir o que não deve conferência, o que não tem execução e o
+    que já foi decidido.
+
+    A ordem das recusas segue a pergunta natural: antes de decidir, é preciso
+    que haja conferência devida e algo entregue para olhar.
+    """
+    if not manutencao.exige_conferencia:
+        raise ErroDeManutencao("Esta manutenção não passa por conferência.")
+
+    if manutencao.data_execucao is None:
+        raise ErroDeManutencao(
+            "Registre a execução antes de conferir o que foi entregue."
+        )
+
+    if manutencao.status_conferencia == StatusConferencia.APROVADA:
+        raise ErroDeManutencao("Esta execução já foi aprovada.")
+
+    if manutencao.status_conferencia == StatusConferencia.REPROVADA:
+        raise ErroDeManutencao(
+            "Esta execução foi reprovada. Registre a correção antes de conferir "
+            "de novo."
+        )
+
+
+def _retratar_criterios(manutencao, plano) -> None:
+    """Copia os critérios do plano para a ocorrência, como retrato do dia.
+
+    Só faz sentido quando a ocorrência exige conferência — é para ela que os
+    itens servem. A cópia é do valor, não da referência: o plano pode mudar
+    depois sem tocar no que já nasceu.
+    """
+    if not manutencao.exige_conferencia:
+        return
+
+    CriterioConferenciaOcorrencia.objects.bulk_create(
+        [
+            CriterioConferenciaOcorrencia(
+                manutencao=manutencao,
+                descricao=criterio.descricao,
+                ordem=criterio.ordem,
+                obrigatorio=criterio.obrigatorio,
+            )
+            for criterio in plano.criterios_conferencia.all()
+        ]
+    )
+
+
+def _aplicar_avaliacoes(manutencao, avaliacoes) -> None:
+    """Grava o resultado de cada item conferido, sem decidir a conferência.
+
+    Cada avaliação aponta um item pelo próprio critério ou pelo ``pk``. O item
+    precisa pertencer a esta manutenção — conferir item de outro lugar não faz
+    sentido. Resultado desconhecido é recusado em vez de adivinhado.
+    """
+    if not avaliacoes:
+        return
+
+    itens = {str(criterio.pk): criterio for criterio in manutencao.criterios_conferencia.all()}
+
+    for avaliacao in avaliacoes:
+        alvo = avaliacao.get("criterio")
+        criterio = itens.get(str(getattr(alvo, "pk", alvo)))
+        if criterio is None:
+            raise ErroDeManutencao(
+                "O item de conferência não pertence a esta manutenção."
+            )
+
+        resultado = avaliacao.get("resultado") or ResultadoCriterio.NAO_AVALIADO
+        if resultado not in ResultadoCriterio.values:
+            raise ErroDeManutencao("O resultado da conferência não é reconhecido.")
+
+        criterio.resultado = resultado
+        criterio.observacao = _texto(avaliacao.get("observacao"))
+        criterio.save(update_fields=["resultado", "observacao"])
+
+
+def _criterios_pendentes(manutencao) -> list[str]:
+    """Os itens obrigatórios que ainda impedem a aprovação, por descrição.
+
+    Item obrigatório só aprova quando está ``CONFORME``. Não avaliado, não
+    conforme ou "não se aplica" continuam devendo uma decisão humana — o sistema
+    não decide em silêncio que uma obrigação deixou de existir.
+    """
+    return [
+        criterio.descricao
+        for criterio in manutencao.criterios_conferencia.all()
+        if criterio.obrigatorio and criterio.resultado != ResultadoCriterio.CONFORME
+    ]
+
+
+def _reabrir_criterios(manutencao) -> None:
+    """Devolve os itens ao estado inicial, para uma nova conferência.
+
+    Chamado quando uma nova execução reabre a conferência: os itens conferidos
+    na entrega anterior não valem para a nova, e não podem aprová-la por
+    inércia. O que foi decidido antes continua no histórico, e é de lá que a
+    avaliação anterior é lida.
+    """
+    manutencao.criterios_conferencia.update(
+        resultado=ResultadoCriterio.NAO_AVALIADO, observacao=""
+    )
 
 
 @transaction.atomic
@@ -497,6 +625,16 @@ def concluir_manutencao(
     if manutencao.status == StatusManutencao.CONCLUIDA:
         raise ErroDeManutencao("Esta manutenção já foi concluída.")
 
+    # Onde há conferência devida, ela vem antes do fim. Executar não substitui
+    # aprovar: enquanto a conferência não aprovou, a manutenção não termina.
+    if (
+        manutencao.exige_conferencia
+        and manutencao.status_conferencia != StatusConferencia.APROVADA
+    ):
+        raise ErroDeManutencao(
+            "Esta manutenção exige conferência aprovada antes de ser concluída."
+        )
+
     if data_conclusao is not None and data_conclusao > timezone.localdate():
         raise ErroDeManutencao("A data da conclusão não pode estar no futuro.")
 
@@ -602,6 +740,223 @@ def definir_ativo(*, manutencao: Manutencao, ativo: bool) -> Manutencao:
 
 
 @transaction.atomic
+def registrar_execucao(
+    *,
+    manutencao: Manutencao,
+    usuario,
+    descricao_servico: str,
+    data_execucao=None,
+) -> Manutencao:
+    """Registra que o serviço foi executado, sem concluir a manutenção.
+
+    Executar e concluir não são a mesma coisa. Registrar a execução diz o que
+    foi feito e quando; a manutenção continua aberta. Quando ela exige
+    conferência, passa a aguardar quem confira o que foi entregue — e a
+    conclusão segue dependendo de uma decisão à parte.
+
+    O fornecedor não vem por parâmetro: é o que já responde pela manutenção,
+    quando houver, e é ele que o histórico cita. Registrar de novo depois de uma
+    reprovação descreve a nova execução e reabre a conferência, sem apagar a
+    tentativa anterior — o histórico guarda as duas.
+
+    A data é a do fato, não a do registro: um serviço feito ontem pode ser
+    lançado hoje, e o que fica guardado é o dia em que ele aconteceu.
+    """
+    manutencao = Manutencao.objects.select_for_update().get(pk=manutencao.pk)
+
+    if manutencao.esta_encerrada:
+        raise ErroDeManutencao(
+            "Esta manutenção já foi encerrada e não registra nova execução."
+        )
+
+    if manutencao.status_conferencia == StatusConferencia.APROVADA:
+        raise ErroDeManutencao(
+            "Esta execução já foi aprovada; conclua a manutenção."
+        )
+
+    servico = _texto_longo(descricao_servico)
+    if not servico:
+        raise ErroDeManutencao("Descreva o serviço realizado.")
+
+    if data_execucao is not None and data_execucao > timezone.localdate():
+        raise ErroDeManutencao("A data da execução não pode estar no futuro.")
+
+    anterior = manutencao.status_conferencia
+
+    campos = ["descricao_servico", "data_execucao", "atualizado_em"]
+    manutencao.descricao_servico = servico
+    manutencao.data_execucao = _momento_do_fato(data_execucao)
+
+    if manutencao.exige_conferencia:
+        manutencao.status_conferencia = StatusConferencia.PENDENTE
+        campos.append("status_conferencia")
+        if anterior == StatusConferencia.REPROVADA:
+            # Nova entrega depois de uma correção: os itens voltam a aguardar,
+            # e não podem aprovar por inércia. O que foi reprovado antes já
+            # ficou no histórico da reprovação.
+            _reabrir_criterios(manutencao)
+
+    descricao = "Execução registrada"
+    if anterior == StatusConferencia.REPROVADA:
+        descricao = "Nova execução registrada após correção"
+    if manutencao.fornecedor_id:
+        descricao = f"{descricao} · {_rotulo(manutencao.fornecedor)}"
+
+    _validar(manutencao)
+    _registrar(
+        manutencao,
+        usuario,
+        TipoEventoManutencao.EXECUCAO,
+        descricao,
+        novos={"descricao_servico": servico},
+    )
+    manutencao.save(update_fields=campos)
+    return manutencao
+
+
+@transaction.atomic
+def aprovar_conferencia(
+    *, manutencao: Manutencao, usuario, avaliacoes=None, observacao: str = ""
+) -> Manutencao:
+    """Aprova a conferência de uma execução, sem concluir a manutenção.
+
+    Conferir é olhar o que foi entregue — os itens observáveis, os documentos,
+    as evidências. Aprovar registra que a execução passou por essa olhada; não é
+    um atestado de que o serviço está tecnicamente correto, e não conclui a
+    manutenção. A conclusão continua sendo uma decisão à parte. Quem aprovou e
+    quando ficam no histórico.
+
+    Antes de aprovar, os itens conferidos são gravados e os obrigatórios são
+    cobrados: item obrigatório que não está conforme — por não ter sido olhado,
+    por estar reprovado ou por não se aplicar — impede a aprovação. O que é
+    opcional pode ficar sem resposta sem travar a decisão.
+    """
+    manutencao = Manutencao.objects.select_for_update().get(pk=manutencao.pk)
+    _exigir_conferencia_pendente(manutencao)
+
+    _aplicar_avaliacoes(manutencao, avaliacoes)
+
+    pendentes = _criterios_pendentes(manutencao)
+    if pendentes:
+        raise ErroDeManutencao(
+            "Ainda há item obrigatório sem conformidade: "
+            + "; ".join(pendentes)
+            + "."
+        )
+
+    manutencao.status_conferencia = StatusConferencia.APROVADA
+
+    descricao = "Conferência aprovada"
+    observacao = _texto(observacao)
+    if observacao:
+        descricao = f"{descricao} · {observacao}"
+
+    _validar(manutencao)
+    _registrar(
+        manutencao,
+        usuario,
+        TipoEventoManutencao.CONFERENCIA_APROVADA,
+        descricao,
+        novos={"status_conferencia": StatusConferencia.APROVADA},
+    )
+    manutencao.save(update_fields=["status_conferencia", "atualizado_em"])
+    return manutencao
+
+
+@transaction.atomic
+def reprovar_conferencia(
+    *, manutencao: Manutencao, usuario, motivo: str, criterios_nao_conformes=None
+) -> Manutencao:
+    """Reprova a conferência: o que foi entregue precisa de correção.
+
+    Reprovar não encerra nada. A manutenção continua aberta, com o motivo no
+    histórico, e uma nova execução depois da correção reabre a conferência. O
+    motivo é obrigatório — reprovar sem dizer o que falta não ajuda quem vai
+    corrigir.
+
+    Os itens que ficaram não conformes podem ser apontados junto com a
+    reprovação; eles são gravados como tal e citados no histórico, para a
+    correção saber exatamente o que refazer. A tentativa reprovada não é
+    apagada: fica registrada antes de uma nova execução reabrir a conferência.
+    """
+    manutencao = Manutencao.objects.select_for_update().get(pk=manutencao.pk)
+    _exigir_conferencia_pendente(manutencao)
+
+    motivo = _texto(motivo)
+    if not motivo:
+        raise ErroDeManutencao("Escreva o motivo da reprovação.")
+
+    if criterios_nao_conformes:
+        _aplicar_avaliacoes(
+            manutencao,
+            [
+                {
+                    "criterio": item.get("criterio"),
+                    "resultado": ResultadoCriterio.NAO_CONFORME,
+                    "observacao": item.get("observacao"),
+                }
+                for item in criterios_nao_conformes
+            ],
+        )
+
+    manutencao.status_conferencia = StatusConferencia.REPROVADA
+
+    nao_conformes = list(
+        manutencao.criterios_conferencia.filter(
+            resultado=ResultadoCriterio.NAO_CONFORME
+        ).values_list("descricao", flat=True)
+    )
+
+    descricao = f"Conferência reprovada · {motivo}"
+    if nao_conformes:
+        descricao = f"{descricao} · {', '.join(nao_conformes)}"
+
+    _validar(manutencao)
+    _registrar(
+        manutencao,
+        usuario,
+        TipoEventoManutencao.CONFERENCIA_REPROVADA,
+        descricao,
+        novos={
+            "status_conferencia": StatusConferencia.REPROVADA,
+            "motivo": motivo,
+            "criterios_nao_conformes": nao_conformes,
+        },
+    )
+    manutencao.save(update_fields=["status_conferencia", "atualizado_em"])
+    return manutencao
+
+
+@transaction.atomic
+def nao_avaliar_conferencia(
+    *, manutencao: Manutencao, usuario, observacao: str = ""
+) -> Manutencao:
+    """Registra que a conferência não pôde ser concluída agora.
+
+    Não é aprovação nem reprovação: falta acesso, falta documento, falta quem
+    responda. A conferência continua pendente e a manutenção segue aberta — o
+    que fica é a observação no histórico, para o assunto poder ser retomado
+    depois. Não se cria um estado técnico novo para o que ainda não foi
+    decidido.
+    """
+    manutencao = Manutencao.objects.select_for_update().get(pk=manutencao.pk)
+    _exigir_conferencia_pendente(manutencao)
+
+    descricao = "Não foi possível avaliar a execução"
+    observacao = _texto(observacao)
+    if observacao:
+        descricao = f"{descricao} · {observacao}"
+
+    _registrar(
+        manutencao,
+        usuario,
+        TipoEventoManutencao.CONFERENCIA_NAO_AVALIADA,
+        descricao,
+    )
+    return manutencao
+
+
+@transaction.atomic
 def gerar_ocorrencia_preventiva(
     *, plano: PlanoPreventivo, usuario
 ) -> Manutencao:
@@ -617,6 +972,11 @@ def gerar_ocorrencia_preventiva(
     competência é cópia imutável — a data gravada uma única vez, que não muda se
     a manutenção for reagendada. É por ela que a mesma ocorrência não nasce duas
     vezes, e não pela ``data_prevista``, que pode ser remarcada.
+
+    A regra de conferência também é retrato, e não referência: a ocorrência
+    copia se exige conferência e os critérios daquele dia. Mudar o plano depois
+    não alcança o que já nasceu — uma ocorrência de outubro não passa a ser
+    avaliada pelos critérios criados em novembro.
 
     Tudo acontece em uma transação, e o plano é travado antes de qualquer coisa:
     ou a ocorrência, o histórico e o próximo passo do plano acontecem juntos, ou
@@ -653,11 +1013,17 @@ def gerar_ocorrencia_preventiva(
         fornecedor=plano.fornecedor,
         responsavel=plano.responsavel,
         data_prevista=competencia,
+        exige_conferencia=plano.exige_conferencia,
+        status_conferencia=estado_inicial_de_conferencia(plano.exige_conferencia),
         criado_por=usuario,
     )
     _completar_local_pelo_equipamento(manutencao)
     _validar(manutencao)
     manutencao.save()
+
+    # Os critérios viram retrato próprio da ocorrência. Só faz sentido quando
+    # ela exige conferência — o helper cuida disso.
+    _retratar_criterios(manutencao, plano)
 
     _registrar(
         manutencao,

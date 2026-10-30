@@ -21,7 +21,7 @@ from apps.condominios.acesso import condominios_do_usuario
 from apps.condominios.constants import Papel
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
-from .constants import StatusManutencao
+from .constants import StatusConferencia, StatusManutencao
 
 # Administração e síndica respondem pelo condomínio.
 PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
@@ -237,6 +237,48 @@ def pode_concluir(usuario, manutencao) -> bool:
         return False
 
     return StatusManutencao.CONCLUIDA in status_permitidos_para(usuario, manutencao)
+
+
+def pode_registrar_execucao(usuario, manutencao) -> bool:
+    """Diz se a pessoa pode registrar que o serviço desta manutenção foi executado.
+
+    Registrar execução é o mesmo ato de quem opera a manutenção: quem responde
+    pelo condomínio, a supervisão e o responsável sob cuja mão o serviço
+    acontece. Não é privilégio novo — é a autoridade que já move e encerra a
+    manutenção. Uma execução já aprovada não se registra de novo: a decisão foi
+    tomada, e o caminho dali é concluir.
+    """
+    if manutencao is None or manutencao.esta_encerrada:
+        return False
+
+    if manutencao.status_conferencia == StatusConferencia.APROVADA:
+        return False
+
+    return StatusManutencao.CONCLUIDA in status_permitidos_para(usuario, manutencao)
+
+
+def pode_conferir(usuario, manutencao) -> bool:
+    """Diz se a pessoa pode conferir o que foi entregue nesta manutenção.
+
+    Conferir é olhar a entrega e dizer se ela passa — não é executar. Quem
+    responde pelo condomínio e a supervisão conferem; a operação, que executa,
+    não entra aqui nesta fase. Só faz sentido onde há conferência devida, e não
+    depois que a manutenção já encerrou. Sem certeza, a resposta é negar.
+    """
+    if manutencao is None or not getattr(manutencao, "pk", None):
+        return False
+
+    if not manutencao.exige_conferencia:
+        return False
+
+    if manutencao.esta_encerrada:
+        return False
+
+    condominio = manutencao.condominio
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+
+    return condominios_para_criar(usuario).filter(pk=condominio.pk).exists()
 
 
 def usuarios_elegiveis_como_responsavel(condominio) -> QuerySet:

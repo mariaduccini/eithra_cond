@@ -36,6 +36,51 @@ class FrequenciaUnidade(models.TextChoices):
     ANOS = "anos", "Anos"
 
 
+class StatusConferencia(models.TextChoices):
+    """Onde está a conferência de uma ocorrência, separada da situação dela.
+
+    A situação conta o serviço: aberto, programado, começado, esperando,
+    concluído. Ela não conta se alguém olhou o que foi entregue — e, por isso,
+    a conferência tem vocabulário próprio em vez de virar mais uma situação do
+    ciclo. Não existe "aguardando vistoria" nem "reprovada pela supervisão": a
+    manutenção continua sendo uma só, e a conferência é uma etapa dela.
+
+    ``PENDENTE`` é a conferência devida e ainda não decidida. Ela nasce junto
+    com a ocorrência que a exige, mesmo antes de alguém registrar a execução —
+    o que muda é que ainda não há o que decidir, e é o serviço que impede
+    decidir sem entrega registrada.
+
+    ``NAO_EXIGIDA`` é a ocorrência que não passa por conferência. As duas
+    palavras não convivem: exigir conferência e não estar devendo nenhuma é um
+    estado que o banco recusa.
+    """
+
+    NAO_EXIGIDA = "nao_exigida", "Não exigida"
+    PENDENTE = "pendente", "Aguardando conferência"
+    APROVADA = "aprovada", "Aprovada"
+    REPROVADA = "reprovada", "Reprovada"
+
+
+class ResultadoCriterio(models.TextChoices):
+    """O que a conferência respondeu sobre um item observável.
+
+    Poucas palavras bastam. ``NAO_AVALIADO`` é o item que ninguém olhou ainda —
+    e é aí que todo item começa. ``CONFORME`` é o que passou; ``NAO_CONFORME``,
+    o que precisa de correção. ``NAO_SE_APLICA`` é a resposta honesta para o
+    item que não cabe nesta execução — o equipamento foi trocado, o item não
+    tem mais o que observar.
+
+    Nada aqui afirma qualidade técnica: são leituras do que foi entregue. E o
+    item obrigatório só libera a aprovação quando está ``CONFORME`` — as outras
+    respostas continuam devendo uma decisão humana.
+    """
+
+    NAO_AVALIADO = "nao_avaliado", "Não avaliado"
+    CONFORME = "conforme", "Conforme"
+    NAO_CONFORME = "nao_conforme", "Não conforme"
+    NAO_SE_APLICA = "nao_se_aplica", "Não se aplica"
+
+
 class StatusManutencao(models.TextChoices):
     """Onde a manutenção está agora.
 
@@ -74,6 +119,11 @@ class TipoEventoManutencao(models.TextChoices):
     O histórico registra decisão, não ruído técnico: quem responde por ela,
     quanto pesa, quando está prevista, em que situação está, o que foi editado
     de relevante e qual serviço foi realizado.
+
+    A execução e a conferência têm eventos próprios, e não se confundem com a
+    conclusão. Registrar a execução diz que o serviço aconteceu; aprovar,
+    reprovar ou não conseguir avaliar dizem o que a conferência decidiu — e
+    nenhum deles conclui a manutenção, que segue pedindo uma decisão à parte.
     """
 
     CRIADA = "criada", "Manutenção criada"
@@ -85,3 +135,7 @@ class TipoEventoManutencao(models.TextChoices):
     SERVICO = "servico", "Serviço realizado"
     CONCLUIDA = "concluida", "Manutenção concluída"
     CANCELADA = "cancelada", "Manutenção cancelada"
+    EXECUCAO = "execucao", "Execução registrada"
+    CONFERENCIA_APROVADA = "conferencia_aprovada", "Conferência aprovada"
+    CONFERENCIA_REPROVADA = "conferencia_reprovada", "Conferência reprovada"
+    CONFERENCIA_NAO_AVALIADA = "conferencia_nao_avaliada", "Conferência não avaliada"

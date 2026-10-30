@@ -38,6 +38,8 @@ from apps.demandas.models import Demanda
 
 from .constants import (
     FrequenciaUnidade,
+    ResultadoCriterio,
+    StatusConferencia,
     StatusManutencao,
     TipoEventoManutencao,
     TipoManutencao,
@@ -170,6 +172,13 @@ class PlanoPreventivo(models.Model):
         help_text="Desativar interrompe as próximas gerações sem apagar as "
         "ocorrências já criadas.",
     )
+    exige_conferencia = models.BooleanField(
+        "Exige conferência",
+        default=False,
+        help_text="Quando ligado, cada ocorrência gerada por este plano nasce "
+        "aguardando conferência depois da execução. A regra é copiada para a "
+        "ocorrência no dia em que ela nasce.",
+    )
     criado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -277,6 +286,63 @@ class PlanoPreventivo(models.Model):
             raise ValidationError(erros)
 
 
+class CriterioConferenciaPreventiva(models.Model):
+    """O que precisa ser conferido numa ocorrência deste plano.
+
+    É uma lista curta e ordenada de itens observáveis — água limpa, sem
+    vazamento aparente, relatório anexado —, e não um checklist genérico. Ela
+    pertence ao plano; quando a ocorrência nasce, os itens viram um retrato
+    próprio, e mudar o plano depois não reescreve o que já foi combinado para
+    aquela ocorrência.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    plano = models.ForeignKey(
+        PlanoPreventivo,
+        on_delete=models.CASCADE,
+        related_name="criterios_conferencia",
+        verbose_name="Plano preventivo",
+    )
+    descricao = models.CharField(
+        "Critério",
+        max_length=200,
+        help_text="O que precisa ser observado, em linguagem direta.",
+    )
+    ordem = models.PositiveIntegerField(
+        "Ordem",
+        default=0,
+        help_text="A posição do item na lista de conferência.",
+    )
+    obrigatorio = models.BooleanField(
+        "Obrigatório",
+        default=True,
+        help_text="Quando ligado, o item é essencial para aprovar a conferência.",
+    )
+
+    class Meta:
+        verbose_name = "Critério de conferência do plano"
+        verbose_name_plural = "Critérios de conferência do plano"
+        ordering = ["ordem", "descricao"]
+        indexes = [
+            models.Index(fields=["plano", "ordem"], name="crit_plano_ordem_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.descricao
+
+    def save(self, *args, **kwargs):
+        """Guarda o critério já normalizado, venha ele do formulário ou não."""
+        self.descricao = _texto(self.descricao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um critério sem conteúdo: conferir o vazio não diz nada."""
+        if not _texto(self.descricao):
+            raise ValidationError(
+                {"descricao": "Escreva o que precisa ser conferido."}
+            )
+
+
 class ManutencaoQuerySet(models.QuerySet):
     """Leituras reutilizáveis da manutenção.
 
@@ -373,10 +439,12 @@ class ManutencaoQuerySet(models.QuerySet):
 class Manutencao(models.Model):
     """Um serviço a ser feito em algo do condomínio, com previsão e custo.
 
-    A manutenção é curta de propósito. Não há fluxo de aprovação, ordem de
-    serviço nem etapas: ela nasce aberta, pode ser programada, começar, esperar,
-    concluir ou ser cancelada. Local, equipamento e fornecedor são cadastros do
-    próprio condomínio — a manutenção aponta para eles, e não os recria.
+    A manutenção é curta de propósito. Não há ordem de serviço nem um fluxo
+    paralelo de etapas: ela nasce aberta, pode ser programada, começar, esperar,
+    concluir ou ser cancelada. A conferência é uma etapa da própria ocorrência —
+    registrada à parte da situação, e nunca um ciclo separado. Local,
+    equipamento e fornecedor são cadastros do próprio condomínio — a manutenção
+    aponta para eles, e não os recria.
 
     Os custos aqui são operacionais: dizem quanto se esperava gastar e quanto se
     gastou. O Eithra não gera despesa, não cria lançamento e não toca no
@@ -416,6 +484,21 @@ class Manutencao(models.Model):
         blank=True,
         help_text="A data que originou esta ocorrência, gravada uma única vez. "
         "Não muda se a manutenção for reagendada depois.",
+    )
+    exige_conferencia = models.BooleanField(
+        "Exige conferência",
+        default=False,
+        help_text="A regra aplicável a esta ocorrência, copiada do plano quando "
+        "ela nasce. Não é lida do plano depois: mudar o plano não muda o que já "
+        "nasceu.",
+    )
+    status_conferencia = models.CharField(
+        "Conferência",
+        max_length=20,
+        choices=StatusConferencia.choices,
+        default=StatusConferencia.NAO_EXIGIDA,
+        help_text="Onde está a conferência da execução, separada da situação da "
+        "manutenção.",
     )
     tipo = models.CharField(
         "Tipo",
@@ -501,6 +584,13 @@ class Manutencao(models.Model):
     )
     data_inicio = models.DateTimeField("Iniciada em", null=True, blank=True)
     data_conclusao = models.DateTimeField("Concluída em", null=True, blank=True)
+    data_execucao = models.DateTimeField(
+        "Execução registrada em",
+        null=True,
+        blank=True,
+        help_text="Quando o serviço foi executado. A execução pode ser "
+        "registrada antes da conferência, e não é a conclusão.",
+    )
     custo_previsto = models.DecimalField(
         "Custo previsto",
         max_digits=12,
@@ -594,6 +684,47 @@ class Manutencao(models.Model):
                 fields=["plano_preventivo", "competencia_preventiva"],
                 condition=models.Q(plano_preventivo__isnull=False),
                 name="manut_plano_competencia_unica",
+            ),
+            # A conferência e a regra que a exige andam juntas: quem não exige
+            # não deve conferência, e quem exige nunca fica "não exigida".
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        exige_conferencia=False,
+                        status_conferencia=StatusConferencia.NAO_EXIGIDA,
+                    )
+                    | (
+                        models.Q(exige_conferencia=True)
+                        & ~models.Q(
+                            status_conferencia=StatusConferencia.NAO_EXIGIDA
+                        )
+                    )
+                ),
+                name="manut_conferencia_coerente",
+            ),
+            # Não se aprova nem se reprova sem execução registrada: a decisão é
+            # sobre o que foi entregue, e sem entrega não há o que decidir.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(
+                        status_conferencia__in=[
+                            StatusConferencia.APROVADA,
+                            StatusConferencia.REPROVADA,
+                        ]
+                    )
+                    | models.Q(data_execucao__isnull=False)
+                ),
+                name="manut_conferencia_decidida_exige_execucao",
+            ),
+            # Onde há conferência devida, ela precisa aprovar antes do fim: uma
+            # manutenção que exige conferência não conclui pendente nem reprovada.
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=StatusManutencao.CONCLUIDA)
+                    | models.Q(exige_conferencia=False)
+                    | models.Q(status_conferencia=StatusConferencia.APROVADA)
+                ),
+                name="manut_concluida_exige_conferencia_aprovada",
             ),
         ]
         indexes = [
@@ -718,6 +849,37 @@ class Manutencao(models.Model):
         if self.custo_real is not None and self.custo_real < 0:
             erros["custo_real"] = "O custo real não pode ser negativo."
 
+        # A conferência combina com a regra que a exige, e a decisão combina com
+        # a execução que a sustenta. O banco recusa o mesmo; aqui a recusa chega
+        # à gestão em linguagem humana.
+        if not self.exige_conferencia:
+            if self.status_conferencia != StatusConferencia.NAO_EXIGIDA:
+                erros["status_conferencia"] = (
+                    "Uma manutenção sem conferência não tem situação de conferência."
+                )
+        elif self.status_conferencia == StatusConferencia.NAO_EXIGIDA:
+            erros["status_conferencia"] = (
+                "Uma manutenção que exige conferência não pode ficar sem ela."
+            )
+
+        if (
+            self.status_conferencia
+            in (StatusConferencia.APROVADA, StatusConferencia.REPROVADA)
+            and self.data_execucao is None
+        ):
+            erros["data_execucao"] = (
+                "Sem execução registrada não há o que conferir."
+            )
+
+        if (
+            self.status == StatusManutencao.CONCLUIDA
+            and self.exige_conferencia
+            and self.status_conferencia != StatusConferencia.APROVADA
+        ):
+            erros["status_conferencia"] = (
+                "Uma manutenção que exige conferência só conclui depois de aprovada."
+            )
+
         if erros:
             raise ValidationError(erros)
 
@@ -725,6 +887,77 @@ class Manutencao(models.Model):
     def esta_encerrada(self) -> bool:
         """Concluída ou cancelada: não muda mais de situação sem decisão de gestão."""
         return self.status in SITUACOES_ENCERRADAS
+
+
+class CriterioConferenciaOcorrencia(models.Model):
+    """O retrato dos critérios de conferência de uma ocorrência específica.
+
+    Copiado do plano no momento em que a ocorrência nasce. A partir daí, o que
+    vale é esta cópia: mudar, reordenar ou apagar critérios no plano não alcança
+    uma ocorrência que já foi combinada para outra data. É o mesmo princípio do
+    contexto copiado — o passado não é reescrito pelo presente.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    manutencao = models.ForeignKey(
+        Manutencao,
+        on_delete=models.CASCADE,
+        related_name="criterios_conferencia",
+        verbose_name="Manutenção",
+    )
+    descricao = models.CharField(
+        "Critério",
+        max_length=200,
+        help_text="O que precisa ser observado, em linguagem direta.",
+    )
+    ordem = models.PositiveIntegerField(
+        "Ordem",
+        default=0,
+        help_text="A posição do item na lista de conferência.",
+    )
+    obrigatorio = models.BooleanField(
+        "Obrigatório",
+        default=True,
+        help_text="Quando ligado, o item é essencial para aprovar a conferência.",
+    )
+    resultado = models.CharField(
+        "Resultado",
+        max_length=20,
+        choices=ResultadoCriterio.choices,
+        default=ResultadoCriterio.NAO_AVALIADO,
+        help_text="O que a conferência respondeu sobre este item. Começa não "
+        "avaliado e só o obrigatório conforme libera a aprovação.",
+    )
+    observacao = models.CharField(
+        "Observação",
+        max_length=200,
+        blank=True,
+        help_text="O motivo, quando o item não está conforme ou não se aplica.",
+    )
+
+    class Meta:
+        verbose_name = "Critério de conferência da ocorrência"
+        verbose_name_plural = "Critérios de conferência da ocorrência"
+        ordering = ["ordem", "descricao"]
+        indexes = [
+            models.Index(fields=["manutencao", "ordem"], name="crit_manut_ordem_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.descricao
+
+    def save(self, *args, **kwargs):
+        """Guarda o critério já normalizado, venha ele do formulário ou não."""
+        self.descricao = _texto(self.descricao)
+        self.observacao = _texto(self.observacao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um critério sem conteúdo: conferir o vazio não diz nada."""
+        if not _texto(self.descricao):
+            raise ValidationError(
+                {"descricao": "Escreva o que precisa ser conferido."}
+            )
 
 
 class HistoricoManutencao(models.Model):
@@ -755,7 +988,7 @@ class HistoricoManutencao(models.Model):
     data_hora = models.DateTimeField("Quando", default=timezone.now)
     tipo_evento = models.CharField(
         "Tipo de evento",
-        max_length=20,
+        max_length=30,
         choices=TipoEventoManutencao.choices,
     )
     descricao = models.CharField(
