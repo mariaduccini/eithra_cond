@@ -467,7 +467,10 @@ class TelaDaDemandaTests(BaseDoAcompanhamento):
         conteudo = resposta.content.decode()
 
         self.assertEqual(resposta.context["demanda"]["acompanhamento"], [])
-        self.assertIn("Nada em acompanhamento", conteudo)
+        # Sem acompanhamento, a tela diz isso em uma linha — e oferece a porta
+        # para preencher, em vez de gastar altura com um vazio longo.
+        self.assertIn("Nenhum acompanhamento definido.", conteudo)
+        self.assertIn("Atualizar acompanhamento", conteudo)
 
     def test_listagem_mostra_o_sinal_sem_abrir_coluna_nova(self):
         self._com_acompanhamento()

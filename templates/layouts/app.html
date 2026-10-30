@@ -18,12 +18,12 @@
               {% include "pages/cadastros/_logo_condominio.html" with condominio_atual=condominio_da_marca logo_do_condominio=logo_da_marca classe_logo="eithra-logo-condominio--shell" classe_imagem="eithra-logo-condominio-imagem--shell" %}
             </a>
           {% endif %}
-          <a
-            href="javascript:void(0);"
-            class="layout-menu-toggle menu-link text-large ms-auto"
-            aria-label="Recolher menu">
-            <i class="bx bx-chevron-left d-block d-xl-none align-middle" aria-hidden="true"></i>
-          </a>
+          {% comment %}
+            Não há controle de recolher/expandir neste ponto. O botão que o tema
+            desenha aqui só responde ao clique com o main.js do Sneat, que este
+            projeto não carrega — sem ele sobrava, ao lado da marca, um círculo
+            branco sem função nenhuma.
+          {% endcomment %}
         </div>
 
         <div class="menu-divider mt-0"></div>
@@ -65,7 +65,12 @@
           class="layout-navbar container-xxl navbar-detached navbar navbar-expand-xl align-items-center bg-navbar-theme"
           id="layout-navbar">
           <div class="layout-menu-toggle navbar-nav align-items-xl-center me-4 me-xl-0 d-xl-none">
-            <a class="nav-item nav-link px-0 me-xl-6" href="javascript:void(0)" aria-label="Abrir menu">
+            <a
+              class="nav-item nav-link px-0 me-xl-6"
+              href="javascript:void(0)"
+              aria-label="Abrir menu"
+              aria-controls="layout-menu"
+              aria-expanded="false">
               <i class="icon-base bx bx-menu icon-md" aria-hidden="true"></i>
             </a>
           </div>
@@ -196,6 +201,68 @@
       if (menu && window.Menu) {
         new window.Menu(menu);
       }
+
+      // Abre e fecha a barra em telas estreitas. O tema já tem o estado e o
+      // CSS: a classe abaixo, no <html>, desliza a barra e acende a cortina.
+      // O que faltava era só quem respondesse ao clique — no Sneat isso vem do
+      // main.js, que este projeto não carrega.
+      var raiz = document.documentElement;
+      var botaoMenu = document.querySelector(".layout-navbar .layout-menu-toggle .nav-link");
+      var cortina = document.querySelector(".layout-overlay");
+      var limiteMenu = (window.Helpers && window.Helpers.LAYOUT_BREAKPOINT) || 1200;
+
+      function telaEstreita() {
+        return window.innerWidth < limiteMenu;
+      }
+
+      function menuAberto() {
+        return raiz.classList.contains("layout-menu-expanded");
+      }
+
+      function mostrarMenu(aberto) {
+        raiz.classList.toggle("layout-menu-expanded", aberto);
+        if (botaoMenu) {
+          botaoMenu.setAttribute("aria-expanded", aberto ? "true" : "false");
+          botaoMenu.setAttribute("aria-label", aberto ? "Fechar menu" : "Abrir menu");
+        }
+      }
+
+      function fecharMenu() {
+        if (!menuAberto()) {
+          return;
+        }
+        mostrarMenu(false);
+        // Quem fechou pelo teclado ou pela cortina volta para onde abriu.
+        if (botaoMenu) {
+          botaoMenu.focus();
+        }
+      }
+
+      if (botaoMenu) {
+        botaoMenu.addEventListener("click", function (event) {
+          event.preventDefault();
+          mostrarMenu(!menuAberto());
+        });
+      }
+
+      if (cortina) {
+        cortina.addEventListener("click", fecharMenu);
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && menuAberto()) {
+          fecharMenu();
+        }
+      });
+
+      // A janela pode crescer com a barra aberta: em tela larga esse estado não
+      // tem mais sentido, então ele sai — a faixa de desktop segue no que o
+      // tema já definia, sem classe de mobile presa.
+      window.addEventListener("resize", function () {
+        if (!telaEstreita() && menuAberto()) {
+          mostrarMenu(false);
+        }
+      });
 
       // Campos obrigatórios precisam aparecer como obrigatórios na própria
       // leitura da tela. O backend continua mandando na regra; aqui a interface

@@ -129,14 +129,19 @@
               ocupam três colunas: o código identifica, o título nomeia, a
               descrição contextualiza. Empilhá-las na mesma célula obrigava a
               coluna a ser larga para acomodar todas — e mesmo assim a leitura
-              ficava em blocos, sem alinhamento entre as linhas.{% endcomment %}
+              ficava em blocos, sem alinhamento entre as linhas.
+
+              Nem toda largura comporta as nove colunas: quando a tabela aperta,
+              o que sai primeiro é o que menos decide — a descrição, e depois o
+              responsável. O que sobra é o essencial: o que é (código, título,
+              local, prioridade, prazo, situação) e o que se faz com isso.{% endcomment %}
               <th scope="col" class="eithra-col-codigo">Código</th>
               <th scope="col" class="eithra-col-titulo">Título</th>
-              <th scope="col" class="eithra-col-descricao d-none d-xl-table-cell">Descrição</th>
+              <th scope="col" class="eithra-col-descricao d-none d-xxl-table-cell">Descrição</th>
               <th scope="col" class="eithra-col-local">Local</th>
               <th scope="col" class="eithra-col-prioridade">Prioridade</th>
               <th scope="col" class="eithra-col-prazo">Prazo</th>
-              <th scope="col" class="eithra-col-responsavel">Responsável</th>
+              <th scope="col" class="eithra-col-responsavel d-none d-xl-table-cell">Responsável</th>
               <th scope="col" class="eithra-col-situacao">Situação</th>
               <th scope="col" class="eithra-col-acoes text-end">Ações</th>
             </tr>
@@ -156,7 +161,7 @@
                 distintos e a coluna só mostra o que a descrição acrescenta. Duas
                 linhas com reticências bastam para reconhecer o assunto; o texto
                 inteiro continua no detalhe da demanda e no title.{% endcomment %}
-                <td class="eithra-col-descricao d-none d-xl-table-cell">
+                <td class="eithra-col-descricao d-none d-xxl-table-cell">
                   <div class="text-body-secondary small eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
                 </td>
                 <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
@@ -167,7 +172,7 @@
                     <div class="small text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</div>
                   {% endif %}
                 </td>
-                <td class="eithra-col-responsavel small"><div class="eithra-duas-linhas" title="{{ demanda.responsavel }}">{{ demanda.responsavel }}</div></td>
+                <td class="eithra-col-responsavel small d-none d-xl-table-cell"><div class="eithra-duas-linhas" title="{{ demanda.responsavel }}">{{ demanda.responsavel }}</div></td>
                 <td class="eithra-col-situacao">
                   <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
                   {% comment %}O acompanhamento não vira coluna: o sinal aparece ao lado da
@@ -178,32 +183,22 @@
                   {% endif %}
                 </td>
                 <td class="eithra-col-acoes text-end">
-                  <div class="eithra-acoes">
-                    {% if demanda.acoes|length == 1 %}
-                      {% with acao=demanda.acoes.0 %}
-                        <a class="btn btn-icon btn-text-primary rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
-                          <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                        </a>
-                      {% endwith %}
-                    {% elif demanda.acoes|length == 2 %}
-                      {% for acao in demanda.acoes %}
-                        <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
-                          <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                        </a>
-                      {% endfor %}
-                    {% elif demanda.acoes %}
-                      <div class="dropdown">
-                        <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
-                          <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                          {% for acao in demanda.acoes %}
-                            <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
-                          {% endfor %}
-                        </ul>
-                      </div>
-                    {% endif %}
-                  </div>
+                  {% comment %}As ações secundárias vivem no menu de três pontos: a linha
+                  continua sendo o caminho para o detalhe, e nada aqui compete com
+                  ela. Cada item abre a mesma janela que a página da demanda já
+                  oferece.{% endcomment %}
+                  {% if demanda.acoes %}
+                    <div class="dropdown">
+                      <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
+                        <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        {% for acao in demanda.acoes %}
+                          <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
                 </td>
               </tr>
             {% endfor %}
@@ -234,12 +229,17 @@
               <div class="col-6"><span class="text-body-secondary">Responsável</span><br>{{ demanda.responsavel }}</div>
             </div>
             {% if demanda.acoes %}
-              <div class="d-flex justify-content-end gap-1 mt-2">
-                {% for acao in demanda.acoes %}
-                  <a class="btn btn-icon btn-text-{{ acao.tom|default:'primary' }} rounded-pill" href="{{ acao.url }}" title="{{ acao.label }}" aria-label="{{ acao.label }}">
-                    <i class="bx {{ acao.icon }}" aria-hidden="true"></i>
-                  </a>
-                {% endfor %}
+              <div class="d-flex justify-content-end mt-2">
+                <div class="dropdown">
+                  <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
+                    <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    {% for acao in demanda.acoes %}
+                      <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
+                    {% endfor %}
+                  </ul>
+                </div>
               </div>
             {% endif %}
           </div>

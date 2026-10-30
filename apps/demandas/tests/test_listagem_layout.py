@@ -51,6 +51,13 @@ class ListagemDeDemandasTests(TestCase):
         self.assertEqual(resposta.status_code, 200)
         return resposta
 
+    def _celula_de_acoes(self, resposta):
+        """O trecho de uma célula de ações, já recortado do corpo da tabela."""
+        html = resposta.content.decode()
+        corpo = html[html.index("<tbody>") : html.index("</tbody>")]
+        inicio = corpo.index("eithra-col-acoes")
+        return corpo[inicio : corpo.index("</td>", inicio)]
+
     # -- Estrutura das colunas ------------------------------------------------
 
     def test_codigo_titulo_e_descricao_sao_colunas_separadas(self):
@@ -74,12 +81,57 @@ class ListagemDeDemandasTests(TestCase):
         # celular — nunca dentro da célula da descrição.
         self.assertEqual(celula.count(f'title="{titulo}"'), 1)
 
-    def test_o_cabecalho_da_descricao_cede_espaco_abaixo_de_xl(self):
+    # -- Responsividade das colunas -------------------------------------------
+    #
+    # A grade não cabe inteira em qualquer largura. Em vez de apertar as nove
+    # colunas — o que deixaria prioridade e prazo encostados e a leitura em
+    # blocos —, ela mostra menos: o que sai primeiro é o que menos decide. Estes
+    # testes travam a ordem da saída, não a medida exata de cada faixa.
+
+    def test_a_grade_ampla_traz_as_nove_colunas(self):
+        """No desktop amplo nada foi retirado: as nove colunas estão lá."""
+        self._demanda(descricao="Abre pela metade.")
+        resposta = self._abrir()
+        for coluna in (
+            "eithra-col-codigo",
+            "eithra-col-titulo",
+            "eithra-col-descricao",
+            "eithra-col-local",
+            "eithra-col-prioridade",
+            "eithra-col-prazo",
+            "eithra-col-responsavel",
+            "eithra-col-situacao",
+            "eithra-col-acoes",
+        ):
+            self.assertContains(resposta, f'class="{coluna}')
+
+    def test_o_cabecalho_da_descricao_cede_espaco_abaixo_de_xxl(self):
+        """A descrição é a primeira coluna a sair quando a largura aperta.
+
+        As nove colunas só cabem na faixa mais ampla. Abaixo dela a célula deixa
+        de ser desenhada — e some por inteiro, sem largura reservada, para o
+        espaço voltar ao título.
+        """
         self._demanda(descricao="Abre pela metade.")
         resposta = self._abrir()
         self.assertContains(
-            resposta, 'class="eithra-col-descricao d-none d-xl-table-cell"'
+            resposta, 'class="eithra-col-descricao d-none d-xxl-table-cell"'
         )
+
+    def test_o_responsavel_cede_espaco_abaixo_de_xl(self):
+        """Depois da descrição, é o responsável quem sai."""
+        self._demanda()
+        resposta = self._abrir()
+        self.assertContains(
+            resposta, 'class="eithra-col-responsavel d-none d-xl-table-cell"'
+        )
+
+    def test_a_situacao_nunca_deixa_a_grade(self):
+        """A situação permanece em todas as faixas: é ela que diz onde a demanda está."""
+        self._demanda()
+        resposta = self._abrir()
+        self.assertContains(resposta, 'class="eithra-col-situacao"')
+        self.assertNotContains(resposta, 'class="eithra-col-situacao d-none')
 
     # -- O código é do sistema, nunca de quem digita ---------------------------
 
@@ -166,6 +218,70 @@ class ListagemDeDemandasTests(TestCase):
             [linha["titulo"] for linha in resposta.context["demandas"]],
             ["Em andamento"],
         )
+
+    # -- Coluna de ações -------------------------------------------------------
+    #
+    # A linha inteira leva ao detalhe. O que se faz com a demanda vive no menu
+    # de três pontos — um único controle, e nada de ação direta competindo com
+    # o clique da linha (§47).
+
+    def test_a_coluna_de_acoes_mostra_apenas_o_menu_de_tres_pontos(self):
+        self._demanda(titulo="Portão travando")
+        celula = self._celula_de_acoes(self._abrir())
+
+        self.assertIn("bx-dots-vertical-rounded", celula)
+        # Um só controle fora do menu: o próprio botão do ⋮.
+        self.assertEqual(celula.count("<button"), 1)
+        # Nenhum botão direto na linha — nem lápis, nem olho, nem "visualizar".
+        self.assertNotIn('<a class="btn', celula)
+        self.assertNotIn("eithra-acoes", celula)
+
+    def test_o_menu_da_linha_oferece_apenas_acoes_reais(self):
+        """Cada item abre uma janela que a página da demanda já oferece."""
+        self._demanda()
+        resposta = self._abrir()
+        acoes = resposta.context["demandas"][0]["acoes"]
+
+        self.assertEqual(
+            [acao["label"] for acao in acoes],
+            [
+                "Registrar atualização",
+                "Atualizar acompanhamento",
+                "Adicionar evidência",
+                "Editar",
+            ],
+        )
+        # Toda ação leva ao detalhe da demanda, onde a janela correspondente
+        # abre — a lista não inventa um caminho que não exista.
+        detalhe = reverse("demandas:detalhe", args=[resposta.context["demandas"][0]["pk"]])
+        for acao in acoes:
+            self.assertTrue(acao["url"].startswith(detalhe))
+
+    # -- Scroll ----------------------------------------------------------------
+
+    def test_a_listagem_participa_do_scroll_da_pagina(self):
+        """Sem scroll vertical próprio: a lista rola junto com a página.
+
+        A tabela larga cede para o scroll horizontal do tema quando não cabe,
+        mas nunca ganha altura limitada — nada de `max-height` nem
+        `overflow-y` subindo junto com a listagem.
+        """
+        self._demanda(descricao=DESCRICAO_LONGA)
+        resposta = self._abrir()
+
+        self.assertNotContains(resposta, "overflow-y")
+        self.assertNotContains(resposta, "max-height")
+
+    # -- Linha clicável --------------------------------------------------------
+
+    def test_a_linha_inteira_leva_ao_detalhe(self):
+        demanda = self._demanda(titulo="Portão travando")
+        resposta = self._abrir()
+        destino = reverse("demandas:detalhe", args=[demanda.pk])
+
+        # O `data-href` é o contrato do clique na linha, que o JS compartilhado
+        # já conhece — não há handler novo para esta listagem.
+        self.assertContains(resposta, f'data-href="{destino}"')
 
     # -- Celular ---------------------------------------------------------------
 

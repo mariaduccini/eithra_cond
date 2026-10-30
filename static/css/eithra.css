@@ -532,14 +532,14 @@
 }
 
 /* No alto do shell, a marca principal é só a identidade do condomínio atual.
-   Com imagem, o shell não reserva um retângulo exagerado: a logo ocupa só o
-   espaço de que precisa, dentro do limite máximo definido para desktop e
-   mobile. Sem imagem, as iniciais continuam em um quadrado discreto. */
+   A imagem recebe uma altura definida — dentro de uma faixa legível — e largura
+   livre: assim uma marca pequena cresce até ficar legível, uma marca larga usa
+   a largura que sobra e nada é esticado nem cortado. O object-fit: contain
+   mantém a proporção em qualquer formato: quadrada, horizontal, vertical ou
+   transparente. Sem imagem, as iniciais seguem em um quadrado discreto. */
 .eithra-brand-link-condominio {
-  display: inline-flex;
-  align-items: center;
   justify-content: flex-start;
-  min-block-size: 4.5rem;
+  min-inline-size: 0;
 }
 
 .eithra-logo-condominio--shell {
@@ -550,50 +550,56 @@
 .eithra-logo-condominio--shell.eithra-logo-condominio--com-imagem {
   inline-size: auto;
   block-size: auto;
-  max-inline-size: 6rem;
-  max-block-size: 4.5rem;
   min-inline-size: 0;
   min-block-size: 0;
+  max-inline-size: 100%;
   background-color: transparent;
   overflow: hidden;
   border-radius: 0;
 }
 
 .eithra-logo-condominio-imagem--shell {
+  block-size: 4rem;
   inline-size: auto;
-  block-size: auto;
-  max-inline-size: 6rem;
-  max-block-size: 4.5rem;
+  max-inline-size: 100%;
+  max-block-size: none;
+  object-fit: contain;
 }
 
 @media (max-width: 575.98px) {
-  .eithra-brand-link-condominio {
-    min-block-size: 2.5rem;
-  }
-
   .eithra-logo-condominio--shell {
     inline-size: 2.25rem;
     block-size: 2.25rem;
   }
 
-  .eithra-logo-condominio--shell.eithra-logo-condominio--com-imagem {
-    inline-size: auto;
-    block-size: auto;
-    max-inline-size: 4.5rem;
-    max-block-size: 2.5rem;
-  }
-
   .eithra-logo-condominio-imagem--shell {
-    max-inline-size: 4.5rem;
-    max-block-size: 2.5rem;
+    block-size: 2.5rem;
   }
 }
 
-/* Altura do cabeçalho do menu. O tema só define isso no CSS de demonstração,
-   que não é usado aqui. */
+/* O alto do menu encosta no topo e não abre vão em branco antes da marca: a
+   altura do bloco é a do próprio conteúdo — a marca ou as iniciais — mais uma
+   folga mínima. O divisor logo abaixo separa a identidade da navegação, sem
+   empurrar o menu para longe. */
 .menu .app-brand {
-  block-size: 76px;
-  margin-block-start: 12px;
+  block-size: auto;
+  margin-block-start: 0;
+  padding-block: 0.375rem;
+}
+
+/* Ritmo do menu. O item fica com a altura de toque confortável, mas o vão
+   entre um e outro encolhe: a coluna lê de cima a baixo sem buracos, e o
+   submenu acompanha o mesmo passo. A fonte e os nomes não mudam. */
+.menu-vertical .menu-inner > .menu-item {
+  margin-block: 0.0625rem;
+}
+
+.menu-vertical .menu-item .menu-link {
+  min-block-size: 2.5rem;
+}
+
+.menu-vertical .menu-sub .menu-item {
+  margin-block: 0.0625rem 0;
 }
 
 .app-brand-link {
@@ -620,6 +626,28 @@
 
 .layout-menu-collapsed .app-brand-link {
   justify-content: center;
+}
+
+/* O topo do shell ------------------------------------------------------- */
+/* A barra superior é uma barra de navegação, não um bloco de conteúdo. O tema
+   lhe reserva 4rem de altura e 1rem de margem antes da página — uma faixa
+   branca alta para pouca coisa dentro (a abertura do menu no celular e o menu
+   da conta). Aqui ela encolhe até o tamanho dos controles que carrega, sem
+   perder nenhum deles, e o respiro até o primeiro bloco da página diminui no
+   mesmo passo: o título começa mais perto do topo, mas não colado nele. */
+.layout-navbar,
+.layout-navbar.navbar-detached {
+  block-size: auto;
+  min-block-size: 3rem;
+  padding-block: 0.25rem;
+}
+
+.layout-navbar.navbar-detached {
+  margin-block: 0.75rem 0;
+}
+
+.container-p-y:not([class^="pt-"]):not([class*=" pt-"]) {
+  padding-block-start: 1rem !important;
 }
 
 /* Estados de tela ------------------------------------------------------- */
@@ -1773,25 +1801,25 @@
 }
 
 /* A largura de cada coluna é decidida aqui, não pelo texto que chega: código,
-   título e descrição identificam coisas diferentes e cada um recebe o espaço
-   que o seu papel pede. Sem isto, uma descrição longa estica a coluna e obriga
-   todas as linhas da lista a crescer na vertical.
+   título, local, prioridade, prazo, responsável e situação identificam coisas
+   diferentes e cada um recebe o espaço que o seu papel pede. Sem isto, uma
+   descrição longa estica a coluna e obriga todas as linhas da lista a crescer
+   na vertical.
 
-   A ordem de prioridade é a da leitura: título primeiro, descrição depois, e
-   por último o código. Por isso o código é a única coluna de largura fixa —
-   ele tem sempre o mesmo conteúdo ("D-F810B566"), então ceder-lhe porcentagem
-   seria deixá-lo engordar nas telas largas enquanto o título continua espremido.
-   Medida em `rem`, ele fica do tamanho do próprio texto em qualquer resolução,
-   e todo o resto da largura sobra para o que varia de tamanho.
+   Duas colunas têm largura fixa, e por um motivo: o código tem sempre o mesmo
+   formato ("D-F810B566") e a coluna de ações, sempre um único botão. Em `rem`
+   eles ficam do tamanho do próprio conteúdo em qualquer resolução, e o que
+   sobra de largura vai todo para as colunas que variam de tamanho.
 
-   As demais larguras são declaradas duas vezes de propósito. Até 1200px a
-   lista tem oito colunas — a descrição sai, porque nessa largura ela roubaria
-   espaço do título sem conseguir mostrar texto útil. A partir de 1200px a
-   tabela recompõe as nove colunas.
+   O restante é declarado por faixa, porque nem toda largura comporta as nove
+   colunas — e apertar todas para caber é pior do que mostrar menos. O que sai
+   primeiro é o que menos decide: a descrição, e depois o responsável. As
+   faixas seguem os cortes do tema (`xl` = 1200px, `xxl` = 1400px), que é onde
+   a área de conteúdo muda de largura de verdade por causa do menu lateral.
 
-   Em nenhum dos dois conjuntos a soma fecha em 100%: a coluna fixa do código
-   já ocupa uma faixa em pixels, e a sobra fica pequena o bastante para caber em
-   qualquer largura de desktop sem empurrar a linha para o scroll horizontal. */
+   Em nenhuma das faixas a soma fecha em 100%: as duas colunas fixas já ocupam
+   uma faixa em pixels, e a sobra fica pequena o bastante para a linha caber
+   sem empurrar a tabela para o scroll horizontal. */
 .eithra-operational-table {
   table-layout: fixed;
   inline-size: 100%;
@@ -1807,78 +1835,93 @@
   padding-inline: 0.5rem;
 }
 
-/* O código identifica e nada mais: largura do próprio texto, uma linha só. */
+/* Faixa estreita do desktop (a partir de `lg`): sete colunas — a descrição e o
+   responsável saíram, e o que fica tem espaço para respirar. */
 .eithra-operational-table .eithra-col-codigo {
-  inline-size: 6.5rem;
+  inline-size: 7rem;
 }
 
 /* O título é o que se lê primeiro na linha; por isso é ele que cresce quando
    as outras colunas cedem espaço. */
 .eithra-operational-table .eithra-col-titulo {
-  inline-size: 30%;
+  inline-size: 32%;
 }
 
 .eithra-operational-table .eithra-col-local {
-  inline-size: 10%;
+  inline-size: 11%;
 }
 
+/* Prioridade e prazo não podem se encostar: o badge precisa do seu rótulo
+   inteiro e a data, do seu dia por extenso, sem um invadir o outro. Cada um
+   recebe largura de sobra para o próprio conteúdo — a lista não aperta nenhum
+   dos dois para acomodar um terceiro. */
 .eithra-operational-table .eithra-col-prioridade {
-  inline-size: 7%;
+  inline-size: 11%;
 }
 
 .eithra-operational-table .eithra-col-prazo {
-  inline-size: 8%;
-}
-
-.eithra-operational-table .eithra-col-responsavel {
   inline-size: 11%;
 }
 
 /* "Em andamento" é o rótulo mais longo da lista: um badge cortado informa menos
    do que um badge largo. A coluna cede o mínimo que o selo exige em uma linha. */
 .eithra-operational-table .eithra-col-situacao {
-  inline-size: 12%;
+  inline-size: 15%;
 }
 
-/* Um ícone de ação é o caso mais largo desta coluna; o menu de três pontos
-   ocupa menos. O que não couber vira menu, não segundo ícone. */
+/* O menu de três pontos é o único controle desta coluna, e tem sempre o mesmo
+   tamanho: largura fixa, sem depender do texto da linha. */
 .eithra-operational-table .eithra-col-acoes {
-  inline-size: 10%;
+  inline-size: 4.5rem;
 }
 
+/* Acima de `xl` o responsável volta: a lista passa a ter oito colunas e é ele
+   que reequilibra a leitura. A descrição ainda não cabe aqui — com o menu
+   lateral aberto a área de conteúdo é estreita demais para nove colunas. */
 @media (min-width: 1200px) {
-  /* Aqui a descrição cabe, e é ela e o título que dividem o que as colunas
-     curtas devolvem — o código continua no tamanho do próprio texto. */
   .eithra-operational-table .eithra-col-titulo {
-    inline-size: 22%;
-  }
-
-  .eithra-operational-table .eithra-col-descricao {
-    inline-size: 25%;
+    inline-size: 21%;
   }
 
   .eithra-operational-table .eithra-col-local {
-    inline-size: 7%;
-  }
-
-  .eithra-operational-table .eithra-col-prioridade {
-    inline-size: 6%;
-  }
-
-  .eithra-operational-table .eithra-col-prazo {
-    inline-size: 7%;
-  }
-
-  .eithra-operational-table .eithra-col-responsavel {
-    inline-size: 8%;
-  }
-
-  .eithra-operational-table .eithra-col-situacao {
     inline-size: 9%;
   }
 
-  .eithra-operational-table .eithra-col-acoes {
-    inline-size: 6%;
+  .eithra-operational-table .eithra-col-responsavel {
+    inline-size: 11%;
+  }
+}
+
+/* Acima de `xxl` a descrição volta, e é ela e o título que dividem o espaço
+   que as colunas curtas devolvem — o código e as ações continuam no tamanho do
+   próprio conteúdo. Só aqui as nove colunas cabem sem apertar ninguém. */
+@media (min-width: 1400px) {
+  .eithra-operational-table .eithra-col-titulo {
+    inline-size: 19%;
+  }
+
+  .eithra-operational-table .eithra-col-descricao {
+    inline-size: 13%;
+  }
+
+  .eithra-operational-table .eithra-col-local {
+    inline-size: 8%;
+  }
+
+  .eithra-operational-table .eithra-col-prioridade {
+    inline-size: 9%;
+  }
+
+  .eithra-operational-table .eithra-col-prazo {
+    inline-size: 9%;
+  }
+
+  .eithra-operational-table .eithra-col-responsavel {
+    inline-size: 10%;
+  }
+
+  .eithra-operational-table .eithra-col-situacao {
+    inline-size: 12%;
   }
 }
 
@@ -1900,15 +1943,6 @@
   font-weight: 400;
   line-height: 1.3;
   white-space: nowrap;
-}
-
-/* As ações são ícones, não texto corrido: o espaço em branco que o template
-   deixa entre eles somava ao botão e estourava a coluna. O afastamento passa a
-   ser declarado aqui. */
-.eithra-operational-table .eithra-acoes {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
 }
 
 /* O rodapé fecha a lista, não abre um bloco novo: fio do divisor do sistema e o
@@ -2142,6 +2176,199 @@
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--bs-border-color);
+}
+
+/* Visão geral da demanda --------------------------------------------------- */
+/* A tela responde rápido a quatro perguntas: o que aconteceu, qual a situação,
+   quem cuida e qual é o próximo passo. Em tela larga são duas zonas — à esquerda
+   o que aconteceu e o que qualifica o problema, à direita o que está em curso e
+   o que fazer agora. Nada de card por bloco: a superfície é contínua, e quem
+   separa é um fio entre as zonas e o ritmo entre os blocos. Em tela estreita as
+   duas zonas viram uma só, na ordem da leitura. */
+.eithra-vg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+@media (min-width: 992px) {
+  .eithra-vg {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .eithra-vg-principal {
+    padding-inline-end: 2rem;
+  }
+
+  .eithra-vg-operacional {
+    border-inline-start: 1px solid var(--bs-border-color);
+    padding-inline-start: 2rem;
+  }
+}
+
+.eithra-vg-principal,
+.eithra-vg-operacional {
+  min-inline-size: 0;
+}
+
+/* O respiro entre blocos é o que os separa — sem fio depois de cada um. */
+.eithra-vg-bloco + .eithra-vg-bloco {
+  margin-block-start: 1.25rem;
+}
+
+/* Em uma coluna só, as duas zonas deixam de ser caixas e viram a ordem dos
+   blocos: primeiro o que aconteceu, depois quem cuida e o que fazer agora, e
+   por último o detalhamento do cadastro. O respiro passa a ser o vão da
+   grade, para que blocos que não eram vizinhos no HTML também respirem. */
+@media (max-width: 991.98px) {
+  .eithra-vg-principal,
+  .eithra-vg-operacional {
+    display: contents;
+  }
+
+  .eithra-vg-bloco + .eithra-vg-bloco {
+    margin-block-start: 0;
+  }
+
+  .eithra-vg-bloco--descricao {
+    order: 1;
+  }
+
+  .eithra-vg-bloco--acompanhamento {
+    order: 2;
+  }
+
+  .eithra-vg-bloco--acao {
+    order: 3;
+  }
+
+  .eithra-vg-bloco--informacoes {
+    order: 4;
+  }
+
+  .eithra-vg-bloco--governanca {
+    order: 5;
+  }
+}
+
+.eithra-vg-bloco-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* O rótulo do bloco é discreto de propósito: quem manda na leitura é o valor. */
+.eithra-vg-rotulo {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+  margin: 0;
+}
+
+.eithra-vg-texto {
+  margin: 0.375rem 0 0;
+}
+
+/* O lápis do bloco é ação discreta: sem borda, sem texto, só o ícone. */
+.eithra-vg-icone {
+  color: var(--bs-secondary-color);
+  line-height: 1;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.eithra-vg-icone:hover,
+.eithra-vg-icone:focus {
+  color: var(--bs-body-color);
+}
+
+/* Informações: grade compacta de pares. O rótulo é menor e secundário; o valor
+   é o que se lê. Duas colunas em tela larga, uma só em tela estreita. */
+.eithra-vg-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.5rem;
+  row-gap: 0.75rem;
+  margin: 0.5rem 0 0;
+}
+
+.eithra-vg-par {
+  min-inline-size: 0;
+}
+
+.eithra-vg-par dt {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--bs-secondary-color);
+  margin-block-end: 0.0625rem;
+}
+
+.eithra-vg-par dd {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 575.98px) {
+  .eithra-vg-info {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.625rem;
+  }
+}
+
+/* Acompanhamento: sem nada a dizer, a tela diz isso em uma linha e oferece a
+   porta para preencher — o vazio não ocupa o lugar da informação. */
+.eithra-vg-acompanhamento {
+  margin-block-start: 0.5rem;
+}
+
+.eithra-vg-vazio {
+  color: var(--bs-secondary-color);
+  margin: 0.375rem 0 0;
+}
+
+.eithra-vg-link {
+  display: inline-block;
+  margin-block-start: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+.eithra-vg-link:hover,
+.eithra-vg-link:focus {
+  color: var(--bs-body-color);
+  text-decoration: underline;
+}
+
+.eithra-vg-movimento {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  margin: 0.75rem 0 0;
+}
+
+/* Próxima ação: o passo de agora. A ação principal encabeça o bloco, sozinha no
+   peso forte; as demais se agrupam abaixo, discretas. */
+.eithra-vg-botoes {
+  margin-block-start: 0.75rem;
+}
+
+.eithra-vg-primario {
+  inline-size: 100%;
+}
+
+.eithra-vg-botoes-sec {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+}
+
+.eithra-vg-botoes > .eithra-vg-botoes-sec:first-child {
+  margin-block-start: 0;
 }
 
 @media (max-width: 991.98px) {

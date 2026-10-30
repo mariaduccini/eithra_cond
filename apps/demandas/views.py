@@ -1460,23 +1460,48 @@ def _demanda_para_tela(demanda, usuario=None):
 
 
 def _acoes_da_linha(demanda, usuario):
-    """As ações oferecidas na linha, já decididas pelo domínio.
+    """As ações oferecidas no menu da linha, já decididas pelo domínio.
 
-    Abrir a demanda não é ação: a linha inteira leva até ela. O que sobra é o
-    que a própria linha não faz — editar, por exemplo. O que muda a demanda
-    acontece dentro dela, por ação, não por escolha de situação na lista.
+    Abrir a demanda não é ação: a linha inteira leva até ela. O que sobra vai
+    para o menu de três pontos, e cada entrada abre a mesma janela que o
+    detalhe já oferece — a lista não inventa caminho novo, só encurta o que
+    existe. As permissões são as do detalhe: quem acompanha pode registrar
+    atualização, atualizar o acompanhamento e anexar evidência; editar o
+    conteúdo continua sendo de quem responde pelo condomínio.
     """
     if usuario is None:
         return []
 
     destino = reverse("demandas:detalhe", args=[demanda.pk])
     acoes = []
+    if pode_adicionar_observacao(usuario, demanda):
+        acoes.append(
+            {
+                "label": "Registrar atualização",
+                "icon": "bx-refresh",
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral",
+            }
+        )
+        acoes.append(
+            {
+                "label": "Atualizar acompanhamento",
+                "icon": "bx-time-five",
+                "url": f"{destino}?abrir=acompanhamento&aba=visao_geral",
+            }
+        )
+        acoes.append(
+            {
+                "label": "Adicionar evidência",
+                "icon": "bx-image-add",
+                "url": f"{destino}?abrir=evidencia&aba=historico",
+            }
+        )
     if pode_editar_demanda(usuario, demanda):
         acoes.append(
             {
                 "label": "Editar",
                 "icon": "bx-pencil",
-                "url": f"{destino}?abrir=editar",
+                "url": f"{destino}?abrir=editar&aba=visao_geral",
             }
         )
     return acoes
