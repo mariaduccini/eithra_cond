@@ -1,21 +1,41 @@
-"""O cálculo das ocorrências de uma rotina recorrente.
+"""O cálculo de quando algo se repete — neutro, de todo mundo.
 
-Uma regra de repetição é fácil de dizer e fácil de errar ao calcular: "todo dia
-31" não acontece em todo mês, e "todo dia 29 de fevereiro" não acontece em todo
-ano. Por isso a conta vive aqui, em uma função só — a mesma resposta vale para
-a tela, para o serviço e para o teste, e ninguém precisa repetir a aritmética em
-outro lugar.
+Esta é a camada neutra de recorrência: regra de calendário, e nada mais. Ela
+não conhece rotina, plano preventivo, condomínio, usuário, histórico nem banco.
+Recebe a regra em palavras simples e devolve a data; é por isso que pode ser
+conferida sozinha, incluindo os casos de borda.
 
-Este módulo não conhece o modelo. Ele recebe a regra em palavras simples e
-devolve a data; é por isso que pode ser conferido sozinho, incluindo os casos de
-borda. A montagem da regra a partir de uma rotina é do serviço, onde o modelo
-já está em jogo.
+Uma repetição é fácil de dizer e fácil de errar ao calcular: "todo dia 31" não
+acontece em todo mês, e "todo dia 29 de fevereiro" não acontece em todo ano. Por
+isso a conta vive em uma função só — a mesma resposta vale para quem a chama, e
+ninguém precisa repetir a aritmética em outro lugar.
+
+Mora em ``apps.core`` porque é infraestrutura de domínio neutro, e não
+propriedade de quem a usa. Quem tem uma regra recorrente — hoje Rotinas, amanhã
+outra frente — consome daqui, e nenhum domínio precisa depender do outro para
+saber quando algo volta a acontecer.
 """
 import calendar
 
 from datetime import date, timedelta
 
-from .constants import Periodicidade
+from django.db import models
+
+
+class Periodicidade(models.TextChoices):
+    """De quanto em quanto tempo algo volta.
+
+    ``DIARIA`` e ``INTERVALO_DIAS`` fazem a mesma conta — somar dias —, e a
+    diferença entre elas é só a leitura: "todo dia" quando o intervalo é um, "a
+    cada N dias" quando é outro número. Manter as duas evita inventar um
+    caminho de cálculo paralelo para dizer a mesma coisa.
+    """
+
+    DIARIA = "diaria", "Diária"
+    SEMANAL = "semanal", "Semanal"
+    MENSAL = "mensal", "Mensal"
+    ANUAL = "anual", "Anual"
+    INTERVALO_DIAS = "intervalo_dias", "A cada N dias"
 
 
 def ultimo_dia_do_mes(ano: int, mes: int) -> int:
@@ -41,7 +61,7 @@ def _somar_meses(ano: int, mes: int, quantidade: int) -> tuple[int, int]:
 def _proxima_em_dias(
     data_inicio: date, intervalo: int, a_partir_de: date | None
 ) -> date:
-    """A cada N dias. Sem referência, a rotina começa na própria data de início."""
+    """A cada N dias. Sem referência, a conta começa na própria data de início."""
     if a_partir_de is None:
         return data_inicio
     return max(a_partir_de + timedelta(days=intervalo), data_inicio)
@@ -139,9 +159,9 @@ def calcular_proxima_data(
     data devolvida é estritamente posterior a ela. Sem referência, a conta
     começa na ``data_inicio``.
 
-    Devolve ``None`` quando a rotina não tem mais o que gerar — porque a
-    ocorrência cairia depois da ``data_fim``. Nada de execução anterior à data
-    de início, e nada depois do fim.
+    Devolve ``None`` quando não há mais o que gerar — porque a ocorrência cairia
+    depois da ``data_fim``. Nada de execução anterior à data de início, e nada
+    depois do fim.
     """
     intervalo = max(int(intervalo or 1), 1)
     dia = data_inicio.day if dia_mes is None else int(dia_mes)

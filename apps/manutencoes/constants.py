@@ -22,6 +22,20 @@ class TipoManutencao(models.TextChoices):
     PREVENTIVA = "preventiva", "Preventiva"
 
 
+class FrequenciaUnidade(models.TextChoices):
+    """De quanto em quanto tempo um plano preventivo volta a acontecer.
+
+    Três leituras bastam: a cada N dias, N meses ou N anos. É a palavra que a
+    gestão escolhe, e não uma expressão de recorrência — a conta de calendário
+    é feita em um lugar só, e nenhuma unidade nova entra sem que alguém saiba
+    quem a calcula.
+    """
+
+    DIAS = "dias", "Dias"
+    MESES = "meses", "Meses"
+    ANOS = "anos", "Anos"
+
+
 class StatusManutencao(models.TextChoices):
     """Onde a manutenção está agora.
 

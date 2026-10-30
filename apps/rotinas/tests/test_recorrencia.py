@@ -3,13 +3,16 @@
 A conta é conferida sozinha, sem modelo: é a mesma função que a tela, o serviço
 e o teste usam. Cada caso aqui é um jeito de errar que a repetição esconde — o
 dia 31 em um mês curto, o 29 de fevereiro em ano comum, o fim da vigência.
+
+A função vem da camada neutra de recorrência, e não de um módulo de Rotinas: a
+aritmética é a mesma para qualquer regra que se repita.
 """
 from datetime import date
 
 from django.test import TestCase
 
+from apps.core.recorrencia import calcular_proxima_data
 from apps.rotinas.constants import DiaSemana, Periodicidade
-from apps.rotinas.recorrencia import calcular_proxima_data
 
 
 class DiariaTests(TestCase):

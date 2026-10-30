@@ -15,6 +15,11 @@ ela que diz se algo está atrasado. ``data_inicio`` e ``data_conclusao`` são
 acontecimentos e guardam dia e hora: a primeira é escrita quando o serviço
 começa, a segunda quando ele termina — e some quando a manutenção volta a andar,
 porque aí ela ainda não terminou.
+
+A manutenção corretiva nasce de uma decisão ou de uma demanda. A preventiva
+nasce de um plano, e é isso que ``gerar_ocorrencia_preventiva`` faz: transforma a
+regra em uma ocorrência do dia. O plano continua sendo a regra — a ocorrência é
+o serviço concreto, com o retrato do que o plano dizia quando nasceu.
 """
 from datetime import datetime
 
@@ -25,7 +30,8 @@ from django.utils import timezone
 from apps.core.constants import Prioridade
 
 from .constants import StatusManutencao, TipoEventoManutencao, TipoManutencao
-from .models import HistoricoManutencao, Manutencao
+from .models import HistoricoManutencao, Manutencao, PlanoPreventivo
+from .periodicidade import proxima_data
 
 # A descrição do evento cabe no histórico como uma frase curta.
 LIMITE_DO_EVENTO = 255
@@ -593,3 +599,84 @@ def definir_ativo(*, manutencao: Manutencao, ativo: bool) -> Manutencao:
     manutencao.ativo = ativo
     manutencao.save(update_fields=["ativo", "atualizado_em"])
     return manutencao
+
+
+@transaction.atomic
+def gerar_ocorrencia_preventiva(
+    *, plano: PlanoPreventivo, usuario
+) -> Manutencao:
+    """Transforma o plano na manutenção do dia e avança o plano.
+
+    O plano é a regra; a manutenção é o serviço concreto. Aqui o plano deixa de
+    ser intenção: copia-se o contexto operacional — o que fazer, onde, com quem
+    — e guarda-se a data que originou a ocorrência. A partir daí o plano pode
+    mudar à vontade; a ocorrência já nasceu com o retrato daquele dia.
+
+    Duas coisas não se misturam, e a escolha é deliberada. O vínculo com o plano
+    é referência — a procedência da ocorrência, que continua legível depois. A
+    competência é cópia imutável — a data gravada uma única vez, que não muda se
+    a manutenção for reagendada. É por ela que a mesma ocorrência não nasce duas
+    vezes, e não pela ``data_prevista``, que pode ser remarcada.
+
+    Tudo acontece em uma transação, e o plano é travado antes de qualquer coisa:
+    ou a ocorrência, o histórico e o próximo passo do plano acontecem juntos, ou
+    nada acontece. Gerar de novo para a mesma competência devolve a ocorrência
+    que já existe, sem criar uma segunda.
+    """
+    origem = plano
+    plano = PlanoPreventivo.objects.select_for_update().get(pk=plano.pk)
+
+    if not plano.ativo:
+        raise ErroDeManutencao(
+            "Este plano está inativo e não gera novas ocorrências."
+        )
+
+    competencia = plano.proxima_data_prevista
+
+    # A competência é a identidade da ocorrência. Se ela já gerou uma
+    # manutenção, é essa que vale — e o plano já avançou quando ela nasceu.
+    existente = Manutencao.objects.filter(
+        plano_preventivo=plano, competencia_preventiva=competencia
+    ).first()
+    if existente is not None:
+        return existente
+
+    manutencao = Manutencao(
+        condominio=plano.condominio,
+        plano_preventivo=plano,
+        competencia_preventiva=competencia,
+        tipo=TipoManutencao.PREVENTIVA,
+        titulo=plano.titulo,
+        descricao_problema=plano.descricao,
+        local=plano.local,
+        equipamento=plano.equipamento,
+        fornecedor=plano.fornecedor,
+        responsavel=plano.responsavel,
+        data_prevista=competencia,
+        criado_por=usuario,
+    )
+    _completar_local_pelo_equipamento(manutencao)
+    _validar(manutencao)
+    manutencao.save()
+
+    _registrar(
+        manutencao,
+        usuario,
+        TipoEventoManutencao.CRIADA,
+        f"Manutenção preventiva criada a partir do plano «{plano.titulo}»",
+    )
+
+    # A próxima data só anda depois que a ocorrência existe. Uma competência
+    # vencida continua sendo a próxima até ser gerada — nada é pulado em
+    # silêncio.
+    plano.proxima_data_prevista = proxima_data(
+        unidade=plano.frequencia_unidade,
+        intervalo=plano.frequencia_intervalo,
+        a_partir_de=competencia,
+    )
+    plano.save(update_fields=["proxima_data_prevista", "atualizado_em"])
+    # A quem chamou, a data vigente passa a ser esta — e não a que ele tinha
+    # quando pediu a geração.
+    origem.proxima_data_prevista = plano.proxima_data_prevista
+    return manutencao
+

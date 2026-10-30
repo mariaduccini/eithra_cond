@@ -30,6 +30,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.constants import Prioridade
+from apps.core.recorrencia import calcular_proxima_data
 from apps.demandas.constants import OrigemDemanda
 from apps.demandas.services import criar_demanda
 from apps.manutencoes.constants import TipoManutencao
@@ -51,7 +52,6 @@ from .models import (
     ModeloChecklist,
     RotinaRecorrente,
 )
-from .recorrencia import calcular_proxima_data
 
 
 class ErroDeRotina(Exception):

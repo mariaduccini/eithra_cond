@@ -13,8 +13,13 @@ que se encontrou quando ela foi feita.
 
 O peso de uma rotina é o mesmo vocabulário usado por demandas e manutenções,
 importado de ``apps.core.constants`` — não há um terceiro degrau de urgência.
+
+O ritmo também não é só desta casa: ``Periodicidade`` vive na camada neutra de
+recorrência, junto da conta que o interpreta, e é daqui que o domínio o lê.
 """
 from django.db import models
+
+from apps.core.recorrencia import Periodicidade
 
 
 class TipoRotina(models.TextChoices):
@@ -27,22 +32,6 @@ class TipoRotina(models.TextChoices):
     ADMINISTRATIVA = "administrativa", "Administrativa"
     SEGURANCA = "seguranca", "Segurança"
     OUTRA = "outra", "Outra"
-
-
-class Periodicidade(models.TextChoices):
-    """De quanto em quanto tempo a rotina volta.
-
-    ``DIARIA`` e ``INTERVALO_DIAS`` fazem a mesma conta — somar dias —, e a
-    diferença entre elas é só a leitura: "todo dia" quando o intervalo é um, "a
-    cada N dias" quando é outro número. Manter as duas evita inventar um
-    caminho de cálculo paralelo para dizer a mesma coisa.
-    """
-
-    DIARIA = "diaria", "Diária"
-    SEMANAL = "semanal", "Semanal"
-    MENSAL = "mensal", "Mensal"
-    ANUAL = "anual", "Anual"
-    INTERVALO_DIAS = "intervalo_dias", "A cada N dias"
 
 
 class DiaSemana(models.IntegerChoices):

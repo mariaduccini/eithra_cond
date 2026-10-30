@@ -15,6 +15,12 @@ Duas coisas não se confundem aqui. ``status = CANCELADA`` é um desfecho
 operacional — a manutenção deixou de acontecer, e isso fica registrado com
 quem cancelou e quando. ``ativo = False`` é uma retirada administrativa: o
 registro sai das listas sem apagar nada. Uma não substitui a outra.
+
+O que se repete não é manutenção, é regra: ``PlanoPreventivo`` diz que a revisão
+do gerador volta a cada três meses, e a manutenção é a ocorrência concreta — a
+de novembro, a de fevereiro. O plano não executa nada e a ocorrência não carrega
+a periodicidade: quando nasce, ela copia o contexto do plano e guarda a data que
+a originou, para continuar legível mesmo que o plano mude depois.
 """
 import uuid
 
@@ -30,7 +36,13 @@ from apps.condominios.models import Condominio
 from apps.core.constants import Prioridade
 from apps.demandas.models import Demanda
 
-from .constants import StatusManutencao, TipoEventoManutencao, TipoManutencao
+from .constants import (
+    FrequenciaUnidade,
+    StatusManutencao,
+    TipoEventoManutencao,
+    TipoManutencao,
+)
+from .permissoes import usuarios_elegiveis_como_responsavel
 
 # Situações que encerram a manutenção: depois delas nada mais depende de uma ação.
 SITUACOES_ENCERRADAS = (StatusManutencao.CONCLUIDA, StatusManutencao.CANCELADA)
@@ -52,6 +64,217 @@ def _texto(valor: str | None) -> str:
 def _texto_longo(valor: str | None) -> str:
     """Preserva os parágrafos de um texto livre, sem espaços nas pontas."""
     return (valor or "").strip()
+
+
+class PlanoPreventivoQuerySet(models.QuerySet):
+    """Leituras reutilizáveis do plano preventivo."""
+
+    def ativos(self):
+        """Planos que ainda geram ocorrência."""
+        return self.filter(ativo=True)
+
+    def do_condominio(self, condominio):
+        """Planos deste condomínio. Sem condomínio resolvido, conjunto vazio."""
+        if condominio is None or not getattr(condominio, "pk", None):
+            return self.none()
+        return self.filter(condominio_id=condominio.pk)
+
+
+class PlanoPreventivo(models.Model):
+    """A regra de uma manutenção que volta sempre: o que fazer, onde e de quanto em quanto.
+
+    O plano não é o serviço. Ele diz que a revisão do gerador acontece a cada
+    três meses — não que ela aconteceu. Quem executa é a manutenção, criada a
+    partir dele quando a data chega, e a ocorrência guarda o próprio retrato do
+    que o plano dizia naquele dia.
+
+    ``proxima_data_prevista`` é a única autoridade sobre quando o plano volta a
+    gerar: não existe segunda data, nem cópia da periodicidade do lado da
+    manutenção. Desativar interrompe as próximas gerações sem apagar nada do que
+    já nasceu daqui, e o vínculo com as ocorrências anteriores permanece.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.PROTECT,
+        related_name="planos_preventivos",
+        verbose_name="Condomínio",
+    )
+    titulo = models.CharField(
+        "Título",
+        max_length=200,
+        help_text="Descrição curta e direta do que precisa acontecer.",
+    )
+    descricao = models.TextField(
+        "Descrição",
+        blank=True,
+        help_text="O que precisa ser feito, quando o título não basta.",
+    )
+    local = models.ForeignKey(
+        LocalOperacional,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="planos_preventivos",
+        verbose_name="Local",
+        help_text="Onde o serviço acontece. Pode ficar sem local definido.",
+    )
+    equipamento = models.ForeignKey(
+        Equipamento,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="planos_preventivos",
+        verbose_name="Equipamento",
+        help_text="O que recebe o serviço, quando é um equipamento.",
+    )
+    fornecedor = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="planos_preventivos",
+        verbose_name="Fornecedor",
+        help_text="Quem costuma executar o serviço, quando é terceirizado.",
+    )
+    responsavel = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="planos_preventivos_responsavel",
+        verbose_name="Responsável",
+        help_text="Quem responde por ela hoje. Pode ficar sem responsável.",
+    )
+    frequencia_unidade = models.CharField(
+        "Frequência",
+        max_length=20,
+        choices=FrequenciaUnidade.choices,
+        default=FrequenciaUnidade.MESES,
+        help_text="Em que unidade o serviço volta: dias, meses ou anos.",
+    )
+    frequencia_intervalo = models.PositiveIntegerField(
+        "A cada",
+        default=1,
+        help_text="Quantas unidades entre uma ocorrência e a seguinte.",
+    )
+    proxima_data_prevista = models.DateField(
+        "Próxima data prevista",
+        help_text="A data da próxima ocorrência a gerar. É a única autoridade "
+        "sobre quando o plano volta a valer.",
+    )
+    ativo = models.BooleanField(
+        "Ativo",
+        default=True,
+        help_text="Desativar interrompe as próximas gerações sem apagar as "
+        "ocorrências já criadas.",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="planos_preventivos_criados",
+        verbose_name="Criado por",
+        help_text="Quem registrou o plano. Preservado para rastreabilidade.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+
+    objects = PlanoPreventivoQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Plano preventivo"
+        verbose_name_plural = "Planos preventivos"
+        ordering = ["proxima_data_prevista", "titulo"]
+        constraints = [
+            # Não existe "a cada zero meses": o intervalo é de pelo menos uma
+            # unidade, e o banco recusa o que a conta não saberia responder.
+            models.CheckConstraint(
+                condition=models.Q(frequencia_intervalo__gte=1),
+                name="plano_freq_intervalo_positivo",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["condominio", "ativo"], name="plano_cond_ativo_idx"),
+            models.Index(
+                fields=["condominio", "proxima_data_prevista"],
+                name="plano_cond_prevista_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.titulo
+
+    def save(self, *args, **kwargs):
+        """Guarda o plano já normalizado, venha ele do formulário ou não."""
+        self.titulo = _texto(self.titulo)
+        self.descricao = _texto_longo(self.descricao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um plano incoerente antes que ele chegue ao banco.
+
+        Nada aqui pertence a outro condomínio: local, equipamento, fornecedor e
+        responsável são do mesmo condomínio do plano. O equipamento e o local
+        precisam concordar, e a pessoa escolhida para responder precisa poder
+        responder por este condomínio — a mesma regra que o resto do sistema
+        usa para oferecer responsáveis.
+        """
+        erros = {}
+        if not _texto(self.titulo):
+            erros["titulo"] = "Escreva o que precisa acontecer."
+
+        if (
+            self.local_id
+            and self.condominio_id
+            and self.local.condominio_id != self.condominio_id
+        ):
+            erros["local"] = "O local escolhido não é deste condomínio."
+
+        if (
+            self.equipamento_id
+            and self.condominio_id
+            and self.equipamento.condominio_id != self.condominio_id
+        ):
+            erros["equipamento"] = "O equipamento escolhido não é deste condomínio."
+
+        if (
+            self.fornecedor_id
+            and self.condominio_id
+            and self.fornecedor.condominio_id != self.condominio_id
+        ):
+            erros["fornecedor"] = "O fornecedor escolhido não é deste condomínio."
+
+        # O equipamento e o local precisam concordar, do mesmo modo que na
+        # manutenção: um equipamento que fica em um lugar não é atendido em
+        # outro sem que alguém diga isso.
+        if self.equipamento_id and self.local_id:
+            local_do_equipamento = self.equipamento.local
+            if (
+                local_do_equipamento is not None
+                and local_do_equipamento.pk != self.local_id
+            ):
+                erros["local"] = (
+                    f"O equipamento escolhido fica em {local_do_equipamento.nome}. "
+                    "Ajuste o local para combinar com o equipamento."
+                )
+
+        if self.responsavel_id and self.condominio_id:
+            responde_pelo_condominio = usuarios_elegiveis_como_responsavel(
+                self.condominio
+            ).filter(pk=self.responsavel_id)
+            if not responde_pelo_condominio.exists():
+                erros["responsavel"] = (
+                    "A pessoa escolhida não responde por este condomínio."
+                )
+
+        if self.frequencia_intervalo is not None and self.frequencia_intervalo < 1:
+            erros["frequencia_intervalo"] = (
+                "O intervalo precisa ser de pelo menos 1."
+            )
+
+        if erros:
+            raise ValidationError(erros)
 
 
 class ManutencaoQuerySet(models.QuerySet):
@@ -176,6 +399,23 @@ class Manutencao(models.Model):
         verbose_name="Demanda de origem",
         help_text="De onde a manutenção veio, quando nasceu de uma demanda. "
         "Preserva a procedência sem alterar a demanda.",
+    )
+    plano_preventivo = models.ForeignKey(
+        PlanoPreventivo,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ocorrencias",
+        verbose_name="Plano preventivo",
+        help_text="O plano que originou esta ocorrência, quando ela é preventiva. "
+        "É referência: aponta para a regra, sem copiá-la.",
+    )
+    competencia_preventiva = models.DateField(
+        "Competência preventiva",
+        null=True,
+        blank=True,
+        help_text="A data que originou esta ocorrência, gravada uma única vez. "
+        "Não muda se a manutenção for reagendada depois.",
     )
     tipo = models.CharField(
         "Tipo",
@@ -319,6 +559,42 @@ class Manutencao(models.Model):
                 ),
                 name="manutencao_concluida_registra_quando",
             ),
+            # Preventiva nasce de plano, e só preventiva nasce de plano: a
+            # origem é lida do tipo e do vínculo, nunca de uma palavra solta.
+            models.CheckConstraint(
+                condition=models.Q(plano_preventivo__isnull=True)
+                | models.Q(tipo=TipoManutencao.PREVENTIVA),
+                name="manut_plano_exige_preventiva",
+            ),
+            # Uma ocorrência de plano não tem demanda de origem: são duas
+            # procedências que não se misturam.
+            models.CheckConstraint(
+                condition=models.Q(plano_preventivo__isnull=True)
+                | models.Q(demanda_origem__isnull=True),
+                name="manut_plano_sem_demanda",
+            ),
+            # A competência anda junto com o plano: as duas existem, ou nenhuma.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        plano_preventivo__isnull=True,
+                        competencia_preventiva__isnull=True,
+                    )
+                    | models.Q(
+                        plano_preventivo__isnull=False,
+                        competencia_preventiva__isnull=False,
+                    )
+                ),
+                name="manut_competencia_com_plano",
+            ),
+            # O banco é quem garante que uma competência gera uma ocorrência só.
+            # A leitura antes de criar ajuda; a unicidade é que impede o duplo
+            # registro quando duas execuções chegam juntas.
+            models.UniqueConstraint(
+                fields=["plano_preventivo", "competencia_preventiva"],
+                condition=models.Q(plano_preventivo__isnull=False),
+                name="manut_plano_competencia_unica",
+            ),
         ]
         indexes = [
             models.Index(fields=["condominio", "status"], name="manut_cond_status_idx"),
@@ -383,6 +659,32 @@ class Manutencao(models.Model):
             and self.demanda_origem.condominio_id != self.condominio_id
         ):
             erros["demanda_origem"] = "A demanda de origem é de outro condomínio."
+
+        if (
+            self.plano_preventivo_id
+            and self.condominio_id
+            and self.plano_preventivo.condominio_id != self.condominio_id
+        ):
+            erros["plano_preventivo"] = "O plano preventivo é de outro condomínio."
+
+        # A preventiva gerada por plano não se confunde com a corretiva: ela é
+        # preventiva por origem, não tem demanda de origem e guarda a
+        # competência que a gerou. Fora do plano, nada disso se aplica.
+        if self.plano_preventivo_id:
+            if self.tipo != TipoManutencao.PREVENTIVA:
+                erros["tipo"] = "Uma manutenção gerada por plano é preventiva."
+            if self.demanda_origem_id:
+                erros["demanda_origem"] = (
+                    "Uma ocorrência preventiva não nasce de demanda."
+                )
+            if self.competencia_preventiva is None:
+                erros["competencia_preventiva"] = (
+                    "A ocorrência precisa guardar a data que a originou."
+                )
+        elif self.competencia_preventiva is not None:
+            erros["competencia_preventiva"] = (
+                "Só uma ocorrência de plano guarda a competência de origem."
+            )
 
         # O equipamento e o local precisam concordar: um equipamento que fica em
         # um lugar não pode ser atendido em outro sem que alguém diga isso.
