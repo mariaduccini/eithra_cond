@@ -324,6 +324,14 @@ MANUTENCOES_MAX_EVIDENCIAS_POR_ENVIO = env.int(
 # Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
 # para abrir a prova, não para deixar um endereço circulando.
 MANUTENCOES_URL_ACESSO_SEGUNDOS = env.int("MANUTENCOES_URL_ACESSO_SEGUNDOS", default=60)
+# Quantas competências atrasadas um plano preventivo pode recuperar em uma única
+# execução do gerador. Não é uma regra de negócio: é um teto defensivo, para que
+# um dado defeituoso — uma periodicidade que não avança, por exemplo — não vire
+# laço infinito. Ao alcançá-lo, o plano para e a rodada relata o que ficou
+# pendente; a próxima execução continua de onde parou.
+MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO = env.int(
+    "MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO", default=24
+)
 
 
 def _dias_por_prioridade(bruto: str) -> dict[str, int]:
@@ -416,6 +424,21 @@ EITHRA_GMAIL_REFRESH_TOKEN = env("EITHRA_GMAIL_REFRESH_TOKEN", default="").strip
 EITHRA_GMAIL_CONTA = env("EITHRA_GMAIL_CONTA", default="").strip()
 # Tempo máximo de espera ao conversar com a API do Gmail, em segundos.
 EITHRA_GMAIL_TIMEOUT = env.float("EITHRA_GMAIL_TIMEOUT", default=30.0)
+
+# ---------------------------------------------------------------------------
+# Automação: quem assina o que o Eithra faz sozinho
+# ---------------------------------------------------------------------------
+# Nem toda ação do sistema tem uma pessoa por trás: quando o gerador periódico
+# cria as preventivas do dia, ninguém clicou nada. Mas a manutenção nasce com
+# autor, e o histórico precisa dizer de onde ela veio — uma geração automática
+# não pode ficar anônima nem, pior, assinada por quem não fez.
+#
+# Esta é a pessoa técnica que assina o que o sistema fez por conta própria (ver
+# apps/core/automacao.py). Sem ela configurada, a geração automática não
+# acontece: a autoria não é atribuída a alguém por adivinhação. Criar esse
+# usuário é passo de preparação da instalação, e não do código — por isso ele
+# não é criado automaticamente nem fixado aqui.
+EITHRA_AUTOMATION_USER_EMAIL = env("EITHRA_AUTOMATION_USER_EMAIL", default="").strip()
 
 # ---------------------------------------------------------------------------
 # Fluxos de autenticação

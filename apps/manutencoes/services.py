@@ -21,12 +21,17 @@ nasce de um plano, e é isso que ``gerar_ocorrencia_preventiva`` faz: transforma
 regra em uma ocorrência do dia. O plano continua sendo a regra — a ocorrência é
 o serviço concreto, com o retrato do que o plano dizia quando nasceu.
 """
-from datetime import datetime
+import logging
 
+from dataclasses import dataclass, field
+from datetime import date, datetime
+
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.automacao import resolver_ator_automatico
 from apps.core.constants import Prioridade
 
 from .constants import (
@@ -46,6 +51,8 @@ from .periodicidade import proxima_data
 
 # A descrição do evento cabe no histórico como uma frase curta.
 LIMITE_DO_EVENTO = 255
+
+logger = logging.getLogger(__name__)
 
 
 class ErroDeManutencao(Exception):
@@ -1045,4 +1052,237 @@ def gerar_ocorrencia_preventiva(
     # quando pediu a geração.
     origem.proxima_data_prevista = plano.proxima_data_prevista
     return manutencao
+
+
+# ---------------------------------------------------------------------------
+# Geração periódica
+# ---------------------------------------------------------------------------
+#
+# Gerar as preventivas de uma vez não é uma segunda forma de criar manutenção: é
+# a mesma, repetida. O gerador não decide o que é uma ocorrência, não calcula a
+# próxima data, não copia contexto nem escreve histórico — ele só encontra os
+# planos que já venceram e entrega cada um ao serviço oficial, uma competência
+# por vez. É por isso que recuperar uma parcela atrasada é o caminho comum, e
+# não um atalho paralelo que precisaria ser mantido em dobro.
+
+
+@dataclass
+class ResumoDasPreventivas:
+    """O que a rodada fez, em números, sem guardar estado nenhum.
+
+    Não existe registro do gerador: cada ocorrência já conta a própria criação
+    no seu histórico, e uma tabela de execuções seria uma segunda memória para o
+    mesmo fato. O resumo serve para ler o resultado na hora e desaparecer.
+    """
+
+    data_referencia: date
+    planos_verificados: int = 0
+    planos_processados: int = 0
+    planos_sem_necessidade: int = 0
+    ocorrencias_geradas: int = 0
+    competencias_reconciliadas: int = 0
+    planos_limitados: list[str] = field(default_factory=list)
+    falhas: list[tuple[str, str]] = field(default_factory=list)
+
+
+def gerar_preventivas_pendentes(
+    *, usuario=None, data_referencia=None, condominio=None
+) -> ResumoDasPreventivas:
+    """Gera as ocorrências dos planos preventivos que já venceram.
+
+    Um plano vence quando sua ``proxima_data_prevista`` é anterior ou igual à
+    data de referência — o plano não pula dia, e o que ficou para trás continua
+    devendo. Sem condomínio informado, a rodada alcança todos; com um informado,
+    só os planos dele. Plano inativo não é tocado: nem gera, nem tem a data
+    adiantada.
+
+    A data de referência é declarada, e não lida por dentro: o mesmo serviço
+    gera o dia de hoje e recupera uma ausência longa, e quem chama é que diz a
+    que dia a rodada se refere.
+
+    Quem assina é declarado do mesmo modo. Numa execução manual, é a pessoa que
+    pediu; numa execução automática, ninguém declarou nada — e aí quem assina é
+    o ator técnico configurado. Sem ator configurado, a rodada não acontece:
+    autoria inventada não serve à rastreabilidade.
+
+    Cada plano roda isolado: uma falha em um é registrada no resumo e não
+    interrompe os demais. Nenhuma falha é engolida em silêncio — ela aparece no
+    resumo e no log.
+    """
+    if usuario is None:
+        usuario = resolver_ator_automatico()
+    if data_referencia is None:
+        data_referencia = timezone.localdate()
+
+    limite = max(
+        1, int(settings.MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO)
+    )
+    resumo = ResumoDasPreventivas(data_referencia=data_referencia)
+
+    escopo = PlanoPreventivo.objects.ativos()
+    if condominio is not None:
+        escopo = escopo.do_condominio(condominio)
+
+    resumo.planos_verificados = escopo.count()
+    pendentes = list(
+        escopo.filter(proxima_data_prevista__lte=data_referencia).order_by(
+            "condominio_id", "proxima_data_prevista", "titulo"
+        )
+    )
+    # O que está no futuro não precisa de nada nesta rodada.
+    resumo.planos_sem_necessidade = resumo.planos_verificados - len(pendentes)
+
+    for plano in pendentes:
+        try:
+            geradas, reconciliadas, parou_no_limite = _recuperar_competencias(
+                plano=plano,
+                usuario=usuario,
+                data_referencia=data_referencia,
+                limite=limite,
+            )
+        except Exception as erro:  # noqa: BLE001 — um plano não derruba a rodada
+            logger.exception(
+                "Preventivas: falha ao gerar o plano «%s» (%s).", plano.titulo, plano.pk
+            )
+            resumo.falhas.append((str(plano.pk), _motivo_da_falha(erro)))
+            continue
+
+        if geradas or reconciliadas:
+            resumo.planos_processados += 1
+            resumo.ocorrencias_geradas += geradas
+            resumo.competencias_reconciliadas += reconciliadas
+            logger.info(
+                "Preventivas: plano «%s» (%s) gerou %s ocorrência(s) e "
+                "reconheceu %s competência(s) já materializada(s).",
+                plano.titulo,
+                plano.pk,
+                geradas,
+                reconciliadas,
+            )
+        else:
+            resumo.planos_sem_necessidade += 1
+
+        if parou_no_limite:
+            resumo.planos_limitados.append(str(plano.pk))
+            logger.warning(
+                "Preventivas: plano «%s» (%s) parou no limite de %s competência(s) "
+                "por execução; ainda há competências vencidas.",
+                plano.titulo,
+                plano.pk,
+                limite,
+            )
+
+    return resumo
+
+
+def _recuperar_competencias(
+    *, plano, usuario, data_referencia: date, limite: int
+) -> tuple[int, int, bool]:
+    """Traz o plano até a data de referência, uma competência por vez.
+
+    Cada passo é entregue ao serviço oficial, que faz uma de duas coisas: cria a
+    ocorrência daquela competência e adianta o plano, ou devolve a ocorrência
+    que já existia — e aí a data não anda. O primeiro caso é uma ocorrência
+    gerada; o segundo é uma competência que já estava materializada, e o
+    ponteiro precisa reconhecê-la, ou o plano fica preso nela para sempre e
+    todas as competências seguintes se perdem.
+
+    Nada aqui recalcula data nem copia contexto: o avanço é sempre o do serviço
+    oficial, e o reconhecimento de uma competência materializada é uma operação
+    de domínio própria, que só avança com a ocorrência confirmada no banco.
+
+    Devolve quantas ocorrências nasceram, quantas competências já existentes
+    foram reconhecidas e se a parada foi pelo limite. O limite conta as
+    competências tratadas — geradas ou reconhecidas —, porque o que ele existe
+    para conter é o trabalho de um plano numa execução, seja ele criar ou
+    reconciliar.
+    """
+    geradas = 0
+    reconciliadas = 0
+
+    while True:
+        competencia = plano.proxima_data_prevista
+        if competencia > data_referencia:
+            return geradas, reconciliadas, False
+        if geradas + reconciliadas >= limite:
+            return geradas, reconciliadas, True
+
+        gerar_ocorrencia_preventiva(plano=plano, usuario=usuario)
+        plano.refresh_from_db(fields=["proxima_data_prevista"])
+
+        if plano.proxima_data_prevista != competencia:
+            geradas += 1
+            continue
+
+        # A ocorrência desta competência já existia e o plano não andou: é uma
+        # competência materializada. Reconhecê-la é o que destrava o plano.
+        seguinte = reconciliar_competencia_preventiva(plano=plano)
+        if seguinte is None:
+            # Sem ocorrência correspondente, o avanço é proibido. Parar aqui é a
+            # resposta honesta — insistir repetiria a mesma data para sempre.
+            return geradas, reconciliadas, False
+        plano.refresh_from_db(fields=["proxima_data_prevista"])
+        reconciliadas += 1
+
+
+@transaction.atomic
+def reconciliar_competencia_preventiva(*, plano: PlanoPreventivo) -> date | None:
+    """Reconhece uma competência que já virou ocorrência e adianta o plano.
+
+    Existe um caso em que a geração não acontece e o plano também não pode
+    andar: a ocorrência daquela competência já existe — criada antes, ou por
+    outra execução. O serviço oficial devolve a que existe e não mexe na data,
+    e sem esta passagem o plano ficaria preso naquela competência para sempre,
+    sem nunca alcançar as seguintes.
+
+    O avanço continua sendo um só e continua proibido quando não há ocorrência:
+    a competência é conferida no banco, sob trava, e só então a próxima data é
+    calculada pela mesma regra do serviço oficial. Não é uma segunda forma de
+    gerar nem um segundo cálculo — é o reconhecimento de que aquele passo já
+    aconteceu. Devolve a data nova, ou ``None`` quando não havia nada a
+    reconhecer.
+
+    Nenhuma manutenção é criada e nenhuma é alterada. Nenhum histórico é escrito
+    por isso: nada aconteceu a uma ocorrência e ninguém agiu — o que muda é o
+    ponteiro do plano, e disso fica o registro operacional no log.
+    """
+    plano = PlanoPreventivo.objects.select_for_update().get(pk=plano.pk)
+    competencia = plano.proxima_data_prevista
+
+    materializada = Manutencao.objects.filter(
+        plano_preventivo=plano, competencia_preventiva=competencia
+    ).exists()
+    if not materializada:
+        return None
+
+    seguinte = proxima_data(
+        unidade=plano.frequencia_unidade,
+        intervalo=plano.frequencia_intervalo,
+        a_partir_de=competencia,
+    )
+    if seguinte is None or seguinte <= competencia:
+        raise ErroDeManutencao(
+            "A frequência deste plano não avança a partir de "
+            f"{_data_por_extenso(competencia)}; a geração parou para não repetir "
+            "a mesma competência."
+        )
+
+    plano.proxima_data_prevista = seguinte
+    plano.save(update_fields=["proxima_data_prevista", "atualizado_em"])
+    logger.info(
+        "Preventivas: a competência de %s do plano «%s» (%s) já estava "
+        "materializada; o plano avançou para %s.",
+        _data_por_extenso(competencia),
+        plano.titulo,
+        plano.pk,
+        _data_por_extenso(seguinte),
+    )
+    return seguinte
+
+
+def _motivo_da_falha(erro: Exception) -> str:
+    """Uma frase curta sobre a falha, para o resumo — o detalhe fica no log."""
+    if isinstance(erro, ErroDeManutencao):
+        return str(erro)
+    return type(erro).__name__
 

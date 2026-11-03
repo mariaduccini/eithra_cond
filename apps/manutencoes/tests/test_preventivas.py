@@ -7,12 +7,16 @@ dia, que a mesma competência não gera duas manutenções e que nada de outro
 condomínio atravessa o domínio.
 """
 from datetime import date
+from io import StringIO
 
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.condominios.constants import Papel
+from apps.core.automacao import ErroDeAutomacao, resolver_ator_automatico
 from apps.core.constants import Prioridade
 from apps.manutencoes.constants import (
     FrequenciaUnidade,
@@ -26,6 +30,8 @@ from apps.manutencoes.services import (
     ErroDeManutencao,
     criar_manutencao,
     gerar_ocorrencia_preventiva,
+    gerar_preventivas_pendentes,
+    reconciliar_competencia_preventiva,
 )
 from apps.manutencoes.tests.apoio import (
     criar_condominio,
@@ -547,3 +553,526 @@ class CompatibilidadeTests(TestCase):
             demanda_origem=demanda,
         )
         self.assertEqual(demanda.manutencoes_geradas.count(), 2)
+
+
+class GeracaoPeriodicaTests(TestCase):
+    """O gerador periódico encontra os planos vencidos e gera o que ficou devendo."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.outro = criar_condominio("Beta")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, Papel.SINDICA)
+        self.sindico_do_outro = criar_pessoa("outro@exemplo.test", "Síndico do Beta")
+        criar_vinculo(self.sindico_do_outro, self.outro, Papel.SINDICA)
+
+    def _gerar(self, referencia, **campos):
+        return gerar_preventivas_pendentes(
+            usuario=self.gestao, data_referencia=referencia, **campos
+        )
+
+    def test_plano_vencido_gera_ocorrencia(self):
+        plano = _plano(self.condominio, self.gestao)
+        resumo = self._gerar(date(2026, 11, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+        self.assertEqual(resumo.planos_processados, 1)
+        self.assertEqual(Manutencao.objects.count(), 1)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2027, 2, 15))
+
+    def test_plano_de_hoje_gera_ocorrencia(self):
+        _plano(self.condominio, self.gestao)
+        resumo = self._gerar(date(2026, 11, 15))
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+
+    def test_plano_futuro_nao_gera(self):
+        _plano(self.condominio, self.gestao)
+        resumo = self._gerar(date(2026, 11, 1))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 0)
+        self.assertEqual(resumo.planos_verificados, 1)
+        self.assertEqual(resumo.planos_sem_necessidade, 1)
+        self.assertEqual(Manutencao.objects.count(), 0)
+
+    def test_plano_inativo_nao_gera_nem_avanca(self):
+        plano = _plano(self.condominio, self.gestao, ativo=False)
+        resumo = self._gerar(date(2026, 11, 20))
+
+        self.assertEqual(resumo.planos_verificados, 0)
+        self.assertEqual(resumo.ocorrencias_geradas, 0)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    def test_recupera_tres_competencias_atrasadas_em_ordem(self):
+        plano = _plano(
+            self.condominio,
+            self.gestao,
+            frequencia_unidade=FrequenciaUnidade.MESES,
+            frequencia_intervalo=1,
+            proxima_data_prevista=date(2026, 8, 15),
+        )
+        resumo = self._gerar(date(2026, 10, 20))
+
+        competencias = list(
+            Manutencao.objects.filter(plano_preventivo=plano)
+            .order_by("competencia_preventiva")
+            .values_list("competencia_preventiva", flat=True)
+        )
+        self.assertEqual(
+            competencias,
+            [date(2026, 8, 15), date(2026, 9, 15), date(2026, 10, 15)],
+        )
+        self.assertEqual(resumo.ocorrencias_geradas, 3)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    def test_rodar_duas_vezes_nao_duplica(self):
+        plano = _plano(self.condominio, self.gestao)
+        self._gerar(date(2026, 11, 20))
+        plano.refresh_from_db()
+        data_apos_primeira = plano.proxima_data_prevista
+
+        segundo = self._gerar(date(2026, 11, 20))
+
+        self.assertEqual(segundo.ocorrencias_geradas, 0)
+        self.assertEqual(Manutencao.objects.count(), 1)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, data_apos_primeira)
+
+    def test_competencia_ja_existente_nao_duplica_nem_trava(self):
+        plano = _plano(self.condominio, self.gestao)
+        self._gerar(date(2026, 11, 20))
+        # A competência de novembro já gerou. Se a data do plano voltar a
+        # apontar para ela, o gerador reconhece a ocorrência existente, não cria
+        # uma segunda e adianta o plano para a próxima competência — em vez de
+        # girar na mesma data ou ficar preso nela.
+        PlanoPreventivo.objects.filter(pk=plano.pk).update(
+            proxima_data_prevista=date(2026, 11, 15)
+        )
+
+        resumo = self._gerar(date(2026, 11, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 0)
+        self.assertEqual(resumo.competencias_reconciliadas, 1)
+        self.assertEqual(Manutencao.objects.count(), 1)
+        plano.refresh_from_db()
+        # O plano saiu da competência materializada e seguiu para a seguinte.
+        self.assertEqual(plano.proxima_data_prevista, date(2027, 2, 15))
+
+    def test_escopo_por_condominio_nao_alcanca_o_outro(self):
+        _plano(self.condominio, self.gestao)
+        plano_do_outro = _plano(self.outro, self.sindico_do_outro)
+
+        resumo = self._gerar(date(2026, 11, 20), condominio=self.condominio)
+
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+        self.assertEqual(
+            Manutencao.objects.filter(condominio=self.condominio).count(), 1
+        )
+        self.assertEqual(Manutencao.objects.filter(condominio=self.outro).count(), 0)
+        plano_do_outro.refresh_from_db()
+        self.assertEqual(plano_do_outro.proxima_data_prevista, date(2026, 11, 15))
+
+    def test_rodada_global_alcanca_todos_os_condominios(self):
+        _plano(self.condominio, self.gestao)
+        _plano(self.outro, self.sindico_do_outro)
+        resumo = self._gerar(date(2026, 11, 20))
+        self.assertEqual(resumo.ocorrencias_geradas, 2)
+
+    @override_settings(MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO=3)
+    def test_limite_defensivo_interrompe_e_reporta(self):
+        plano = _plano(
+            self.condominio,
+            self.gestao,
+            frequencia_unidade=FrequenciaUnidade.MESES,
+            frequencia_intervalo=1,
+            proxima_data_prevista=date(2026, 1, 15),
+        )
+        resumo = self._gerar(date(2026, 12, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 3)
+        self.assertEqual(resumo.planos_limitados, [str(plano.pk)])
+        plano.refresh_from_db()
+        # Parou no limite, sem adiantar a data por conta própria: ainda deve as
+        # competências de maio em diante, e a próxima rodada continua de lá.
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 4, 15))
+
+    def test_falha_em_um_plano_nao_impede_os_demais(self):
+        from apps.manutencoes import services
+
+        bom = _plano(self.condominio, self.gestao, titulo="Bomba boa")
+        ruim = _plano(self.condominio, self.gestao, titulo="Plano com defeito")
+
+        original = services.gerar_ocorrencia_preventiva
+
+        def _explode(*, plano, usuario):
+            if plano.pk == ruim.pk:
+                raise RuntimeError("falha proposital")
+            return original(plano=plano, usuario=usuario)
+
+        services.gerar_ocorrencia_preventiva = _explode
+        try:
+            resumo = services.gerar_preventivas_pendentes(
+                usuario=self.gestao, data_referencia=date(2026, 11, 20)
+            )
+        finally:
+            services.gerar_ocorrencia_preventiva = original
+
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+        self.assertEqual(len(resumo.falhas), 1)
+        self.assertEqual(resumo.falhas[0][0], str(ruim.pk))
+        self.assertEqual(Manutencao.objects.count(), 1)
+        self.assertEqual(Manutencao.objects.get().plano_preventivo_id, bom.pk)
+
+
+class ComandoGerarPreventivasTests(TestCase):
+    """O comando é só a casca: lê parâmetros, chama o serviço e relata."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, Papel.SINDICA)
+
+    def test_comando_gera_e_relata_sem_traceback(self):
+        _plano(self.condominio, self.gestao)
+        saida = StringIO()
+
+        call_command(
+            "gerar_preventivas",
+            "--usuario",
+            "gestao@exemplo.test",
+            "--data",
+            "2026-11-20",
+            stdout=saida,
+        )
+
+        texto = saida.getvalue()
+        self.assertIn("Ocorrências geradas: 1", texto)
+        self.assertNotIn("Traceback", texto)
+        self.assertEqual(Manutencao.objects.count(), 1)
+
+    def test_data_invalida_e_recusada(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "gerar_preventivas",
+                "--usuario",
+                "gestao@exemplo.test",
+                "--data",
+                "ontem",
+                stdout=StringIO(),
+            )
+
+    def test_usuario_inexistente_e_recusado(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "gerar_preventivas",
+                "--usuario",
+                "ninguem@exemplo.test",
+                "--data",
+                "2026-11-20",
+                stdout=StringIO(),
+            )
+
+    def test_condominio_limita_o_escopo(self):
+        outro = criar_condominio("Beta")
+        sindico = criar_pessoa("outro@exemplo.test", "Síndico do Beta")
+        criar_vinculo(sindico, outro, Papel.SINDICA)
+        _plano(self.condominio, self.gestao)
+        _plano(outro, sindico)
+
+        call_command(
+            "gerar_preventivas",
+            "--usuario",
+            "gestao@exemplo.test",
+            "--data",
+            "2026-11-20",
+            "--condominio",
+            str(self.condominio.pk),
+            stdout=StringIO(),
+        )
+
+        self.assertEqual(
+            Manutencao.objects.filter(condominio=self.condominio).count(), 1
+        )
+        self.assertEqual(Manutencao.objects.filter(condominio=outro).count(), 0)
+
+
+class ReconciliacaoTests(TestCase):
+    """O plano que aponta para uma competência já materializada destrava sozinho.
+
+    Uma ocorrência pode já existir para a competência que o plano ainda aponta —
+    criada antes, por outra rodada, ou por qualquer caminho. Se o gerador apenas
+    devolvesse a ocorrência existente sem mexer no ponteiro, o plano ficaria
+    preso ali para sempre e todas as competências seguintes se perderiam. Aqui se
+    confere que a competência já materializada é reconhecida, que o ponteiro anda
+    exatamente uma competência por vez e que nada é duplicado nem pulado.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, Papel.SINDICA)
+
+    def _plano_mensal(self, **campos):
+        base = {
+            "frequencia_unidade": FrequenciaUnidade.MESES,
+            "frequencia_intervalo": 1,
+        }
+        base.update(campos)
+        return _plano(self.condominio, self.gestao, **base)
+
+    def _materializar(self, plano, *competencias):
+        """Registra ocorrências já existentes, sem mexer no ponteiro do plano."""
+        for competencia in competencias:
+            Manutencao.objects.create(
+                condominio=plano.condominio,
+                plano_preventivo=plano,
+                competencia_preventiva=competencia,
+                tipo=TipoManutencao.PREVENTIVA,
+                titulo=plano.titulo,
+                data_prevista=competencia,
+                criado_por=self.gestao,
+            )
+
+    def _gerar(self, referencia, **campos):
+        return gerar_preventivas_pendentes(
+            usuario=self.gestao, data_referencia=referencia, **campos
+        )
+
+    def test_competencia_existente_avanca_o_plano(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15))
+
+        resumo = self._gerar(date(2026, 8, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 0)
+        self.assertEqual(resumo.competencias_reconciliadas, 1)
+        self.assertEqual(Manutencao.objects.count(), 1)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 9, 15))
+
+    def test_duas_competencias_existentes_consecutivas_sao_reconciliadas(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15), date(2026, 9, 15))
+
+        resumo = self._gerar(date(2026, 9, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 0)
+        self.assertEqual(resumo.competencias_reconciliadas, 2)
+        self.assertEqual(Manutencao.objects.count(), 2)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 10, 15))
+
+    def test_depois_das_existentes_a_competencia_faltante_e_gerada(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15), date(2026, 9, 15))
+
+        resumo = self._gerar(date(2026, 11, 3))
+
+        self.assertEqual(resumo.competencias_reconciliadas, 2)
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+        competencias = list(
+            Manutencao.objects.filter(plano_preventivo=plano)
+            .order_by("competencia_preventiva")
+            .values_list("competencia_preventiva", flat=True)
+        )
+        self.assertEqual(
+            competencias,
+            [date(2026, 8, 15), date(2026, 9, 15), date(2026, 10, 15)],
+        )
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    def test_nenhuma_competencia_pulada_nem_duplicada(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15), date(2026, 9, 15))
+
+        self._gerar(date(2026, 11, 3))
+
+        competencias = list(
+            Manutencao.objects.filter(plano_preventivo=plano)
+            .order_by("competencia_preventiva")
+            .values_list("competencia_preventiva", flat=True)
+        )
+        self.assertEqual(len(competencias), len(set(competencias)))
+        self.assertEqual(
+            competencias,
+            [date(2026, 8, 15), date(2026, 9, 15), date(2026, 10, 15)],
+        )
+
+    def test_ocorrencia_existente_nao_e_modificada(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15))
+        existente = Manutencao.objects.get(plano_preventivo=plano)
+
+        def _retrato(ocorrencia):
+            return (
+                ocorrencia.titulo,
+                ocorrencia.data_prevista,
+                ocorrencia.competencia_preventiva,
+                ocorrencia.status,
+                ocorrencia.criado_por_id,
+            )
+
+        antes = _retrato(existente)
+
+        self._gerar(date(2026, 8, 20))
+
+        existente.refresh_from_db()
+        self.assertEqual(_retrato(existente), antes)
+
+    def test_reconciliacao_nao_escreve_historico(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15))
+        self.assertEqual(HistoricoManutencao.objects.count(), 0)
+
+        self._gerar(date(2026, 8, 20))
+
+        # Reconhecer a competência só move o ponteiro do plano: nada aconteceu a
+        # uma ocorrência e ninguém agiu, então não há evento a registrar.
+        self.assertEqual(HistoricoManutencao.objects.count(), 0)
+
+    def test_nao_avanca_sem_ocorrencia_correspondente(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+
+        seguinte = reconciliar_competencia_preventiva(plano=plano)
+
+        self.assertIsNone(seguinte)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 8, 15))
+
+    def test_plano_nao_fica_preso_na_competencia_materializada(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 10, 15))
+        self._materializar(plano, date(2026, 10, 15))
+
+        resumo = self._gerar(date(2026, 11, 3))
+
+        self.assertEqual(resumo.competencias_reconciliadas, 1)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    def test_rodar_de_novo_mantem_o_resultado(self):
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15), date(2026, 9, 15))
+
+        self._gerar(date(2026, 11, 3))
+        plano.refresh_from_db()
+        data_apos_primeira = plano.proxima_data_prevista
+
+        segundo = self._gerar(date(2026, 11, 3))
+
+        self.assertEqual(segundo.ocorrencias_geradas, 0)
+        self.assertEqual(segundo.competencias_reconciliadas, 0)
+        self.assertEqual(Manutencao.objects.count(), 3)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, data_apos_primeira)
+
+    def test_reconciliacao_nao_avanca_a_mesma_competencia_duas_vezes(self):
+        """Duas chamadas que viram a mesma competência antiga avançam só uma vez.
+
+        É o que a trava por plano garante: quem chega depois relê a data vigente
+        no banco e não repete o passo que o primeiro já deu.
+        """
+        plano = self._plano_mensal(proxima_data_prevista=date(2026, 8, 15))
+        self._materializar(plano, date(2026, 8, 15))
+        # O objeto em memória continua apontando para 15/08, como um segundo
+        # chamador que leu a data antes de o primeiro avançar.
+        antigo = plano
+
+        primeira = reconciliar_competencia_preventiva(plano=antigo)
+        segunda = reconciliar_competencia_preventiva(plano=antigo)
+
+        self.assertEqual(primeira, date(2026, 9, 15))
+        self.assertIsNone(segunda)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 9, 15))
+
+
+class AtorAutomaticoTests(TestCase):
+    """Quem assina a geração: a pessoa declarada ou o ator técnico configurado.
+
+    A geração automática não pode ser assinada por quem não fez nada. Quando
+    ninguém é declarado, quem assina é o ator técnico do ambiente; se ele não
+    estiver configurado ou não existir, nada é gerado e o motivo é dito — nunca
+    se escolhe uma pessoa por conta própria.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, Papel.SINDICA)
+
+    def test_usuario_informado_assina_a_geracao(self):
+        _plano(self.condominio, self.gestao)
+
+        call_command(
+            "gerar_preventivas",
+            "--usuario",
+            "gestao@exemplo.test",
+            "--data",
+            "2026-11-20",
+            stdout=StringIO(),
+        )
+
+        manutencao = Manutencao.objects.get()
+        self.assertEqual(manutencao.criado_por, self.gestao)
+        self.assertEqual(manutencao.historico.get().usuario, self.gestao)
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="eithra-automacao@exemplo.test")
+    def test_sem_usuario_assina_o_ator_configurado(self):
+        robo = criar_pessoa("eithra-automacao@exemplo.test", "Eithra / Automação")
+        _plano(self.condominio, self.gestao)
+
+        call_command("gerar_preventivas", "--data", "2026-11-20", stdout=StringIO())
+
+        manutencao = Manutencao.objects.get()
+        self.assertEqual(manutencao.criado_por, robo)
+        self.assertEqual(manutencao.historico.get().usuario, robo)
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="eithra-automacao@exemplo.test")
+    def test_servico_resolve_o_ator_quando_ninguem_e_declarado(self):
+        robo = criar_pessoa("eithra-automacao@exemplo.test", "Eithra / Automação")
+        _plano(self.condominio, self.gestao)
+
+        resumo = gerar_preventivas_pendentes(data_referencia=date(2026, 11, 20))
+
+        self.assertEqual(resumo.ocorrencias_geradas, 1)
+        self.assertEqual(Manutencao.objects.get().criado_por, robo)
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="")
+    def test_sem_ator_configurado_falha_e_nao_gera(self):
+        plano = _plano(self.condominio, self.gestao)
+
+        with self.assertRaises(CommandError):
+            call_command("gerar_preventivas", "--data", "2026-11-20", stdout=StringIO())
+
+        self.assertEqual(Manutencao.objects.count(), 0)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="")
+    def test_sem_ator_nao_escolhe_pessoa_por_conta_propria(self):
+        """Mesmo havendo uma pessoa no condomínio, ninguém é escolhido por ela."""
+        _plano(self.condominio, self.gestao)
+
+        with self.assertRaises(CommandError):
+            call_command("gerar_preventivas", "--data", "2026-11-20", stdout=StringIO())
+
+        self.assertEqual(Manutencao.objects.count(), 0)
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="ninguem@exemplo.test")
+    def test_ator_configurado_mas_inexistente_falha(self):
+        plano = _plano(self.condominio, self.gestao)
+
+        with self.assertRaises(CommandError):
+            call_command("gerar_preventivas", "--data", "2026-11-20", stdout=StringIO())
+
+        self.assertEqual(Manutencao.objects.count(), 0)
+        plano.refresh_from_db()
+        self.assertEqual(plano.proxima_data_prevista, date(2026, 11, 15))
+
+    @override_settings(EITHRA_AUTOMATION_USER_EMAIL="")
+    def test_resolucao_do_ator_recusa_sem_configuracao(self):
+        with self.assertRaises(ErroDeAutomacao):
+            resolver_ator_automatico()
