@@ -23,7 +23,6 @@ Já a confirmação é uma transação só, e é o único ponto do sistema onde 
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -59,12 +58,15 @@ from apps.balancos.models import BalancoMensal, DocumentoBalanco, ImportacaoBala
 from apps.balancos.normalizadores import decimal_para_texto, texto_para_decimal
 from apps.balancos.storage import ErroDeStorage, obter_provider
 from apps.balancos.validacao_financeira import TOLERANCIA
-
-# Assinatura de um PDF de verdade. Extensão e tipo informado pelo navegador não
-# provam nada: o que vale é o começo do arquivo.
-ASSINATURA_PDF = b"%PDF-"
-
-MIME_PDF = "application/pdf"
+# O que é neutro mora na camada compartilhada. Estes nomes continuam acessíveis
+# por aqui para que os chamadores de balanços não precisem mudar de caminho.
+from apps.core.arquivos import (
+    ASSINATURA_PDF,
+    MIME_PDF,
+    calcular_hash,
+    formatar_tamanho,
+    ler_conteudo,
+)
 
 # Nome do objeto dentro do bucket. O nome que o usuário deu ao arquivo fica
 # apenas no banco: o caminho do objeto não carrega dado pessoal nem depende do
@@ -91,15 +93,6 @@ class ResultadoDoRecebimento:
 def limite_de_upload() -> int:
     """Tamanho máximo aceito para um arquivo, em bytes."""
     return int(getattr(settings, "BALANCOS_MAX_UPLOAD_BYTES", 0) or 0)
-
-
-def formatar_tamanho(bytes_: int) -> str:
-    """Escreve um tamanho em linguagem comum, sem expor bytes crus."""
-    if bytes_ >= 1024 * 1024:
-        return f"{bytes_ / (1024 * 1024):.0f} MB"
-    if bytes_ >= 1024:
-        return f"{bytes_ / 1024:.0f} KB"
-    return f"{bytes_} bytes"
 
 
 def sanitizar_nome(nome: str) -> str:
@@ -163,21 +156,6 @@ def validar_arquivo(arquivo) -> None:
         raise ErroDeValidacaoDeArquivo(
             "O arquivo não parece um PDF de verdade. Confira o documento e envie de novo."
         )
-
-
-def ler_conteudo(arquivo) -> bytes:
-    """Traz o arquivo inteiro para calcular o hash e enviar ao storage.
-
-    O balanço é um documento único, e o limite configurado mantém a leitura
-    dentro de um tamanho previsível. Não há fluxo contínuo a preservar aqui.
-    """
-    arquivo.seek(0)
-    return arquivo.read()
-
-
-def calcular_hash(conteudo: bytes) -> str:
-    """Hash SHA-256 do arquivo, em hexadecimal minúsculo."""
-    return hashlib.sha256(conteudo).hexdigest()
 
 
 def montar_chave(*, condominio, importacao) -> str:

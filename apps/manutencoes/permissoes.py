@@ -281,6 +281,31 @@ def pode_conferir(usuario, manutencao) -> bool:
     return condominios_para_criar(usuario).filter(pk=condominio.pk).exists()
 
 
+def pode_anexar_evidencia(usuario, manutencao) -> bool:
+    """Diz se a pessoa pode anexar uma prova a esta manutenção.
+
+    Anexar é o mesmo ato de quem opera a manutenção: quem responde pelo
+    condomínio, a supervisão e o responsável sob cuja mão o serviço acontece.
+    Não é privilégio novo, e não se amplia sozinho — o operacional só anexa ao
+    que é dele, e o fornecedor externo não tem acesso nesta fase. Sem certeza, a
+    resposta é negar.
+    """
+    if not pode_ver_manutencao(usuario, manutencao):
+        return False
+
+    condominio = manutencao.condominio
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+
+    if condominios_para_criar(usuario).filter(pk=condominio.pk).exists():
+        return True
+
+    papeis = _papeis_do_usuario(usuario, condominio)
+    return Papel.OPERACIONAL in papeis and manutencao.responsavel_id == getattr(
+        usuario, "pk", None
+    )
+
+
 def usuarios_elegiveis_como_responsavel(condominio) -> QuerySet:
     """Pessoas que podem responder por uma manutenção deste condomínio.
 

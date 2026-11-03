@@ -113,6 +113,70 @@ ACOES_DE_STATUS = (
 ACAO_DE_REABERTURA = (StatusManutencao.ABERTA, "Reabrir")
 
 
+class TipoEvidenciaManutencao(models.TextChoices):
+    """O que a evidência é, do ponto de vista de quem vai olhar.
+
+    Foto, vídeo e documento são a mesma coisa — prova do que se sabe sobre o
+    serviço — ditas em três linguagens. O tipo existe porque a tela mostra cada
+    uma do seu jeito: miniatura para a foto, reprodução sob ação para o vídeo,
+    abertura para o documento. Nada aqui é acervo genérico: só entra o que
+    sustenta a execução ou a conferência.
+    """
+
+    FOTO = "foto", "Foto"
+    VIDEO = "video", "Vídeo"
+    DOCUMENTO = "documento", "Documento"
+
+
+# O que a evidência pode ser, no banco e na borda. A mesma lista serve à
+# validação do upload e à restrição do modelo, para que aplicação e banco não
+# divirjam sobre o que é uma evidência aceita. Não há suporte genérico a
+# qualquer arquivo: são os formatos que a operação realmente produz.
+MIMES_DE_EVIDENCIA_MANUTENCAO = (
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "application/pdf",
+)
+
+
+class OrigemCaptura(models.TextChoices):
+    """De onde veio a data e a hora de captura de uma evidência.
+
+    A origem é declarada para não se afirmar mais confiança do que existe. A
+    data que a própria imagem traz é um metadado informado por ela — não uma
+    prova absoluta do momento em que o fato aconteceu. Quando não há metadado
+    confiável, a origem é ``NAO_IDENTIFICADA`` e a data de captura fica vazia:
+    o Eithra não inventa horário.
+
+    ``DISPOSITIVO`` e ``SISTEMA`` existem para quando houver uma fonte que os
+    sustente — o relógio do próprio aparelho, ou uma captura feita pelo sistema.
+    Nesta fase a escrita só produz ``EXIF`` ou ``NAO_IDENTIFICADA``.
+    """
+
+    EXIF = "exif", "Informada pela imagem"
+    DISPOSITIVO = "dispositivo", "Informada pelo dispositivo"
+    SISTEMA = "sistema", "Registrada pelo sistema"
+    NAO_IDENTIFICADA = "nao_identificada", "Não identificada"
+
+
+class ContextoEvidencia(models.TextChoices):
+    """A que momento operacional a evidência serve.
+
+    A evidência pertence sempre à manutenção; o contexto é só uma leitura do
+    seu destino — o que sustenta a execução, o que apoia a conferência, ou o
+    que é registro geral. Não é um ciclo nem uma sessão: é uma palavra curta,
+    para que a tela futura mostre a prova no lugar certo sem criar estrutura
+    paralela.
+    """
+
+    EXECUCAO = "execucao", "Execução"
+    CONFERENCIA = "conferencia", "Conferência"
+    GERAL = "geral", "Geral"
+
+
 class TipoEventoManutencao(models.TextChoices):
     """O que aconteceu com a manutenção, como ela é lembrada depois.
 
@@ -139,3 +203,4 @@ class TipoEventoManutencao(models.TextChoices):
     CONFERENCIA_APROVADA = "conferencia_aprovada", "Conferência aprovada"
     CONFERENCIA_REPROVADA = "conferencia_reprovada", "Conferência reprovada"
     CONFERENCIA_NAO_AVALIADA = "conferencia_nao_avaliada", "Conferência não avaliada"
+    EVIDENCIA_ADICIONADA = "evidencia_adicionada", "Evidência anexada"

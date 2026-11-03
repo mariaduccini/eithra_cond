@@ -15,7 +15,7 @@ onde ela vive.
 """
 from __future__ import annotations
 
-from apps.balancos.services import formatar_tamanho, ler_conteudo
+from apps.core.arquivos import formatar_tamanho, ler_conteudo
 
 # Assinatura real de cada imagem aceita. O que vale é o começo do arquivo, e
 # não a extensão nem o tipo que o navegador declarou.

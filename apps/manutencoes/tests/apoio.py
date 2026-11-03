@@ -1,8 +1,9 @@
 """Apoio aos testes de manutenções operacionais.
 
 Reúne só o que os testes repetem: condomínios, pessoas, vínculos, os cadastros
-que uma manutenção pode citar e uma demanda de origem. Nenhum dado real entra
-aqui — nomes, e-mails e títulos são de teste.
+que uma manutenção pode citar, uma demanda de origem e os arquivos de prova que
+o domínio aceita. Nenhum dado real entra aqui — nomes, e-mails, títulos e mídias
+são de teste.
 """
 from django.contrib.auth import get_user_model
 
@@ -10,6 +11,24 @@ from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.condominios.constants import Papel
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 from apps.demandas.models import Demanda
+
+# A foto e o PDF são conferidos pelo começo real do arquivo, e a régua é neutra:
+# o material mora na camada compartilhada, e não em outro domínio. O vídeo usa
+# os mesmos contêineres de teste das demandas. Repetir esses arquivos aqui
+# criaria uma segunda versão do mesmo material de teste.
+from apps.core.tests.apoio import (  # noqa: F401  (reexportado aos testes)
+    CONTEUDO_PDF,
+    StorageDeMentira,
+    jpg,
+    pdf,
+    png,
+    webp,
+)
+from apps.demandas.tests.apoio import (  # noqa: F401  (reexportado aos testes)
+    arquivo_qualquer,
+    mp4,
+    webm,
+)
 
 
 def criar_condominio(nome="Condomínio de Teste"):

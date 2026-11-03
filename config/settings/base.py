@@ -294,6 +294,37 @@ DEMANDAS_MAX_EVIDENCIAS_POR_ENVIO = env.int(
 # para abrir a foto ou o vídeo, não para deixar um endereço circulando.
 DEMANDAS_URL_ACESSO_SEGUNDOS = env.int("DEMANDAS_URL_ACESSO_SEGUNDOS", default=60)
 
+# A evidência de uma manutenção — a foto, o vídeo ou o documento que sustenta a
+# execução e apoia a conferência — fica em um bucket privado próprio, pelo mesmo
+# motivo dos demais: o arquivo de um domínio não se mistura com o de outro. O
+# acesso é temporário e gerado na hora, nunca uma URL pública guardada.
+MANUTENCOES_STORAGE_BUCKET = env("MANUTENCOES_STORAGE_BUCKET", default="")
+# 10 MB por foto. A mesma régua da evidência de demanda: é uma imagem para
+# mostrar o que foi feito, não um arquivo de trabalho.
+MANUTENCOES_MAX_FOTO_BYTES = env.int(
+    "MANUTENCOES_MAX_FOTO_BYTES", default=10 * 1024 * 1024
+)
+# 25 MB por vídeo. Vídeo curto — o suficiente para mostrar o serviço em
+# movimento —, com espaço para um clipe de celular sem abrir a porta para
+# arquivos longos de câmera.
+MANUTENCOES_MAX_VIDEO_BYTES = env.int(
+    "MANUTENCOES_MAX_VIDEO_BYTES", default=25 * 1024 * 1024
+)
+# 25 MB por documento. É o relatório técnico ou a ordem de serviço que
+# acompanha a manutenção — um punhado de páginas —, e não um balanço inteiro:
+# o mesmo limite do vídeo basta e recusa cedo o arquivo trocado.
+MANUTENCOES_MAX_DOCUMENTO_BYTES = env.int(
+    "MANUTENCOES_MAX_DOCUMENTO_BYTES", default=25 * 1024 * 1024
+)
+# Quantos arquivos podem ser anexados numa mesma vez. Em excesso, o histórico
+# vira galeria e deixa de ser memória.
+MANUTENCOES_MAX_EVIDENCIAS_POR_ENVIO = env.int(
+    "MANUTENCOES_MAX_EVIDENCIAS_POR_ENVIO", default=10
+)
+# Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
+# para abrir a prova, não para deixar um endereço circulando.
+MANUTENCOES_URL_ACESSO_SEGUNDOS = env.int("MANUTENCOES_URL_ACESSO_SEGUNDOS", default=60)
+
 
 def _dias_por_prioridade(bruto: str) -> dict[str, int]:
     """A política de prazo no formato ``prioridade:dias``, separada por vírgula.

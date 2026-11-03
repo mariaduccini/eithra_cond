@@ -34,13 +34,18 @@ from django.utils import timezone
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.condominios.models import Condominio
 from apps.core.constants import Prioridade
+from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
 from apps.demandas.models import Demanda
 
 from .constants import (
+    ContextoEvidencia,
     FrequenciaUnidade,
+    MIMES_DE_EVIDENCIA_MANUTENCAO,
+    OrigemCaptura,
     ResultadoCriterio,
     StatusConferencia,
     StatusManutencao,
+    TipoEvidenciaManutencao,
     TipoEventoManutencao,
     TipoManutencao,
 )
@@ -1019,3 +1024,171 @@ class HistoricoManutencao(models.Model):
 
     def __str__(self):
         return f"{self.get_tipo_evento_display()} · {self.manutencao}"
+
+
+class EvidenciaManutencao(models.Model):
+    """Uma prova do que foi feito numa manutenção: foto, vídeo ou documento.
+
+    A evidência não é documento avulso nem acervo paralelo: ela pertence à
+    manutenção e existe para apoiar a execução e a conferência. Anexar uma
+    prova não inicia, não conclui, não aprova nem reprova nada — o arquivo
+    sustenta uma decisão, e não decide por ela.
+
+    O que fica guardado é a referência do objeto em storage privado — nunca a
+    URL. O acesso é gerado sob demanda, como em todo arquivo privado do Eithra.
+
+    Duas datas não se confundem aqui. ``enviada_em`` é quando o Eithra recebeu
+    o arquivo, escrita pelo servidor: é a referência confiável. ``capturada_em``
+    é quando o fato foi registrado na origem, e só existe quando há uma fonte
+    que o sustente — a data que a própria imagem traz, por exemplo. A origem
+    dessa data é declarada em ``origem_captura``, para não se afirmar mais
+    confiança do que existe. Sem metadado, a captura fica vazia e a origem é
+    ``NAO_IDENTIFICADA``: o Eithra não inventa horário.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    manutencao = models.ForeignKey(
+        Manutencao,
+        on_delete=models.PROTECT,
+        related_name="evidencias",
+        verbose_name="Manutenção",
+    )
+    contexto = models.CharField(
+        "Contexto",
+        max_length=20,
+        choices=ContextoEvidencia.choices,
+        default=ContextoEvidencia.GERAL,
+        help_text="A que momento operacional a prova serve: execução, "
+        "conferência ou registro geral.",
+    )
+    tipo_midia = models.CharField(
+        "Tipo de mídia",
+        max_length=10,
+        choices=TipoEvidenciaManutencao.choices,
+    )
+    nome_original = models.CharField(
+        "Nome do arquivo enviado",
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Como o arquivo chegou. O nome físico não depende dele.",
+    )
+
+    # Referência do objeto no storage privado. Nunca a URL em si.
+    storage_provider = models.CharField("Provedor", max_length=50, blank=True, default="")
+    storage_bucket = models.CharField(
+        "Local de armazenamento", max_length=150, blank=True, default=""
+    )
+    storage_key = models.CharField("Referência do objeto", max_length=500)
+    mime_type = models.CharField("Tipo do arquivo", max_length=120)
+    tamanho_bytes = models.PositiveBigIntegerField("Tamanho", default=0)
+    sha256 = models.CharField(
+        "Resumo do conteúdo",
+        max_length=64,
+        validators=[FORMATO_SHA256],
+        help_text="Reconhece o mesmo arquivo repetido na mesma manutenção.",
+    )
+
+    capturada_em = models.DateTimeField(
+        "Capturada em",
+        null=True,
+        blank=True,
+        help_text="Quando o fato foi registrado na origem, quando houver uma "
+        "fonte que o sustente. Vazio quando não há metadado confiável.",
+    )
+    origem_captura = models.CharField(
+        "Origem da captura",
+        max_length=20,
+        choices=OrigemCaptura.choices,
+        default=OrigemCaptura.NAO_IDENTIFICADA,
+        help_text="De onde veio a data de captura. Não afirma mais confiança do "
+        "que existe.",
+    )
+
+    enviada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="evidencias_manutencao_enviadas",
+        verbose_name="Quem enviou",
+        help_text="Preservado para rastreabilidade.",
+    )
+    enviada_em = models.DateTimeField(
+        "Enviada em",
+        default=timezone.now,
+        help_text="Quando o Eithra recebeu o arquivo. Escrita pelo servidor.",
+    )
+
+    class Meta:
+        verbose_name = "Evidência da manutenção"
+        verbose_name_plural = "Evidências da manutenção"
+        ordering = ["enviada_em"]
+        constraints = [
+            # O mesmo arquivo não entra duas vezes na mesma manutenção. Sem
+            # isso, um envio repetido encheria o histórico com a mesma prova.
+            models.UniqueConstraint(
+                fields=["manutencao", "sha256"],
+                name="manut_evidencia_unica_por_hash",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(tamanho_bytes__gte=0),
+                name="manut_evidencia_tamanho_nao_negativo",
+            ),
+            # Só foto, vídeo e PDF entram aqui. Qualquer outro tipo é recusado
+            # no banco, e não apenas na validação da borda.
+            models.CheckConstraint(
+                condition=models.Q(mime_type__in=MIMES_DE_EVIDENCIA_MANUTENCAO),
+                name="manut_evidencia_mime_permitido",
+            ),
+            # A data de captura anda junto com a origem: origem identificada
+            # exige data, e origem não identificada não admite data inventada.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        origem_captura=OrigemCaptura.NAO_IDENTIFICADA,
+                        capturada_em__isnull=True,
+                    )
+                    | (
+                        ~models.Q(origem_captura=OrigemCaptura.NAO_IDENTIFICADA)
+                        & models.Q(capturada_em__isnull=False)
+                    )
+                ),
+                name="manut_evidencia_captura_coerente",
+            ),
+        ]
+        indexes = [
+            # Apoio à listagem das evidências de uma manutenção, na ordem em
+            # que chegaram.
+            models.Index(
+                fields=["manutencao", "enviada_em"],
+                name="manut_evid_envio_idx",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        erros: dict[str, str] = {}
+
+        erros.update(erros_de_referencia_de_storage(self))
+
+        if self.tamanho_bytes is not None and self.tamanho_bytes < 0:
+            erros["tamanho_bytes"] = "O tamanho da evidência não pode ser negativo."
+
+        # A data de captura combina com a origem que a sustenta: não se registra
+        # um horário sem dizer de onde ele veio, nem se declara uma origem sem o
+        # horário que ela informa.
+        identificada = self.origem_captura != OrigemCaptura.NAO_IDENTIFICADA
+        if identificada and self.capturada_em is None:
+            erros["capturada_em"] = (
+                "Diga quando o fato foi capturado, ou registre a origem como "
+                "não identificada."
+            )
+        if not identificada and self.capturada_em is not None:
+            erros["origem_captura"] = (
+                "Informe de onde veio a data de captura."
+            )
+
+        if erros:
+            raise ValidationError(erros)
+
+    def __str__(self) -> str:
+        return f"Evidência {self.get_tipo_midia_display()} · {self.manutencao}"

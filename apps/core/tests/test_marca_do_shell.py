@@ -12,7 +12,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from apps.balancos.tests.apoio import StorageDeMentira, gerar_png, jpg, png
+from apps.core.tests.apoio import StorageDeMentira, gerar_png, jpg, png
 from apps.cadastros.tests.apoio import criar_condominio, criar_vinculo, entrar_como
 from apps.condominios import logo
 from apps.condominios.constants import Papel
