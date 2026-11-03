@@ -332,6 +332,13 @@ MANUTENCOES_URL_ACESSO_SEGUNDOS = env.int("MANUTENCOES_URL_ACESSO_SEGUNDOS", def
 MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO = env.int(
     "MANUTENCOES_MAX_OCORRENCIAS_RECUPERADAS_POR_PLANO", default=24
 )
+# Com quantos dias de antecedência uma preventiva passa a merecer atenção. É
+# leitura, não regra de negócio: define quando o item entra na lista de atenção,
+# sem tocar na data prevista. O padrão é conservador de propósito — a lista não
+# deve antecipar o calendário inteiro.
+MANUTENCOES_ALERTA_ANTECEDENCIA_DIAS = env.int(
+    "MANUTENCOES_ALERTA_ANTECEDENCIA_DIAS", default=3
+)
 
 
 def _dias_por_prioridade(bruto: str) -> dict[str, int]:
