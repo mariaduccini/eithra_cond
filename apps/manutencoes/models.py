@@ -29,6 +29,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
@@ -71,6 +72,163 @@ def _texto(valor: str | None) -> str:
 def _texto_longo(valor: str | None) -> str:
     """Preserva os parágrafos de um texto livre, sem espaços nas pontas."""
     return (valor or "").strip()
+
+
+class ModeloConferenciaPreventivaQuerySet(models.QuerySet):
+    """Leituras reutilizáveis do modelo de conferência."""
+
+    def ativos(self):
+        """Modelos que ainda podem ser aplicados a um plano."""
+        return self.filter(ativo=True)
+
+    def do_condominio(self, condominio):
+        """Modelos deste condomínio. Sem condomínio resolvido, conjunto vazio."""
+        if condominio is None or not getattr(condominio, "pk", None):
+            return self.none()
+        return self.filter(condominio_id=condominio.pk)
+
+
+class ModeloConferenciaPreventiva(models.Model):
+    """O roteiro reutilizável de critérios de conferência de um tipo de serviço.
+
+    Um modelo de conferência é a lista de itens que costuma valer para um tipo
+    de serviço — a limpeza da piscina, a revisão do elevador, o teste do
+    gerador. Ele não é o plano nem a ocorrência: é a referência de onde o plano
+    copia os critérios. A partir da cópia, quem manda é o plano, e o modelo pode
+    mudar sem alcançar nada do que já nasceu dele.
+
+    O modelo pertence a um condomínio — não há catálogo global nesta fase, para
+    que um condomínio não alcance o que outro usa. E nada aqui carrega
+    conhecimento técnico: os itens são dados cadastráveis, e nenhuma regra de
+    conferência mora no código.
+
+    Desativar o modelo não toca em nada que já tenha sido copiado dele: a
+    retirada vale para as próximas aplicações.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.PROTECT,
+        related_name="modelos_conferencia",
+        verbose_name="Condomínio",
+    )
+    nome = models.CharField(
+        "Nome",
+        max_length=200,
+        help_text="O serviço a que o roteiro serve. Ex.: Limpeza de piscina.",
+    )
+    descricao = models.TextField(
+        "Descrição",
+        blank=True,
+        help_text="O que este roteiro cobre, quando o nome não basta.",
+    )
+    ativo = models.BooleanField(
+        "Ativo",
+        default=True,
+        help_text="Desativar retira o modelo das próximas aplicações sem apagar "
+        "nada do que já foi copiado dele.",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="modelos_conferencia_criados",
+        verbose_name="Criado por",
+        help_text="Quem registrou o modelo. Preservado para rastreabilidade.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+
+    objects = ModeloConferenciaPreventivaQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Modelo de conferência preventiva"
+        verbose_name_plural = "Modelos de conferência preventiva"
+        ordering = ["nome"]
+        constraints = [
+            # "Limpeza de piscina" e "limpeza de piscina" são o mesmo roteiro.
+            # Reativar um modelo é mudar o cadastro dele, e não criar um segundo.
+            models.UniqueConstraint(
+                Lower("nome"),
+                "condominio",
+                name="modelo_conf_nome_unico_por_condominio",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["condominio", "ativo"], name="modelo_conf_cond_ativo_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.nome
+
+    def save(self, *args, **kwargs):
+        """Guarda o modelo já normalizado, venha ele do formulário ou não."""
+        self.nome = _texto(self.nome)
+        self.descricao = _texto_longo(self.descricao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um modelo sem nome: um roteiro sem título não se escolhe."""
+        if not _texto(self.nome):
+            raise ValidationError({"nome": "Dê um nome ao modelo de conferência."})
+
+
+class CriterioModeloConferenciaPreventiva(models.Model):
+    """Um item observável do roteiro reutilizável.
+
+    Tem a mesma semântica do critério do plano — descrição, ordem e
+    obrigatoriedade —, e nada além disso nesta fase: sem tipo de resposta, sem
+    peso e sem pontuação. Quando o modelo é aplicado a um plano, cada item vira
+    um critério do plano, por cópia de valor, e não por referência.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    modelo = models.ForeignKey(
+        ModeloConferenciaPreventiva,
+        on_delete=models.CASCADE,
+        related_name="criterios",
+        verbose_name="Modelo de conferência",
+    )
+    descricao = models.CharField(
+        "Critério",
+        max_length=200,
+        help_text="O que precisa ser observado, em linguagem direta.",
+    )
+    ordem = models.PositiveIntegerField(
+        "Ordem",
+        default=0,
+        help_text="A posição do item no roteiro.",
+    )
+    obrigatorio = models.BooleanField(
+        "Obrigatório",
+        default=True,
+        help_text="Quando ligado, o item é essencial para aprovar a conferência.",
+    )
+
+    class Meta:
+        verbose_name = "Critério do modelo de conferência"
+        verbose_name_plural = "Critérios do modelo de conferência"
+        ordering = ["ordem", "descricao"]
+        indexes = [
+            models.Index(fields=["modelo", "ordem"], name="crit_modelo_ordem_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.descricao
+
+    def save(self, *args, **kwargs):
+        """Guarda o critério já normalizado, venha ele do formulário ou não."""
+        self.descricao = _texto(self.descricao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um critério sem conteúdo: conferir o vazio não diz nada."""
+        if not _texto(self.descricao):
+            raise ValidationError(
+                {"descricao": "Escreva o que precisa ser conferido."}
+            )
 
 
 class PlanoPreventivoQuerySet(models.QuerySet):

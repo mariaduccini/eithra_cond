@@ -26,6 +26,13 @@ from .constants import StatusConferencia, StatusManutencao
 # Administradora e síndica respondem pelo condomínio.
 PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
+# Administrar a biblioteca de modelos reutilizáveis de conferência é ato da
+# Administradora — quem responde pela configuração estrutural do condomínio —, e
+# não da operação do dia a dia. A síndica conduz a operação, mas não administra
+# esta biblioteca nem a aplica ao plano. É capacidade própria, e não a matriz de
+# quem gerencia; a administração do sistema não entra por ser ``is_staff``.
+PAPEIS_QUE_ADMINISTRAM_MODELOS = frozenset({Papel.ADMINISTRADORA})
+
 # A supervisão cria e opera a manutenção, sem cancelar nem administrar cadastros.
 PAPEIS_QUE_CRIAM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}
 
@@ -109,6 +116,28 @@ def pode_criar_manutencao(usuario, condominio) -> bool:
         return False
 
     return condominios_para_criar(usuario).filter(pk=condominio.pk).exists()
+
+
+def condominios_para_administrar_modelos(usuario) -> QuerySet[Condominio]:
+    """Condomínios cujos modelos de conferência a pessoa pode administrar agora."""
+    return _com_papel(usuario, PAPEIS_QUE_ADMINISTRAM_MODELOS)
+
+
+def pode_administrar_modelos_de_conferencia(usuario, condominio) -> bool:
+    """Diz se a pessoa pode criar, editar e desativar modelos deste condomínio.
+
+    Modelo reutilizável é configuração estrutural do condomínio, e não operação
+    do dia: cabe à Administradora, e a mais ninguém. Sem certeza, a resposta é
+    negar.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+
+    return (
+        condominios_para_administrar_modelos(usuario)
+        .filter(pk=condominio.pk)
+        .exists()
+    )
 
 
 def pode_ver_manutencao(usuario, manutencao) -> bool:

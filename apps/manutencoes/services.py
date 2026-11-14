@@ -44,11 +44,15 @@ from .constants import (
 )
 from .models import (
     CriterioConferenciaOcorrencia,
+    CriterioConferenciaPreventiva,
+    CriterioModeloConferenciaPreventiva,
     HistoricoManutencao,
     Manutencao,
+    ModeloConferenciaPreventiva,
     PlanoPreventivo,
 )
 from .periodicidade import proxima_data
+from .permissoes import pode_administrar_modelos_de_conferencia
 
 # A descrição do evento cabe no histórico como uma frase curta.
 LIMITE_DO_EVENTO = 255
@@ -1382,4 +1386,224 @@ def _motivo_da_falha(erro: Exception) -> str:
     if isinstance(erro, ErroDeManutencao):
         return str(erro)
     return type(erro).__name__
+
+
+# ---------------------------------------------------------------------------
+# Modelos reutilizáveis de conferência
+# ---------------------------------------------------------------------------
+#
+# O modelo é o roteiro reutilizável de um tipo de serviço — a limpeza da
+# piscina, a revisão do elevador. Ele não é o plano nem a ocorrência: aplicar o
+# modelo é COPIAR os critérios para o plano, por valor, e nunca deixar os dois
+# ligados. Depois da cópia, quem manda é o plano; editar ou desativar o modelo
+# vale para as próximas aplicações e não alcança nada do que já nasceu dele.
+#
+# Nada aqui carrega conhecimento técnico: os critérios são dados cadastráveis, e
+# a lista é a que a gestão do condomínio registrou.
+
+
+def _validar_modelo(modelo) -> None:
+    """Confere a coerência do modelo e traduz a recusa para a gestão."""
+    try:
+        modelo.full_clean()
+    except ValidationError as erro:
+        raise ErroDeManutencao(_primeiro_recado(erro)) from erro
+
+
+def _exigir_gestao_do_modelo(usuario, condominio) -> None:
+    """Recusa quem não responde pelo condomínio onde o modelo vive."""
+    if not pode_administrar_modelos_de_conferencia(usuario, condominio):
+        raise ErroDeManutencao(
+            "Só quem responde pelo condomínio administra os modelos de "
+            "conferência."
+        )
+
+
+def _criterios_do_modelo(modelo) -> list[dict]:
+    """Lê os critérios do modelo como dados prontos para copiar, na ordem dele.
+
+    Lê tudo antes de qualquer cópia: um item em branco no modelo não pode virar
+    critério do plano, e nenhuma cópia pela metade deve acontecer.
+    """
+    itens = []
+    for criterio in modelo.criterios.all():
+        descricao = _texto(criterio.descricao)
+        if not descricao:
+            raise ErroDeManutencao(
+                "Há um critério em branco no modelo de conferência."
+            )
+        itens.append(
+            {
+                "descricao": descricao,
+                "ordem": criterio.ordem,
+                "obrigatorio": criterio.obrigatorio,
+            }
+        )
+    return itens
+
+
+def _gravar_criterios_do_modelo(modelo, criterios) -> None:
+    """Substitui os critérios do modelo pelos informados, na ordem dada.
+
+    Cada item precisa de uma descrição; um critério em branco não se confere. A
+    validação vem antes de apagar: uma lista inválida não deixa o modelo sem
+    itens.
+    """
+    itens = []
+    for item in criterios:
+        descricao = _texto(item.get("descricao"))
+        if not descricao:
+            raise ErroDeManutencao("Escreva o que precisa ser conferido.")
+        itens.append(
+            CriterioModeloConferenciaPreventiva(
+                modelo=modelo,
+                descricao=descricao,
+                ordem=item.get("ordem") or 0,
+                obrigatorio=bool(item.get("obrigatorio", True)),
+            )
+        )
+
+    modelo.criterios.all().delete()
+    CriterioModeloConferenciaPreventiva.objects.bulk_create(itens)
+
+
+@transaction.atomic
+def criar_modelo_conferencia(
+    *,
+    condominio,
+    criado_por,
+    nome: str,
+    descricao: str = "",
+    criterios=(),
+) -> ModeloConferenciaPreventiva:
+    """Registra um roteiro reutilizável de conferência.
+
+    O modelo pertence a um condomínio, e quem o registra precisa responder por
+    ele. Os critérios são dados cadastráveis, guardados na ordem informada —
+    nenhuma regra técnica mora aqui.
+    """
+    _exigir_gestao_do_modelo(criado_por, condominio)
+
+    modelo = ModeloConferenciaPreventiva(
+        condominio=condominio,
+        nome=_texto(nome),
+        descricao=_texto_longo(descricao),
+        criado_por=criado_por,
+    )
+    _validar_modelo(modelo)
+    modelo.save()
+    _gravar_criterios_do_modelo(modelo, criterios)
+    return modelo
+
+
+@transaction.atomic
+def editar_modelo_conferencia(
+    *,
+    modelo: ModeloConferenciaPreventiva,
+    usuario,
+    nome: str,
+    descricao: str = "",
+    criterios=None,
+) -> ModeloConferenciaPreventiva:
+    """Atualiza o roteiro reutilizável, sem alcançar o que já foi copiado.
+
+    Editar o modelo vale para as próximas aplicações, e só. Planos que já
+    copiaram seus critérios continuam com os próprios, e ocorrências já geradas
+    seguem com o retrato do dia em que nasceram — o passado não se reescreve.
+    ``criterios`` ausente mantém os atuais; informado, substitui a lista.
+    """
+    _exigir_gestao_do_modelo(usuario, modelo.condominio)
+
+    modelo.nome = _texto(nome)
+    modelo.descricao = _texto_longo(descricao)
+    _validar_modelo(modelo)
+    modelo.save()
+
+    if criterios is not None:
+        _gravar_criterios_do_modelo(modelo, criterios)
+
+    return modelo
+
+
+@transaction.atomic
+def definir_ativo_do_modelo(
+    *, modelo: ModeloConferenciaPreventiva, usuario, ativo: bool
+) -> ModeloConferenciaPreventiva:
+    """Retira o modelo das próximas aplicações, ou o devolve, sem apagar nada.
+
+    Desativar não toca em plano nem em ocorrência: vale apenas para o que ainda
+    não copiou o modelo. Não é exclusão — nada do que já nasceu dele é apagado.
+    """
+    _exigir_gestao_do_modelo(usuario, modelo.condominio)
+
+    ativo = bool(ativo)
+    if modelo.ativo == ativo:
+        return modelo
+
+    modelo.ativo = ativo
+    modelo.save(update_fields=["ativo", "atualizado_em"])
+    return modelo
+
+
+@transaction.atomic
+def aplicar_modelo_de_conferencia(
+    *,
+    plano: PlanoPreventivo,
+    modelo: ModeloConferenciaPreventiva,
+    usuario,
+    substituir: bool = False,
+) -> PlanoPreventivo:
+    """Copia os critérios de um modelo para o plano, por valor.
+
+    O modelo é a referência; o plano passa a ter os próprios critérios, e a
+    partir daí nada liga os dois. Editar o modelo depois não alcança o plano, e
+    desativá-lo não apaga nada. Nenhuma ocorrência já gerada é tocada — cada uma
+    guardou o retrato do dia em que nasceu, e por isso o passado não se reescreve
+    nem quando a lista do plano é trocada.
+
+    Quando o plano já tem critérios, a substituição precisa ser pedida
+    (``substituir=True``): trocar a lista em silêncio apagaria o que a gestão
+    combinou sem que ninguém dissesse que era isso mesmo.
+
+    Tudo acontece em uma transação: ou a lista do plano é trocada por inteiro,
+    ou nada muda. Uma falha no meio não deixa metade dos critérios copiados.
+    """
+    plano = PlanoPreventivo.objects.select_for_update().get(pk=plano.pk)
+    _exigir_gestao_do_modelo(usuario, plano.condominio)
+
+    modelo = ModeloConferenciaPreventiva.objects.get(pk=modelo.pk)
+
+    if not modelo.ativo:
+        raise ErroDeManutencao(
+            "Este modelo de conferência está desativado e não pode ser aplicado."
+        )
+
+    if modelo.condominio_id != plano.condominio_id:
+        raise ErroDeManutencao("O modelo de conferência é de outro condomínio.")
+
+    criterios = _criterios_do_modelo(modelo)
+    if not criterios:
+        raise ErroDeManutencao(
+            "O modelo de conferência não tem critérios para aplicar."
+        )
+
+    if plano.criterios_conferencia.exists() and not substituir:
+        raise ErroDeManutencao(
+            "O plano já tem critérios de conferência. Peça a substituição para "
+            "aplicar o modelo."
+        )
+
+    plano.criterios_conferencia.all().delete()
+    CriterioConferenciaPreventiva.objects.bulk_create(
+        [
+            CriterioConferenciaPreventiva(
+                plano=plano,
+                descricao=item["descricao"],
+                ordem=item["ordem"],
+                obrigatorio=item["obrigatorio"],
+            )
+            for item in criterios
+        ]
+    )
+    return plano
 
