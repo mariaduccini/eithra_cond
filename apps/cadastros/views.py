@@ -68,6 +68,8 @@ from .models import (
 )
 from .permissoes import (
     condominios_para_ver,
+    pode_administrar_acessos,
+    pode_configurar_condominio,
     pode_criar_condominios,
     pode_gerenciar_cadastros,
 )
@@ -129,11 +131,11 @@ def condominio(request):
     """
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
-    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+    pode_configurar = pode_configurar_condominio(request.user, atual)
 
     if request.method == "POST":
-        if not pode_gerenciar:
-            raise PermissionDenied("Esta pessoa não mantém o cadastro deste condomínio.")
+        if not pode_configurar:
+            raise PermissionDenied("Esta pessoa não configura este condomínio.")
 
         formulario = CondominioForm(request.POST, request.FILES, instance=atual)
         if not formulario.is_valid():
@@ -200,8 +202,8 @@ def editar_condominio(request, pk):
     """Corrige o cadastro de um condomínio já visível para esta pessoa."""
     condominios = _condominios_para_ver(request)
     condominio = _obter_ou_404(condominios, pk)
-    if not pode_gerenciar_cadastros(request.user, condominio):
-        raise PermissionDenied("Esta pessoa não mantém o cadastro deste condomínio.")
+    if not pode_configurar_condominio(request.user, condominio):
+        raise PermissionDenied("Esta pessoa não configura este condomínio.")
 
     formulario = CondominioForm(request.POST, request.FILES, instance=condominio)
     if not formulario.is_valid():
@@ -378,8 +380,8 @@ def _render_condominios(
     elif modal is None:
         modal = "editar"
 
-    pode_gerenciar_item = bool(
-        item_edicao and pode_gerenciar_cadastros(request.user, item_edicao)
+    pode_configurar_item = bool(
+        item_edicao and pode_configurar_condominio(request.user, item_edicao)
     )
 
     contexto = {
@@ -391,14 +393,14 @@ def _render_condominios(
         or (
             CondominioForm(
                 instance=item_edicao,
-                somente_leitura=not pode_gerenciar_item,
+                somente_leitura=not pode_configurar_item,
             )
             if item_edicao
             else None
         ),
         "item_edicao": item_edicao,
         "logo_do_item_edicao": logo.endereco(item_edicao),
-        "pode_gerenciar_item_edicao": pode_gerenciar_item,
+        "pode_gerenciar_item_edicao": pode_configurar_item,
         "modal_aberto": modal,
     }
     return render(request, "pages/cadastros/condominios.html", contexto, status=status)
@@ -409,9 +411,11 @@ def _render_condominios(
 # Dar acesso é uma decisão sobre pessoas, e não um cadastro qualquer. A tela
 # mostra quem tem vínculo com o condomínio e permite acrescentar, mudar o papel,
 # ativar e desativar. Nada disso apaga: o vínculo é desativado, e o histórico de
-# quem mudou o quê fica registrado. Quem responde pelo condomínio decide; a
-# supervisão consulta. A regra — inclusive a do último administrador — vive no
-# domínio de condomínios, não na tela.
+# quem mudou o quê fica registrado. Administrar acessos é configuração
+# estrutural de quem responde pelo condomínio, e é da Administradora; o síndico
+# opera o condomínio sem decidir sobre quem entra nele, e a supervisão consulta.
+# A regra — inclusive a do último administrador — vive no domínio de
+# condomínios, não na tela.
 
 
 @login_required
@@ -430,22 +434,22 @@ def adicionar_acesso(request):
     responde pelo condomínio define uma agora, para quando não há e-mail que
     entregue o endereço.
 
-    Quem responde pelo condomínio é a permissão de gestão dos cadastros, e não
-    um atributo técnico de administração. É ela que abre a escolha no
+    Quem responde pelo condomínio é a permissão de administração dos acessos, e
+    não um atributo técnico de administração. É ela que abre a escolha no
     formulário e é ela que a reconhece no que voltou: sem essa permissão os
     campos nem existem, e o que a tela mandar a mais é ignorado. Quem chega
-    aqui já passou por ``_condominio_para_gestao``; a pergunta é repetida para
+    aqui já passou por ``_condominio_para_acessos``; a pergunta é repetida para
     que a regra apareça no ponto em que ela decide.
 
     A foto é opcional e nunca desfaz o acesso: se o armazenamento recusar a
     imagem depois do vínculo criado, o que houve é um aviso, e a gestão
     corrige pelo próprio acesso.
     """
-    atual = _condominio_para_gestao(request)
+    atual = _condominio_para_acessos(request)
     formulario = AdicionarAcessoForm(
         request.POST,
         request.FILES,
-        pode_definir_senha=pode_gerenciar_cadastros(request.user, atual),
+        pode_definir_senha=pode_administrar_acessos(request.user, atual),
     )
     if not formulario.is_valid():
         return _render_acessos(
@@ -524,7 +528,7 @@ def gerar_link_primeiro_acesso(request, pk):
     primeiro acesso ou enviar uma redefinição — mas o que ela faz é sempre a
     mesma coisa. O endereço não fica guardado: ele é calculado na hora.
     """
-    atual = _condominio_para_gestao(request)
+    atual = _condominio_para_acessos(request)
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
     )
@@ -571,7 +575,7 @@ def editar_acesso(request, pk):
     Se o armazenamento recusar a imagem, o papel já valeu: o que houve é um
     aviso, e a gestão tenta de novo pelo próprio acesso.
     """
-    atual = _condominio_para_gestao(request)
+    atual = _condominio_para_acessos(request)
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
     )
@@ -627,18 +631,18 @@ def definir_senha_acesso(request, pk):
     existe para quando não houver e-mail que entregue o endereço de primeiro
     acesso.
 
-    Quem decide é quem responde pelo condomínio — a mesma permissão de gestão
-    dos cadastros que abre a escolha de senha na criação do acesso. A
-    administração técnica continua podendo, porque quem administra também
-    responde; o que não vale é o contrário, ter o atributo sem responder pelo
-    condomínio. Quem não responde recebe 403, e o vínculo de outro condomínio
-    não é alcançado daqui.
+    Quem decide é quem administra os acessos deste condomínio — a mesma
+    permissão que abre a escolha de senha na criação do acesso. A administração
+    técnica continua podendo, porque quem administra também responde; o que não
+    vale é o contrário, ter o atributo sem administrar o condomínio. Quem não
+    administra recebe 403, e o vínculo de outro condomínio não é alcançado
+    daqui.
 
     A senha não é guardada em texto, não aparece na tela e não entra no
     histórico: quem a protege é o Django. O que fica registrado é quem definiu,
     para quem e quando.
     """
-    atual = _condominio_para_gestao(request)
+    atual = _condominio_para_acessos(request)
 
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
@@ -666,7 +670,7 @@ def definir_senha_acesso(request, pk):
 @require_POST
 def alternar_acesso(request, pk):
     """Retira ou devolve o acesso de uma pessoa, sem apagar o vínculo."""
-    atual = _condominio_para_gestao(request)
+    atual = _condominio_para_acessos(request)
     vinculo = _obter_ou_404(
         AcessoUsuarioCondominio.objects.filter(condominio=atual), pk
     )
@@ -699,7 +703,7 @@ def _render_acessos(
     """Monta a lista de acessos com o formulário que a tela pediu."""
     base = _base_da_pagina(request)
     atual = base["condominio_atual"]
-    pode_gerenciar = pode_gerenciar_cadastros(request.user, atual)
+    pode_gerenciar = pode_administrar_acessos(request.user, atual)
 
     if item_edicao is None and pode_gerenciar:
         item_edicao = _item_em_edicao(
@@ -1487,6 +1491,21 @@ def _condominio_para_gestao(request):
     return atual
 
 
+def _condominio_para_acessos(request):
+    """O condomínio cujos acessos esta pessoa administra agora.
+
+    Administrar acessos é decisão estrutural sobre quem responde pelo
+    condomínio: dar, mudar, ativar e retirar vínculo são da Administradora. O
+    síndico opera o condomínio, e não decide sobre quem entra nele. Quem não
+    enxerga o módulo recebe 404; quem enxerga e não administra recebe 403.
+    """
+    visualizaveis = _condominios_para_ver(request)
+    atual = _condominio_atual(request, visualizaveis)
+    if not pode_administrar_acessos(request.user, atual):
+        raise PermissionDenied("Esta pessoa não administra os acessos deste condomínio.")
+    return atual
+
+
 def _base_da_pagina(request):
     """O que toda tela de cadastro precisa: os condomínios e qual está em vista."""
     condominios = _condominios_para_ver(request)
@@ -1582,10 +1601,10 @@ def _acesso_para_tela(vinculo, *, pode_gerenciar=False) -> dict:
     ainda espere a primeira.
 
     ``pode_gerenciar`` abre a outra ação: redefinir a senha de quem já tem
-    conta neste condomínio. É a mesma permissão de gestão dos cadastros que
-    decide se o acesso pode ser criado — quem responde pelo condomínio responde
-    pela senha dele. Para quem não responde, a lista nem sabe que essa ação
-    existe.
+    conta neste condomínio. É a mesma permissão de administração dos acessos
+    que decide se o acesso pode ser criado — quem administra os acessos do
+    condomínio responde pela senha dele. Para quem não administra, a lista nem
+    sabe que essa ação existe.
 
     A foto é um retrato ao lado do nome, nunca um motivo para a lista não
     abrir: se o armazenamento recusar o acesso à imagem, o que se perde é o
@@ -1682,6 +1701,9 @@ def _condominio_para_tela(vinculo) -> dict:
         for trecho in [condominio.cidade, condominio.uf]
         if trecho
     ) or "Localização não informada"
+    # "Pode gerenciar" na grade de condomínios é a leitura da ficha do
+    # condomínio — configuração estrutural, e não a operação do dia a dia.
+    pode_configurar = pode_configurar_condominio(vinculo.usuario, condominio)
     return {
         "pk": condominio.pk,
         "nome": condominio.nome,
@@ -1689,17 +1711,13 @@ def _condominio_para_tela(vinculo) -> dict:
         "localizacao": localizacao,
         "quantidade_unidades": condominio.quantidade_unidades,
         "papel": vinculo.get_papel_display(),
-        "pode_gerenciar": pode_gerenciar_cadastros(vinculo.usuario, condominio),
+        "pode_gerenciar": pode_configurar,
         "texto": "Ativo" if condominio.ativo else "Inativo",
         "tom": "success" if condominio.ativo else "secondary",
         # Abrir o condomínio é a própria linha: a ficha em modal é o destino
         # dela. O que sobra na coluna é o que a linha não faz sozinha.
-        "acao_label": (
-            "Editar" if pode_gerenciar_cadastros(vinculo.usuario, condominio) else ""
-        ),
-        "acao_icone": (
-            "bx-edit" if pode_gerenciar_cadastros(vinculo.usuario, condominio) else ""
-        ),
+        "acao_label": "Editar" if pode_configurar else "",
+        "acao_icone": "bx-edit" if pode_configurar else "",
         "url": f"{reverse('cadastros:condominios')}?abrir=editar&item={condominio.pk}",
     }
 

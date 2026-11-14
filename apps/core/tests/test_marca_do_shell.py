@@ -27,7 +27,7 @@ class MarcaDoShellTests(TestCase):
 
     def setUp(self):
         self.condominio = criar_condominio("Rio Vermelho Exclusive")
-        self.pessoa = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.pessoa = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         self.provider = StorageDeMentira(bucket="bucket-de-logos-de-teste")
         self.obter = patch(
             "apps.condominios.logo.obter_provider", return_value=self.provider

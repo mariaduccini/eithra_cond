@@ -51,7 +51,7 @@ class GestaoDeAcessosTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
-        self.gestao = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.gestao = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
 
     # -- Entrada na tela ------------------------------------------------------
 
@@ -236,11 +236,11 @@ class GestaoDeAcessosTests(TestCase):
         )
         resposta = self.client.post(
             reverse("cadastros:editar_acesso", args=[vinculo.pk]),
-            {"condominio": str(self.condominio.pk), "papel": Papel.ADMINISTRADORA},
+            {"condominio": str(self.condominio.pk), "papel": Papel.SINDICA},
         )
         self.assertEqual(resposta.status_code, 400)
         vinculo.refresh_from_db()
-        self.assertEqual(vinculo.papel, Papel.SINDICA)
+        self.assertEqual(vinculo.papel, Papel.ADMINISTRADORA)
 
     # -- Retirar e devolver o acesso -----------------------------------------
 
@@ -345,6 +345,62 @@ class GestaoDeAcessosTests(TestCase):
             404,
         )
 
+    def test_sindica_ve_a_lista_mas_nao_administra_acessos(self):
+        """O síndico opera o condomínio; quem entra nele é decisão estrutural."""
+        entrar_como(self.client, Papel.SINDICA, self.condominio, "sindica@exemplo.test")
+        # Enxerga a lista, sem os controles de administração.
+        resposta = self.client.get(self.url)
+        self.assertEqual(resposta.status_code, 200)
+        self.assertFalse(resposta.context["pode_gerenciar"])
+
+    def test_sindica_nao_adiciona_acesso(self):
+        morador = criar_vinculo(
+            criar_pessoa("ja-existe@exemplo.test", "Já Existe"),
+            self.condominio,
+            papel=Papel.MORADOR,
+        )
+        entrar_como(self.client, Papel.SINDICA, self.condominio, "sindica@exemplo.test")
+        resposta = self.client.post(
+            reverse("cadastros:adicionar_acesso"),
+            {
+                "condominio": str(self.condominio.pk),
+                "email": "alguem@exemplo.test",
+                "nome_completo": "Alguém",
+                "papel": Papel.MORADOR,
+            },
+        )
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(Usuario.objects.filter(email="alguem@exemplo.test").exists())
+        self.assertTrue(AcessoUsuarioCondominio.objects.filter(pk=morador.pk).exists())
+
+    def test_sindica_nao_altera_acesso(self):
+        pessoa = criar_pessoa("morador@exemplo.test", "Morador")
+        vinculo_do_morador = criar_vinculo(
+            pessoa, self.condominio, papel=Papel.MORADOR
+        )
+        entrar_como(self.client, Papel.SINDICA, self.condominio, "sindica@exemplo.test")
+        resposta = self.client.post(
+            reverse("cadastros:editar_acesso", args=[vinculo_do_morador.pk]),
+            {"condominio": str(self.condominio.pk), "papel": Papel.SUPERVISORA},
+        )
+        self.assertEqual(resposta.status_code, 403)
+        vinculo_do_morador.refresh_from_db()
+        self.assertEqual(vinculo_do_morador.papel, Papel.MORADOR)
+
+    def test_sindica_nao_ativa_nem_desativa_vinculo(self):
+        pessoa = criar_pessoa("morador@exemplo.test", "Morador")
+        vinculo_do_morador = criar_vinculo(
+            pessoa, self.condominio, papel=Papel.MORADOR
+        )
+        entrar_como(self.client, Papel.SINDICA, self.condominio, "sindica@exemplo.test")
+        resposta = self.client.post(
+            reverse("cadastros:alternar_acesso", args=[vinculo_do_morador.pk]),
+            {"condominio": str(self.condominio.pk)},
+        )
+        self.assertEqual(resposta.status_code, 403)
+        vinculo_do_morador.refresh_from_db()
+        self.assertTrue(vinculo_do_morador.ativo)
+
     # -- Higiene das rotas ----------------------------------------------------
 
     def test_rotas_de_acao_nao_aceitam_get(self):
@@ -408,7 +464,7 @@ class PrimeiroAcessoPelaGestaoTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
-        self.gestao = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.gestao = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
 
     def _conceder(self, email, nome="Pessoa Nova", papel=Papel.OPERACIONAL):
         """Dá o acesso pela tela e devolve a página já com o aviso lido."""
@@ -694,10 +750,11 @@ class SenhaDefinidaPelaAdministracaoTests(TestCase):
 
     Existe uma única porta em que alguém escolhe a senha de outra conta: um
     ambiente sem entrega de e-mail não teria como devolver o acesso a quem
-    perdeu a senha. Aqui quem entra é a administração técnica — a síndica com
-    acesso administrativo —, porque o atributo continua valendo; o que não
-    vale é ele sozinho, sem responder pelo condomínio. A senha não aparece na
-    tela nem no histórico, e quem protege o valor é o Django.
+    perdeu a senha. Aqui quem entra é a administração técnica — a
+    administradora do condomínio —, porque o atributo continua valendo; o que
+    não vale é ele sozinho, sem responder pelo condomínio administrando os
+    acessos. A senha não aparece na tela nem no histórico, e quem protege o
+    valor é o Django.
     """
 
     SENHA_NOVA = "outraSenhaBoa2026"
@@ -706,7 +763,7 @@ class SenhaDefinidaPelaAdministracaoTests(TestCase):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
         self.admin = entrar_como(
-            self.client, Papel.SINDICA, self.condominio, "admin@exemplo.test"
+            self.client, Papel.ADMINISTRADORA, self.condominio, "admin@exemplo.test"
         )
         self.admin.is_staff = True
         self.admin.save(update_fields=["is_staff"])
@@ -1064,7 +1121,7 @@ class CriacaoDeUsuarioComSenhaTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
-        self.gestao = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.gestao = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
 
     def _adicionar(self, follow=False, **campos):
         dados = {
@@ -1227,7 +1284,7 @@ class FotoDoUsuarioTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
-        self.gestao = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.gestao = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         self.provider = StorageDeMentira("bucket-fotos")
 
         patcher = patch(

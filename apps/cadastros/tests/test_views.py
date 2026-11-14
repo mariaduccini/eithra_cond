@@ -73,7 +73,7 @@ class CondominioTests(TestCase):
         self.url = reverse("cadastros:condominio")
 
     def test_gestao_ve_o_modal_do_condominio_atual(self):
-        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         resposta = self.client.get(self.url)
         self.assertEqual(resposta.status_code, 200)
         self.assertEqual(resposta.context["modal_aberto"], "editar")
@@ -82,7 +82,7 @@ class CondominioTests(TestCase):
         self.assertContains(resposta, "Alpha")
 
     def test_gestao_salva_o_cadastro_normalizado(self):
-        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         resposta = self.client.post(
             reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
             {
@@ -110,7 +110,7 @@ class CondominioTests(TestCase):
         self.assertEqual(self.condominio.quantidade_unidades, 120)
 
     def test_cnpj_invalido_e_recusado_sem_salvar(self):
-        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         resposta = self.client.post(
             reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
             {"nome": "Alpha", "cnpj": "123"},
@@ -118,6 +118,23 @@ class CondominioTests(TestCase):
         self.assertEqual(resposta.status_code, 400)
         self.condominio.refresh_from_db()
         self.assertEqual(self.condominio.cnpj, "")
+
+    def test_sindica_le_em_modo_somente_leitura(self):
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        resposta = self.client.get(self.url)
+        self.assertEqual(resposta.status_code, 200)
+        self.assertFalse(resposta.context["pode_gerenciar_item_edicao"])
+        self.assertTrue(resposta.context["formulario_edicao"].fields["nome"].disabled)
+
+    def test_sindica_nao_salva_o_cadastro_estrutural(self):
+        entrar_como(self.client, Papel.SINDICA, self.condominio)
+        resposta = self.client.post(
+            reverse("cadastros:editar_condominio", args=[self.condominio.pk]),
+            {"nome": "Invadido"},
+        )
+        self.assertEqual(resposta.status_code, 403)
+        self.condominio.refresh_from_db()
+        self.assertEqual(self.condominio.nome, "Alpha")
 
     def test_supervisora_le_em_modo_somente_leitura(self):
         entrar_como(
@@ -162,7 +179,7 @@ class LogoDoCondominioTests(TestCase):
 
     def setUp(self):
         self.condominio = criar_condominio("Rio Vermelho Exclusive")
-        self.pessoa = entrar_como(self.client, Papel.SINDICA, self.condominio)
+        self.pessoa = entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
         self.url = reverse("cadastros:editar_condominio", args=[self.condominio.pk])
         self.provider = StorageDeMentira(bucket="bucket-de-logos-de-teste")
         self.obter = patch(
@@ -268,7 +285,7 @@ class ListaDeCondominiosTests(TestCase):
         self.gama = criar_condominio("Gama")
         self.url = reverse("cadastros:condominios")
         self.pessoa = criar_pessoa("gestora@exemplo.test", "Gestora")
-        criar_vinculo(self.pessoa, self.alpha, papel=Papel.SINDICA)
+        criar_vinculo(self.pessoa, self.alpha, papel=Papel.ADMINISTRADORA)
         criar_vinculo(self.pessoa, self.beta, papel=Papel.SUPERVISORA)
         self.client.force_login(self.pessoa)
 
@@ -281,7 +298,7 @@ class ListaDeCondominiosTests(TestCase):
 
     def test_lista_indica_papel_e_nivel_de_acesso(self):
         resposta = self.client.get(self.url)
-        self.assertContains(resposta, "Síndico(a)")
+        self.assertContains(resposta, "Administradora")
         self.assertContains(resposta, "Supervisão")
         self.assertContains(resposta, "Pode gerenciar")
         self.assertContains(resposta, "Somente leitura")
@@ -333,6 +350,24 @@ class ListaDeCondominiosTests(TestCase):
         supervisora = criar_pessoa("supervisora@exemplo.test", "Supervisora")
         criar_vinculo(supervisora, self.alpha, papel=Papel.SUPERVISORA)
         self.client.force_login(supervisora)
+        resposta = self.client.post(
+            reverse("cadastros:criar_condominio"),
+            {"nome": "Novo condomínio"},
+        )
+        self.assertEqual(resposta.status_code, 403)
+        self.assertFalse(Condominio.objects.filter(nome="Novo condomínio").exists())
+
+    def test_sindica_nao_ve_botao_novo_condominio(self):
+        sindica = criar_pessoa("sindica@exemplo.test", "Síndica")
+        criar_vinculo(sindica, self.alpha, papel=Papel.SINDICA)
+        self.client.force_login(sindica)
+        resposta = self.client.get(self.url)
+        self.assertNotContains(resposta, "Novo condomínio")
+
+    def test_sindica_recebe_403_ao_tentar_cadastrar_condominio(self):
+        sindica = criar_pessoa("sindica@exemplo.test", "Síndica")
+        criar_vinculo(sindica, self.alpha, papel=Papel.SINDICA)
+        self.client.force_login(sindica)
         resposta = self.client.post(
             reverse("cadastros:criar_condominio"),
             {"nome": "Novo condomínio"},
