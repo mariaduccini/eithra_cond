@@ -11,8 +11,68 @@
   </div>
 
   {% comment %}
+    A resposta do dia: o que precisa de atenção agora. A leitura vem inteira de
+    apps.manutencoes.atencao — a Home não recalcula atraso, conferência nem
+    conclusão, só agrupa e apresenta. Itens inteiros levam ao detalhe; a ação
+    fica lá ("Visualizar pelo registro. Agir pelo ⋮.").
+  {% endcomment %}
+  <div class="card mt-3">
+    <div class="card-body">
+      <h2 class="h6 mb-1">Hoje</h2>
+
+      {% if total_de_hoje %}
+        <p class="text-body-secondary small mb-0">
+          {% if total_de_hoje == 1 %}1 coisa precisa da sua atenção{% else %}{{ total_de_hoje }} coisas precisam da sua atenção{% endif %}
+        </p>
+        <ul class="eithra-lista mt-3 mb-0">
+          {% for item in atencao_de_hoje %}
+            <li class="eithra-linha">
+              <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
+                <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
+                {% if item.contexto %}
+                  <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                {% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if tem_mais_atencao %}
+          <p class="mb-0 mt-2">
+            <a class="small text-decoration-none" href="{% url 'manutencoes:listagem' %}">Ver todas</a>
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="eithra-vazio mt-2">
+          <i class="bx bx-check-circle" aria-hidden="true"></i>
+          <span>Tudo em ordem por aqui.</span>
+        </p>
+      {% endif %}
+
+      {% if atencao_proxima %}
+        <hr class="my-3">
+        <h2 class="h6 mb-1">Próximos dias</h2>
+        <ul class="eithra-lista mt-3 mb-0">
+          {% for item in atencao_proxima %}
+            <li class="eithra-linha">
+              <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
+                <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
+                {% if item.contexto %}
+                  <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                {% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </div>
+
+  {% comment %}
     O que entrou e ainda depende de alguém. Não é caixa de entrada de e-mail:
     é a lista curta do que a leitura identificou e não pôde seguir sozinha.
+    Aparece só quando há mensagens — o estado vazio da Home é o de "Hoje".
   {% endcomment %}
   {% if pendencias %}
     <div class="card mt-3">
@@ -39,7 +99,5 @@
         </ul>
       </div>
     </div>
-  {% else %}
-    {% include "components/state.html" with state_icon="bx-check-circle" state_title="Nada precisa da sua atenção agora" state_message="Quando houver algo que exija decisão ou acompanhamento, vai aparecer aqui." %}
   {% endif %}
 {% endblock %}

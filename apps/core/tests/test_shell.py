@@ -46,7 +46,7 @@ class HomeTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("core:home"))
         self.assertNotContains(response, "demo")
-        self.assertContains(response, "Nada precisa da sua atenção agora")
+        self.assertContains(response, "Tudo em ordem por aqui.")
 
     def test_menu_traz_apenas_itens_reais(self):
         """Todo item oferecido leva a uma tela que existe de verdade.

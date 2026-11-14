@@ -361,7 +361,9 @@ def obter_atencoes_de_manutencoes(
         Manutencao.objects.abertas()
         .filter(ativo=True)
         .filter(condominio__in=escopo)
-        .select_related("condominio", "responsavel", "local", "equipamento")
+        .select_related(
+            "condominio", "responsavel", "local", "equipamento", "fornecedor"
+        )
     )
 
     if responsavel is not None:
