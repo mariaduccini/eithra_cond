@@ -76,6 +76,7 @@ class VocabularioTests(TestCase):
             [
                 TipoAtencao.AGUARDANDO_CORRECAO,
                 TipoAtencao.AGUARDANDO_CONFERENCIA,
+                TipoAtencao.AGUARDANDO_CONCLUSAO,
                 TipoAtencao.ATRASADA,
                 TipoAtencao.HOJE,
                 TipoAtencao.SEM_RESPONSAVEL,
@@ -169,19 +170,18 @@ class AtrasadaTests(BaseDeAtencaoTests):
     """O que passou da data e continua aberto; o encerrado sai da leitura."""
 
     def test_vencida_aberta_aparece(self):
-        # Já executada, para isolar o atraso da ausência de execução.
         _manutencao(
             self.condominio,
             self.gestao,
             titulo="Revisão do elevador",
             data_prevista=HOJE - timedelta(days=2),
             responsavel=self.responsavel,
-            data_execucao=timezone.now(),
+            exige_conferencia=False,
         )
         itens = self.atencao()
         self.assertEqual(len(itens), 1)
         self.assertEqual(itens[0].tipo, TipoAtencao.ATRASADA)
-        self.assertFalse(itens[0].execucao_nao_registrada)
+        self.assertTrue(itens[0].execucao_nao_registrada)
 
     def test_concluida_nao_aparece(self):
         _manutencao(
@@ -289,9 +289,11 @@ class ConferenciaTests(BaseDeAtencaoTests):
             status_conferencia=StatusConferencia.APROVADA,
             data_execucao=timezone.now(),
         )
-        self.assertEqual(self.atencao(), [])
+        # Aprovada deixa de ser conferência: o que resta é encerrar o registro.
+        tipos = [item.tipo for item in self.atencao()]
+        self.assertNotIn(TipoAtencao.AGUARDANDO_CONFERENCIA, tipos)
 
-    def test_aprovada_e_vencida_nao_vira_conferencia(self):
+    def test_aprovada_e_vencida_vira_aguardando_conclusao(self):
         _manutencao(
             self.condominio,
             self.gestao,
@@ -302,7 +304,145 @@ class ConferenciaTests(BaseDeAtencaoTests):
             data_execucao=timezone.now(),
         )
         itens = self.atencao()
-        self.assertEqual([item.tipo for item in itens], [TipoAtencao.ATRASADA])
+        self.assertEqual([item.tipo for item in itens], [
+            TipoAtencao.AGUARDANDO_CONCLUSAO
+        ])
+
+
+class AguardandoConclusaoTests(BaseDeAtencaoTests):
+    """Executada e só faltando encerrar: o próximo passo é concluir, não prazo."""
+
+    def test_executada_sem_conferencia_aguarda_conclusao(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            titulo="Troca da bomba",
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=self.responsavel,
+            exige_conferencia=False,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual(len(itens), 1)
+        self.assertEqual(itens[0].tipo, TipoAtencao.AGUARDANDO_CONCLUSAO)
+        self.assertEqual(itens[0].titulo, "Aguardando conclusão")
+        self.assertEqual(
+            itens[0].mensagem,
+            "Execução registrada · falta concluir a manutenção",
+        )
+        self.assertEqual(itens[0].acao_sugerida, "Concluir a manutenção")
+
+    def test_conferencia_aprovada_aguarda_conclusao(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=self.responsavel,
+            exige_conferencia=True,
+            status_conferencia=StatusConferencia.APROVADA,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual([item.tipo for item in itens], [
+            TipoAtencao.AGUARDANDO_CONCLUSAO
+        ])
+
+    def test_conferencia_pendente_prevalece(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=self.responsavel,
+            exige_conferencia=True,
+            status_conferencia=StatusConferencia.PENDENTE,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual([item.tipo for item in itens], [
+            TipoAtencao.AGUARDANDO_CONFERENCIA
+        ])
+
+    def test_conferencia_reprovada_prevalece(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=self.responsavel,
+            exige_conferencia=True,
+            status_conferencia=StatusConferencia.REPROVADA,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual([item.tipo for item in itens], [
+            TipoAtencao.AGUARDANDO_CORRECAO
+        ])
+
+    def test_prevalece_sobre_atraso(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=9),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual([item.tipo for item in itens], [
+            TipoAtencao.AGUARDANDO_CONCLUSAO
+        ])
+
+    def test_nao_marca_execucao_nao_registrada(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=9),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+        )
+        item = self.atencao()[0]
+        self.assertFalse(item.execucao_nao_registrada)
+        self.assertNotIn("execução não registrada", item.mensagem)
+        self.assertNotIn("Atrasada", item.mensagem)
+
+    def test_sem_responsavel_compce_sem_duplicar(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=None,
+            data_execucao=timezone.now(),
+        )
+        itens = self.atencao()
+        self.assertEqual(len(itens), 1)
+        self.assertEqual(itens[0].tipo, TipoAtencao.AGUARDANDO_CONCLUSAO)
+        self.assertTrue(itens[0].sem_responsavel)
+        self.assertEqual(
+            itens[0].mensagem,
+            "Execução registrada · falta concluir a manutenção · sem responsável",
+        )
+
+    def test_concluida_nao_gera_atencao(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=5),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+            status=StatusManutencao.CONCLUIDA,
+            data_conclusao=timezone.now(),
+        )
+        self.assertEqual(self.atencao(), [])
+
+    def test_consulta_nao_persiste(self):
+        _manutencao(
+            self.condominio,
+            self.gestao,
+            data_prevista=HOJE - timedelta(days=2),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+        )
+        historico = HistoricoManutencao.objects.count()
+        self.atencao()
+        self.assertEqual(HistoricoManutencao.objects.count(), historico)
 
 
 class ResponsavelTests(BaseDeAtencaoTests):
@@ -364,6 +504,14 @@ class OrdenacaoTests(BaseDeAtencaoTests):
         _manutencao(
             self.condominio,
             self.gestao,
+            titulo="Conclusão",
+            data_prevista=HOJE - timedelta(days=1),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+        )
+        _manutencao(
+            self.condominio,
+            self.gestao,
             titulo="Atraso",
             data_prevista=HOJE - timedelta(days=2),
             responsavel=self.responsavel,
@@ -388,6 +536,7 @@ class OrdenacaoTests(BaseDeAtencaoTests):
             [
                 TipoAtencao.AGUARDANDO_CORRECAO,
                 TipoAtencao.AGUARDANDO_CONFERENCIA,
+                TipoAtencao.AGUARDANDO_CONCLUSAO,
                 TipoAtencao.ATRASADA,
                 TipoAtencao.HOJE,
                 TipoAtencao.PROXIMA,
@@ -549,6 +698,13 @@ class ResumoTests(BaseDeAtencaoTests):
         _manutencao(
             self.condominio,
             self.gestao,
+            data_prevista=HOJE - timedelta(days=1),
+            responsavel=self.responsavel,
+            data_execucao=timezone.now(),
+        )
+        _manutencao(
+            self.condominio,
+            self.gestao,
             data_prevista=HOJE,
             responsavel=self.responsavel,
         )
@@ -560,11 +716,12 @@ class ResumoTests(BaseDeAtencaoTests):
         )
 
         resumo = ResumoDeAtencoes.de(self.atencao())
-        self.assertEqual(resumo.total, 4)
+        self.assertEqual(resumo.total, 5)
         self.assertEqual(resumo.atrasadas, 1)
         self.assertEqual(resumo.hoje, 1)
         self.assertEqual(resumo.proximas, 1)
         self.assertEqual(resumo.aguardando_correcao, 1)
+        self.assertEqual(resumo.aguardando_conclusao, 1)
         self.assertEqual(resumo.aguardando_conferencia, 0)
 
     def test_resumo_vazio(self):
