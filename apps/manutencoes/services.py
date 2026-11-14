@@ -31,6 +31,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.condominios.gestao import ErroDeGestao, administradora_do_condominio
 from apps.core.automacao import resolver_ator_automatico
 from apps.core.constants import Prioridade
 
@@ -961,6 +962,102 @@ def nao_avaliar_conferencia(
         descricao,
     )
     return manutencao
+
+
+# ---------------------------------------------------------------------------
+# Planos preventivos
+# ---------------------------------------------------------------------------
+#
+# O plano é a regra que se repete; a ocorrência é o serviço do dia. Criar e
+# editar a regra não gera nada e não toca no que já nasceu dela: cada ocorrência
+# guarda o próprio retrato, e mudar o plano hoje não reescreve o passado.
+
+
+def acompanhamento_do_plano(condominio):
+    """Quem acompanha o plano, resolvido pelo vínculo — nunca escolhido na tela.
+
+    A Administradora do condomínio é a resposta, e ela é lida do vínculo ativo:
+    nome de pessoa não entra no código. Quando o domínio não consegue responder
+    sem adivinhar, a recusa sobe como recusa de manutenção — a tela mostra o
+    motivo, e ninguém é gravado no lugar dela. Pública porque a tela pergunta o
+    mesmo ao mostrar o formulário; a resposta é a mesma que será gravada.
+    """
+    try:
+        return administradora_do_condominio(condominio)
+    except ErroDeGestao as erro:
+        raise ErroDeManutencao(str(erro)) from erro
+
+
+@transaction.atomic
+def criar_plano_preventivo(
+    *,
+    condominio,
+    criado_por,
+    titulo: str,
+    frequencia_unidade: str,
+    frequencia_intervalo: int,
+    proxima_data_prevista,
+    local=None,
+    equipamento=None,
+    fornecedor=None,
+) -> PlanoPreventivo:
+    """Registra a regra de uma preventiva que volta sempre.
+
+    Duas decisões não vêm da tela. Quem acompanha é a Administradora do
+    condomínio, resolvida pelo vínculo; a conferência depois da execução é
+    exigida sempre. Não há parâmetro para nenhuma das duas — quem cadastra não
+    escolhe outra pessoa nem desliga a conferência, porque não há por onde.
+    """
+    plano = PlanoPreventivo(
+        condominio=condominio,
+        titulo=_texto(titulo),
+        local=local,
+        equipamento=equipamento,
+        fornecedor=fornecedor,
+        responsavel=acompanhamento_do_plano(condominio),
+        frequencia_unidade=frequencia_unidade,
+        frequencia_intervalo=frequencia_intervalo,
+        proxima_data_prevista=proxima_data_prevista,
+        exige_conferencia=True,
+        criado_por=criado_por,
+    )
+    _validar(plano)
+    plano.save()
+    return plano
+
+
+@transaction.atomic
+def editar_plano_preventivo(
+    *,
+    plano: PlanoPreventivo,
+    titulo: str,
+    frequencia_unidade: str,
+    frequencia_intervalo: int,
+    proxima_data_prevista,
+    local=None,
+    equipamento=None,
+    fornecedor=None,
+) -> PlanoPreventivo:
+    """Atualiza a regra do plano, sem tocar no que já nasceu dela.
+
+    As mesmas duas decisões seguem fora da tela: quem acompanha continua sendo a
+    Administradora — relida do vínculo, para acompanhar a troca de gestão do
+    condomínio —, e a conferência continua exigida. As ocorrências já geradas
+    não são alcançadas: guardaram o próprio retrato no dia em que nasceram, e o
+    histórico passado não se reescreve.
+    """
+    plano.titulo = _texto(titulo)
+    plano.local = local
+    plano.equipamento = equipamento
+    plano.fornecedor = fornecedor
+    plano.responsavel = acompanhamento_do_plano(plano.condominio)
+    plano.frequencia_unidade = frequencia_unidade
+    plano.frequencia_intervalo = frequencia_intervalo
+    plano.proxima_data_prevista = proxima_data_prevista
+    plano.exige_conferencia = True
+    _validar(plano)
+    plano.save()
+    return plano
 
 
 @transaction.atomic

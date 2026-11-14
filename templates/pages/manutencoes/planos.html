@@ -1,0 +1,183 @@
+{% extends "layouts/app.html" %}
+
+{# A preventiva que volta sempre é uma regra, e é aqui que a gestão a mantém.
+   A lista é curta e de trabalho: o que fazer, de quanto em quanto e quando
+   volta. Quem acompanha e a conferência não se escolhem — o domínio as fixa. #}
+
+{% block title %}Planos preventivos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Planos preventivos</h1>
+      <p class="text-body-secondary mb-0">
+        O que volta sempre{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'manutencoes:listagem' %}" class="btn btn-label-secondary">
+        <i class="bx bx-wrench me-1" aria-hidden="true"></i> Manutenções
+      </a>
+      {% if pode_criar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#registrar-plano">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo plano
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    {% if planos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Planos preventivos em acompanhamento</caption>
+          <thead>
+            <tr>
+              <th scope="col">O que precisa ser feito</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Com que frequência</th>
+              <th scope="col">Quando volta</th>
+              <th scope="col">Quem acompanha</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for plano in planos %}
+              <tr>
+                <td>
+                  <span class="fw-medium">{{ plano.titulo }}</span>
+                  {% if plano.local or plano.equipamento %}
+                    <div class="text-body-secondary small">
+                      {% if plano.local %}{{ plano.local }}{% endif %}{% if plano.local and plano.equipamento %} · {% endif %}{% if plano.equipamento %}{{ plano.equipamento }}{% endif %}
+                    </div>
+                  {% endif %}
+                </td>
+                {% if mostrar_condominio %}<td>{{ plano.condominio }}</td>{% endif %}
+                <td>{{ plano.frequencia }}</td>
+                <td>{{ plano.proxima }}</td>
+                <td>{{ plano.responsavel }}</td>
+                <td class="text-end text-nowrap">
+                  {% if plano.pode_editar %}
+                    <a href="{{ plano.abrir_edicao }}" class="btn btn-sm btn-label-secondary">
+                      <i class="bx bx-pencil me-1" aria-hidden="true"></i> Editar
+                    </a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for plano in planos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ plano.titulo }}</span>
+              <span class="badge bg-label-secondary flex-shrink-0">{{ plano.frequencia }}</span>
+            </div>
+            <div class="text-body-secondary small mt-1">
+              {% if mostrar_condominio %}{{ plano.condominio }} · {% endif %}Volta em {{ plano.proxima }}
+            </div>
+            <div class="text-body-secondary small mt-1">Quem acompanha: {{ plano.responsavel }}</div>
+            {% if plano.pode_editar %}
+              <a href="{{ plano.abrir_edicao }}" class="btn btn-sm btn-label-secondary mt-2">
+                <i class="bx bx-pencil me-1" aria-hidden="true"></i> Editar
+              </a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-repeat" state_title="Nenhum plano preventivo" state_message="Quando um serviço precisar voltar sempre, registre a regra aqui." %}
+    {% endif %}
+    <div class="card-body pt-3">
+      {% include "components/paginacao.html" with page_obj=pagina_planos %}
+    </div>
+  </div>
+
+  {% if formulario_criacao %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-plano"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-plano-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:criar_plano' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="registrar-plano-titulo">Novo plano preventivo</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/manutencoes/_campos_do_plano.html" with formulario=formulario_criacao acompanhamento=acompanhamento erro_acompanhamento=erro_acompanhamento %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Registrar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_edicao %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-plano"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-plano-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:editar_plano' plano_em_edicao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-plano-titulo">Editar plano preventivo</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/manutencoes/_campos_do_plano.html" with formulario=formulario_edicao acompanhamento=acompanhamento erro_acompanhamento=erro_acompanhamento %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // "Personalizar" só faz sentido quando a resposta pronta não serve. O campo
+    // do número e da unidade nasce escondido e aparece quando a escolha pede —
+    // nada de mostrar um campo técnico para quem só quer dizer "todo mês".
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll("form").forEach(function (formulario) {
+        var escolha = formulario.querySelector("[data-eithra-frequencia='escolha']");
+        var bloco = formulario.querySelector("[data-eithra-frequencia-personalizada]");
+        if (!escolha || !bloco) {
+          return;
+        }
+
+        function sincronizar() {
+          bloco.classList.toggle("d-none", escolha.value !== "personalizar");
+        }
+
+        escolha.addEventListener("change", sincronizar);
+        sincronizar();
+      });
+    });
+  </script>
+{% endblock %}

@@ -27,6 +27,7 @@ from apps.demandas.derivacao import prioridade_do_relato
 from .constants import (
     ACAO_DE_REABERTURA,
     ACOES_DE_STATUS,
+    FrequenciaUnidade,
     StatusManutencao,
     TipoManutencao,
 )
@@ -530,3 +531,249 @@ class FiltroDeManutencoesForm(forms.Form):
         self.fields["fornecedor"].queryset = (
             fornecedores if fornecedores is not None else Fornecedor.objects.none()
         )
+
+
+# ---------------------------------------------------------------------------
+# Planos preventivos
+# ---------------------------------------------------------------------------
+#
+# A preventiva que volta sempre é uma regra, e a tela pergunta a regra na
+# linguagem de quem cuida do condomínio: "de quanto em quanto tempo isso
+# acontece?". As respostas prontas — toda semana, todo mês, todo ano — cobrem o
+# que se repete. O que não couber nelas vira "Personalizar", e aí a pessoa diz
+# o número e a unidade. As duas formas guardam nos mesmos campos do plano.
+
+# Cada resposta pronta é um par (unidade, intervalo) dos campos que o plano já
+# tem. Não há campo novo: a linguagem humana é só a leitura de entrada.
+FREQUENCIAS_POR_ESCOLHA = {
+    "toda_semana": (FrequenciaUnidade.DIAS, 7),
+    "a_cada_15_dias": (FrequenciaUnidade.DIAS, 15),
+    "todo_mes": (FrequenciaUnidade.MESES, 1),
+    "a_cada_2_meses": (FrequenciaUnidade.MESES, 2),
+    "todo_ano": (FrequenciaUnidade.ANOS, 1),
+}
+
+ESCOLHA_DE_FREQUENCIA = (
+    ("toda_semana", "Toda semana"),
+    ("a_cada_15_dias", "A cada 15 dias"),
+    ("todo_mes", "Todo mês"),
+    ("a_cada_2_meses", "A cada 2 meses"),
+    ("todo_ano", "Todo ano"),
+    ("personalizar", "Personalizar"),
+)
+
+
+def escolha_de_frequencia(unidade, intervalo) -> str:
+    """A resposta pronta que corresponde a uma regra já guardada, ou "personalizar".
+
+    Serve à edição: um plano mensal volta à tela como "Todo mês", e um intervalo
+    que não tem resposta pronta — três meses, por exemplo — volta como
+    "Personalizar" com o número e a unidade já preenchidos.
+    """
+    for escolha, par in FREQUENCIAS_POR_ESCOLHA.items():
+        if par == (unidade, intervalo):
+            return escolha
+    return "personalizar"
+
+
+def _condominio_do_envio(data, is_bound, permitidos):
+    """Qual condomínio vale para montar as listas, dado o que a tela enviou.
+
+    Vale o que a pessoa enviou, desde que esteja entre os permitidos; senão, o
+    único elegível, quando houver só um. Serve apenas para montar as opções — a
+    validação continua sendo a do campo, contra a mesma lista.
+    """
+    enviado = data.get("condominio") if is_bound else None
+    if enviado:
+        escolhido = permitidos.filter(pk=enviado).first()
+        if escolhido is not None:
+            return escolhido
+
+    elegiveis = list(permitidos)
+    return elegiveis[0] if len(elegiveis) == 1 else None
+
+
+class PlanoPreventivoForm(forms.Form):
+    """Cadastra ou edita a regra de uma preventiva que volta sempre.
+
+    A tela pergunta o que fazer, onde, com quem, de quanto em quanto e quando
+    volta. Quem acompanha e a conferência não são perguntas daqui: vêm do
+    vínculo de administração do condomínio, e o domínio as fixa ao guardar. Não
+    há campo para nenhuma das duas — quem cadastra não escolhe outra pessoa nem
+    desliga a conferência, porque a tela não oferece a escolha.
+
+    O condomínio segue a mesma regra da manutenção: vem do vínculo ativo de quem
+    usa a tela, nunca de um identificador trazido pelo navegador.
+    """
+
+    condominio = forms.ModelChoiceField(
+        label="Condomínio",
+        queryset=Condominio.objects.none(),
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    titulo = forms.CharField(
+        label="O que precisa ser feito?",
+        max_length=200,
+        error_messages={"required": "Escreva o que precisa ser feito."},
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Ex.: Revisão anual do gerador",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    local = forms.ModelChoiceField(
+        label="Onde?",
+        queryset=LocalOperacional.objects.none(),
+        required=False,
+        empty_label="Sem local",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    equipamento = forms.ModelChoiceField(
+        label="Em qual equipamento, se houver?",
+        queryset=Equipamento.objects.none(),
+        required=False,
+        empty_label="Sem equipamento",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    fornecedor = forms.ModelChoiceField(
+        label="Quem presta o serviço?",
+        queryset=Fornecedor.objects.none(),
+        required=False,
+        empty_label="Sem fornecedor",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    frequencia = forms.ChoiceField(
+        label="Com que frequência?",
+        choices=ESCOLHA_DE_FREQUENCIA,
+        initial="todo_mes",
+        error_messages={"required": "Diga de quanto em quanto tempo isso acontece."},
+        widget=forms.Select(
+            attrs={"class": "form-select", "data-eithra-frequencia": "escolha"}
+        ),
+    )
+    frequencia_intervalo_personalizado = forms.IntegerField(
+        label="A cada",
+        required=False,
+        error_messages={"invalid": "Informe um número inteiro de dias, meses ou anos."},
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "min": "1",
+                "data-eithra-frequencia": "intervalo",
+            }
+        ),
+    )
+    frequencia_unidade_personalizada = forms.ChoiceField(
+        label="Unidade",
+        choices=FrequenciaUnidade.choices,
+        required=False,
+        initial=FrequenciaUnidade.MESES,
+        widget=forms.Select(
+            attrs={"class": "form-select", "data-eithra-frequencia": "unidade"}
+        ),
+    )
+    proxima_data_prevista = forms.DateField(
+        label="Quando deve acontecer novamente?",
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        error_messages={
+            "required": "Diga quando isso deve acontecer novamente.",
+            "invalid": "Informe uma data válida, no formato dd/mm/aaaa.",
+        },
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d"
+        ),
+    )
+
+    def __init__(
+        self,
+        *args,
+        condominios=None,
+        condominio=None,
+        plano=None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        permitidos = (
+            condominios if condominios is not None else Condominio.objects.none()
+        )
+        campo_condominio = self.fields["condominio"]
+
+        if condominio is not None:
+            # Edição: o plano não muda de casa.
+            campo_condominio.queryset = Condominio.objects.filter(pk=condominio.pk)
+            campo_condominio.initial = condominio.pk
+            campo_condominio.widget = forms.HiddenInput()
+            self.condominio_efetivo = condominio
+        else:
+            campo_condominio.queryset = permitidos
+            elegiveis = list(permitidos)
+            if len(elegiveis) == 1:
+                campo_condominio.initial = elegiveis[0].pk
+                campo_condominio.widget = forms.HiddenInput()
+            self.condominio_efetivo = _condominio_do_envio(
+                self.data, self.is_bound, permitidos
+            )
+
+        atual = self.condominio_efetivo
+        escolhido = plano if getattr(plano, "pk", None) else None
+
+        self.fields["local"].queryset = _escolhas_do_condominio(
+            LocalOperacional, atual, getattr(escolhido, "local", None)
+        )
+        self.fields["equipamento"].queryset = _escolhas_do_condominio(
+            Equipamento, atual, getattr(escolhido, "equipamento", None)
+        )
+        self.fields["fornecedor"].queryset = _escolhas_do_condominio(
+            Fornecedor, atual, getattr(escolhido, "fornecedor", None)
+        )
+
+    def clean_titulo(self):
+        titulo = " ".join(self.cleaned_data["titulo"].split())
+        if not titulo:
+            raise forms.ValidationError("Escreva o que precisa ser feito.")
+        return titulo
+
+    def clean(self):
+        """Traduz a frequência escolhida para os campos que o plano guarda.
+
+        A tela fala em "todo mês" e "a cada 15 dias"; o plano guarda número e
+        unidade. A tradução mora aqui, num lugar só, e a validação recusa o
+        intervalo que não se sabe contar — zero unidade, ou nada informado no
+        "Personalizar".
+        """
+        dados = super().clean()
+        escolha = dados.get("frequencia")
+
+        if escolha == "personalizar":
+            unidade = dados.get("frequencia_unidade_personalizada")
+            intervalo = dados.get("frequencia_intervalo_personalizado")
+
+            if not unidade:
+                self.add_error(
+                    "frequencia_unidade_personalizada", "Escolha a unidade do intervalo."
+                )
+            if intervalo is None:
+                self.add_error(
+                    "frequencia_intervalo_personalizado",
+                    "Diga de quanto em quanto tempo isso acontece.",
+                )
+            elif intervalo < 1:
+                self.add_error(
+                    "frequencia_intervalo_personalizado",
+                    "O intervalo precisa ser de pelo menos 1.",
+                )
+
+            if unidade and intervalo is not None and intervalo >= 1:
+                dados["frequencia_unidade"] = unidade
+                dados["frequencia_intervalo"] = intervalo
+        elif escolha in FREQUENCIAS_POR_ESCOLHA:
+            (
+                dados["frequencia_unidade"],
+                dados["frequencia_intervalo"],
+            ) = FREQUENCIAS_POR_ESCOLHA[escolha]
+
+        return dados

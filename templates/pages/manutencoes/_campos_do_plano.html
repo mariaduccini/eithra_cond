@@ -1,0 +1,133 @@
+{% comment %}
+	Os campos de um plano preventivo, na ordem em que a gestão decide.
+
+	O mesmo conjunto serve ao cadastro e à edição: o que muda é só para onde o
+	formulário envia, e isso fica com quem inclui este bloco. "Quem acompanha" e
+	a conferência não são campos — são decisões do domínio. Aparecem aqui como
+	leitura, para a tela dizer o que vai ser gravado sem oferecer escolha.
+
+	A frequência é perguntada em linguagem humana. As respostas prontas cobrem o
+	que se repete; "Personalizar" abre o número e a unidade, e os dois guardam
+	nos mesmos campos do plano. O bloco de personalizar nasce escondido e é o
+	próprio campo que o revela, pelo atributo data-eithra-frequencia.
+
+	Variáveis: formulario (obrigatória), acompanhamento, erro_acompanhamento.
+{% endcomment %}
+
+{% if formulario.condominio.is_hidden %}
+  {{ formulario.condominio }}
+{% else %}
+  <div class="mb-6">
+    <label class="form-label" for="{{ formulario.condominio.id_for_label }}">
+      {{ formulario.condominio.label }}
+    </label>
+    {{ formulario.condominio }}
+    {% for erro in formulario.condominio.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.titulo.id_for_label }}">
+    {{ formulario.titulo.label }}
+  </label>
+  {{ formulario.titulo }}
+  {% for erro in formulario.titulo.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-6">
+  <div class="col-12 col-sm-6">
+    <label class="form-label" for="{{ formulario.local.id_for_label }}">
+      {{ formulario.local.label }}
+    </label>
+    {{ formulario.local }}
+    {% for erro in formulario.local.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+  <div class="col-12 col-sm-6">
+    <label class="form-label" for="{{ formulario.equipamento.id_for_label }}">
+      {{ formulario.equipamento.label }}
+    </label>
+    {{ formulario.equipamento }}
+    {% for erro in formulario.equipamento.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.fornecedor.id_for_label }}">
+    {{ formulario.fornecedor.label }}
+  </label>
+  {{ formulario.fornecedor }}
+  {% for erro in formulario.fornecedor.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.frequencia.id_for_label }}">
+    {{ formulario.frequencia.label }}
+  </label>
+  {{ formulario.frequencia }}
+  {% for erro in formulario.frequencia.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+<div
+  class="row g-3 mb-6{% if formulario.frequencia.value != 'personalizar' %} d-none{% endif %}"
+  data-eithra-frequencia-personalizada>
+  <div class="col-6">
+    <label class="form-label" for="{{ formulario.frequencia_intervalo_personalizado.id_for_label }}">
+      A cada
+    </label>
+    {{ formulario.frequencia_intervalo_personalizado }}
+    {% for erro in formulario.frequencia_intervalo_personalizado.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+  <div class="col-6">
+    <label class="form-label" for="{{ formulario.frequencia_unidade_personalizada.id_for_label }}">
+      Unidade
+    </label>
+    {{ formulario.frequencia_unidade_personalizada }}
+    {% for erro in formulario.frequencia_unidade_personalizada.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.proxima_data_prevista.id_for_label }}">
+    {{ formulario.proxima_data_prevista.label }}
+  </label>
+  {{ formulario.proxima_data_prevista }}
+  {% for erro in formulario.proxima_data_prevista.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+{% comment %}
+	As duas decisões que não se perguntam. A tela mostra o que vai ser gravado,
+	sem oferecer escolha: quem acompanha é a Administradora do condomínio, lida
+	do vínculo, e a conferência depois da execução é exigida sempre. Quando o
+	condomínio não tem uma administradora resolvida, o motivo aparece aqui — e o
+	cadastro recusa ao gravar, em vez de escolher alguém por conta própria.
+{% endcomment %}
+<div class="border rounded p-3 mb-3">
+  <div class="text-body-secondary small">Quem acompanha</div>
+  <div class="fw-medium">Administradora</div>
+  {% if erro_acompanhamento %}
+    <div class="text-danger small mt-1">{{ erro_acompanhamento }}</div>
+  {% endif %}
+</div>
+
+<div class="border rounded p-3">
+  <div class="text-body-secondary small">Conferência após execução</div>
+  <div>A administradora deverá conferir o serviço após a execução.</div>
+</div>

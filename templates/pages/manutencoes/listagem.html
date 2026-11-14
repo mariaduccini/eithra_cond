@@ -13,15 +13,20 @@
         O que precisa ser feito{% if total %} · {{ total }} em vista{% endif %}.
       </p>
     </div>
-    {% if pode_criar %}
-      <button
-        type="button"
-        class="btn btn-primary"
-        data-bs-toggle="modal"
-        data-bs-target="#registrar-manutencao">
-        <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar manutenção
-      </button>
-    {% endif %}
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'manutencoes:planos' %}" class="btn btn-label-secondary">
+        <i class="bx bx-repeat me-1" aria-hidden="true"></i> Planos preventivos
+      </a>
+      {% if pode_criar %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#registrar-manutencao">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar manutenção
+        </button>
+      {% endif %}
+    </div>
   </div>
 
   {% if demanda_origem %}

@@ -28,16 +28,19 @@ from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.demandas.models import Demanda
 
-from .constants import StatusManutencao
+from .constants import FrequenciaUnidade, StatusManutencao
 from .forms import (
+    ESCOLHA_DE_FREQUENCIA,
     AcaoDeStatusForm,
     CancelamentoDeManutencaoForm,
     ConclusaoDeManutencaoForm,
     FiltroDeManutencoesForm,
     ManutencaoForm,
+    PlanoPreventivoForm,
     acoes_de_status,
+    escolha_de_frequencia,
 )
-from .models import Manutencao
+from .models import Manutencao, PlanoPreventivo
 from .permissoes import (
     condominios_para_criar,
     condominios_para_ver,
@@ -50,12 +53,15 @@ from .permissoes import (
 )
 from .services import (
     ErroDeManutencao,
+    acompanhamento_do_plano,
     alterar_status,
     cancelar_manutencao,
     concluir_manutencao,
     criar_manutencao,
+    criar_plano_preventivo,
     definir_ativo,
     editar_manutencao,
+    editar_plano_preventivo,
 )
 
 # Tom de cada situação e prioridade no badge. Discreto: nada de cor agressiva,
@@ -288,6 +294,118 @@ def alternar_ativo(request, pk):
     return redirect("manutencoes:detalhe", pk=manutencao.pk)
 
 
+# -- Planos preventivos ---------------------------------------------------------
+#
+# A preventiva que volta sempre é uma regra, e a tela de cadastro pergunta só o
+# que a gestão decide: o que fazer, onde, com quem, de quanto em quanto e quando
+# volta. Quem acompanha e a conferência não são perguntas: o domínio as fixa ao
+# gravar, a partir do vínculo de administração do condomínio. Não existe campo
+# para nenhuma das duas, e é por isso que ninguém as escolhe por engano.
+
+
+@login_required
+def planos(request):
+    """As preventivas que voltam sempre, nos condomínios que esta pessoa acompanha."""
+    condominios = _condominios_para_ver(request)
+    if request.GET.get("abrir") == "editar":
+        plano = _plano_pedido_para_editar(request)
+        if plano is not None:
+            return _render_planos(request, condominios, plano=plano, modal="editar")
+    return _render_planos(request, condominios)
+
+
+@login_required
+def criar_plano(request):
+    """Registra a regra de uma preventiva. Quem acompanha e a conferência vêm do domínio."""
+    if request.method != "POST":
+        return redirect("manutencoes:planos")
+
+    condominios = condominios_para_criar(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum condomínio disponível para registrar plano preventivo.")
+
+    formulario = PlanoPreventivoForm(request.POST, condominios=condominios)
+    if not formulario.is_valid():
+        return _render_planos(
+            request,
+            _condominios_para_ver(request),
+            formulario=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    dados = formulario.cleaned_data
+    try:
+        criar_plano_preventivo(
+            condominio=dados["condominio"],
+            criado_por=request.user,
+            titulo=dados["titulo"],
+            local=dados["local"],
+            equipamento=dados["equipamento"],
+            fornecedor=dados["fornecedor"],
+            frequencia_unidade=dados["frequencia_unidade"],
+            frequencia_intervalo=dados["frequencia_intervalo"],
+            proxima_data_prevista=dados["proxima_data_prevista"],
+        )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return _render_planos(
+            request,
+            _condominios_para_ver(request),
+            formulario=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    messages.success(request, "Plano preventivo registrado.")
+    return redirect("manutencoes:planos")
+
+
+@login_required
+@require_POST
+def editar_plano(request, pk):
+    """Atualiza a regra da preventiva. Só quem responde pelo condomínio edita."""
+    plano = _plano_para_editar(request, pk)
+    formulario = PlanoPreventivoForm(
+        request.POST, condominio=plano.condominio, plano=plano
+    )
+    if not formulario.is_valid():
+        return _render_planos(
+            request,
+            _condominios_para_ver(request),
+            formulario=formulario,
+            plano=plano,
+            modal="editar",
+            status=400,
+        )
+
+    dados = formulario.cleaned_data
+    try:
+        editar_plano_preventivo(
+            plano=plano,
+            titulo=dados["titulo"],
+            local=dados["local"],
+            equipamento=dados["equipamento"],
+            fornecedor=dados["fornecedor"],
+            frequencia_unidade=dados["frequencia_unidade"],
+            frequencia_intervalo=dados["frequencia_intervalo"],
+            proxima_data_prevista=dados["proxima_data_prevista"],
+        )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return _render_planos(
+            request,
+            _condominios_para_ver(request),
+            formulario=formulario,
+            plano=plano,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Plano preventivo atualizado.")
+    return redirect("manutencoes:planos")
+
+
 # -- Autorização ----------------------------------------------------------------
 #
 # Toda pergunta passa pelo domínio. Quem não enxerga o módulo não descobre que a
@@ -352,6 +470,46 @@ def _manutencao_para_administrar(request, pk):
     if not pode_administrar_manutencao(request.user, manutencao):
         raise PermissionDenied("Esta pessoa não administra esta manutenção.")
     return manutencao
+
+
+def _plano_autorizado(request, pk):
+    """Resolve o plano dentro dos condomínios que esta pessoa acompanha."""
+    condominios = _condominios_para_ver(request)
+    return _obter_ou_404(
+        PlanoPreventivo.objects.select_related(
+            "condominio", "responsavel", "local", "equipamento", "fornecedor"
+        ).filter(condominio__in=condominios),
+        pk,
+    )
+
+
+def _pode_editar_plano(usuario, plano) -> bool:
+    """Diz se a pessoa responde pelo condomínio deste plano."""
+    if plano is None or not getattr(plano, "pk", None):
+        return False
+    return condominios_para_criar(usuario).filter(pk=plano.condominio_id).exists()
+
+
+def _plano_para_editar(request, pk):
+    """Resolve o plano e exige, no backend, o direito de editar a regra."""
+    plano = _plano_autorizado(request, pk)
+    if not _pode_editar_plano(request.user, plano):
+        raise PermissionDenied("Esta pessoa não responde por este condomínio.")
+    return plano
+
+
+def _plano_pedido_para_editar(request):
+    """O plano que a tela pediu para editar, quando esta pessoa pode editá-lo.
+
+    Serve à abertura do formulário por endereço. O que a pessoa não pode editar
+    simplesmente não abre — a lista aparece sem o modal, em vez de recusar a
+    tela inteira por causa de um parâmetro de endereço.
+    """
+    pk = request.GET.get("item")
+    if not pk or not _eh_uuid(pk):
+        return None
+    plano = _plano_autorizado(request, pk)
+    return plano if _pode_editar_plano(request.user, plano) else None
 
 
 def _demanda_de_origem(pk, condominio):
@@ -505,6 +663,59 @@ def _render_detalhe(
         "modal_aberto": modal,
     }
     return render(request, "pages/manutencoes/detalhe.html", contexto, status=status)
+
+
+def _render_planos(
+    request, condominios, *, formulario=None, plano=None, modal=None, status=200
+):
+    """Monta a tela dos planos com o formulário que estiver em uso.
+
+    Os planos da lista vêm dos condomínios que esta pessoa acompanha. O
+    formulário — de criação ou de edição — é único na tela, e é ele que decide
+    para qual condomínio o vínculo de administração será lido.
+    """
+    consulta = (
+        PlanoPreventivo.objects.filter(condominio__in=condominios)
+        .select_related(
+            "condominio", "responsavel", "local", "equipamento", "fornecedor"
+        )
+        .order_by("proxima_data_prevista", "titulo")
+    )
+    pagina_planos = paginar_do_pedido(consulta, request.GET)
+    condominios_criaveis = condominios_para_criar(request.user)
+    pode_criar = condominios_criaveis.exists()
+
+    formulario_criacao = None
+    formulario_edicao = None
+    if modal == "editar" and plano is not None:
+        formulario_edicao = formulario or PlanoPreventivoForm(
+            condominio=plano.condominio,
+            plano=plano,
+            initial=_iniciais_do_plano(plano),
+        )
+    elif formulario is not None:
+        formulario_criacao = formulario
+    elif pode_criar:
+        formulario_criacao = PlanoPreventivoForm(condominios=condominios_criaveis)
+
+    acompanhamento, erro_acompanhamento = _acompanhamento_para_tela(
+        getattr(formulario_edicao or formulario_criacao, "condominio_efetivo", None)
+    )
+
+    contexto = {
+        "planos": [_plano_para_tela(item, request.user) for item in pagina_planos],
+        "pagina_planos": pagina_planos,
+        "total": pagina_planos.paginator.count,
+        "pode_criar": pode_criar,
+        "formulario_criacao": formulario_criacao,
+        "formulario_edicao": formulario_edicao,
+        "plano_em_edicao": plano,
+        "modal_aberto": modal,
+        "mostrar_condominio": condominios.count() > 1,
+        "acompanhamento": acompanhamento,
+        "erro_acompanhamento": erro_acompanhamento,
+    }
+    return render(request, "pages/manutencoes/planos.html", contexto, status=status)
 
 
 def _manutencoes_filtradas(request, condominios, filtros):
@@ -728,3 +939,72 @@ def _historico_para_tela(manutencao) -> list[dict]:
         }
         for evento in manutencao.historico.select_related("usuario").order_by("data_hora")
     ]
+
+
+# As respostas prontas de frequência, como a tela as mostra. "Personalizar" não
+# entra: ele não é uma regra, é o caminho para dizer o número e a unidade.
+ROTULO_DE_FREQUENCIA = dict(ESCOLHA_DE_FREQUENCIA)
+
+
+def _frequencia_por_extenso(plano) -> str:
+    """A frequência do plano na linguagem de quem cuida do condomínio."""
+    escolha = escolha_de_frequencia(plano.frequencia_unidade, plano.frequencia_intervalo)
+    if escolha != "personalizar":
+        return ROTULO_DE_FREQUENCIA[escolha]
+    unidade = FrequenciaUnidade(plano.frequencia_unidade).label.lower()
+    return f"A cada {plano.frequencia_intervalo} {unidade}"
+
+
+def _acompanhamento_para_tela(condominio):
+    """Quem acompanha o plano, para a tela mostrar — ou o motivo de não haver.
+
+    A resposta é a mesma que o cadastro vai gravar: a Administradora do
+    condomínio, lida do vínculo. Quando o domínio não consegue responder sem
+    adivinhar, a tela recebe o motivo em vez de uma pessoa inventada.
+    """
+    if condominio is None:
+        return None, ""
+    try:
+        return acompanhamento_do_plano(condominio), ""
+    except ErroDeManutencao as erro:
+        return None, str(erro)
+
+
+def _iniciais_do_plano(plano) -> dict:
+    """O que o formulário já deve trazer quando o plano é aberto para edição.
+
+    A frequência volta à pergunta que a tela faz: uma regra guardada como
+    "todo mês" reaparece como "Todo mês", e uma regra sem resposta pronta volta
+    como "Personalizar" com o número e a unidade já preenchidos.
+    """
+    return {
+        "titulo": plano.titulo,
+        "local": plano.local_id,
+        "equipamento": plano.equipamento_id,
+        "fornecedor": plano.fornecedor_id,
+        "frequencia": escolha_de_frequencia(
+            plano.frequencia_unidade, plano.frequencia_intervalo
+        ),
+        "frequencia_intervalo_personalizado": plano.frequencia_intervalo,
+        "frequencia_unidade_personalizada": plano.frequencia_unidade,
+        "proxima_data_prevista": plano.proxima_data_prevista,
+    }
+
+
+def _plano_para_tela(plano, usuario=None) -> dict:
+    """O plano como a linha da lista precisa dele."""
+    return {
+        "pk": plano.pk,
+        "titulo": plano.titulo,
+        "condominio": plano.condominio.nome,
+        "local": plano.local.nome if plano.local else "",
+        "equipamento": plano.equipamento.nome if plano.equipamento else "",
+        "fornecedor": plano.fornecedor.nome_razao_social if plano.fornecedor else "",
+        "responsavel": _nome_de(plano.responsavel),
+        "frequencia": _frequencia_por_extenso(plano),
+        "proxima": _data_por_extenso(plano.proxima_data_prevista),
+        "ativo": plano.ativo,
+        "exige_conferencia": plano.exige_conferencia,
+        "pode_editar": bool(usuario) and _pode_editar_plano(usuario, plano),
+        "abrir_edicao": f"{reverse('manutencoes:planos')}?abrir=editar&item={plano.pk}",
+    }
