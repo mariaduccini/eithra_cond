@@ -4,7 +4,7 @@ A resposta vem sempre do vínculo ativo da pessoa com o condomínio, e nunca do
 menu, do formulário ou de um identificador trazido pelo navegador. O menu pode
 esconder o que não serve — esconder não é autorizar.
 
-Administração e síndica mantêm o cadastro do condomínio, os locais, os
+Administradora e síndica mantêm o cadastro do condomínio, os locais, os
 equipamentos e os fornecedores. A supervisão enxerga tudo isso em modo de
 leitura, sem alterar. Operação, portaria e morador não entram nesta fase — e
 quem não entra não é avisado de que a tela existe.
@@ -19,9 +19,9 @@ from apps.condominios.acesso import condominios_do_usuario
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
-# Administração e síndica respondem pelo condomínio: mantêm o cadastro dele e o
+# Administradora e síndica respondem pelo condomínio: mantêm o cadastro dele e o
 # dos seus locais, equipamentos e fornecedores.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão acompanha o cadastro sem respondê-lo: vê, não altera.
 PAPEIS_QUE_VEEM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}

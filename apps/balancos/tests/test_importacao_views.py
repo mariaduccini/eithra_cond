@@ -180,7 +180,7 @@ class BaseTelasTests(TestCase):
         criar_vinculo(self.sindica, self.condominio_a, Papel.SINDICA)
 
         self.admin = criar_pessoa("admin@exemplo.com.br", "Administração Teste")
-        criar_vinculo(self.admin, self.condominio_a, Papel.ADMIN)
+        criar_vinculo(self.admin, self.condominio_a, Papel.ADMINISTRADORA)
 
         self.morador = criar_pessoa("morador@exemplo.com.br", "Morador Teste")
         criar_vinculo(self.morador, self.condominio_a, Papel.MORADOR)
@@ -419,7 +419,7 @@ class MenuContextualTests(BaseTelasTests):
         self.assertNotIn("Balanços", self._menu(self.sem_vinculo))
 
     def test_nao_aparece_com_vinculo_inativo(self):
-        criar_vinculo(self.morador, self.condominio_b, Papel.ADMIN, ativo=False)
+        criar_vinculo(self.morador, self.condominio_b, Papel.ADMINISTRADORA, ativo=False)
         self.assertNotIn("Balanços", self._menu(self.morador))
 
     def test_nunca_aparece_em_condominio_sem_papel_autorizado(self):
@@ -1309,7 +1309,7 @@ class BalancoConfirmadoTests(BaseConfirmacaoTests):
         self.assertNotContains(resposta, "EXTRAORDINARIA")
 
     def test_detalhe_do_mes_e_do_condominio_de_quem_olha(self):
-        criar_vinculo(self.admin, self.condominio_b, Papel.ADMIN)
+        criar_vinculo(self.admin, self.condominio_b, Papel.ADMINISTRADORA)
         importacao = self._importacao_lida(
             condominio=self.condominio_b, criado_por=self.admin
         )
@@ -1571,7 +1571,7 @@ class CorrecaoManualTests(BaseCorrecaoTests):
         balanco = self._mes()
         lancamento = self._lancamento("Energia Eletrica")
         outro = criar_pessoa("admin-b@exemplo.com.br", "Administração B")
-        criar_vinculo(outro, self.condominio_b, Papel.ADMIN)
+        criar_vinculo(outro, self.condominio_b, Papel.ADMINISTRADORA)
 
         self.client.force_login(outro)
         resposta = self.client.post(

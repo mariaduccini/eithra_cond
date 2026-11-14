@@ -7,9 +7,14 @@ class Papel(models.TextChoices):
 
     O papel pertence ao vínculo com o condomínio, não à pessoa: a mesma
     pessoa pode ser síndica em um condomínio e moradora em outro.
+
+    Quem administra o Eithra não aparece aqui. Administração do sistema é
+    global e vive em ``is_staff``/``is_superuser``; ser administrador técnico
+    não faz de ninguém responsável por um condomínio. A Administradora é
+    função do condomínio, e é este vínculo que a representa.
     """
 
-    ADMIN = "admin", "Administração"
+    ADMINISTRADORA = "administradora", "Administradora"
     SINDICA = "sindica", "Síndico(a)"
     SUPERVISORA = "supervisora", "Supervisão"
     OPERACIONAL = "operacional", "Operacional"
@@ -20,7 +25,7 @@ class Papel(models.TextChoices):
 # Papéis que respondem pela gestão do condomínio. Um condomínio não pode ficar
 # sem pelo menos um vínculo ativo destes: sem ninguém que administre, ninguém
 # consegue sequer entrar para corrigir.
-PAPEIS_DE_GESTAO = frozenset({Papel.ADMIN, Papel.SINDICA})
+PAPEIS_DE_GESTAO = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 
 class EventoAcesso(models.TextChoices):

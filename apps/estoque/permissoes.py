@@ -4,7 +4,7 @@ A resposta vem sempre do vínculo ativo da pessoa com o condomínio, e nunca do
 menu, do formulário ou de um identificador trazido pelo navegador. O menu pode
 esconder o que não serve — esconder não é autorizar.
 
-Administração e síndica respondem pelo condomínio: cadastram itens, registram
+Administradora e síndica respondem pelo condomínio: cadastram itens, registram
 movimentos, montam, confirmam e cancelam compras. A supervisão opera o estoque e
 as compras do mesmo modo, mas não cancela — cancelar é decisão de quem responde
 pelo condomínio. A operação não entra em compras nesta fase: não vê o módulo,
@@ -23,8 +23,8 @@ from apps.manutencoes.models import Manutencao
 
 from .constants import StatusCompra, TipoMovimentacaoEstoque
 
-# Administração e síndica respondem pelo condomínio.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+# Administradora e síndica respondem pelo condomínio.
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão opera estoque e compras, mas não cancela compra.
 PAPEIS_QUE_OPERAM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}

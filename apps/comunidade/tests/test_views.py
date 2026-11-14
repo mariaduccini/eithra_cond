@@ -55,7 +55,7 @@ class AcessoAsTelasTests(TestCase):
 
     def test_gestao_e_supervisao_entram_em_todas_as_telas(self):
         for indice, papel in enumerate(
-            (Papel.ADMIN, Papel.SINDICA, Papel.SUPERVISORA)
+            (Papel.ADMINISTRADORA, Papel.SINDICA, Papel.SUPERVISORA)
         ):
             entrar_como(self.client, papel, self.condominio, f"g{indice}@exemplo.test")
             for nome in TELAS:

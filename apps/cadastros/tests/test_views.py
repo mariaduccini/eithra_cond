@@ -327,7 +327,7 @@ class ListaDeCondominiosTests(TestCase):
             usuario=self.pessoa,
             condominio=condominio,
         )
-        self.assertEqual(vinculo.papel, Papel.ADMIN)
+        self.assertEqual(vinculo.papel, Papel.ADMINISTRADORA)
 
     def test_supervisora_recebe_403_ao_tentar_cadastrar_condominio(self):
         supervisora = criar_pessoa("supervisora@exemplo.test", "Supervisora")
@@ -529,7 +529,7 @@ class EquipamentosTests(TestCase):
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:equipamentos")
-        entrar_como(self.client, Papel.ADMIN, self.condominio)
+        entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
 
     def test_cadastra_equipamento_apontando_um_local_do_condominio(self):
         local = criar_local(self.condominio, nome="Casa de máquinas")

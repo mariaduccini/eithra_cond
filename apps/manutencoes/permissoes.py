@@ -4,7 +4,7 @@ A resposta vem sempre do vínculo ativo da pessoa com o condomínio, e nunca do
 menu, do formulário ou de um identificador trazido pelo navegador. O menu pode
 esconder o que não serve — esconder não é autorizar.
 
-Administração e síndica respondem pelo condomínio: criam, editam, atribuem,
+Administradora e síndica respondem pelo condomínio: criam, editam, atribuem,
 movem, concluem e cancelam. A supervisão acompanha e registra — cria, edita os
 dados operacionais, atribui responsável, define local, equipamento e fornecedor,
 registra custos, inicia, coloca em aguardando e conclui —, mas não cancela nem
@@ -23,8 +23,8 @@ from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
 from .constants import StatusConferencia, StatusManutencao
 
-# Administração e síndica respondem pelo condomínio.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+# Administradora e síndica respondem pelo condomínio.
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão cria e opera a manutenção, sem cancelar nem administrar cadastros.
 PAPEIS_QUE_CRIAM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}

@@ -6,7 +6,7 @@ from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
 PAPEIS_QUE_OPERAM = frozenset(
-    {Papel.ADMIN, Papel.SINDICA, Papel.SUPERVISORA, Papel.PORTEIRO}
+    {Papel.ADMINISTRADORA, Papel.SINDICA, Papel.SUPERVISORA, Papel.PORTEIRO}
 )
 PAPEIS_QUE_VEEM = PAPEIS_QUE_OPERAM
 

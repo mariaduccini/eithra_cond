@@ -1,7 +1,7 @@
 """Quem vê e quem mantém unidades, pessoas e veículos.
 
 O cadastro de comunidade é o retrato de quem vive e circula pelo condomínio, e
-por isso fica com quem responde por ele: administração e síndica decidem, e a
+por isso fica com quem responde por ele: a administradora e a síndica decidem, e a
 supervisão acompanha e mantém o dia a dia — cadastra, corrige, registra os
 vínculos. O restante da operação (operacional, portaria) e o próprio morador
 não alcançam este módulo.
@@ -19,10 +19,12 @@ from apps.condominios.acesso import condominios_do_usuario
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
-# Administração e síndica respondem pelo condomínio; a supervisão acompanha e
+# Administradora e síndica respondem pelo condomínio; a supervisão acompanha e
 # mantém o registro. Nesta fase não há um vocabulário de tipos que separe as
 # duas responsabilidades, então ambas operam o cadastro.
-PAPEIS_QUE_OPERAM = frozenset({Papel.ADMIN, Papel.SINDICA, Papel.SUPERVISORA})
+PAPEIS_QUE_OPERAM = frozenset(
+    {Papel.ADMINISTRADORA, Papel.SINDICA, Papel.SUPERVISORA}
+)
 
 # Quem enxerga o módulo é quem opera: não há, aqui, um nível de leitura pura.
 PAPEIS_QUE_VEEM = PAPEIS_QUE_OPERAM

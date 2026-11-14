@@ -15,9 +15,10 @@ from apps.condominios.acesso import condominios_do_usuario
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
-# Administração e síndica recebem o documento da administradora e respondem por
-# ele. Operação, portaria e morador não importam balanço.
-PAPEIS_QUE_IMPORTAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+# A administradora do condomínio e a síndica recebem o documento da empresa
+# administradora e respondem por ele. Operação, portaria e morador não importam
+# balanço.
+PAPEIS_QUE_IMPORTAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # Corrigir o detalhamento é a mesma responsabilidade de importar: quem responde
 # pelo documento responde pelo que nele foi ajustado.
@@ -25,7 +26,9 @@ PAPEIS_QUE_CORRIGEM = PAPEIS_QUE_IMPORTAM
 
 # Ler o mês confirmado é mais amplo: a supervisão acompanha o mês sem responder
 # por ele. Ler não autoriza corrigir.
-PAPEIS_QUE_LEEM = frozenset({Papel.ADMIN, Papel.SINDICA, Papel.SUPERVISORA})
+PAPEIS_QUE_LEEM = frozenset(
+    {Papel.ADMINISTRADORA, Papel.SINDICA, Papel.SUPERVISORA}
+)
 
 # Anexar uma foto que explica uma despesa é a mesma responsabilidade de corrigir
 # o que ela explica: quem responde pelo detalhamento responde pelo que o ilustra.

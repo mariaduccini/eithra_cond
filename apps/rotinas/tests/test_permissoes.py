@@ -67,7 +67,7 @@ class VisibilidadeTests(TestCase):
 
     def test_admin_gerencia(self):
         admin = criar_pessoa("admin@exemplo.test", "Administração")
-        criar_vinculo(admin, self.condominio, papel=Papel.ADMIN)
+        criar_vinculo(admin, self.condominio, papel=Papel.ADMINISTRADORA)
         self.assertTrue(condominios_para_gerenciar(admin).exists())
 
     def test_supervisora_ve_e_cria_sem_gerenciar(self):

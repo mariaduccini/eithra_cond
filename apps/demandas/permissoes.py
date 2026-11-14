@@ -18,9 +18,9 @@ from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
 from .constants import StatusDemanda
 
-# Administração e síndica respondem pelo condomínio: criam, editam, atribuem,
+# Administradora e síndica respondem pelo condomínio: criam, editam, atribuem,
 # concluem e cancelam.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão acompanha e registra, sem responder pelo condomínio: cria e move a
 # situação, mas não cancela e não edita o conteúdo alheio.

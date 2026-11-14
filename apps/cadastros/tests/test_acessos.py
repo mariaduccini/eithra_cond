@@ -236,7 +236,7 @@ class GestaoDeAcessosTests(TestCase):
         )
         resposta = self.client.post(
             reverse("cadastros:editar_acesso", args=[vinculo.pk]),
-            {"condominio": str(self.condominio.pk), "papel": Papel.ADMIN},
+            {"condominio": str(self.condominio.pk), "papel": Papel.ADMINISTRADORA},
         )
         self.assertEqual(resposta.status_code, 400)
         vinculo.refresh_from_db()
@@ -863,7 +863,7 @@ class RedefinicaoDeSenhaPelaGestaoTests(TestCase):
         self.condominio = criar_condominio("Alpha")
         self.url = reverse("cadastros:acessos")
         self.gestao = entrar_como(
-            self.client, Papel.ADMIN, self.condominio, "gestao@exemplo.test"
+            self.client, Papel.ADMINISTRADORA, self.condominio, "gestao@exemplo.test"
         )
         self.pessoa = criar_pessoa("conhecida@exemplo.test", "Pessoa Conhecida")
         self.vinculo = criar_vinculo(
@@ -960,7 +960,7 @@ class RedefinicaoDeSenhaPelaGestaoTests(TestCase):
     def test_gestor_de_outro_condominio_nao_alcanca_este_acesso(self):
         outro = criar_condominio("Beta")
         self.client.logout()
-        entrar_como(self.client, Papel.ADMIN, outro, "outra-gestao@exemplo.test")
+        entrar_como(self.client, Papel.ADMINISTRADORA, outro, "outra-gestao@exemplo.test")
 
         resposta = self._redefinir()
 
@@ -1019,7 +1019,7 @@ class RegrasDeGestaoDoAcessoTests(TestCase):
 
     def test_rebaixar_gestor_com_outro_gestor_ativo_e_permitido(self):
         outro = criar_pessoa("outro-admin@exemplo.test", "Outro Administrador")
-        criar_vinculo(outro, self.condominio, papel=Papel.ADMIN)
+        criar_vinculo(outro, self.condominio, papel=Papel.ADMINISTRADORA)
         alterar_papel(
             acesso=self.vinculo_gestao, papel=Papel.MORADOR, executor=self.executor
         )

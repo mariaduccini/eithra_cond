@@ -11,7 +11,7 @@ from apps.comunidade import permissoes
 from apps.comunidade.tests import apoio
 from apps.condominios.constants import Papel
 
-PAPEIS_QUE_ACESSAM = (Papel.ADMIN, Papel.SINDICA, Papel.SUPERVISORA)
+PAPEIS_QUE_ACESSAM = (Papel.ADMINISTRADORA, Papel.SINDICA, Papel.SUPERVISORA)
 PAPEIS_QUE_NAO_ACESSAM = (Papel.OPERACIONAL, Papel.PORTEIRO, Papel.MORADOR)
 
 
@@ -63,7 +63,7 @@ class AcessoAoModuloTests(TestCase):
         self.assertFalse(permissoes.pode_operar(pessoa, None))
 
     def test_a_pessoa_que_acessa_em_algum_lugar_enxerga_o_menu(self):
-        self.assertTrue(permissoes.pode_ver_comunidade_em_algum(self._pessoa_com(Papel.ADMIN)))
+        self.assertTrue(permissoes.pode_ver_comunidade_em_algum(self._pessoa_com(Papel.ADMINISTRADORA)))
 
     def test_a_pessoa_sem_papel_que_acessa_nao_enxerga_o_menu(self):
         pessoa = self._pessoa_com(Papel.PORTEIRO)

@@ -68,7 +68,7 @@ class CriacaoTests(TestCase):
         return pode_criar_demanda(pessoa, self.condominio)
 
     def test_admin_cria(self):
-        self.assertTrue(self._pode_criar(Papel.ADMIN, "admin@exemplo.test"))
+        self.assertTrue(self._pode_criar(Papel.ADMINISTRADORA, "admin@exemplo.test"))
 
     def test_sindica_cria(self):
         self.assertTrue(self._pode_criar(Papel.SINDICA, "sindica@exemplo.test"))
@@ -108,7 +108,7 @@ class EdicaoTests(TestCase):
         return pessoa
 
     def test_admin_e_sindica_editam(self):
-        self.assertTrue(pode_editar_demanda(self._pessoa_com(Papel.ADMIN, "a@exemplo.test"), self.demanda))
+        self.assertTrue(pode_editar_demanda(self._pessoa_com(Papel.ADMINISTRADORA, "a@exemplo.test"), self.demanda))
         self.assertTrue(pode_editar_demanda(self._pessoa_com(Papel.SINDICA, "s@exemplo.test"), self.demanda))
 
     def test_supervisora_nao_edita_conteudo(self):

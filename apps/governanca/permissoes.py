@@ -20,9 +20,9 @@ from apps.condominios.acesso import condominios_do_usuario
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
-# Administração e síndica respondem pelo condomínio: decidem sobre contratos,
+# Administradora e síndica respondem pelo condomínio: decidem sobre contratos,
 # garantias e documentos, e mantêm o catálogo de tipos.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão acompanha e mantém o registro do dia a dia sem responder por ele.
 PAPEIS_QUE_OPERAM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}

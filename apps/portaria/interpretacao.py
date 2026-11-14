@@ -179,8 +179,9 @@ TIPOS_DE_SERVICO = frozenset(
     }
 )
 
-# Quem pediu o serviço, quando a fala diz. A gestão e a supervisão chamam
-# prestador para o condomínio inteiro: é o que dispensa perguntar unidade.
+# Quem pediu o serviço, quando a fala diz. A administradora, a síndica e a
+# supervisão chamam prestador para o condomínio inteiro: é o que dispensa
+# perguntar unidade.
 PALAVRAS_DE_SOLICITANTE = (
     "sindica",
     "sindico",
@@ -197,7 +198,7 @@ PAPEIS_DO_SOLICITANTE = {
     "sindico": (Papel.SINDICA, "Síndico"),
     "supervisora": (Papel.SUPERVISORA, "Supervisão"),
     "supervisor": (Papel.SUPERVISORA, "Supervisão"),
-    "administracao": (Papel.ADMIN, "Administração"),
+    "administracao": (Papel.ADMINISTRADORA, "Administradora"),
 }
 
 # "da Atlas", "do fornecedor X", "da empresa X": a empresa vem depois de uma

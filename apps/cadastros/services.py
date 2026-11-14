@@ -71,7 +71,9 @@ def criar_condominio(*, dados: dict, criado_por) -> Condominio:
 
     O condomínio não pode nascer órfão: quem o criou precisa continuar
     enxergando e mantendo esse cadastro na sequência. O primeiro vínculo nasce
-    como administração, usando a própria identidade já autenticada.
+    como Administradora do condomínio, usando a própria identidade já
+    autenticada — responder pelo condomínio não exige ser administrador do
+    Eithra, e ser administrador do Eithra não basta para responder por ele.
     """
     condominio = Condominio()
     _aplicar(condominio, dados, validar=True)
@@ -79,7 +81,7 @@ def criar_condominio(*, dados: dict, criado_por) -> Condominio:
         condominio=condominio,
         email=criado_por.email,
         nome_completo=criado_por.full_name,
-        papel=Papel.ADMIN,
+        papel=Papel.ADMINISTRADORA,
         executor=criado_por,
     )
     return condominio

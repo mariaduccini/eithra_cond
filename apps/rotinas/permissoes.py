@@ -4,7 +4,7 @@ A resposta vem sempre do vínculo ativo da pessoa com o condomínio, e nunca do
 menu, do formulário ou de um identificador trazido pelo navegador. O menu pode
 esconder o que não serve — esconder não é autorizar.
 
-Administração e síndica respondem pelo condomínio: criam a rotina, editam a
+Administradora e síndica respondem pelo condomínio: criam a rotina, editam a
 regra, ativam e inativam, atribuem responsável, geram a próxima ocorrência e
 cancelam uma execução. A supervisão opera o dia a dia — cria, edita os dados
 operacionais, gera ocorrência, inicia, conclui e ignora —, mas não desativa uma
@@ -29,8 +29,8 @@ from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 from .constants import StatusExecucao
 from .models import ExecucaoRotina, ItemModeloChecklist, ModeloChecklist, RotinaRecorrente
 
-# Administração e síndica respondem pelo condomínio.
-PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMIN, Papel.SINDICA})
+# Administradora e síndica respondem pelo condomínio.
+PAPEIS_QUE_GERENCIAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 # A supervisão cria e opera a rotina, sem desativá-la nem cancelar ocorrência.
 PAPEIS_QUE_CRIAM = PAPEIS_QUE_GERENCIAM | {Papel.SUPERVISORA}
