@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from apps.condominios import cores as cores_do_condominio
 from apps.condominios.constants import EventoAcesso, Papel
 
 
@@ -85,6 +86,17 @@ class Condominio(models.Model):
     logo_storage_key = models.CharField(
         "chave da logo", max_length=255, blank=True, default=""
     )
+    # A cor principal é a identidade do condomínio na comunicação. É opcional:
+    # sem ela, a faixa do card usa a paleta do próprio modelo do comunicado, e
+    # nada muda para quem nunca configurou uma cor. A cor secundária não é um
+    # segundo cadastro — ela nasce desta.
+    cor_principal = models.CharField(
+        "cor principal",
+        max_length=7,
+        blank=True,
+        default="",
+        help_text="Opcional. Em #RRGGBB, como #1B2431. Cor da faixa do card.",
+    )
     ativo = models.BooleanField("ativo", default=True)
     criado_em = models.DateTimeField("criado em", auto_now_add=True)
     atualizado_em = models.DateTimeField("atualizado em", auto_now=True)
@@ -109,6 +121,7 @@ class Condominio(models.Model):
         self.uf = (self.uf or "").strip().upper()
         self.telefone_administrativo = somente_digitos(self.telefone_administrativo)
         self.email_administrativo = (self.email_administrativo or "").strip().lower()
+        self.cor_principal = cores_do_condominio.cor_normalizada(self.cor_principal)
         for campo in ("logradouro", "numero", "complemento", "bairro", "cidade"):
             setattr(self, campo, " ".join((getattr(self, campo) or "").split()))
         self.observacao_administrativa = (self.observacao_administrativa or "").strip()
@@ -138,6 +151,14 @@ class Condominio(models.Model):
                 "A quantidade de unidades não pode ser negativa."
             )
 
+        # A cor digitada sem o ``#`` é aceita — é a forma que o cadastro
+        # normaliza ao guardar. A recusa é sobre o que não vira ``#RRGGBB``
+        # depois de normalizado, e não sobre a cor crua.
+        if (self.cor_principal or "").strip() and not cores_do_condominio.cor_valida(
+            cores_do_condominio.cor_normalizada(self.cor_principal)
+        ):
+            erros["cor_principal"] = "Informe a cor no formato #RRGGBB, como #1B2431."
+
         if erros:
             raise ValidationError(erros)
 
@@ -149,6 +170,24 @@ class Condominio(models.Model):
         interface não deve tentar buscar uma imagem que não existe.
         """
         return bool((self.logo_storage_key or "").strip())
+
+    @property
+    def tem_cor(self) -> bool:
+        """Diz se o condomínio tem uma cor principal configurada.
+
+        Sem cor, a comunicação usa a paleta do próprio modelo do comunicado — a
+        identidade do condomínio entra pela logo e pelo nome, e nada quebra.
+        """
+        return cores_do_condominio.cor_valida(self.cor_principal)
+
+    @property
+    def cor_secundaria(self) -> str:
+        """A cor secundária, derivada da principal — ou vazio.
+
+        Não é um segundo cadastro: nasce da cor principal, para que a identidade
+        do condomínio não dependa de duas escolhas que podem divergir.
+        """
+        return cores_do_condominio.cor_secundaria(self.cor_principal)
 
     @property
     def iniciais(self) -> str:

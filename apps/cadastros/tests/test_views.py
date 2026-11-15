@@ -276,6 +276,54 @@ class LogoDoCondominioTests(TestCase):
         )
 
 
+class CorDoCondominioTests(TestCase):
+    """A cor principal entra pela edição do condomínio — e é opcional.
+
+    Guardar a cor é uma decisão declarada, como a logo: fica no cadastro que já
+    existe, no formato ``#RRGGBB``, e um condomínio sem cor continua válido.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio("Rio Vermelho Exclusive")
+        entrar_como(self.client, Papel.ADMINISTRADORA, self.condominio)
+        self.url = reverse("cadastros:editar_condominio", args=[self.condominio.pk])
+
+    def _salvar(self, **extra):
+        dados = {"nome": self.condominio.nome}
+        dados.update(extra)
+        return self.client.post(self.url, dados)
+
+    def test_guarda_a_cor_normalizada(self):
+        resposta = self._salvar(cor_principal="1b2431")
+        self.assertRedirects(resposta, reverse("cadastros:condominios"))
+        self.condominio.refresh_from_db()
+        self.assertEqual(self.condominio.cor_principal, "#1B2431")
+        self.assertTrue(self.condominio.tem_cor)
+
+    def test_cor_invalida_e_recusada_sem_salvar(self):
+        resposta = self._salvar(cor_principal="vermelho")
+        self.assertEqual(resposta.status_code, 400)
+        self.condominio.refresh_from_db()
+        self.assertEqual(self.condominio.cor_principal, "")
+
+    def test_salvar_sem_cor_nao_pinta_o_condominio(self):
+        self._salvar(cor_principal="")
+        self.condominio.refresh_from_db()
+        self.assertFalse(self.condominio.tem_cor)
+
+    def test_o_campo_da_cor_aparece_no_modal_de_edicao(self):
+        resposta = self.client.get(
+            f"{reverse('cadastros:condominios')}?abrir=editar&item={self.condominio.pk}"
+        )
+        self.assertContains(resposta, 'name="cor_principal"')
+        self.assertContains(resposta, "Cor principal")
+
+    def test_a_ficha_do_condominio_tambem_traz_o_campo_da_cor(self):
+        resposta = self.client.get(reverse("cadastros:condominio"))
+        self.assertContains(resposta, 'name="cor_principal"')
+        self.assertContains(resposta, "Cor principal")
+
+
 class ListaDeCondominiosTests(TestCase):
     """A grade inicial mostra só os condomínios autorizados para esta pessoa."""
 

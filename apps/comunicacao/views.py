@@ -350,7 +350,7 @@ def _previa_do_formulario(formulario) -> dict:
     modelo = formulario["modelo"].value() or ModeloComunicado.AVISO
     condominio = formulario.condominio_efetivo
     return {
-        "cores": cartao.cores_do_modelo(modelo),
+        "cores": cartao.cores_do_modelo(modelo, condominio=condominio),
         "condominio": getattr(condominio, "nome", "") or "",
         "titulo": formulario["titulo"].value() or "Título do comunicado",
         "mensagem": formulario["mensagem"].value() or "",
@@ -364,7 +364,9 @@ def _previa_do_formulario(formulario) -> dict:
 def _previa_da_comunicacao(comunicacao) -> dict:
     """A prévia do card de um comunicado já escrito."""
     return {
-        "cores": cartao.cores_do_modelo(comunicacao.modelo),
+        "cores": cartao.cores_do_modelo(
+            comunicacao.modelo, condominio=comunicacao.condominio
+        ),
         "condominio": comunicacao.condominio.nome,
         "titulo": comunicacao.titulo,
         "mensagem": comunicacao.mensagem,

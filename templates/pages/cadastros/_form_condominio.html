@@ -4,6 +4,11 @@ identificação — não um acervo de imagens. A imagem escolhida aparece ao lad
 próprio campo, antes de salvar: quem trocou o arquivo errado percebe ali, e não
 depois de gravar. A prévia não salva nada; o arquivo segue para o armazenamento
 só quando o cadastro é submetido.
+
+A cor principal, logo abaixo, é a outra metade dessa identidade: ela pinta a
+faixa do card do comunicado. É opcional — sem ela, o card usa a paleta do
+próprio tipo de comunicado. A amostra ao lado mostra o tom digitado sem depender
+de o cadastro ser salvo.
 {% endcomment %}
 <div class="row g-3">
   {% include "pages/cadastros/_campo.html" with campo=formulario.nome classe="col-12" %}
@@ -28,6 +33,19 @@ só quando o cadastro é submetido.
           {% include "pages/cadastros/_campo.html" with campo=formulario.remover_logo classe="mb-0" %}
         {% endif %}
       </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="d-flex align-items-start gap-3" data-eithra-cor-area>
+      <div class="flex-grow-1">
+        {% include "pages/cadastros/_campo.html" with campo=formulario.cor_principal classe="mb-0" %}
+      </div>
+      <span
+        class="eithra-cor-amostra mt-4"
+        data-eithra-cor-amostra
+        {% if item_edicao.cor_principal %}style="background-color: {{ item_edicao.cor_principal }};"{% endif %}
+        aria-hidden="true"></span>
     </div>
   </div>
 

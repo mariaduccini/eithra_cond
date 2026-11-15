@@ -577,6 +577,18 @@
   }
 }
 
+/* A amostra da cor principal: um quadrado que mostra o tom digitado no cadastro
+   antes de salvar. Sem cor escolhida, fica no fundo neutro do tema — e nunca
+   some, para que o lugar da identidade seja o mesmo com ou sem cor. */
+.eithra-cor-amostra {
+  flex: 0 0 auto;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  background-color: var(--bs-secondary-bg-subtle);
+}
+
 /* O alto do menu encosta no topo e não abre vão em branco antes da marca: a
    altura do bloco é a do próprio conteúdo — a marca ou as iniciais — mais uma
    folga mínima. O divisor logo abaixo separa a identidade da navegação, sem

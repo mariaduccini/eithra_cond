@@ -9,12 +9,25 @@ from io import BytesIO
 from django.test import SimpleTestCase
 from PIL import Image
 
+from apps.condominios import cores
+
 from .. import cartao
 from ..constants import ModeloComunicado, OrientacaoDoCard
 
 
 class _Condominio:
     nome = "Condomínio de Teste"
+
+
+class _CondominioComCor:
+    """Um condomínio com identidade própria, sem tocar no banco."""
+
+    nome = "Condomínio de Teste"
+    cor_principal = "#1B2431"
+
+    @property
+    def cor_secundaria(self):
+        return cores.cor_secundaria(self.cor_principal)
 
 
 class _Comunicacao:
@@ -47,6 +60,32 @@ class CoresDoModeloTests(SimpleTestCase):
     def test_modelo_desconhecido_cai_no_aviso(self):
         self.assertEqual(
             cartao.cores_do_modelo("inexistente"),
+            cartao.cores_do_modelo(ModeloComunicado.AVISO),
+        )
+
+    def test_sem_condominio_o_fio_da_faixa_e_o_proprio_destaque(self):
+        for modelo in ModeloComunicado.values:
+            cores = cartao.cores_do_modelo(modelo)
+            self.assertEqual(cores["fio_da_faixa"], cores["destaque"])
+
+    def test_condominio_com_cor_toma_a_faixa_e_o_fio(self):
+        cores_com_marca = cartao.cores_do_modelo(
+            ModeloComunicado.MANUTENCAO, condominio=_CondominioComCor()
+        )
+        self.assertEqual(cores_com_marca["faixa"], "#1B2431")
+        self.assertEqual(cores_com_marca["fio_da_faixa"], "#6B7179")
+
+    def test_a_cor_do_condominio_nao_apaga_o_destaque_do_modelo(self):
+        """O tom do próprio comunicado continua sendo o sinal de urgência."""
+        sem_marca = cartao.cores_do_modelo(ModeloComunicado.MANUTENCAO)
+        com_marca = cartao.cores_do_modelo(
+            ModeloComunicado.MANUTENCAO, condominio=_CondominioComCor()
+        )
+        self.assertEqual(com_marca["destaque"], sem_marca["destaque"])
+
+    def test_condominio_sem_cor_nao_muda_a_paleta(self):
+        self.assertEqual(
+            cartao.cores_do_modelo(ModeloComunicado.AVISO, condominio=_Condominio()),
             cartao.cores_do_modelo(ModeloComunicado.AVISO),
         )
 
@@ -91,3 +130,8 @@ class DesenharCartaoTests(SimpleTestCase):
             comunicacao=_Comunicacao(titulo="Palavra " * 40)
         )
         self._abrir(dados)
+
+    def test_a_cor_do_condominio_entra_no_desenho(self):
+        comunicacao = _Comunicacao()
+        comunicacao.condominio = _CondominioComCor()
+        self._abrir(cartao.desenhar_cartao(comunicacao=comunicacao))

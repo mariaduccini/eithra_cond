@@ -142,6 +142,7 @@ class CondominioForm(forms.ModelForm):
             "email_administrativo",
             "quantidade_unidades",
             "observacao_administrativa",
+            "cor_principal",
         )
         widgets = {
             "nome": forms.TextInput(attrs={**TEXTO, "autocomplete": "off"}),
@@ -168,6 +169,19 @@ class CondominioForm(forms.ModelForm):
             ),
             "observacao_administrativa": forms.Textarea(
                 attrs={**TEXTO, "rows": 3, "placeholder": "O que a gestão precisa lembrar deste condomínio"}
+            ),
+            # A cor é digitada como um campo de texto, e não em um seletor do
+            # navegador: um seletor não tem como ficar vazio, e um condomínio
+            # sem cor terminaria pintado de preto só por ter sido salvo. A marca
+            # de baixo é o gancho da amostra de cor na tela.
+            "cor_principal": forms.TextInput(
+                attrs={
+                    **TEXTO,
+                    "maxlength": 7,
+                    "placeholder": "#1B2431",
+                    "autocomplete": "off",
+                    "data-eithra-cor": "true",
+                }
             ),
         }
 

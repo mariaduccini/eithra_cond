@@ -21,6 +21,8 @@ import io
 
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
+from apps.condominios import cores as cores_do_condominio
+
 from .constants import LIMITE_DA_MENSAGEM, ModeloComunicado, OrientacaoDoCard
 
 # As cores de cada modelo. O mesmo dicionário serve ao PNG e à prévia na tela:
@@ -66,14 +68,36 @@ TAMANHOS = {
 }
 
 
-def cores_do_modelo(modelo: str) -> dict[str, str]:
+def cores_do_modelo(modelo: str, *, condominio=None) -> dict[str, str]:
     """A paleta completa de um modelo, pronta para a tela.
 
     Devolve faixa, destaque e as cores base em hexadecimal. É o que a prévia usa
     para se parecer com o card que ainda não foi gerado.
+
+    Quando o condomínio tem uma cor principal configurada, ela toma a faixa — a
+    área de identidade do card, onde ficam o nome e a logo —, e a cor secundária
+    derivada toma o fio da faixa. O destaque, que é o tom do próprio tipo do
+    comunicado, continua sendo o do modelo: a marca do condomínio entra sem
+    apagar o sinal de urgência, que continua escrito e colorido pela sua paleta.
     """
     faixa = PALETAS.get(modelo) or PALETAS[ModeloComunicado.AVISO]
-    return {**CORES_BASE, **faixa}
+    cores = {**CORES_BASE, **faixa}
+    cores["fio_da_faixa"] = cores["destaque"]
+
+    if condominio is not None:
+        principal = _cor_do_condominio(condominio, "cor_principal")
+        secundaria = _cor_do_condominio(condominio, "cor_secundaria")
+        if principal:
+            cores["faixa"] = principal
+        if secundaria:
+            cores["fio_da_faixa"] = secundaria
+    return cores
+
+
+def _cor_do_condominio(condominio, atributo: str) -> str:
+    """Uma cor do condomínio, quando existe e é válida — senão, nada."""
+    valor = getattr(condominio, atributo, "")
+    return valor if cores_do_condominio.cor_valida(valor) else ""
 
 
 def desenhar_cartao(*, comunicacao, logo_bytes: bytes | None = None) -> bytes:
@@ -82,7 +106,7 @@ def desenhar_cartao(*, comunicacao, logo_bytes: bytes | None = None) -> bytes:
     ``logo_bytes`` é a logo do condomínio quando ele tem uma; sem ela, a faixa
     fica só com o nome, e nada quebra por causa de uma imagem ausente.
     """
-    paleta = cores_do_modelo(comunicacao.modelo)
+    paleta = cores_do_modelo(comunicacao.modelo, condominio=comunicacao.condominio)
     largura, altura = _tamanho(comunicacao.orientacao)
 
     imagem = Image.new("RGB", (largura, altura), _rgb(paleta["fundo"]))
@@ -198,7 +222,7 @@ def _desenhar_faixa(
 
     desenho.rectangle(
         [0, altura_da_faixa - 8, largura, altura_da_faixa],
-        fill=_rgb(paleta["destaque"]),
+        fill=_rgb(paleta["fio_da_faixa"]),
     )
 
 

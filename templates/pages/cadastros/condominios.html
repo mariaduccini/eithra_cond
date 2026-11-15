@@ -170,6 +170,29 @@
           mostrar(campo.files && campo.files[0]);
         });
       });
+
+      // A cor digitada aparece na amostra ao lado enquanto se escreve, sem
+      // depender de salvar. Um valor fora do formato #RRGGBB não pinta nada:
+      // a amostra volta ao fundo neutro, e quem recusa é o cadastro.
+      document.querySelectorAll("[data-eithra-cor-area]").forEach(function (area) {
+        var campo = area.querySelector("[data-eithra-cor]");
+        var amostra = area.querySelector("[data-eithra-cor-amostra]");
+        if (!campo || !amostra) {
+          return;
+        }
+        var formato = /^#[0-9A-Fa-f]{6}$/;
+
+        function pintar() {
+          var valor = (campo.value || "").trim();
+          if (!valor.startsWith("#")) {
+            valor = "#" + valor;
+          }
+          amostra.style.backgroundColor = formato.test(valor) ? valor : "";
+        }
+
+        campo.addEventListener("input", pintar);
+        pintar();
+      });
     });
   </script>
 {% endblock %}
