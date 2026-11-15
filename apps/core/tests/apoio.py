@@ -119,6 +119,7 @@ class StorageDeMentira(StorageProvider):
         bucket="bucket-de-teste",
         falhar_ao_enviar=False,
         falhar_ao_remover=False,
+        falhar_ao_baixar=False,
     ):
         super().__init__(bucket=bucket)
         self.objetos: dict[str, bytes] = {}
@@ -126,6 +127,7 @@ class StorageDeMentira(StorageProvider):
         self.assinaturas: list[tuple[str, int]] = []
         self.falhar_ao_enviar = falhar_ao_enviar
         self.falhar_ao_remover = falhar_ao_remover
+        self.falhar_ao_baixar = falhar_ao_baixar
 
     def enviar(self, *, key, conteudo, content_type):
         if self.falhar_ao_enviar:
@@ -141,6 +143,14 @@ class StorageDeMentira(StorageProvider):
     def url_assinada(self, *, key, validade_segundos):
         self.assinaturas.append((key, validade_segundos))
         return f"https://exemplo.invalido/{key}?validade={validade_segundos}"
+
+    def baixar(self, *, key):
+        """Devolve o que foi guardado sob a chave, como o provedor real faria."""
+        if self.falhar_ao_baixar:
+            raise ErroDeStorage("Não foi possível falar com o armazenamento.")
+        if key not in self.objetos:
+            raise ErroDeStorage("O arquivo não está no armazenamento.")
+        return self.objetos[key]
 
 
 __all__ = [

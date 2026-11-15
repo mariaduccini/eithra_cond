@@ -619,3 +619,16 @@ def contexto_de_governanca(*, demanda: Demanda, usuario) -> dict:
     ]
 
     return resposta
+
+
+@transaction.atomic
+def registrar_comunicado(demanda, usuario, descricao: str) -> HistoricoDemanda:
+    """Anota, na memória da demanda, que um comunicado foi gerado a partir dela.
+
+    Este é o único evento que a demanda recebe de fora da própria operação. O
+    fato pertence à comunicação, e por isso não se copia para cá o histórico
+    dela: registra-se a lembrança de que existiu um comunicado, e nada mais. A
+    autoridade sobre o texto oficial continua sendo a comunicação.
+    """
+    texto = _texto(descricao) or "Comunicado gerado para os moradores"
+    return _registrar(demanda, usuario, TipoEventoDemanda.COMUNICADO, texto)

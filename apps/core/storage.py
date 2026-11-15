@@ -112,6 +112,15 @@ class StorageProvider(ABC):
     def url_assinada(self, *, key: str, validade_segundos: int) -> str:
         """Devolve um acesso temporário ao objeto, gerado sob demanda."""
 
+    @abstractmethod
+    def baixar(self, *, key: str) -> bytes:
+        """Traz o conteúdo do objeto guardado sob a chave.
+
+        Existe para quem precisa desenhar o arquivo, e não apenas apontá-lo a um
+        navegador — como o card de um comunicado, que embute a logo do
+        condomínio. É leitura pura: não altera o objeto nem o bucket.
+        """
+
 
 class SupabaseStorageProvider(StorageProvider):
     """Supabase Storage em bucket privado, por HTTP, sem SDK.
@@ -254,6 +263,22 @@ class SupabaseStorageProvider(StorageProvider):
         # O Supabase devolve o caminho relativo a /storage/v1.
         return f"{self._url}/storage/v1{caminho}"
 
+    def baixar(self, *, key: str) -> bytes:
+        requisicao = urllib.request.Request(
+            self._objeto_url(key),
+            method="GET",
+            headers=self._cabecalhos(),
+        )
+        try:
+            with self._abrir(requisicao) as resposta:
+                return resposta.read()
+        except urllib.error.HTTPError as erro:
+            raise self._falha(
+                "Não foi possível ler o arquivo do armazenamento."
+            ) from erro
+        except (urllib.error.URLError, TimeoutError, OSError) as erro:
+            raise self._falha("Não foi possível falar com o armazenamento.") from erro
+
 
 class LocalStorageProvider(StorageProvider):
     """O sistema de arquivos da própria aplicação, para o desenvolvimento.
@@ -300,6 +325,13 @@ class LocalStorageProvider(StorageProvider):
     def url_assinada(self, *, key: str, validade_segundos: int) -> str:
         """O endereço da mídia — sem assinatura, que só existe no remoto."""
         return self._armazenamento.url(key)
+
+    def baixar(self, *, key: str) -> bytes:
+        """Lê o arquivo do disco. Recusa quando ele não existe."""
+        if not self._armazenamento.exists(key):
+            raise ErroDeStorage("O arquivo não está no armazenamento.")
+        with self._armazenamento.open(key) as arquivo:
+            return arquivo.read()
 
 
 def obter_provider(

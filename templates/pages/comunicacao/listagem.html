@@ -1,0 +1,132 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Comunicação · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Comunicação</h1>
+      <p class="text-body-secondary mb-0">Comunicados para os moradores, com o card que cada um gera.</p>
+    </div>
+    {% if pode_criar %}
+      <a href="{% url 'comunicacao:criar' %}" class="btn btn-primary">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo comunicado
+      </a>
+    {% endif %}
+  </div>
+
+  <div class="row g-3 mb-3">
+    {% for indicador in indicadores %}
+      <div class="col-6 col-xl-3">
+        <div class="card eithra-summary-indicator h-100">
+          <div class="card-body d-flex align-items-center gap-3">
+            <span class="eithra-summary-indicator-icon text-{{ indicador.tom }}">
+              <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
+            </span>
+            <div>
+              <div class="eithra-summary-indicator-value">{{ indicador.valor }}</div>
+              <div class="eithra-summary-indicator-label">{{ indicador.titulo }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row align-items-stretch gap-2">
+        <div class="eithra-search-field flex-grow-1">
+          <i class="bx bx-search" aria-hidden="true"></i>
+          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
+          {{ filtros.busca }}
+        </div>
+        <button
+          type="button"
+          class="btn btn-label-secondary eithra-filter-button"
+          data-bs-toggle="collapse"
+          data-bs-target="#comunicacao-filtros"
+          aria-expanded="{% if filtros_ativos %}true{% else %}false{% endif %}"
+          aria-controls="comunicacao-filtros">
+          <i class="bx bx-slider-alt me-1" aria-hidden="true"></i> Filtros
+        </button>
+      </div>
+
+      <div class="collapse{% if filtros_ativos %} show{% endif %}" id="comunicacao-filtros">
+        <div class="row g-2 align-items-end mt-3">
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.status.id_for_label }}">Situação</label>
+            {{ filtros.status }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.modelo.id_for_label }}">Modelo</label>
+            {{ filtros.modelo }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.publico.id_for_label }}">Público</label>
+            {{ filtros.publico }}
+          </div>
+          {% if mostrar_condominio %}
+            <div class="col-12 col-lg-2">
+              <label class="form-label small text-body-secondary" for="{{ filtros.condominio.id_for_label }}">Condomínio</label>
+              {{ filtros.condominio }}
+            </div>
+          {% endif %}
+          <div class="col-12 col-lg-2">
+            {% if filtros_ativos %}
+              {% querystring busca=None condominio=None status=None modelo=None publico=None page=None as filtros_limpos %}
+              <a class="btn btn-sm btn-text-secondary w-100" href="{{ filtros_limpos }}">Limpar filtros</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="card eithra-operational-table-shell">
+    {% if comunicacoes %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0 eithra-operational-table">
+          <caption class="visually-hidden">Comunicados dos moradores</caption>
+          <thead>
+            <tr>
+              <th scope="col">Comunicado</th>
+              <th scope="col">Público</th>
+              <th scope="col">Origem</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Abrir</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for comunicacao in comunicacoes %}
+              <tr>
+                <td>
+                  <div class="fw-semibold">{{ comunicacao.titulo }}</div>
+                  <div class="text-body-secondary small">
+                    {{ comunicacao.modelo }}{% if comunicacao.local %} · {{ comunicacao.local }}{% endif %}{% if comunicacao.periodo %} · {{ comunicacao.periodo }}{% endif %}
+                  </div>
+                </td>
+                <td class="text-body-secondary">{{ comunicacao.publico }}</td>
+                <td class="text-body-secondary">{{ comunicacao.origem }}</td>
+                <td>
+                  <span class="badge bg-label-{{ comunicacao.status_tom }}">{{ comunicacao.status }}</span>
+                </td>
+                <td class="text-end">
+                  <a
+                    class="btn btn-sm btn-label-secondary"
+                    href="{% url 'comunicacao:detalhe' comunicacao.id %}">
+                    {% if comunicacao.pronta %}Ver card{% else %}Revisar{% endif %}
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% include "components/paginacao.html" with page_obj=pagina_comunicacoes %}
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-megaphone" state_title="Nenhum comunicado ainda" state_message="Os comunicados que você escrever para os moradores aparecem aqui, com o card que cada um gera." %}
+    {% endif %}
+  </div>
+{% endblock %}

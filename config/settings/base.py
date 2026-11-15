@@ -76,6 +76,7 @@ LOCAL_APPS = [
     "apps.balancos",
     "apps.demandas",
     "apps.manutencoes",
+    "apps.comunicacao",
     "apps.rotinas",
     "apps.estoque",
     "apps.governanca",
@@ -267,6 +268,18 @@ EITHRA_CONDOMINIO_LOGO_BUCKET = env("EITHRA_CONDOMINIO_LOGO_BUCKET", default="")
 # apertado recusa cedo a imagem errada sem atrapalhar a legítima.
 EITHRA_CONDOMINIO_LOGO_MAX_BYTES = env.int(
     "EITHRA_CONDOMINIO_LOGO_MAX_BYTES", default=1 * 1024 * 1024
+)
+
+# O card de um comunicado é um arquivo privado: ele é feito para ser
+# compartilhado pela gestão, não para ficar exposto num endereço público. Fica
+# em um bucket próprio pelo mesmo motivo dos demais — o card de um domínio não
+# se mistura com o arquivo de outro. O acesso é temporário e gerado na hora,
+# nunca uma URL pública guardada.
+COMUNICACAO_STORAGE_BUCKET = env("COMUNICACAO_STORAGE_BUCKET", default="")
+# Validade do acesso temporário ao card. Curta de propósito: é o suficiente para
+# abrir a imagem ou baixá-la, não para deixar um endereço circulando.
+COMUNICACAO_URL_ACESSO_SEGUNDOS = env.int(
+    "COMUNICACAO_URL_ACESSO_SEGUNDOS", default=60
 )
 
 # A evidência de uma demanda — a foto ou o vídeo que sustenta o que foi

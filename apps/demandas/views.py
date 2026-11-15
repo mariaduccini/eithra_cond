@@ -20,6 +20,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
@@ -1279,6 +1280,16 @@ def _mais_acoes_da_demanda(demanda, usuario):
     destino = reverse("demandas:detalhe", args=[demanda.pk])
     if pode_editar_demanda(usuario, demanda):
         acoes.append({"label": "Editar demanda", "url": f"{destino}?abrir=editar"})
+    # Comunicar aos moradores é uma capacidade transversal: a demanda é a origem,
+    # e quem responde pelo condomínio é quem escreve o aviso. O comunicado nasce
+    # apontando para esta demanda, e os dados dela continuam sendo dela.
+    if pode_criar_comunicacao(usuario, demanda.condominio):
+        acoes.append(
+            {
+                "label": "Gerar comunicado",
+                "url": f"{reverse('comunicacao:criar')}?demanda={demanda.pk}",
+            }
+        )
     return acoes
 
 

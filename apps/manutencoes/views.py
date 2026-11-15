@@ -25,6 +25,7 @@ from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
+from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
@@ -1115,6 +1116,11 @@ def _render_detalhe(
         "pode_registrar_execucao": pode_executar_agora,
         "pode_conferir": pode_conferir_agora,
         "pode_anexar_evidencia": pode_anexar_agora,
+        # Comunicar aos moradores é uma capacidade transversal: a manutenção é a
+        # origem do aviso, e quem responde pelo condomínio é quem o escreve.
+        "pode_gerar_comunicado": pode_criar_comunicacao(
+            request.user, manutencao.condominio
+        ),
         "formulario_manutencao": formulario
         or ManutencaoForm(
             condominio=manutencao.condominio,

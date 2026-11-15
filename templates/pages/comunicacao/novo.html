@@ -1,0 +1,100 @@
+{% extends "layouts/app.html" %}
+
+{% comment %}
+Escrever um comunicado: o texto de um lado, o card do outro.
+
+A pessoa vê o que vai ser dito enquanto escolhe o tom, e nada aqui decide regra
+— o domínio valida e registra. A origem (a demanda ou a manutenção que motivou o
+aviso), quando existe, chega resolvida pela view e viaja escondida no envio: ela
+é referência, não campo do formulário.
+{% endcomment %}
+
+{% block title %}Novo comunicado · Comunicação · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <a href="{% url 'comunicacao:listagem' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Comunicação
+      </a>
+      <h1 class="h4 mb-1">Novo comunicado</h1>
+      <p class="text-body-secondary mb-0">Escreva o que os moradores precisam saber. O card acompanha o texto.</p>
+      {% if origem %}
+        <p class="text-body-secondary small mb-0 mt-1">
+          <i class="bx bx-link" aria-hidden="true"></i> A partir de {{ origem.rotulo }}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" action="{% url 'comunicacao:criar' %}" novalidate>
+    {% csrf_token %}
+    {% comment %}A origem viaja escondida: quem a decidiu foi a view, dentro dos
+    condomínios desta pessoa. O navegador só a transporta de volta.{% endcomment %}
+    {% if origem.origem_demanda %}<input type="hidden" name="demanda" value="{{ origem.origem_demanda.pk }}">{% endif %}
+    {% if origem.origem_manutencao %}<input type="hidden" name="manutencao" value="{{ origem.origem_manutencao.pk }}">{% endif %}
+
+    <div class="row g-4">
+      <div class="col-12 col-lg-7">
+        <div class="card">
+          <div class="card-body">
+            {% comment %}Com um só condomínio elegível, a escolha já está decidida e o
+            campo não volta a ser perguntado — some da tela sem perder o dado.{% endcomment %}
+            {% if formulario.condominio.is_hidden %}
+              {{ formulario.condominio }}
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario.condominio %}
+            {% endif %}
+
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.modelo classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.orientacao classe="mb-0" %}
+              </div>
+            </div>
+
+            <div class="mt-3">
+              {% include "pages/cadastros/_campo.html" with campo=formulario.titulo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario.mensagem %}
+            </div>
+
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.local classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.periodo classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.publico classe="mb-0" %}
+              </div>
+              <div class="col-12 col-lg-6">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.publico_descricao classe="mb-0" %}
+              </div>
+            </div>
+          </div>
+          <div class="card-footer d-flex flex-wrap justify-content-end gap-2">
+            <a href="{% url 'comunicacao:listagem' %}" class="btn btn-label-secondary">Cancelar</a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bx bx-check me-1" aria-hidden="true"></i> Registrar comunicado
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-5">
+        <div class="card h-100">
+          <div class="card-body">
+            <h2 class="h6 mb-1">Prévia do card</h2>
+            <p class="text-body-secondary small mb-3">As cores e o rótulo vêm do modelo escolhido. A arte final acompanha o que você escrever.</p>
+            <div class="d-flex justify-content-center">
+              {% include "pages/comunicacao/_previa.html" with previa=previa %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+{% endblock %}

@@ -150,6 +150,23 @@ def endereco(condominio) -> str:
     return acesso_temporario(condominio) or ""
 
 
+def conteudo(condominio) -> bytes | None:
+    """O conteúdo da logo, para quem precisa desenhá-la — ou nada.
+
+    A tela pede o endereço; quem precisa dos bytes, como o card de um
+    comunicado que embute a logo, pede o conteúdo. Sem logo, ou com o
+    armazenamento fora do ar, a resposta é nada — e quem chamou decide como
+    seguir sem ela, em vez de a página inteira depender de uma imagem.
+    """
+    chave = (getattr(condominio, "logo_storage_key", "") or "").strip()
+    if not chave:
+        return None
+    try:
+        return _provedor().baixar(key=chave)
+    except (ErroDeStorage, ImproperlyConfigured):
+        return None
+
+
 def acesso_temporario(condominio, *, validade_segundos: int | None = None) -> str | None:
     """Devolve o acesso à logo, pedido ao provedor na hora — nunca guardado.
 

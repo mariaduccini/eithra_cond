@@ -12,6 +12,7 @@ urlpatterns = [
     path("balancos/", include("apps.balancos.urls")),
     path("demandas/", include("apps.demandas.urls")),
     path("manutencoes/", include("apps.manutencoes.urls")),
+    path("comunicacao/", include("apps.comunicacao.urls")),
     path("rotinas/", include("apps.rotinas.urls")),
     path("estoque/", include("apps.estoque.urls")),
     path("compras/", include("apps.estoque.urls_compras")),

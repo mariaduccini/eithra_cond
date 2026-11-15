@@ -19,6 +19,7 @@ import uuid
 
 from apps.balancos.permissoes import pode_importar_em_algum_condominio
 from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
+from apps.comunicacao.permissoes import pode_ver_comunicacao_em_algum
 from apps.comunidade.permissoes import pode_ver_comunidade_em_algum
 from apps.condominios import logo
 from apps.demandas.permissoes import pode_ver_alguma_demanda
@@ -51,6 +52,15 @@ NAVIGATION = [
         # Módulo de quem executa e acompanha o serviço: quem vê a manutenção em
         # algum condomínio enxerga o item. O menu não autoriza — a view decide.
         "visivel_para": pode_ver_alguma_manutencao,
+    },
+    {
+        "label": "Comunicação",
+        "view_name": "comunicacao:listagem",
+        "icon": "bx-megaphone",
+        # Capacidade transversal: o comunicado nasce de uma demanda, de uma
+        # manutenção ou de nada. Quem acompanha a comunicação em algum
+        # condomínio enxerga o item. O menu não autoriza — a view é que decide.
+        "visivel_para": pode_ver_comunicacao_em_algum,
     },
     {
         "label": "Rotinas",

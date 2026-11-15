@@ -204,3 +204,7 @@ class TipoEventoManutencao(models.TextChoices):
     CONFERENCIA_REPROVADA = "conferencia_reprovada", "Conferência reprovada"
     CONFERENCIA_NAO_AVALIADA = "conferencia_nao_avaliada", "Conferência não avaliada"
     EVIDENCIA_ADICIONADA = "evidencia_adicionada", "Evidência anexada"
+    # Um comunicado aos moradores foi gerado a partir desta manutenção. É o único
+    # evento que a manutenção recebe de fora: o fato é da comunicação, e aqui
+    # fica apenas a lembrança de que ele existiu.
+    COMUNICADO = "comunicado", "Comunicado gerado"

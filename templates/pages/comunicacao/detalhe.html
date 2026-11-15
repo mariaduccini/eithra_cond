@@ -1,0 +1,163 @@
+{% extends "layouts/app.html" %}
+
+{% comment %}
+Um comunicado, do começo ao fim: o card que ele gera, o texto que o sustenta e o
+que já aconteceu com ele. Gerar o card é publicar o que foi escrito aos
+moradores — por isso a mesma pessoa que revisa é quem gera, e o domínio cobra
+isso no backend.
+
+A tela não decide regra: mostra o que a pessoa pode fazer com o comunicado e
+manda a decisão ao domínio, sempre por POST.
+{% endcomment %}
+
+{% block title %}{{ comunicacao.titulo }} · Comunicação · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <a href="{% url 'comunicacao:listagem' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Comunicação
+      </a>
+      <h1 class="h4 mb-1">{{ comunicacao.titulo }}</h1>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-label-secondary">{{ comunicacao.get_modelo_display }}</span>
+        <span class="badge bg-label-{% if comunicacao.esta_pronta %}success{% else %}warning{% endif %}">{{ comunicacao.get_status_display }}</span>
+        <span class="text-body-secondary small">{{ comunicacao.condominio }}</span>
+      </div>
+      {% comment %}A origem é referência lida, não cópia: quem responde pelos dados
+      continua sendo a demanda ou a manutenção apontada.{% endcomment %}
+      <div class="text-body-secondary small mt-2">
+        <span><i class="bx bx-link" aria-hidden="true"></i> {{ comunicacao.descricao_da_origem }}</span>
+        {% if comunicacao.local %}<span class="ms-3"><i class="bx bx-map-pin" aria-hidden="true"></i> {{ comunicacao.local }}</span>{% endif %}
+        {% if comunicacao.periodo %}<span class="ms-3"><i class="bx bx-calendar" aria-hidden="true"></i> {{ comunicacao.periodo_por_extenso }}</span>{% endif %}
+        <span class="ms-3"><i class="bx bx-group" aria-hidden="true"></i> {{ comunicacao.publico_para_exibir }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-body">
+          <h2 class="h6 mb-3">Card</h2>
+          <div class="d-flex justify-content-center">
+            {% include "pages/comunicacao/_previa.html" with previa=previa %}
+          </div>
+
+          <div class="d-grid gap-2 mt-3">
+            {% if pode_editar %}
+              <form method="post" action="{% url 'comunicacao:gerar' comunicacao.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">
+                  <i class="bx bx-image me-1" aria-hidden="true"></i>
+                  {% if comunicacao.esta_pronta %}Gerar novamente{% else %}Gerar card{% endif %}
+                </button>
+              </form>
+            {% endif %}
+            {% if comunicacao.esta_pronta %}
+              <a href="{% url 'comunicacao:arquivo' comunicacao.pk %}" class="btn btn-label-secondary" target="_blank" rel="noopener">
+                <i class="bx bx-download me-1" aria-hidden="true"></i> Abrir card
+              </a>
+            {% endif %}
+          </div>
+
+          {% if comunicacao.gerado_em %}
+            <p class="text-body-secondary small mb-0 mt-2">
+              Card gerado em {{ comunicacao.gerado_em|date:"d/m/Y H:i" }}.
+              {% if comunicacao.tamanho_bytes %}<span aria-hidden="true">·</span> {{ comunicacao.tamanho_bytes }} bytes.{% endif %}
+            </p>
+          {% elif pode_editar %}
+            <p class="text-body-secondary small mb-0 mt-2">O card ainda não foi gerado.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      {% if pode_editar %}
+        <div class="card mb-4">
+          <div class="card-body">
+            <h2 class="h6 mb-1">Revisar comunicado</h2>
+            <p class="text-body-secondary small mb-3">Depois de revisar, gere o card de novo para atualizar a arte.</p>
+            <form method="post" action="{% url 'comunicacao:editar' comunicacao.pk %}" novalidate>
+              {% csrf_token %}
+              {{ formulario.condominio }}
+              <div class="row g-3">
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.modelo classe="mb-0" %}
+                </div>
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.orientacao classe="mb-0" %}
+                </div>
+              </div>
+              <div class="mt-3">
+                {% include "pages/cadastros/_campo.html" with campo=formulario.titulo %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario.mensagem %}
+              </div>
+              <div class="row g-3">
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.local classe="mb-0" %}
+                </div>
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.periodo classe="mb-0" %}
+                </div>
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.publico classe="mb-0" %}
+                </div>
+                <div class="col-12 col-lg-6">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario.publico_descricao classe="mb-0" %}
+                </div>
+              </div>
+              <div class="d-flex justify-content-end mt-3">
+                <button type="submit" class="btn btn-primary">
+                  <i class="bx bx-save me-1" aria-hidden="true"></i> Salvar revisão
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% else %}
+        <div class="card mb-4">
+          <div class="card-body">
+            <h2 class="h6 mb-3">Comunicado</h2>
+            <dl class="row mb-0">
+              <dt class="col-12 col-sm-4 text-body-secondary fw-normal">Modelo</dt>
+              <dd class="col-12 col-sm-8">{{ comunicacao.get_modelo_display }}</dd>
+              <dt class="col-12 col-sm-4 text-body-secondary fw-normal">Mensagem</dt>
+              <dd class="col-12 col-sm-8">{{ comunicacao.mensagem|linebreaksbr|default:"—" }}</dd>
+              <dt class="col-12 col-sm-4 text-body-secondary fw-normal">Público</dt>
+              <dd class="col-12 col-sm-8">{{ comunicacao.publico_para_exibir }}</dd>
+              <dt class="col-12 col-sm-4 text-body-secondary fw-normal">Local</dt>
+              <dd class="col-12 col-sm-8">{{ comunicacao.local|default:"—" }}</dd>
+              <dt class="col-12 col-sm-4 text-body-secondary fw-normal">Data</dt>
+              <dd class="col-12 col-sm-8">{{ comunicacao.periodo_por_extenso|default:"—" }}</dd>
+            </dl>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-body">
+          <h2 class="h6 mb-3">Histórico</h2>
+          {% if historico %}
+            <ul class="eithra-lista mb-0">
+              {% for evento in historico %}
+                <li class="eithra-linha">
+                  <div class="eithra-linha-corpo">
+                    <div class="eithra-linha-nome">{{ evento.tipo }}</div>
+                    <div class="eithra-linha-contexto">{{ evento.momento }} · {{ evento.quem }}</div>
+                    {% if evento.descricao %}
+                      <div class="eithra-linha-contexto text-body-secondary">{{ evento.descricao }}</div>
+                    {% endif %}
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="eithra-vazio mb-0"><i class="bx bx-history" aria-hidden="true"></i>O que acontecer com este comunicado aparece aqui.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

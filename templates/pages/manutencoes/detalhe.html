@@ -112,6 +112,17 @@
           Cancelar manutenção
         </button>
       {% endif %}
+      {# Avisar os moradores é uma capacidade à parte desta ocorrência: a manutenção
+         é a origem do comunicado, e quem escreve o aviso é quem responde pelo
+         condomínio. O comunicado nasce apontando para esta manutenção. #}
+      {% if pode_gerar_comunicado %}
+        <a
+          href="{% url 'comunicacao:criar' %}?manutencao={{ manutencao.pk }}"
+          class="btn btn-label-primary"
+          title="Escrever um comunicado a partir desta manutenção">
+          <i class="bx bx-megaphone me-1" aria-hidden="true"></i> Comunicação
+        </a>
+      {% endif %}
     </div>
   </div>
 
