@@ -1,0 +1,67 @@
+{% comment %}
+	Os campos de um modelo de conferência, na ordem em que a Administradora decide.
+
+	O mesmo conjunto serve ao cadastro e à edição: o que muda é só para onde o
+	formulário envia, e isso fica com quem inclui este bloco. A lista do que deve
+	ser conferido é editável no navegador — acrescentar, remover e reordenar —, e
+	chega ao servidor como dois campos paralelos, um par por item, na ordem da
+	tela. Nada de conhecimento técnico mora aqui: os itens são dados cadastráveis.
+
+	Variáveis: formulario (obrigatória), criterios_do_modelo (itens já do modelo).
+{% endcomment %}
+
+{% if formulario.condominio.is_hidden %}
+  {{ formulario.condominio }}
+{% else %}
+  <div class="mb-6">
+    <label class="form-label" for="{{ formulario.condominio.id_for_label }}">
+      {{ formulario.condominio.label }}
+    </label>
+    {{ formulario.condominio }}
+    {% for erro in formulario.condominio.errors %}
+      <div class="text-danger small mt-1">{{ erro }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.nome.id_for_label }}">
+    {{ formulario.nome.label }}
+  </label>
+  {{ formulario.nome }}
+  {% for erro in formulario.nome.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+<div class="mb-6">
+  <label class="form-label" for="{{ formulario.descricao.id_for_label }}">
+    {{ formulario.descricao.label }}
+  </label>
+  {{ formulario.descricao }}
+  {% for erro in formulario.descricao.errors %}
+    <div class="text-danger small mt-1">{{ erro }}</div>
+  {% endfor %}
+</div>
+
+{% comment %}
+	A lista do que deve ser conferido. Cada linha é um item com descrição e
+	obrigatoriedade; a ordem final é a ordem das linhas na tela. O molde escondido
+	serve ao botão de acrescentar, para não repetir a linha em dois lugares.
+{% endcomment %}
+<div data-editor-criterios>
+  <p class="form-label mb-2">O que deve ser conferido?</p>
+  <div data-lista-criterios>
+    {% for criterio in criterios_do_modelo %}
+      {% include "pages/manutencoes/_linha_de_criterio.html" with descricao=criterio.descricao obrigatorio=criterio.obrigatorio %}
+    {% empty %}
+      {% include "pages/manutencoes/_linha_de_criterio.html" with descricao="" obrigatorio=True %}
+    {% endfor %}
+  </div>
+  <button type="button" class="btn btn-label-secondary" data-adicionar-criterio>
+    <i class="bx bx-plus me-1" aria-hidden="true"></i> Adicionar item
+  </button>
+  <template data-modelo-criterio>
+    {% include "pages/manutencoes/_linha_de_criterio.html" with descricao="" obrigatorio=True %}
+  </template>
+</div>

@@ -18,6 +18,11 @@
       <a href="{% url 'manutencoes:listagem' %}" class="btn btn-label-secondary">
         <i class="bx bx-wrench me-1" aria-hidden="true"></i> Manutenções
       </a>
+      {% if pode_administrar_modelos %}
+        <a href="{% url 'manutencoes:modelos_conferencia' %}" class="btn btn-label-secondary">
+          <i class="bx bx-list-check me-1" aria-hidden="true"></i> Modelos de conferência
+        </a>
+      {% endif %}
       {% if pode_criar %}
         <button
           type="button"
@@ -55,6 +60,9 @@
                       {% if plano.local %}{{ plano.local }}{% endif %}{% if plano.local and plano.equipamento %} · {% endif %}{% if plano.equipamento %}{{ plano.equipamento }}{% endif %}
                     </div>
                   {% endif %}
+                  {% if not plano.tem_criterios_conferencia %}
+                    <div class="text-body-secondary small">Itens de conferência ainda não definidos</div>
+                  {% endif %}
                 </td>
                 {% if mostrar_condominio %}<td>{{ plano.condominio }}</td>{% endif %}
                 <td>{{ plano.frequencia }}</td>
@@ -84,6 +92,9 @@
               {% if mostrar_condominio %}{{ plano.condominio }} · {% endif %}Volta em {{ plano.proxima }}
             </div>
             <div class="text-body-secondary small mt-1">Quem acompanha: {{ plano.responsavel }}</div>
+            {% if not plano.tem_criterios_conferencia %}
+              <div class="text-body-secondary small mt-1">Itens de conferência ainda não definidos</div>
+            {% endif %}
             {% if plano.pode_editar %}
               <a href="{{ plano.abrir_edicao }}" class="btn btn-sm btn-label-secondary mt-2">
                 <i class="bx bx-pencil me-1" aria-hidden="true"></i> Editar
@@ -99,6 +110,13 @@
       {% include "components/paginacao.html" with page_obj=pagina_planos %}
     </div>
   </div>
+
+  {% comment %}
+    Os critérios de cada modelo ativo do condomínio, para a prévia mostrar o que
+    será copiado sem uma ida ao servidor. É o mesmo conteúdo que a aplicação irá
+    copiar — a prévia não inventa nada além do que o modelo já tem.
+  {% endcomment %}
+  {{ modelos_previa|json_script:"modelos-previa" }}
 
   {% if formulario_criacao %}
     <div
@@ -178,6 +196,68 @@
         escolha.addEventListener("change", sincronizar);
         sincronizar();
       });
+    });
+
+    // O modelo de conferência é uma referência de onde os itens serão copiados.
+    // Ao escolher um, a tela mostra a prévia do que será copiado e libera a ação
+    // de usar o modelo — sem prometer vínculo nenhum depois de salvar.
+    document.addEventListener("DOMContentLoaded", function () {
+      var porId = {};
+      var fonte = document.getElementById("modelos-previa");
+      if (fonte) {
+        try {
+          JSON.parse(fonte.textContent).forEach(function (modelo) {
+            porId[String(modelo.id)] = modelo;
+          });
+        } catch (erro) {
+          porId = {};
+        }
+      }
+
+      document
+        .querySelectorAll("[data-eithra-modelo-conferencia='escolha']")
+        .forEach(function (escolha) {
+          var formulario = escolha.closest("form");
+          if (!formulario) {
+            return;
+          }
+          var bloco = formulario.querySelector("[data-eithra-previa-modelo]");
+          var nome = formulario.querySelector("[data-previa-nome]");
+          var lista = formulario.querySelector("[data-previa-criterios]");
+          var usar = formulario.querySelector("[data-eithra-usar-modelo]");
+
+          function sincronizar() {
+            var modelo = porId[escolha.value];
+            if (!modelo) {
+              if (bloco) {
+                bloco.classList.add("d-none");
+              }
+              if (usar) {
+                usar.classList.add("d-none");
+              }
+              return;
+            }
+
+            nome.textContent = modelo.nome;
+            lista.innerHTML = "";
+            (modelo.criterios || []).forEach(function (criterio) {
+              var item = document.createElement("li");
+              item.textContent = criterio.obrigatorio
+                ? criterio.descricao
+                : criterio.descricao + " (opcional)";
+              lista.appendChild(item);
+            });
+            if (bloco) {
+              bloco.classList.remove("d-none");
+            }
+            if (usar) {
+              usar.classList.remove("d-none");
+            }
+          }
+
+          escolha.addEventListener("change", sincronizar);
+          sincronizar();
+        });
     });
   </script>
 {% endblock %}

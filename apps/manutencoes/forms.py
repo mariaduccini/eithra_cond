@@ -31,6 +31,7 @@ from .constants import (
     StatusManutencao,
     TipoManutencao,
 )
+from .models import ModeloConferenciaPreventiva
 from .permissoes import usuarios_elegiveis_como_responsavel
 
 # A ordem em que as situações aparecem para escolha, do começo ao fim do ciclo.
@@ -576,6 +577,34 @@ def escolha_de_frequencia(unidade, intervalo) -> str:
     return "personalizar"
 
 
+def criterios_do_modelo_no_envio(data) -> list[dict]:
+    """Lê os critérios que a tela do modelo enviou, na ordem em que aparecem.
+
+    A lista chega como dois campos paralelos — ``criterio_descricao`` e
+    ``criterio_obrigatorio`` —, um par por item, na ordem da tela. Linhas em
+    branco são descartadas: um item sem descrição não se confere e não deve
+    impedir quem só deixou uma linha sobrando. A ordem devolvida é a da tela,
+    renumerada a partir de zero.
+    """
+    descricoes = data.getlist("criterio_descricao")
+    obrigatorios = data.getlist("criterio_obrigatorio")
+
+    criterios = []
+    for posicao, descricao in enumerate(descricoes):
+        texto = " ".join((descricao or "").split())
+        if not texto:
+            continue
+        marcado = obrigatorios[posicao] if posicao < len(obrigatorios) else "sim"
+        criterios.append(
+            {
+                "descricao": texto,
+                "ordem": len(criterios),
+                "obrigatorio": marcado != "nao",
+            }
+        )
+    return criterios
+
+
 def _condominio_do_envio(data, is_bound, permitidos):
     """Qual condomínio vale para montar as listas, dado o que a tela enviou.
 
@@ -591,6 +620,76 @@ def _condominio_do_envio(data, is_bound, permitidos):
 
     elegiveis = list(permitidos)
     return elegiveis[0] if len(elegiveis) == 1 else None
+
+
+class ModeloDeConferenciaForm(forms.Form):
+    """Cadastra ou edita um modelo reutilizável de conferência.
+
+    O modelo é o roteiro de um tipo de serviço, e quem o registra responde pela
+    configuração do condomínio. A tela pergunta o nome, a descrição e a lista do
+    que deve ser conferido — a lista chega em campos paralelos e é lida por
+    ``criterios_do_modelo_no_envio``. Nenhum conhecimento técnico mora aqui: os
+    itens são dados cadastráveis.
+
+    O condomínio vem do vínculo ativo de quem usa a tela, nunca de um
+    identificador trazido pelo navegador.
+    """
+
+    condominio = forms.ModelChoiceField(
+        label="Condomínio",
+        queryset=Condominio.objects.none(),
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    nome = forms.CharField(
+        label="Nome",
+        max_length=200,
+        error_messages={"required": "Dê um nome ao modelo de conferência."},
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Ex.: Limpeza de piscina",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    descricao = forms.CharField(
+        label="Descrição",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": "Opcional. O que este roteiro cobre.",
+            }
+        ),
+    )
+
+    def __init__(self, *args, condominios=None, condominio=None, modelo=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        permitidos = (
+            condominios if condominios is not None else Condominio.objects.none()
+        )
+        campo_condominio = self.fields["condominio"]
+
+        if condominio is not None:
+            # Edição: o modelo não muda de casa.
+            campo_condominio.queryset = Condominio.objects.filter(pk=condominio.pk)
+            campo_condominio.initial = condominio.pk
+            campo_condominio.widget = forms.HiddenInput()
+        else:
+            campo_condominio.queryset = permitidos
+            elegiveis = list(permitidos)
+            if len(elegiveis) == 1:
+                campo_condominio.initial = elegiveis[0].pk
+                campo_condominio.widget = forms.HiddenInput()
+
+    def clean_nome(self):
+        nome = " ".join(self.cleaned_data["nome"].split())
+        if not nome:
+            raise forms.ValidationError("Dê um nome ao modelo de conferência.")
+        return nome
 
 
 class PlanoPreventivoForm(forms.Form):
@@ -686,6 +785,25 @@ class PlanoPreventivoForm(forms.Form):
             attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d"
         ),
     )
+    modelo_de_conferencia = forms.ModelChoiceField(
+        label="Modelo de conferência",
+        queryset=ModeloConferenciaPreventiva.objects.none(),
+        required=False,
+        empty_label="Sem modelo de conferência",
+        widget=forms.Select(
+            attrs={"class": "form-select", "data-eithra-modelo-conferencia": "escolha"}
+        ),
+    )
+    usar_modelo_de_conferencia = forms.BooleanField(
+        label="Usar este modelo",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    substituir_conferencia = forms.BooleanField(
+        label="Substituir os itens de conferência deste plano",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     def __init__(
         self,
@@ -729,6 +847,15 @@ class PlanoPreventivoForm(forms.Form):
         )
         self.fields["fornecedor"].queryset = _escolhas_do_condominio(
             Fornecedor, atual, getattr(escolhido, "fornecedor", None)
+        )
+
+        # Só modelos ativos do mesmo condomínio do plano podem ser escolhidos.
+        # Não há vínculo vivo: o modelo é a referência de onde os critérios são
+        # copiados ao aplicar, e não uma ligação que o plano carregue depois.
+        self.fields["modelo_de_conferencia"].queryset = (
+            ModeloConferenciaPreventiva.objects.ativos().do_condominio(atual)
+            if atual is not None
+            else ModeloConferenciaPreventiva.objects.none()
         )
 
     def clean_titulo(self):

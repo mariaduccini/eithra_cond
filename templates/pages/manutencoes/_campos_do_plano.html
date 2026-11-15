@@ -131,3 +131,61 @@
   <div class="text-body-secondary small">Conferência após execução</div>
   <div>A administradora deverá conferir o serviço após a execução.</div>
 </div>
+
+{% comment %}
+	Como a execução será conferida. A conferência é sempre exigida; o que se
+	escolhe aqui é o roteiro reutilizável de onde os itens serão copiados. Só os
+	modelos ativos do mesmo condomínio aparecem, e a cópia acontece na gravação —
+	o plano fica com os próprios itens, sem vínculo vivo com o modelo. Trocar uma
+	lista que já existe nunca é silencioso: a substituição precisa de confirmação.
+{% endcomment %}
+<div class="border rounded p-3 mt-3" data-eithra-conferencia>
+  <div class="fw-medium mb-2">Como a execução será conferida?</div>
+
+  {% if modelos_disponiveis %}
+    <div class="mb-3">
+      <label class="form-label" for="{{ formulario.modelo_de_conferencia.id_for_label }}">
+        {{ formulario.modelo_de_conferencia.label }}
+      </label>
+      {{ formulario.modelo_de_conferencia }}
+      {% for erro in formulario.modelo_de_conferencia.errors %}
+        <div class="text-danger small mt-1">{{ erro }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="border rounded p-3 mb-3 d-none" data-eithra-previa-modelo>
+      <div class="text-body-secondary small">Critérios deste modelo</div>
+      <div class="fw-medium" data-previa-nome></div>
+      <ul class="mb-0 mt-2 ps-3" data-previa-criterios></ul>
+    </div>
+
+    <div class="form-check d-none" data-eithra-usar-modelo>
+      {{ formulario.usar_modelo_de_conferencia }}
+      <label class="form-check-label" for="{{ formulario.usar_modelo_de_conferencia.id_for_label }}">
+        {{ formulario.usar_modelo_de_conferencia.label }}
+      </label>
+    </div>
+
+    {% if criterios_do_plano %}
+      <div class="alert alert-warning mt-3 mb-0">
+        <p class="mb-2">Este plano já possui itens de conferência. Deseja substituí-los pelo modelo selecionado?</p>
+        <div class="form-check">
+          {{ formulario.substituir_conferencia }}
+          <label class="form-check-label" for="{{ formulario.substituir_conferencia.id_for_label }}">
+            Sim, substituir os itens de conferência deste plano
+          </label>
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="mb-1">Nenhum modelo definido ainda.</p>
+    <p class="text-body-secondary small mb-2">
+      Os itens de conferência deste plano ainda precisam ser definidos.
+    </p>
+    {% if pode_administrar_modelos %}
+      <a class="btn btn-sm btn-label-secondary" href="{% url 'manutencoes:modelos_conferencia' %}">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Criar modelo de conferência
+      </a>
+    {% endif %}
+  {% endif %}
+</div>

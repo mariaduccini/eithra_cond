@@ -1,0 +1,56 @@
+{% comment %}
+	Uma linha do roteiro de conferência.
+
+	O item é o que precisa ser observado, em linguagem direta, e a marcação de
+	obrigatório. Nada de tipo de resposta nem de peso: nesta fase o critério é
+	texto e obrigatoriedade. Os botões de mover e remover servem ao toque, e a
+	ordem final é a ordem em que as linhas aparecem na tela.
+
+	Variáveis: descricao, obrigatorio.
+{% endcomment %}
+<div class="border rounded p-3 mb-2" data-linha-criterio>
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+    <span class="text-body-secondary small">Item</span>
+    <div class="btn-group" role="group" aria-label="Ações do item">
+      <button
+        type="button"
+        class="btn btn-sm btn-icon btn-label-secondary"
+        data-mover="cima"
+        aria-label="Mover o item para cima">
+        <i class="bx bx-chevron-up" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        class="btn btn-sm btn-icon btn-label-secondary"
+        data-mover="baixo"
+        aria-label="Mover o item para baixo">
+        <i class="bx bx-chevron-down" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
+        class="btn btn-sm btn-icon btn-label-secondary text-danger"
+        data-remover-criterio
+        aria-label="Remover o item">
+        <i class="bx bx-trash" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+  <div class="mb-2">
+    <label class="form-label">O que precisa ser conferido?</label>
+    <input
+      type="text"
+      name="criterio_descricao"
+      class="form-control"
+      value="{{ descricao }}"
+      placeholder="Ex.: Verificar se a área ficou limpa"
+      autocomplete="off"
+      aria-label="O que precisa ser conferido">
+  </div>
+  <div>
+    <label class="form-label">Obrigatório</label>
+    <select name="criterio_obrigatorio" class="form-select" aria-label="Obrigatório">
+      <option value="sim"{% if obrigatorio %} selected{% endif %}>Sim</option>
+      <option value="nao"{% if not obrigatorio %} selected{% endif %}>Não</option>
+    </select>
+  </div>
+</div>

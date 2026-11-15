@@ -1,0 +1,267 @@
+{% extends "layouts/app.html" %}
+
+{% comment %}
+	A biblioteca de roteiros reutilizáveis de conferência vive dentro das
+	preventivas — é a mesma Administradora que responde pela conferência e pelo
+	roteiro —, e por isso não ocupa um módulo próprio no menu. A lista é curta e
+	de trabalho: nome, descrição, quantos itens, se está ativo. Editar e
+	desativar moram no menu de três pontos, para a linha não virar fileira de
+	ícones. Editar o modelo não alcança nada do que já nasceu dele: a tela diz
+	isso em letras claras.
+{% endcomment %}
+
+{% block title %}Modelos de conferência · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Modelos de conferência</h1>
+      <p class="text-body-secondary mb-0">
+        Roteiros reutilizáveis do que se confere depois da execução{% if total %} · {{ total }} em vista{% endif %}.
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{% url 'manutencoes:planos' %}" class="btn btn-label-secondary">
+        <i class="bx bx-repeat me-1" aria-hidden="true"></i> Planos preventivos
+      </a>
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#registrar-modelo">
+        <i class="bx bx-plus me-1" aria-hidden="true"></i> Novo modelo
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if modelos %}
+      <div class="table-responsive d-none d-lg-block">
+        <table class="table align-middle mb-0">
+          <caption class="visually-hidden">Modelos reutilizáveis de conferência</caption>
+          <thead>
+            <tr>
+              <th scope="col">Nome</th>
+              <th scope="col">Descrição</th>
+              {% if mostrar_condominio %}<th scope="col">Condomínio</th>{% endif %}
+              <th scope="col">Itens</th>
+              <th scope="col">Situação</th>
+              <th scope="col" class="text-end">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for modelo in modelos %}
+              <tr>
+                <td class="fw-medium">{{ modelo.nome }}</td>
+                <td class="text-body-secondary">{{ modelo.descricao|default:"—"|truncatechars:80 }}</td>
+                {% if mostrar_condominio %}<td>{{ modelo.condominio }}</td>{% endif %}
+                <td>{{ modelo.criterios }} {% if modelo.criterios == 1 %}item{% else %}itens{% endif %}</td>
+                <td>
+                  {% if modelo.ativo %}
+                    <span class="badge bg-label-success">Ativo</span>
+                  {% else %}
+                    <span class="badge bg-label-secondary">Inativo</span>
+                  {% endif %}
+                </td>
+                <td class="text-end text-nowrap">
+                  <div class="dropdown">
+                    <button
+                      type="button"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      title="Mais ações"
+                      aria-label="Mais ações para o modelo {{ modelo.nome }}">
+                      <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      <li>
+                        <a class="dropdown-item" href="{{ modelo.abrir_edicao }}">
+                          <i class="bx bx-pencil me-2" aria-hidden="true"></i>Editar
+                        </a>
+                      </li>
+                      <li>
+                        <form
+                          method="post"
+                          action="{% url 'manutencoes:alternar_modelo_conferencia' modelo.pk %}">
+                          {% csrf_token %}
+                          <button type="submit" class="dropdown-item">
+                            <i class="bx {% if modelo.ativo %}bx-block{% else %}bx-check-circle{% endif %} me-2" aria-hidden="true"></i>{% if modelo.ativo %}Desativar{% else %}Ativar{% endif %}
+                          </button>
+                        </form>
+                      </li>
+                    </ul>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="list-group list-group-flush d-lg-none">
+        {% for modelo in modelos %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <span class="fw-medium">{{ modelo.nome }}</span>
+              {% if modelo.ativo %}
+                <span class="badge bg-label-success flex-shrink-0">Ativo</span>
+              {% else %}
+                <span class="badge bg-label-secondary flex-shrink-0">Inativo</span>
+              {% endif %}
+            </div>
+            {% if modelo.descricao %}
+              <div class="text-body-secondary small mt-1">{{ modelo.descricao|truncatechars:80 }}</div>
+            {% endif %}
+            <div class="text-body-secondary small mt-1">
+              {% if mostrar_condominio %}{{ modelo.condominio }} · {% endif %}{{ modelo.criterios }} {% if modelo.criterios == 1 %}item{% else %}itens{% endif %}
+            </div>
+            <div class="d-flex justify-content-end mt-2">
+              <div class="dropdown">
+                <button
+                  type="button"
+                  class="btn btn-icon btn-text-secondary rounded-pill"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                  aria-label="Mais ações para o modelo {{ modelo.nome }}">
+                  <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a class="dropdown-item" href="{{ modelo.abrir_edicao }}">
+                      <i class="bx bx-pencil me-2" aria-hidden="true"></i>Editar
+                    </a>
+                  </li>
+                  <li>
+                    <form
+                      method="post"
+                      action="{% url 'manutencoes:alternar_modelo_conferencia' modelo.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="dropdown-item">
+                        <i class="bx {% if modelo.ativo %}bx-block{% else %}bx-check-circle{% endif %} me-2" aria-hidden="true"></i>{% if modelo.ativo %}Desativar{% else %}Ativar{% endif %}
+                      </button>
+                    </form>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-list-check" state_title="Nenhum modelo de conferência" state_message="Registre o roteiro de um tipo de serviço para reaproveitar os itens em vários planos." %}
+    {% endif %}
+  </div>
+
+  {% if formulario_criacao %}
+    <div
+      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      id="registrar-modelo"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-modelo-titulo"
+      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:criar_modelo_conferencia' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="registrar-modelo-titulo">Novo modelo de conferência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            {% include "pages/manutencoes/_campos_do_modelo.html" with formulario=formulario_criacao %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Registrar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if formulario_edicao %}
+    <div
+      class="modal fade{% if modal_aberto == 'editar' %} show{% endif %}"
+      id="editar-modelo"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="editar-modelo-titulo"
+      aria-hidden="{% if modal_aberto == 'editar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'editar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:editar_modelo_conferencia' modelo_em_edicao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="editar-modelo-titulo">Editar modelo de conferência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              Alterações neste modelo serão usadas apenas quando ele for aplicado novamente.
+            </p>
+            {% include "pages/manutencoes/_campos_do_modelo.html" with formulario=formulario_edicao %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // A lista do que deve ser conferido é curta e se ajusta na tela: acrescentar,
+    // remover e reordenar acontecem sem recarregar nada. A ordem enviada é a
+    // ordem das linhas, e o molde escondido evita repetir a linha no script.
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll("[data-editor-criterios]").forEach(function (editor) {
+        var lista = editor.querySelector("[data-lista-criterios]");
+        var molde = editor.querySelector("template[data-modelo-criterio]");
+        var adicionar = editor.querySelector("[data-adicionar-criterio]");
+        if (!lista || !molde) {
+          return;
+        }
+
+        if (adicionar) {
+          adicionar.addEventListener("click", function () {
+            var linha = molde.content.firstElementChild.cloneNode(true);
+            lista.appendChild(linha);
+            var campo = linha.querySelector("input[name='criterio_descricao']");
+            if (campo) {
+              campo.focus();
+            }
+          });
+        }
+
+        lista.addEventListener("click", function (evento) {
+          var botao = evento.target.closest("button");
+          if (!botao) {
+            return;
+          }
+          var linha = botao.closest("[data-linha-criterio]");
+          if (!linha) {
+            return;
+          }
+
+          if (botao.hasAttribute("data-remover-criterio")) {
+            linha.remove();
+            return;
+          }
+
+          var direcao = botao.getAttribute("data-mover");
+          if (direcao === "cima" && linha.previousElementSibling) {
+            lista.insertBefore(linha, linha.previousElementSibling);
+          } else if (direcao === "baixo" && linha.nextElementSibling) {
+            lista.insertBefore(linha.nextElementSibling, linha);
+          }
+        });
+      });
+    });
+  </script>
+{% endblock %}

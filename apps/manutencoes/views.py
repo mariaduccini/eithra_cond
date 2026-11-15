@@ -15,6 +15,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -36,12 +37,15 @@ from .forms import (
     ConclusaoDeManutencaoForm,
     FiltroDeManutencoesForm,
     ManutencaoForm,
+    ModeloDeConferenciaForm,
     PlanoPreventivoForm,
     acoes_de_status,
+    criterios_do_modelo_no_envio,
     escolha_de_frequencia,
 )
-from .models import Manutencao, PlanoPreventivo
+from .models import Manutencao, ModeloConferenciaPreventiva, PlanoPreventivo
 from .permissoes import (
+    condominios_para_administrar_modelos,
     condominios_para_criar,
     condominios_para_ver,
     pode_administrar_manutencao,
@@ -55,12 +59,16 @@ from .services import (
     ErroDeManutencao,
     acompanhamento_do_plano,
     alterar_status,
+    aplicar_modelo_de_conferencia,
     cancelar_manutencao,
     concluir_manutencao,
     criar_manutencao,
+    criar_modelo_conferencia,
     criar_plano_preventivo,
     definir_ativo,
+    definir_ativo_do_modelo,
     editar_manutencao,
+    editar_modelo_conferencia,
     editar_plano_preventivo,
 )
 
@@ -336,17 +344,23 @@ def criar_plano(request):
 
     dados = formulario.cleaned_data
     try:
-        criar_plano_preventivo(
-            condominio=dados["condominio"],
-            criado_por=request.user,
-            titulo=dados["titulo"],
-            local=dados["local"],
-            equipamento=dados["equipamento"],
-            fornecedor=dados["fornecedor"],
-            frequencia_unidade=dados["frequencia_unidade"],
-            frequencia_intervalo=dados["frequencia_intervalo"],
-            proxima_data_prevista=dados["proxima_data_prevista"],
-        )
+        with transaction.atomic():
+            plano = criar_plano_preventivo(
+                condominio=dados["condominio"],
+                criado_por=request.user,
+                titulo=dados["titulo"],
+                local=dados["local"],
+                equipamento=dados["equipamento"],
+                fornecedor=dados["fornecedor"],
+                frequencia_unidade=dados["frequencia_unidade"],
+                frequencia_intervalo=dados["frequencia_intervalo"],
+                proxima_data_prevista=dados["proxima_data_prevista"],
+            )
+            # O modelo é aplicado pelo serviço oficial: os critérios são
+            # copiados por valor para o plano, e nada liga os dois depois.
+            _aplicar_modelo_escolhido(
+                plano=plano, dados=dados, usuario=request.user
+            )
     except ErroDeManutencao as erro:
         messages.error(request, str(erro))
         return _render_planos(
@@ -381,16 +395,22 @@ def editar_plano(request, pk):
 
     dados = formulario.cleaned_data
     try:
-        editar_plano_preventivo(
-            plano=plano,
-            titulo=dados["titulo"],
-            local=dados["local"],
-            equipamento=dados["equipamento"],
-            fornecedor=dados["fornecedor"],
-            frequencia_unidade=dados["frequencia_unidade"],
-            frequencia_intervalo=dados["frequencia_intervalo"],
-            proxima_data_prevista=dados["proxima_data_prevista"],
-        )
+        with transaction.atomic():
+            editar_plano_preventivo(
+                plano=plano,
+                titulo=dados["titulo"],
+                local=dados["local"],
+                equipamento=dados["equipamento"],
+                fornecedor=dados["fornecedor"],
+                frequencia_unidade=dados["frequencia_unidade"],
+                frequencia_intervalo=dados["frequencia_intervalo"],
+                proxima_data_prevista=dados["proxima_data_prevista"],
+            )
+            # Trocar a lista do plano nunca é silencioso: quando já há itens, o
+            # serviço só substitui com a confirmação explícita da tela.
+            _aplicar_modelo_escolhido(
+                plano=plano, dados=dados, usuario=request.user
+            )
     except ErroDeManutencao as erro:
         messages.error(request, str(erro))
         return _render_planos(
@@ -404,6 +424,142 @@ def editar_plano(request, pk):
 
     messages.success(request, "Plano preventivo atualizado.")
     return redirect("manutencoes:planos")
+
+
+def _aplicar_modelo_escolhido(*, plano, dados, usuario) -> None:
+    """Aplica ao plano o modelo escolhido na tela, quando houve escolha.
+
+    A decisão de substituir é da tela, e chega como confirmação explícita: sem
+    ela, o serviço recusa trocar uma lista que já existe. Nada de critérios é
+    copiado aqui — quem copia é o serviço.
+    """
+    modelo = dados.get("modelo_de_conferencia")
+    if modelo is None or not dados.get("usar_modelo_de_conferencia"):
+        return
+    aplicar_modelo_de_conferencia(
+        plano=plano,
+        modelo=modelo,
+        usuario=usuario,
+        substituir=bool(dados.get("substituir_conferencia")),
+    )
+
+
+# -- Modelos de conferência -----------------------------------------------------
+#
+# A biblioteca de modelos reutilizáveis vive dentro das preventivas, e é
+# administrada pela Administradora do condomínio — a mesma autorização dos
+# modelos, e nunca ``is_staff``. Quem não administra não enxerga a tela: a
+# resposta é 404, para não anunciar o que não é dela.
+
+
+@login_required
+def modelos_de_conferencia(request):
+    """A biblioteca de modelos de conferência dos condomínios desta Administradora."""
+    condominios = _condominios_para_administrar_modelos(request)
+    if request.GET.get("abrir") == "editar":
+        modelo = _modelo_pedido_para_editar(request, condominios)
+        if modelo is not None:
+            return _render_modelos(request, condominios, modelo=modelo, modal="editar")
+    return _render_modelos(request, condominios)
+
+
+@login_required
+def novo_modelo(request):
+    """Registra um modelo reutilizável de conferência. Só a Administradora."""
+    if request.method != "POST":
+        return redirect("manutencoes:modelos_conferencia")
+
+    condominios = condominios_para_administrar_modelos(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum condomínio disponível para administrar modelos.")
+
+    formulario = ModeloDeConferenciaForm(request.POST, condominios=condominios)
+    if not formulario.is_valid():
+        return _render_modelos(
+            request,
+            _condominios_para_administrar_modelos(request),
+            formulario=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    dados = formulario.cleaned_data
+    try:
+        criar_modelo_conferencia(
+            condominio=dados["condominio"],
+            criado_por=request.user,
+            nome=dados["nome"],
+            descricao=dados["descricao"],
+            criterios=criterios_do_modelo_no_envio(request.POST),
+        )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return _render_modelos(
+            request,
+            _condominios_para_administrar_modelos(request),
+            formulario=formulario,
+            modal="criar",
+            status=400,
+        )
+
+    messages.success(request, "Modelo de conferência registrado.")
+    return redirect("manutencoes:modelos_conferencia")
+
+
+@login_required
+@require_POST
+def editar_modelo(request, pk):
+    """Atualiza o roteiro reutilizável, sem alcançar o que já foi copiado dele."""
+    modelo = _modelo_autorizado(request, pk)
+    formulario = ModeloDeConferenciaForm(
+        request.POST, condominio=modelo.condominio, modelo=modelo
+    )
+    if not formulario.is_valid():
+        return _render_modelos(
+            request,
+            _condominios_para_administrar_modelos(request),
+            formulario=formulario,
+            modelo=modelo,
+            modal="editar",
+            status=400,
+        )
+
+    dados = formulario.cleaned_data
+    try:
+        editar_modelo_conferencia(
+            modelo=modelo,
+            usuario=request.user,
+            nome=dados["nome"],
+            descricao=dados["descricao"],
+            criterios=criterios_do_modelo_no_envio(request.POST),
+        )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return _render_modelos(
+            request,
+            _condominios_para_administrar_modelos(request),
+            formulario=formulario,
+            modelo=modelo,
+            modal="editar",
+            status=400,
+        )
+
+    messages.success(request, "Modelo de conferência atualizado.")
+    return redirect("manutencoes:modelos_conferencia")
+
+
+@login_required
+@require_POST
+def alternar_modelo(request, pk):
+    """Retira o modelo das próximas aplicações, ou o devolve, sem apagar nada."""
+    modelo = _modelo_autorizado(request, pk)
+    novo = not modelo.ativo
+    definir_ativo_do_modelo(modelo=modelo, usuario=request.user, ativo=novo)
+    if novo:
+        messages.success(request, "Modelo de conferência reativado.")
+    else:
+        messages.success(request, "Modelo de conferência desativado.")
+    return redirect("manutencoes:modelos_conferencia")
 
 
 # -- Autorização ----------------------------------------------------------------
@@ -510,6 +666,47 @@ def _plano_pedido_para_editar(request):
         return None
     plano = _plano_autorizado(request, pk)
     return plano if _pode_editar_plano(request.user, plano) else None
+
+
+def _condominios_para_administrar_modelos(request):
+    """Condomínios cujos modelos esta pessoa administra, ou 404.
+
+    Só a Administradora chega aqui. Quem não administra nenhum condomínio não é
+    avisado de que a biblioteca existe: a resposta é 404.
+    """
+    condominios = condominios_para_administrar_modelos(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum modelo de conferência disponível.")
+    return condominios
+
+
+def _modelo_autorizado(request, pk):
+    """Resolve o modelo dentro dos condomínios que esta pessoa administra."""
+    condominios = _condominios_para_administrar_modelos(request)
+    return _obter_ou_404(
+        ModeloConferenciaPreventiva.objects.select_related("condominio").filter(
+            condominio__in=condominios
+        ),
+        pk,
+    )
+
+
+def _modelo_pedido_para_editar(request, condominios):
+    """O modelo que a tela pediu para editar, quando esta pessoa pode editá-lo.
+
+    Serve à abertura do formulário por endereço. O que a pessoa não pode editar
+    simplesmente não abre — a lista aparece sem o modal, em vez de recusar a tela
+    inteira por causa de um parâmetro de endereço.
+    """
+    pk = request.GET.get("item")
+    if not pk or not _eh_uuid(pk):
+        return None
+    return _obter_ou_404(
+        ModeloConferenciaPreventiva.objects.select_related("condominio").filter(
+            condominio__in=condominios
+        ),
+        pk,
+    )
 
 
 def _demanda_de_origem(pk, condominio):
@@ -679,6 +876,7 @@ def _render_planos(
         .select_related(
             "condominio", "responsavel", "local", "equipamento", "fornecedor"
         )
+        .prefetch_related("criterios_conferencia")
         .order_by("proxima_data_prevista", "titulo")
     )
     pagina_planos = paginar_do_pedido(consulta, request.GET)
@@ -698,8 +896,11 @@ def _render_planos(
     elif pode_criar:
         formulario_criacao = PlanoPreventivoForm(condominios=condominios_criaveis)
 
+    condominio_do_formulario = getattr(
+        formulario_edicao or formulario_criacao, "condominio_efetivo", None
+    )
     acompanhamento, erro_acompanhamento = _acompanhamento_para_tela(
-        getattr(formulario_edicao or formulario_criacao, "condominio_efetivo", None)
+        condominio_do_formulario
     )
 
     contexto = {
@@ -714,8 +915,133 @@ def _render_planos(
         "mostrar_condominio": condominios.count() > 1,
         "acompanhamento": acompanhamento,
         "erro_acompanhamento": erro_acompanhamento,
+        "pode_administrar_modelos": condominios_para_administrar_modelos(
+            request.user
+        ).exists(),
+        "modelos_disponiveis": _modelos_do_condominio(condominio_do_formulario),
+        "modelos_previa": _previa_dos_modelos(condominio_do_formulario),
+        "criterios_do_plano": _criterios_do_plano_para_tela(plano),
     }
     return render(request, "pages/manutencoes/planos.html", contexto, status=status)
+
+
+def _modelos_do_condominio(condominio):
+    """Os modelos ativos que podem ser aplicados a um plano deste condomínio."""
+    if condominio is None:
+        return ModeloConferenciaPreventiva.objects.none()
+    return (
+        ModeloConferenciaPreventiva.objects.ativos()
+        .do_condominio(condominio)
+        .prefetch_related("criterios")
+    )
+
+
+def _previa_dos_modelos(condominio) -> list[dict]:
+    """Os critérios de cada modelo ativo, como a tela os mostra em prévia.
+
+    É o mesmo conteúdo que será copiado ao aplicar: a prévia não inventa nada
+    além do que o modelo já tem.
+    """
+    return [
+        {
+            "id": str(modelo.pk),
+            "nome": modelo.nome,
+            "criterios": [
+                {"descricao": criterio.descricao, "obrigatorio": criterio.obrigatorio}
+                for criterio in modelo.criterios.all()
+            ],
+        }
+        for modelo in _modelos_do_condominio(condominio)
+    ]
+
+
+def _criterios_do_plano_para_tela(plano) -> list[dict]:
+    """Os critérios que o plano já tem, quando há plano em edição."""
+    if plano is None:
+        return []
+    return [
+        {"descricao": criterio.descricao, "obrigatorio": criterio.obrigatorio}
+        for criterio in plano.criterios_conferencia.all()
+    ]
+
+
+def _render_modelos(
+    request, condominios, *, formulario=None, modelo=None, modal=None, status=200
+):
+    """Monta a biblioteca de modelos com o formulário que estiver em uso.
+
+    Os modelos vêm dos condomínios que esta Administradora responde. O
+    formulário — de criação ou de edição — é único na tela, e é ele que decide
+    para qual condomínio o vínculo de administração será lido.
+    """
+    consulta = (
+        ModeloConferenciaPreventiva.objects.filter(condominio__in=condominios)
+        .select_related("condominio")
+        .prefetch_related("criterios")
+        .order_by("condominio__nome", "nome")
+    )
+    modelos = list(consulta)
+
+    formulario_criacao = None
+    formulario_edicao = None
+    if modal == "editar" and modelo is not None:
+        formulario_edicao = formulario or ModeloDeConferenciaForm(
+            condominio=modelo.condominio,
+            modelo=modelo,
+            initial=_iniciais_do_modelo(modelo),
+        )
+    elif formulario is not None:
+        formulario_criacao = formulario
+    else:
+        formulario_criacao = ModeloDeConferenciaForm(condominios=condominios)
+
+    contexto = {
+        "modelos": [_modelo_para_tela(item) for item in modelos],
+        "total": len(modelos),
+        "formulario_criacao": formulario_criacao,
+        "formulario_edicao": formulario_edicao,
+        "modelo_em_edicao": modelo,
+        "criterios_do_modelo": _criterios_para_tela(modelo),
+        "modal_aberto": modal,
+        "mostrar_condominio": condominios.count() > 1,
+    }
+    return render(
+        request, "pages/manutencoes/modelos_conferencia.html", contexto, status=status
+    )
+
+
+def _criterios_para_tela(modelo) -> list[dict]:
+    """Os critérios do modelo como as linhas do editor precisam deles."""
+    if modelo is None:
+        return []
+    return [
+        {"descricao": criterio.descricao, "obrigatorio": criterio.obrigatorio}
+        for criterio in modelo.criterios.all()
+    ]
+
+
+def _iniciais_do_modelo(modelo) -> dict:
+    """O que o formulário já deve trazer quando o modelo é aberto para edição."""
+    return {
+        "nome": modelo.nome,
+        "descricao": modelo.descricao,
+    }
+
+
+def _modelo_para_tela(modelo) -> dict:
+    """O modelo como a linha da biblioteca precisa dele."""
+    return {
+        "pk": modelo.pk,
+        "nome": modelo.nome,
+        "descricao": modelo.descricao,
+        "condominio": modelo.condominio.nome,
+        "criterios": len(modelo.criterios.all()),
+        "ativo": modelo.ativo,
+        "abrir_edicao": (
+            f"{reverse('manutencoes:modelos_conferencia')}"
+            f"?abrir=editar&item={modelo.pk}"
+        ),
+    }
 
 
 def _manutencoes_filtradas(request, condominios, filtros):
@@ -1005,6 +1331,9 @@ def _plano_para_tela(plano, usuario=None) -> dict:
         "proxima": _data_por_extenso(plano.proxima_data_prevista),
         "ativo": plano.ativo,
         "exige_conferencia": plano.exige_conferencia,
+        # A conferência é sempre exigida; o que pode faltar é o que conferir.
+        # Esta é uma leitura derivada do próprio plano, sem novo estado.
+        "tem_criterios_conferencia": bool(plano.criterios_conferencia.all()),
         "pode_editar": bool(usuario) and _pode_editar_plano(usuario, plano),
         "abrir_edicao": f"{reverse('manutencoes:planos')}?abrir=editar&item={plano.pk}",
     }
