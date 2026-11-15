@@ -2576,6 +2576,72 @@
   cursor: pointer;
 }
 
+/* Mapa de unidades -------------------------------------------------------- */
+/* Escolher o destino sem saber o nome de quem recebe: bloco/torre, andar e
+   unidade, do cadastro que já existe. Tudo por clique, sem tabela. */
+.eithra-mapa-unidades {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-block-size: 18rem;
+  overflow-y: auto;
+}
+
+.eithra-mapa-bloco {
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 0.625rem 0.75rem;
+}
+
+.eithra-mapa-bloco-nome {
+  margin-block-end: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-mapa-andar + .eithra-mapa-andar {
+  margin-block-start: 0.5rem;
+}
+
+.eithra-mapa-andar-nome {
+  display: block;
+  margin-block-end: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-mapa-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.eithra-mapa-chip {
+  min-inline-size: 3rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 50rem;
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.eithra-mapa-chip:hover,
+.eithra-mapa-chip:focus-visible {
+  border-color: var(--bs-primary);
+  color: var(--bs-primary);
+}
+
+.eithra-mapa-chip.is-selected {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-primary);
+  color: #fff;
+}
+
 /* Empresa do prestador ---------------------------------------------------- */
 /* Empresa é texto livre: não existe cadastro prévio e a portaria não bloqueia
    a passagem de quem não está na base. O que existe é memória — o que já

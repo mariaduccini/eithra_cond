@@ -416,6 +416,39 @@
                 <span data-eithra-autorizador-destino>{% if autorizador_unidade %}{{ autorizador_unidade.rotulo }}{% endif %}</span>
                 <button type="button" class="eithra-autorizador-trocar" data-eithra-autorizador-trocar>Trocar</button>
               </p>
+              {# Sem saber o nome de quem recebe, a portaria escolhe pelo mapa:
+                 bloco/torre, andar e unidade — do cadastro que já existe. #}
+              <div class="d-flex flex-wrap gap-3 mt-3">
+                <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="mapa">Escolher pelo condomínio</button>
+              </div>
+              <div class="d-none mt-3" data-eithra-revelado="mapa">
+                {% if estrutura_unidades %}
+                  <div class="eithra-mapa-unidades" data-eithra-mapa-unidade>
+                    {% for bloco in estrutura_unidades %}
+                      <div class="eithra-mapa-bloco">
+                        <div class="eithra-mapa-bloco-nome">{{ bloco.nome }}</div>
+                        {% for andar in bloco.andares %}
+                          <div class="eithra-mapa-andar">
+                            <span class="eithra-mapa-andar-nome">{{ andar.nome }}</span>
+                            <div class="eithra-mapa-chips">
+                              {% for unidade in andar.unidades %}
+                                <button
+                                  type="button"
+                                  class="eithra-mapa-chip"
+                                  data-eithra-unidade-chip
+                                  data-unidade="{{ unidade.pk }}"
+                                  data-rotulo="{{ unidade.rotulo }}">{{ unidade.identificador }}</button>
+                              {% endfor %}
+                            </div>
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="eithra-vazio mb-0">Nenhuma unidade cadastrada neste condomínio.</p>
+                {% endif %}
+              </div>
               <div class="{% if not formulario_chegada.local.value %}d-none {% endif %}mt-4" data-eithra-revelado="local">
                 {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.local classe="mb-0" %}
               </div>
@@ -848,6 +881,45 @@
           campo.focus();
         });
       }
+    });
+
+    // Escolher o destino pelo mapa: o clique preenche o mesmo campo que a
+    // busca preenche. A autoridade sobre o destino continua sendo a unidade.
+    document.querySelectorAll("[data-eithra-mapa-unidade]").forEach(function (mapa) {
+      var modal = mapa.closest(".modal");
+      if (!modal) {
+        return;
+      }
+      var unidade = modal.querySelector("[name='unidade']");
+      var escolhido = modal.querySelector("[data-eithra-autorizador-escolhido]");
+      var destino = modal.querySelector("[data-eithra-autorizador-destino]");
+      var busca = modal.querySelector("[data-eithra-autorizador-busca]");
+      var resultado = modal.querySelector("[data-eithra-autorizador-resultado]");
+      if (!unidade) {
+        return;
+      }
+      mapa.addEventListener("click", function (evento) {
+        var chip = evento.target.closest("[data-eithra-unidade-chip]");
+        if (!chip) {
+          return;
+        }
+        unidade.value = chip.dataset.unidade || "";
+        if (destino) {
+          destino.textContent = chip.dataset.rotulo || chip.textContent.trim();
+        }
+        if (escolhido) {
+          escolhido.hidden = false;
+        }
+        if (busca) {
+          busca.value = "";
+        }
+        if (resultado) {
+          resultado.innerHTML = "";
+        }
+        mapa.querySelectorAll("[data-eithra-unidade-chip]").forEach(function (item) {
+          item.classList.toggle("is-selected", item === chip);
+        });
+      });
     });
 
     var empresasConhecidas = [];

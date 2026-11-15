@@ -1089,6 +1089,91 @@ class PortariaEntregasTests(TestCase):
         self.assertIn('data-eithra-entrega="delivery"', conteudo)
 
 
+class PortariaMapaDeUnidadesTests(TestCase):
+    """Escolher o destino por clique, a partir do cadastro que já existe.
+
+    O mapa preenche a mesma unidade que a busca preenche: bloco/torre, andar e
+    unidade, montados do cadastro do condomínio — sem inventar estrutura, sem
+    mostrar unidade inativa e sem atravessar condomínio.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+
+    def _painel(self):
+        return self.client.get(reverse("portaria:painel"))
+
+    def test_a_unidade_aparece_para_escolher_por_clique(self):
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="101", bloco_torre="A", andar="1"
+        )
+
+        resposta = self._painel()
+
+        self.assertContains(resposta, "data-eithra-mapa-unidade")
+        self.assertContains(resposta, "data-eithra-unidade-chip")
+        self.assertContains(resposta, ">101<")
+
+    def test_o_mapa_agrupa_por_bloco_e_andar(self):
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="101", bloco_torre="A", andar="1"
+        )
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="201", bloco_torre="B", andar="2"
+        )
+
+        estrutura = self._painel().context["estrutura_unidades"]
+
+        self.assertEqual([bloco["nome"] for bloco in estrutura], ["A", "B"])
+        self.assertEqual(estrutura[0]["andares"][0]["nome"], "1")
+        self.assertEqual(
+            estrutura[1]["andares"][0]["unidades"][0]["identificador"], "201"
+        )
+
+    def test_o_andar_ordena_como_numero(self):
+        """O andar 10 vem depois do andar 2, como o condomínio lê."""
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="102", bloco_torre="A", andar="10"
+        )
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="101", bloco_torre="A", andar="2"
+        )
+
+        estrutura = self._painel().context["estrutura_unidades"]
+
+        self.assertEqual(
+            [andar["nome"] for andar in estrutura[0]["andares"]], ["2", "10"]
+        )
+
+    def test_o_mapa_nao_traz_outro_condominio(self):
+        outro = apoio.criar_condominio("Outro")
+        comunidade_apoio.criar_unidade(outro, identificador="999", bloco_torre="Z")
+
+        resposta = self._painel()
+
+        self.assertEqual(resposta.context["estrutura_unidades"], [])
+        self.assertContains(resposta, "Nenhuma unidade cadastrada neste condomínio.")
+
+    def test_unidade_inativa_nao_aparece(self):
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="101")
+        unidade.ativa = False
+        unidade.save()
+
+        resposta = self._painel()
+
+        self.assertEqual(resposta.context["estrutura_unidades"], [])
+        self.assertContains(resposta, "Nenhuma unidade cadastrada neste condomínio.")
+
+    def test_sem_unidades_o_mapa_avisa(self):
+        resposta = self._painel()
+
+        self.assertContains(resposta, "Escolher pelo condomínio")
+        self.assertContains(resposta, "Nenhuma unidade cadastrada neste condomínio.")
+
+
 class PortariaRelatoTests(TestCase):
     """A primeira conversa por texto: entender, perguntar o mínimo, confirmar.
 

@@ -682,6 +682,9 @@ def _render_painel(
         "item_verificacao": item_verificacao,
         "autorizador_unidade": _unidade_escolhida(formulario_chegada, atual),
         "empresas_conhecidas": empresas_conhecidas(atual),
+        # A planta do condomínio para escolher o destino por clique. Sai do
+        # cadastro de unidades que já existe e nunca atravessa condomínio.
+        "estrutura_unidades": _estrutura_de_unidades(atual),
         "modal_aberto": modal,
         "relato": relato,
         "proposta": proposta,
@@ -697,6 +700,64 @@ def _render_painel(
     else:
         contexto.update(_painel_operacional(atual, base["agora"]))
     return render(request, "pages/portaria/painel.html", contexto, status=status)
+
+
+def _chave_natural(valor):
+    """Ordena "1, 2, 10" como o condomínio lê, não como o texto é escrito.
+
+    Andar e bloco são texto livre: quando o que está escrito é número, ele
+    ordena como número; o resto ordena alfabeticamente. Sem isso, o andar 10
+    apareceria antes do andar 2.
+    """
+    texto = (valor or "").strip()
+    if texto.isdigit():
+        return (0, int(texto), "")
+    return (1, 0, texto.lower())
+
+
+def _estrutura_de_unidades(condominio):
+    """A planta do condomínio para escolher o destino por clique.
+
+    Bloco/Torre → Andar → Unidade, montada do cadastro que já existe
+    (bloco_torre, andar, identificador). A unidade sem bloco ou sem andar entra
+    num grupo próprio, e só a unidade ativa do próprio condomínio aparece.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return []
+    unidades = (
+        Unidade.objects.do_condominio(condominio)
+        .filter(ativa=True)
+        .order_by("bloco_torre", "andar", "identificador")
+    )
+    blocos = {}
+    for unidade in unidades:
+        blocos.setdefault(unidade.bloco_torre or "", {}).setdefault(
+            unidade.andar or "", []
+        ).append(unidade)
+    return [
+        {
+            "nome": bloco or "Todo o condomínio",
+            "andares": [
+                {
+                    "nome": andar or "Sem andar informado",
+                    "unidades": [
+                        {
+                            "pk": str(unidade.pk),
+                            "identificador": unidade.identificador,
+                            "rotulo": unidade.rotulo,
+                        }
+                        for unidade in lista
+                    ],
+                }
+                for andar, lista in sorted(
+                    andares.items(), key=lambda item: _chave_natural(item[0])
+                )
+            ],
+        }
+        for bloco, andares in sorted(
+            blocos.items(), key=lambda item: _chave_natural(item[0])
+        )
+    ]
 
 
 def _painel_operacional(condominio, agora):
