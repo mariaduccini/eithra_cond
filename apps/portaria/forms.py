@@ -15,7 +15,9 @@ from apps.comunidade.models import (
 
 from .constants import (
     ESCOLHAS_DE_TIPO_EM_USO,
+    InstrucaoEntrega,
     MeioAutorizacaoPortaria,
+    NaturezaObjetoCorreios,
     StatusAutorizacaoPortaria,
     TipoAcessoPortaria,
 )
@@ -108,6 +110,8 @@ class AutorizacaoPortariaForm(forms.ModelForm):
             "veiculo",
             "placa",
             "motivo",
+            "natureza_objeto",
+            "instrucao_entrega",
             "inicio_previsto",
             "fim_previsto",
             "observacao",
@@ -131,6 +135,8 @@ class AutorizacaoPortariaForm(forms.ModelForm):
             "motivo": forms.TextInput(
                 attrs={**TEXTO, "placeholder": "Visita, serviço, entrega..."}
             ),
+            "natureza_objeto": forms.Select(attrs=SELECAO),
+            "instrucao_entrega": forms.Select(attrs=SELECAO),
             "inicio_previsto": forms.DateTimeInput(attrs=DATA_HORA),
             "fim_previsto": forms.DateTimeInput(attrs=DATA_HORA),
             "observacao": forms.Textarea(attrs={**TEXTO, "rows": 2}),
@@ -295,6 +301,18 @@ class ChegadaNaoPrevistaForm(forms.Form):
             attrs={**TEXTO, "placeholder": "Visita, serviço, entrega..."}
         ),
     )
+    natureza_objeto = forms.ChoiceField(
+        label="Natureza do objeto",
+        required=False,
+        choices=(("", "Escolha"), *NaturezaObjetoCorreios.choices),
+        widget=forms.Select(attrs=SELECAO),
+    )
+    instrucao_entrega = forms.ChoiceField(
+        label="Instrução de entrega",
+        required=False,
+        choices=(("", "Escolha"), *InstrucaoEntrega.choices),
+        widget=forms.Select(attrs=SELECAO),
+    )
     observacao = forms.CharField(
         label="Observação",
         required=False,
@@ -337,6 +355,14 @@ class ChegadaNaoPrevistaForm(forms.Form):
             dados["empresa"] = ""
             dados["motivo"] = ""
             dados["local"] = None
+
+        # Natureza do objeto é assunto dos Correios e instrução de entrega é
+        # assunto do Delivery. Fora do seu tipo, o valor não faz sentido e não
+        # entra no registro — melhor vazio do que guardado errado.
+        if tipo != TipoAcessoPortaria.CORREIOS:
+            dados["natureza_objeto"] = ""
+        if tipo != TipoAcessoPortaria.DELIVERY:
+            dados["instrucao_entrega"] = ""
 
         if status in (
             StatusAutorizacaoPortaria.SEM_RESPOSTA,

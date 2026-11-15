@@ -443,6 +443,17 @@
               {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.motivo %}
             </div>
 
+            {# Delivery e Correios não são pessoas: trazem um destino e o que
+               fazer com a entrega. O campo certo aparece conforme o tipo. #}
+            <div class="d-none" data-eithra-contexto-entrega>
+              <div class="d-none" data-eithra-entrega="correios">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.natureza_objeto classe="mb-0" %}
+              </div>
+              <div class="d-none" data-eithra-entrega="delivery">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.instrucao_entrega classe="mb-0" %}
+              </div>
+            </div>
+
             <div class="{% if not formulario_chegada.placa.value %}d-none {% endif %}" data-eithra-revelado="placa">
               {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.placa classe="mb-0" %}
             </div>
@@ -614,6 +625,28 @@
           }
         });
         bloco.classList.toggle("d-none", valor === "visitante" || !valor);
+      }
+      radios.forEach(function (radio) {
+        radio.addEventListener("change", ajustar);
+      });
+      ajustar();
+    });
+
+    // Delivery e Correios pedem um dado próprio cada um. Mostrar só o campo do
+    // tipo escolhido evita pedir informação que não se aplica.
+    document.querySelectorAll("[data-eithra-contexto-entrega]").forEach(function (bloco) {
+      var modal = bloco.closest(".modal");
+      var radios = modal ? modal.querySelectorAll("input[name$='tipo_acesso']") : [];
+      function ajustar() {
+        var valor = "";
+        radios.forEach(function (radio) {
+          if (radio.checked) {
+            valor = radio.value;
+          }
+        });
+        bloco.querySelectorAll("[data-eithra-entrega]").forEach(function (campo) {
+          campo.classList.toggle("d-none", campo.dataset.eithraEntrega !== valor);
+        });
       }
       radios.forEach(function (radio) {
         radio.addEventListener("change", ajustar);

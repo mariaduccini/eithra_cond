@@ -14,7 +14,9 @@ from apps.comunidade.models import Pessoa, Unidade, Veiculo
 from apps.condominios.models import Condominio, somente_digitos
 
 from .constants import (
+    InstrucaoEntrega,
     MeioAutorizacaoPortaria,
+    NaturezaObjetoCorreios,
     OrigemPortaria,
     StatusAutorizacaoPortaria,
     TipoAcessoPortaria,
@@ -181,6 +183,22 @@ class AutorizacaoPortaria(models.Model):
     placa = models.CharField("Placa", max_length=10, blank=True, default="")
     motivo = models.CharField("Motivo", max_length=180, blank=True, default="")
     observacao = models.TextField("Observação", blank=True, default="")
+    natureza_objeto = models.CharField(
+        "Natureza do objeto",
+        max_length=20,
+        choices=NaturezaObjetoCorreios.choices,
+        blank=True,
+        default="",
+        help_text="Usado nas entregas dos Correios, quando souber.",
+    )
+    instrucao_entrega = models.CharField(
+        "Instrução de entrega",
+        max_length=24,
+        choices=InstrucaoEntrega.choices,
+        blank=True,
+        default="",
+        help_text="Como a entrega deve ser tratada no destino.",
+    )
     inicio_previsto = models.DateTimeField("Previsto para")
     fim_previsto = models.DateTimeField("Até quando")
     registrado_por = models.ForeignKey(
@@ -388,6 +406,22 @@ class AcessoPortaria(models.Model):
     placa = models.CharField("Placa", max_length=10, blank=True, default="")
     motivo = models.CharField("Motivo", max_length=180, blank=True, default="")
     observacao = models.TextField("Observação", blank=True, default="")
+    natureza_objeto = models.CharField(
+        "Natureza do objeto",
+        max_length=20,
+        choices=NaturezaObjetoCorreios.choices,
+        blank=True,
+        default="",
+        help_text="Usado nas entregas dos Correios, quando souber.",
+    )
+    instrucao_entrega = models.CharField(
+        "Instrução de entrega",
+        max_length=24,
+        choices=InstrucaoEntrega.choices,
+        blank=True,
+        default="",
+        help_text="Como a entrega deve ser tratada no destino.",
+    )
     chave_presenca = models.CharField(
         "Chave da presença",
         max_length=64,

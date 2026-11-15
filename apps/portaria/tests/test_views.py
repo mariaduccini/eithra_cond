@@ -525,7 +525,15 @@ class PortariaFormulariosTests(TestCase):
         ):
             tipos = [valor for valor, _ in formulario.fields["tipo_acesso"].choices]
             self.assertEqual(
-                tipos, ["visitante", "prestador", "fornecedor", "tecnico"]
+                tipos,
+                [
+                    "visitante",
+                    "prestador",
+                    "fornecedor",
+                    "tecnico",
+                    "delivery",
+                    "correios",
+                ],
             )
 
         painel = self.client.get(reverse("portaria:painel"))
@@ -533,6 +541,8 @@ class PortariaFormulariosTests(TestCase):
         self.assertContains(painel, "Prestador")
         self.assertContains(painel, "Fornecedor")
         self.assertContains(painel, "Técnico")
+        self.assertContains(painel, "Delivery")
+        self.assertContains(painel, "Correios")
 
     def test_chegada_nao_prevista_pergunta_so_o_necessario(self):
         """A conversa tem duas perguntas; o resto entra por contexto.
@@ -949,6 +959,134 @@ class PortariaEmpresaTests(TestCase):
         self.assertEqual(resposta.status_code, 302)
         autorizacao = AutorizacaoPortaria.objects.get(nome="Técnica Nova")
         self.assertEqual(autorizacao.empresa, "Vidraçaria Nova")
+
+
+class PortariaEntregasTests(TestCase):
+    """Delivery e Correios: quem chega é uma entrega, não uma visita.
+
+    As duas naturezas compartilham o mesmo fluxo da portaria, mas não o
+    vocabulário: os Correios trazem um objeto que pode ser classificado, e o
+    Delivery traz uma instrução de como proceder no destino. Cada campo só
+    existe dentro do próprio tipo — o que não faz sentido no tipo escolhido não
+    entra no registro — e o que foi decidido na chegada acompanha a presença.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+        self.unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="701"
+        )
+
+    def _chegada(self, **campos):
+        dados = {
+            "condominio": str(self.condominio.pk),
+            "unidade": str(self.unidade.pk),
+            "nome": "Entrega Exemplo",
+            "status": "autorizado",
+            "meio_autorizacao": "interfone",
+        }
+        dados.update(campos)
+        return self.client.post(
+            reverse("portaria:criar_chegada_nao_prevista"), dados
+        )
+
+    def test_delivery_guarda_a_instrucao_de_entrega(self):
+        resposta = self._chegada(
+            tipo_acesso="delivery",
+            nome="Motoboy do Restaurante",
+            instrucao_entrega="morador_desce",
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Motoboy do Restaurante")
+        self.assertEqual(autorizacao.tipo_acesso, "delivery")
+        self.assertEqual(autorizacao.instrucao_entrega, "morador_desce")
+        self.assertEqual(autorizacao.natureza_objeto, "")
+
+    def test_correios_guardam_a_natureza_do_objeto(self):
+        resposta = self._chegada(
+            tipo_acesso="correios",
+            nome="Carteiro",
+            natureza_objeto="encomenda",
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Carteiro")
+        self.assertEqual(autorizacao.tipo_acesso, "correios")
+        self.assertEqual(autorizacao.natureza_objeto, "encomenda")
+        self.assertEqual(autorizacao.instrucao_entrega, "")
+
+    def test_a_instrucao_acompanha_a_presenca_aberta(self):
+        self._chegada(
+            tipo_acesso="delivery",
+            nome="Motoboy do Restaurante",
+            instrucao_entrega="autorizado_subir",
+        )
+
+        acesso = AcessoPortaria.objects.get(nome="Motoboy do Restaurante")
+        self.assertEqual(acesso.tipo_acesso, "delivery")
+        self.assertEqual(acesso.instrucao_entrega, "autorizado_subir")
+
+    def test_a_natureza_acompanha_a_presenca_aberta(self):
+        self._chegada(
+            tipo_acesso="correios",
+            nome="Carteiro",
+            natureza_objeto="carta",
+        )
+
+        acesso = AcessoPortaria.objects.get(nome="Carteiro")
+        self.assertEqual(acesso.natureza_objeto, "carta")
+
+    def test_cada_campo_vive_dentro_do_proprio_tipo(self):
+        """Natureza é dos Correios; instrução é do Delivery.
+
+        Um payload que envia os dois campos para o mesmo tipo não guarda o que
+        não pertence àquele tipo: melhor vazio do que guardado errado.
+        """
+        self._chegada(
+            tipo_acesso="delivery",
+            nome="Motoboy",
+            natureza_objeto="encomenda",
+            instrucao_entrega="autorizado_subir",
+        )
+
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Motoboy")
+        self.assertEqual(autorizacao.natureza_objeto, "")
+        self.assertEqual(autorizacao.instrucao_entrega, "autorizado_subir")
+
+    def test_entrega_pode_ir_para_area_comum(self):
+        local = apoio.criar_local(self.condominio, nome="Portaria / recepção")
+
+        resposta = self.client.post(
+            reverse("portaria:criar_chegada_nao_prevista"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "correios",
+                "nome": "Carteiro",
+                "natureza_objeto": "registrado",
+                "status": "autorizado",
+                "meio_autorizacao": "presencial",
+                "local": str(local.pk),
+            },
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Carteiro")
+        self.assertIsNone(autorizacao.unidade_id)
+        self.assertEqual(autorizacao.local_id, local.pk)
+
+    def test_o_painel_oferece_delivery_e_correios(self):
+        """A tela pede o destino da entrega no mesmo fluxo da visita."""
+        conteudo = self.client.get(reverse("portaria:painel")).content.decode()
+
+        self.assertIn("Delivery", conteudo)
+        self.assertIn("Correios", conteudo)
+        self.assertIn("data-eithra-contexto-entrega", conteudo)
+        self.assertIn('data-eithra-entrega="correios"', conteudo)
+        self.assertIn('data-eithra-entrega="delivery"', conteudo)
 
 
 class PortariaRelatoTests(TestCase):

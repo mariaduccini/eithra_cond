@@ -6,17 +6,55 @@ class TipoAcessoPortaria(models.TextChoices):
     PRESTADOR = "prestador", "Prestador"
     FORNECEDOR = "fornecedor", "Fornecedor"
     TECNICO = "tecnico", "Técnico"
+    DELIVERY = "delivery", "Delivery"
+    CORREIOS = "correios", "Correios"
 
 
-# Os quatro tipos compartilham o mesmo fluxo: identificar quem chegou, registrar
+# Todos os tipos compartilham o mesmo fluxo: identificar quem chegou, registrar
 # o contexto e dizer o resultado da autorização. O que muda é o vocabulário que
-# a tela usa para pedir os dados certos, não o domínio.
+# a tela usa para pedir os dados certos, não o domínio. Delivery e Correios não
+# são pessoas: são entregas com destino e uma instrução de como proceder, e por
+# isso pedem campos próprios em vez de forçar o entregador a virar visitante.
 ESCOLHAS_DE_TIPO_EM_USO = [
     (TipoAcessoPortaria.VISITANTE.value, TipoAcessoPortaria.VISITANTE.label),
     (TipoAcessoPortaria.PRESTADOR.value, TipoAcessoPortaria.PRESTADOR.label),
     (TipoAcessoPortaria.FORNECEDOR.value, TipoAcessoPortaria.FORNECEDOR.label),
     (TipoAcessoPortaria.TECNICO.value, TipoAcessoPortaria.TECNICO.label),
+    (TipoAcessoPortaria.DELIVERY.value, TipoAcessoPortaria.DELIVERY.label),
+    (TipoAcessoPortaria.CORREIOS.value, TipoAcessoPortaria.CORREIOS.label),
 ]
+
+# As entradas que não são pessoas: trazem um destino e uma instrução de como
+# proceder, sem exigir que o entregador seja cadastrado como visitante.
+TIPOS_DE_ENTREGA = frozenset(
+    {TipoAcessoPortaria.DELIVERY, TipoAcessoPortaria.CORREIOS}
+)
+
+
+class NaturezaObjetoCorreios(models.TextChoices):
+    """O que os Correios trouxeram, quando isso for informado.
+
+    Vocabulário operacional da entrega, e não do domínio da presença: nem toda
+    correspondência precisa ser classificada, e por isso o campo é opcional.
+    """
+
+    CARTA = "carta", "Carta"
+    ENCOMENDA = "encomenda", "Encomenda"
+    REGISTRADO = "registrado", "Registrado"
+    OUTRO = "outro", "Outro"
+
+
+class InstrucaoEntrega(models.TextChoices):
+    """Como a entrega deve ser tratada no destino.
+
+    Não é uma autorização nem um estado de presença: é a instrução combinada no
+    momento da chegada — quem recebe desce, a entrega sobe ou fica aguardando
+    na portaria. Fica registrada para que a decisão não dependa de memória.
+    """
+
+    MORADOR_DESCE = "morador_desce", "Morador desce para receber"
+    AUTORIZADO_SUBIR = "autorizado_subir", "Autorizado a subir"
+    DEIXAR_NA_PORTARIA = "deixar_na_portaria", "Deixar na portaria"
 
 
 class StatusAutorizacaoPortaria(models.TextChoices):

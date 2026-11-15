@@ -106,6 +106,8 @@ def _dados_de_autorizacao(dados: dict) -> dict:
         "placa",
         "motivo",
         "observacao",
+        "natureza_objeto",
+        "instrucao_entrega",
         "inicio_previsto",
         "fim_previsto",
         "origem",
@@ -153,6 +155,8 @@ def _abrir_presenca(*, autorizacao: AutorizacaoPortaria, usuario) -> AcessoPorta
         placa=autorizacao.placa,
         motivo=autorizacao.motivo,
         observacao=autorizacao.observacao,
+        natureza_objeto=autorizacao.natureza_objeto,
+        instrucao_entrega=autorizacao.instrucao_entrega,
         entrada_registrada_por=usuario,
     )
     try:
