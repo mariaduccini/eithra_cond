@@ -780,6 +780,12 @@ def _painel_operacional(condominio, agora):
         list(acessos_abertos.order_by("-entrada_em")),
         agora,
     )
+    # A lista de saída também precisa saber quem ficou de turno anterior: quem
+    # registra a saída vê a mesma informação que a movimentação.
+    presencas_abertas = list(acessos_abertos.order_by("entrada_em"))
+    inicio_do_turno = _inicio_do_turno(agora)
+    for acesso in presencas_abertas:
+        _descrever_presenca(acesso, agora, inicio_do_turno)
     return {
         "indicadores": [
             {
@@ -802,7 +808,7 @@ def _painel_operacional(condominio, agora):
             },
         ],
         "movimentacao_atual": movimentacao,
-        "presencas_abertas": list(acessos_abertos.order_by("entrada_em")),
+        "presencas_abertas": presencas_abertas,
     }
 
 
@@ -908,6 +914,10 @@ def _linha_de_acesso(acesso):
         "tom": "success",
         "contexto": acesso.destino_para_exibir,
         "contexto_secundario": acesso.entrada_humana,
+        # Quem entrou antes do turno de hoje continua dentro e não é novidade
+        # nenhuma: a tela precisa dizer isso, senão a presença antiga passa por
+        # chegada recente.
+        "turno_anterior": getattr(acesso, "do_turno_anterior", False),
         "acao_label": "Saiu",
         "acao_url": reverse("portaria:saiu", args=[acesso.pk]),
         "acao_post": True,

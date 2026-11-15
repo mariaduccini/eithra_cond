@@ -2,12 +2,14 @@ import re
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.cadastros.tests import apoio as cadastros_apoio
 from apps.comunidade.models import Pessoa
 from apps.comunidade.tests import apoio as comunidade_apoio
 from apps.condominios.constants import Papel
 from apps.demandas.models import Demanda
+from apps.portaria.constants import HORA_DE_ABERTURA
 from apps.portaria.forms import AutorizacaoPortariaForm, ChegadaNaoPrevistaForm
 from apps.portaria.models import AcessoPortaria, AutorizacaoPortaria
 from apps.portaria.tests import apoio
@@ -84,6 +86,65 @@ class PortariaViewsTests(TestCase):
             {"condominio": str(self.condominio.pk)},
         )
         self.assertEqual(resposta.status_code, 404)
+
+
+class PortariaTurnoAnteriorTests(TestCase):
+    """Quem entrou antes do turno de hoje continua dentro — e a tela diz isso.
+
+    Sem a marca, uma presença que atravessou o turno se confunde com uma chegada
+    recente, e a portaria perde a única pista visual de que aquele acesso ficou
+    pendente de ontem. A identificação precisa aparecer na movimentação e na
+    lista de saída.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro.turno@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+
+    def _hoje_as(self, hora):
+        return timezone.localtime().replace(
+            hour=hora, minute=0, second=0, microsecond=0
+        )
+
+    def test_presenca_que_atravessou_o_turno_e_identificada(self):
+        ficou = comunidade_apoio.criar_unidade(self.condominio, identificador="201")
+        chegou = comunidade_apoio.criar_unidade(self.condominio, identificador="202")
+        apoio.criar_acesso(
+            self.condominio,
+            self.usuario,
+            nome="Ficou de Ontem",
+            unidade=ficou,
+            entrada_em=self._hoje_as(HORA_DE_ABERTURA - 4),
+        )
+        apoio.criar_acesso(
+            self.condominio,
+            self.usuario,
+            nome="Chegou Agora",
+            unidade=chegou,
+            entrada_em=self._hoje_as(HORA_DE_ABERTURA + 2),
+        )
+
+        conteudo = self.client.get(reverse("portaria:painel")).content.decode()
+        self.assertIn("Turno anterior", conteudo)
+        # A marca pertence a quem ficou, não à chegada recente.
+        self.assertRegex(
+            conteudo,
+            r"(?s)Ficou de Ontem</div>.{0,400}Turno anterior",
+        )
+
+    def test_sem_presenca_antiga_nao_marca_turno_anterior(self):
+        chegou = comunidade_apoio.criar_unidade(self.condominio, identificador="203")
+        apoio.criar_acesso(
+            self.condominio,
+            self.usuario,
+            nome="Chegou Agora",
+            unidade=chegou,
+            entrada_em=self._hoje_as(HORA_DE_ABERTURA + 2),
+        )
+        conteudo = self.client.get(reverse("portaria:painel")).content.decode()
+        self.assertNotIn("Turno anterior", conteudo)
 
 
 class PortariaBuscaDaTelaTests(TestCase):

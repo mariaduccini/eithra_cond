@@ -250,6 +250,9 @@
                           <div>
                             <div class="fw-medium">{{ item.nome }}</div>
                             <div class="text-body-secondary small">{{ item.contexto_secundario }}</div>
+                            {% if item.turno_anterior %}
+                              <span class="badge bg-label-warning mt-1">Turno anterior</span>
+                            {% endif %}
                           </div>
                         </div>
                       </td>
@@ -299,6 +302,9 @@
                       </div>
                       <div class="text-body-secondary small">{{ item.tipo }} · {{ item.destino }}</div>
                       <div class="text-body-secondary small">{{ item.horario }} · {{ item.contexto_secundario }}</div>
+                      {% if item.turno_anterior %}
+                        <span class="badge bg-label-warning mt-1">Turno anterior</span>
+                      {% endif %}
                     </div>
                   </div>
                   <div class="d-flex justify-content-end gap-2 mt-3">
@@ -604,6 +610,9 @@
                   <div>
                     <div class="fw-medium">{{ acesso.nome_para_exibir }}</div>
                     <div class="text-body-secondary small">{{ acesso.destino_para_exibir }} · entrou às {{ acesso.entrada_em|date:"H:i" }}</div>
+                    {% if acesso.do_turno_anterior %}
+                      <span class="badge bg-label-warning mt-1">Turno anterior</span>
+                    {% endif %}
                   </div>
                   <form method="post" action="{% url 'portaria:saiu' acesso.pk %}">
                     {% csrf_token %}
