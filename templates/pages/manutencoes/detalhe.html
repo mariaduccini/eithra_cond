@@ -1,36 +1,77 @@
 {% extends "layouts/app.html" %}
 
-{# A manutenção como ela é hoje e o que já aconteceu com ela. As ações ficam no
-   alto: mudar a situação é o caminho comum, concluir e cancelar são decisões, e
-   editar é apoio. Cada uma abre um modal curto. #}
+{# A ocorrência preventiva do começo ao fim: o que ela é, o que já foi feito, as
+   provas, a conferência e só então a conclusão. Cada estado oferece uma única
+   ação primária, e nenhuma delas conclui a manutenção — a conclusão é uma
+   decisão à parte, e o domínio a cobra. #}
 
 {% block title %}{{ manutencao.titulo }} · Manutenções · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
     <div>
       <a
         href="{% url 'manutencoes:listagem' %}"
         class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
         <i class="bx bx-chevron-left" aria-hidden="true"></i> Manutenções
       </a>
-      <h1 class="h4 mb-1">{{ manutencao.titulo }}</h1>
+      <h1 class="h4 mb-1">
+        {{ manutencao.titulo }}
+        <span class="text-body-secondary fs-6">· {{ manutencao.referencia }}</span>
+      </h1>
       <div class="d-flex flex-wrap align-items-center gap-2">
         <span class="badge bg-label-{{ manutencao.status_tom }}">{{ manutencao.status }}</span>
         <span class="badge bg-label-{{ manutencao.prioridade_tom }}">{{ manutencao.prioridade }}</span>
         <span class="badge bg-label-secondary">{{ manutencao.tipo }}</span>
+        {% if manutencao.exige_conferencia %}
+          <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
+        {% endif %}
         <span class="text-body-secondary small">{{ manutencao.condominio }}</span>
+      </div>
+      <div class="text-body-secondary small mt-2">
+        {% if manutencao.local %}
+          <span class="me-3"><i class="bx bx-map-pin" aria-hidden="true"></i> {{ manutencao.local }}</span>
+        {% endif %}
+        {% if manutencao.equipamento %}
+          <span class="me-3"><i class="bx bx-cog" aria-hidden="true"></i> {{ manutencao.equipamento }}</span>
+        {% endif %}
+        {% if manutencao.fornecedor %}
+          <span class="me-3"><i class="bx bx-buildings" aria-hidden="true"></i> {{ manutencao.fornecedor }}</span>
+        {% endif %}
+        <span><i class="bx bx-user" aria-hidden="true"></i> {{ manutencao.responsavel }}</span>
       </div>
     </div>
 
+    {# A ação primária muda com o estado da ocorrência: registrar a execução
+       enquanto ela é devida, conferir enquanto está pendente, concluir quando o
+       domínio libera. As demais são apoio. #}
     <div class="d-flex flex-wrap align-items-center gap-2">
-      {% if pode_alterar_status %}
+      {% if pode_registrar_execucao %}
         <button
           type="button"
           class="btn btn-primary"
           data-bs-toggle="modal"
-          data-bs-target="#mudar-situacao">
-          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
+          data-bs-target="#registrar-execucao">
+          <i class="bx bx-play-circle me-1" aria-hidden="true"></i>
+          {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
+        </button>
+      {% elif pode_conferir %}
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#conferir-execucao">
+          <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir execução
+        </button>
+      {% endif %}
+
+      {% if pode_anexar_evidencia %}
+        <button
+          type="button"
+          class="btn btn-label-secondary"
+          data-bs-toggle="modal"
+          data-bs-target="#anexar-evidencia">
+          <i class="bx bx-paperclip me-1" aria-hidden="true"></i> Anexar evidência
         </button>
       {% endif %}
       {% if pode_concluir %}
@@ -40,6 +81,15 @@
           data-bs-toggle="modal"
           data-bs-target="#concluir-manutencao">
           <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Concluir
+        </button>
+      {% endif %}
+      {% if pode_alterar_status %}
+        <button
+          type="button"
+          class="btn btn-label-secondary"
+          data-bs-toggle="modal"
+          data-bs-target="#mudar-situacao">
+          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
         </button>
       {% endif %}
       {% if pode_editar %}
@@ -65,10 +115,168 @@
     </div>
   </div>
 
+  {% if manutencao.atencao %}
+    <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-bell mt-1" aria-hidden="true"></i>
+      <div>
+        <div class="fw-medium">{{ manutencao.atencao.titulo }}</div>
+        <div class="small">{{ manutencao.atencao.mensagem }}</div>
+        {% if manutencao.atencao.acao %}
+          <div class="small mt-1">{{ manutencao.atencao.acao }}</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
   {% if not manutencao.ativo %}
     <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
       <i class="bx bx-block mt-1" aria-hidden="true"></i>
       <div>Esta manutenção foi retirada da operação. Ela não aparece nas listas, mas o histórico continua guardado.</div>
+    </div>
+  {% endif %}
+
+  {# -- Execução ------------------------------------------------------------- #}
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <h2 class="h6 mb-0">Execução</h2>
+      {% if manutencao.tem_execucao and manutencao.exige_conferencia %}
+        <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      {% if manutencao.tem_execucao %}
+        <div class="d-flex justify-content-between gap-3 py-1">
+          <span class="text-body-secondary">Executado em</span>
+          <span class="fw-medium text-end">{{ manutencao.execucao }}</span>
+        </div>
+        {% if manutencao.servico %}
+          <div class="text-body-secondary small mt-3 mb-1">O que foi executado</div>
+          <p class="mb-0">{{ manutencao.servico|linebreaksbr }}</p>
+        {% endif %}
+      {% else %}
+        <p class="text-body-secondary mb-0">
+          O serviço ainda não foi registrado como executado. Registrar a execução não conclui a manutenção.
+        </p>
+      {% endif %}
+
+      {% if manutencao.conferencia_reprovada %}
+        <div class="alert alert-danger mt-3 mb-0" role="alert">
+          <div class="fw-medium">Correção necessária</div>
+          <div class="small">A conferência apontou o que precisa ser refeito. Registre uma nova execução depois da correção.</div>
+          {% if manutencao.nao_conformes %}
+            <ul class="mb-0 mt-2 small">
+              {% for item in manutencao.nao_conformes %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if manutencao.conferencia_aprovada %}
+        <div class="alert alert-success mt-3 mb-0 small" role="alert">
+          Conferência aprovada — falta concluir a manutenção.
+        </div>
+      {% endif %}
+
+      {% if pode_registrar_execucao %}
+        <div class="mt-3">
+          <button
+            type="button"
+            class="btn btn-primary"
+            data-bs-toggle="modal"
+            data-bs-target="#registrar-execucao">
+            {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
+          </button>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# -- Evidências ----------------------------------------------------------- #}
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <h2 class="h6 mb-0">Evidências da execução</h2>
+      {% if pode_anexar_evidencia %}
+        <button
+          type="button"
+          class="btn btn-sm btn-label-primary"
+          data-bs-toggle="modal"
+          data-bs-target="#anexar-evidencia">
+          <i class="bx bx-paperclip me-1" aria-hidden="true"></i> Anexar
+        </button>
+      {% endif %}
+    </div>
+    {% if manutencao.evidencias %}
+      <ul class="list-group list-group-flush">
+        {% for evidencia in manutencao.evidencias %}
+          <li class="list-group-item d-flex align-items-center justify-content-between gap-3">
+            <div class="min-w-0">
+              <div class="fw-medium text-truncate">{{ evidencia.nome }}</div>
+              <div class="text-body-secondary small">
+                {{ evidencia.tipo }} · {{ evidencia.momento }} · {{ evidencia.enviada_por }}
+              </div>
+            </div>
+            <a
+              href="{{ evidencia.url }}"
+              class="btn btn-sm btn-label-primary flex-shrink-0"
+              target="_blank"
+              rel="noopener">
+              <i class="bx bx-show" aria-hidden="true"></i> Ver
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {% include "components/state.html" with state_icon="bx-paperclip" state_title="Sem evidências ainda" state_message="Fotos, vídeos e PDF do serviço aparecem aqui. Anexar não decide a conferência." %}
+    {% endif %}
+  </div>
+
+  {# -- Conferência ---------------------------------------------------------- #}
+  {% if manutencao.exige_conferencia %}
+    <div class="card mb-4">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h2 class="h6 mb-0">Conferência</h2>
+        <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
+      </div>
+      <div class="card-body">
+        {% if manutencao.tem_criterios %}
+          <ul class="list-unstyled mb-0">
+            {% for criterio in manutencao.criterios %}
+              <li class="d-flex align-items-start justify-content-between gap-3 py-2{% if not forloop.last %} border-bottom{% endif %}">
+                <div>
+                  <div>{{ criterio.descricao }}</div>
+                  {% if criterio.obrigatorio %}
+                    <span class="badge bg-label-secondary mt-1">Obrigatório</span>
+                  {% endif %}
+                  {% if criterio.respondido and criterio.observacao %}
+                    <div class="text-body-secondary small mt-1">{{ criterio.observacao }}</div>
+                  {% endif %}
+                </div>
+                <span class="badge bg-label-{{ criterio.resultado_tom }} flex-shrink-0">{{ criterio.resultado_rotulo }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-body-secondary mb-0">Esta ocorrência não tem itens de conferência registrados.</p>
+        {% endif %}
+
+        {% if pode_conferir %}
+          <div class="mt-3">
+            <button
+              type="button"
+              class="btn btn-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#conferir-execucao">
+              <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir execução
+            </button>
+          </div>
+        {% elif not manutencao.tem_execucao %}
+          <p class="text-body-secondary mt-3 mb-0">
+            Aguardando registro da execução. A conferência olha o que foi entregue, e só depois que a execução é registrada.
+          </p>
+        {% endif %}
+      </div>
     </div>
   {% endif %}
 
@@ -134,11 +342,6 @@
               <span class="text-end">{{ manutencao.conclusao }}</span>
             </div>
           {% endif %}
-          {% if manutencao.servico %}
-            <hr>
-            <div class="text-body-secondary small mb-1">Serviço realizado</div>
-            <p class="mb-0">{{ manutencao.servico|linebreaksbr }}</p>
-          {% endif %}
           {% if manutencao.demanda_origem %}
             <hr>
             <div class="text-body-secondary small">
@@ -192,6 +395,161 @@
       </div>
     </div>
   </div>
+
+  {% if pode_registrar_execucao %}
+    <div
+      class="modal fade{% if modal_aberto == 'execucao' %} show{% endif %}"
+      id="registrar-execucao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="registrar-execucao-titulo"
+      aria-hidden="{% if modal_aberto == 'execucao' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'execucao' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:registrar_execucao' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="registrar-execucao-titulo">
+              {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              Registrar a execução não conclui a manutenção: a conclusão é uma decisão à parte.
+            </p>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.data_execucao %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico classe="mb-0" %}
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+              {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_anexar_evidencia %}
+    <div
+      class="modal fade{% if modal_aberto == 'evidencia' %} show{% endif %}"
+      id="anexar-evidencia"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="anexar-evidencia-titulo"
+      aria-hidden="{% if modal_aberto == 'evidencia' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'evidencia' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'manutencoes:adicionar_evidencia' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="anexar-evidencia-titulo">Anexar evidência</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            <p class="text-body-secondary small">
+              Anexe fotos, vídeos ou PDF do serviço. Isto não muda a situação nem decide a conferência.
+            </p>
+            {% include "pages/cadastros/_campo.html" with campo=formulario_evidencia.evidencias classe="mb-0" %}
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Anexar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if pode_conferir %}
+    <div
+      class="modal fade{% if modal_aberto == 'conferir' %} show{% endif %}"
+      id="conferir-execucao"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="conferir-execucao-titulo"
+      aria-hidden="{% if modal_aberto == 'conferir' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'conferir' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <form class="modal-content" method="post" action="{% url 'manutencoes:conferir' manutencao.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <h5 class="modal-title" id="conferir-execucao-titulo">Conferir execução</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+
+          <div class="modal-body">
+            {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.decisao %}
+
+            {% if manutencao.tem_criterios %}
+              <div class="text-body-secondary small mb-2">Item a item</div>
+              {% for criterio in manutencao.criterios %}
+                <div class="border rounded p-3 mb-2">
+                  <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                    <span class="fw-medium">{{ criterio.descricao }}</span>
+                    {% if criterio.obrigatorio %}
+                      <span class="badge bg-label-secondary flex-shrink-0">Obrigatório</span>
+                    {% endif %}
+                  </div>
+                  <input type="hidden" name="criterio_id" value="{{ criterio.pk }}">
+                  <div class="mb-2">
+                    <label class="form-label" for="criterio-resultado-{{ criterio.pk }}">Resultado</label>
+                    <select
+                      name="criterio_resultado"
+                      id="criterio-resultado-{{ criterio.pk }}"
+                      class="form-select">
+                      <option value="">Não respondido</option>
+                      {% if criterio.respondido %}
+                        {% for valor, rotulo in resultados_da_conferencia %}
+                          {% if criterio.resultado == valor %}
+                            <option value="{{ valor }}" selected>{{ rotulo }}</option>
+                          {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        {% for valor, rotulo in resultados_da_conferencia %}
+                          <option value="{{ valor }}">{{ rotulo }}</option>
+                        {% endfor %}
+                      {% endif %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" for="criterio-observacao-{{ criterio.pk }}">Observação</label>
+                    <input
+                      type="text"
+                      name="criterio_observacao"
+                      id="criterio-observacao-{{ criterio.pk }}"
+                      class="form-control"
+                      value="{{ criterio.observacao }}"
+                      autocomplete="off">
+                  </div>
+                </div>
+              {% endfor %}
+            {% endif %}
+
+            {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao classe="mb-0" %}
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">Registrar conferência</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
 
   {% if pode_editar %}
     <div

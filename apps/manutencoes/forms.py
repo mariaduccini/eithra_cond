@@ -28,9 +28,11 @@ from .constants import (
     ACAO_DE_REABERTURA,
     ACOES_DE_STATUS,
     FrequenciaUnidade,
+    ResultadoCriterio,
     StatusManutencao,
     TipoManutencao,
 )
+from .evidencias import ACEITE_DE_EVIDENCIA, limite_de_evidencias, limites_legiveis
 from .models import ModeloConferenciaPreventiva
 from .permissoes import usuarios_elegiveis_como_responsavel
 
@@ -904,3 +906,224 @@ class PlanoPreventivoForm(forms.Form):
             ) = FREQUENCIAS_POR_ESCOLHA[escolha]
 
         return dados
+
+
+# ---------------------------------------------------------------------------
+# O ciclo da ocorrência: execução, evidências e conferência
+# ---------------------------------------------------------------------------
+#
+# Executar, anexar e conferir são passos separados do mesmo serviço. Nenhum
+# deles conclui a manutenção: a conclusão é decisão à parte, e o domínio a
+# cobra. Os formulários daqui só organizam o que a pessoa respondeu — quem
+# grava, decide e recusa é o serviço oficial de cada passo.
+
+
+class ExecucaoDeManutencaoForm(forms.Form):
+    """Registra que o serviço foi executado, sem concluir a manutenção.
+
+    A data vem preenchida com hoje, mas pode recuar até o dia em que o serviço
+    de fato aconteceu; em branco, vale o momento do registro. O futuro é
+    recusado porque ainda não aconteceu. Dizer o que foi executado é
+    obrigatório: registrar execução sem o que foi feito não ajuda quem confere.
+    """
+
+    data_execucao = forms.DateField(
+        label="Data da execução",
+        required=False,
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        initial=timezone.localdate,
+        error_messages={
+            "invalid": "Informe uma data válida, no formato dd/mm/aaaa.",
+        },
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"}, format="%Y-%m-%d"
+        ),
+    )
+    descricao_servico = forms.CharField(
+        label="O que foi executado",
+        error_messages={"required": "Descreva o serviço executado."},
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "O que foi feito nesta execução",
+            }
+        ),
+    )
+
+    def clean_data_execucao(self):
+        data = self.cleaned_data["data_execucao"]
+        if data is not None and data > timezone.localdate():
+            raise forms.ValidationError("A data da execução não pode estar no futuro.")
+        return data
+
+    def clean_descricao_servico(self):
+        servico = (self.cleaned_data["descricao_servico"] or "").strip()
+        if not servico:
+            raise forms.ValidationError("Descreva o serviço executado.")
+        return servico
+
+
+class _VariosArquivosInput(forms.FileInput):
+    """Deixa o seletor aceitar mais de um arquivo de uma vez."""
+
+    allow_multiple_selected = True
+
+
+class _VariosArquivos(forms.FileField):
+    """Campo de arquivo que limpa cada item da lista enviada."""
+
+    widget = _VariosArquivosInput
+
+    def clean(self, data, initial=None):
+        limpar_um = super().clean
+        if isinstance(data, (list, tuple)):
+            return [limpar_um(arquivo, initial) for arquivo in data]
+        return limpar_um(data, initial)
+
+
+class EvidenciaDaExecucaoForm(forms.Form):
+    """Anexa provas ao que foi entregue, sem decidir nada.
+
+    Foto, vídeo ou PDF: o arquivo sustenta a decisão de quem confere, e não
+    decide por ela. Anexar não muda situação nem conferência — o que entra é a
+    prova, presa à mesma ocorrência. Os formatos e os limites vêm do domínio,
+    para a tela não oferecer o que a borda vai recusar.
+    """
+
+    evidencias = _VariosArquivos(
+        label="Fotos, vídeos ou PDF",
+        error_messages={"required": "Escolha ao menos um arquivo para anexar."},
+        widget=_VariosArquivosInput(attrs={"class": "form-control", "multiple": True}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        limites = limites_legiveis()
+        self.fields["evidencias"].widget.attrs["accept"] = ACEITE_DE_EVIDENCIA
+        self.fields["evidencias"].help_text = (
+            f"{limites['formatos']}. Até {limites['foto']} por foto, "
+            f"{limites['video']} por vídeo e {limites['documento']} por documento."
+        )
+
+    def clean_evidencias(self):
+        arquivos = [
+            arquivo
+            for arquivo in (self.cleaned_data.get("evidencias") or [])
+            if arquivo
+        ]
+        limite = limite_de_evidencias()
+        if limite and len(arquivos) > limite:
+            raise forms.ValidationError(
+                f"Envie até {limite} arquivos por vez. Os demais em outra vez."
+            )
+        return arquivos
+
+    def arquivos_enviados(self) -> list:
+        """Os arquivos realmente escolhidos, sem os vazios do seletor."""
+        return list(self.cleaned_data.get("evidencias") or [])
+
+
+# O que a conferência decide. Cada verbo leva a um caminho do serviço oficial:
+# aprovar, reprovar ou registrar que ainda não foi possível avaliar.
+DECISOES_DE_CONFERENCIA = (
+    ("aprovar", "Aprovar a conferência"),
+    ("reprovar", "Reprovar a conferência"),
+    ("nao_avaliar", "Não foi possível avaliar"),
+)
+
+# O que se responde sobre cada item observável da ocorrência. São as leituras do
+# domínio, sem inventar nenhuma: o que não foi olhado continua sem resposta.
+RESULTADOS_DA_CONFERENCIA = (
+    (ResultadoCriterio.CONFORME, "Conforme"),
+    (ResultadoCriterio.NAO_CONFORME, "Não conforme"),
+    (ResultadoCriterio.NAO_AVALIADO, "Não foi possível avaliar"),
+)
+
+
+class ConferenciaDeManutencaoForm(forms.Form):
+    """Decide a conferência de uma execução, item a item.
+
+    A lista de itens é a da própria ocorrência — o retrato copiado do plano —, e
+    chega em campos paralelos, lidos por ``avaliacoes_da_conferencia_no_envio``.
+    Daqui saem apenas a decisão e o que a explica: reprovar exige dizer o motivo,
+    porque reprovar sem o que falta não ajuda quem vai corrigir.
+
+    O formulário não decide nada sozinho. Ele organiza a resposta, e o serviço
+    oficial aplica — inclusive recusando aprovar enquanto um item obrigatório
+    não estiver conforme.
+    """
+
+    decisao = forms.ChoiceField(
+        label="O que a conferência decidiu?",
+        choices=DECISOES_DE_CONFERENCIA,
+        error_messages={"required": "Diga o que a conferência decidiu."},
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    motivo = forms.CharField(
+        label="Motivo da reprovação",
+        required=False,
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "O que precisa ser corrigido",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    observacao = forms.CharField(
+        label="Observação",
+        required=False,
+        max_length=200,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Opcional. O que convém registrar sobre esta conferência.",
+                "autocomplete": "off",
+            }
+        ),
+    )
+
+    def clean_motivo(self):
+        return " ".join((self.cleaned_data["motivo"] or "").split())
+
+    def clean_observacao(self):
+        return " ".join((self.cleaned_data["observacao"] or "").split())
+
+    def clean(self):
+        dados = super().clean()
+        if dados.get("decisao") == "reprovar" and not dados.get("motivo"):
+            self.add_error("motivo", "Escreva o motivo da reprovação.")
+        return dados
+
+
+def avaliacoes_da_conferencia_no_envio(data) -> list[dict]:
+    """Lê a resposta de cada item conferido, na ordem em que a tela enviou.
+
+    Chega como três campos paralelos — ``criterio_id``, ``criterio_resultado`` e
+    ``criterio_observacao`` —, um trio por item, na ordem da tela. Resultado que
+    o domínio não reconhece é descartado em vez de adivinhado, e o item que
+    ninguém olhou simplesmente não vai: quem não respondeu não afirmou nada.
+
+    Nada aqui procura critérios no plano. Os itens são os da ocorrência, e o
+    serviço oficial confere que cada um pertence mesmo a esta manutenção.
+    """
+    ids = data.getlist("criterio_id")
+    resultados = data.getlist("criterio_resultado")
+    observacoes = data.getlist("criterio_observacao")
+
+    avaliacoes = []
+    for posicao, identificador in enumerate(ids):
+        resultado = resultados[posicao] if posicao < len(resultados) else ""
+        if resultado not in ResultadoCriterio.values:
+            continue
+        observacao = observacoes[posicao] if posicao < len(observacoes) else ""
+        avaliacoes.append(
+            {
+                "criterio": identificador,
+                "resultado": resultado,
+                "observacao": " ".join((observacao or "").split()),
+            }
+        )
+    return avaliacoes

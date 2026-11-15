@@ -14,7 +14,7 @@ import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404
@@ -27,31 +27,53 @@ from django.views.decorators.http import require_POST
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
+from apps.core.storage import ErroDeStorage
 from apps.demandas.models import Demanda
 
-from .constants import FrequenciaUnidade, StatusManutencao
+from .atencao import _atencao_da_manutencao, _dias_de_antecedencia
+from .constants import (
+    ContextoEvidencia,
+    FrequenciaUnidade,
+    ResultadoCriterio,
+    StatusConferencia,
+    StatusManutencao,
+)
+from .evidencias import ErroDeEvidencia, acesso_temporario, adicionar_evidencia
 from .forms import (
     ESCOLHA_DE_FREQUENCIA,
+    RESULTADOS_DA_CONFERENCIA,
     AcaoDeStatusForm,
     CancelamentoDeManutencaoForm,
+    ConferenciaDeManutencaoForm,
     ConclusaoDeManutencaoForm,
+    EvidenciaDaExecucaoForm,
+    ExecucaoDeManutencaoForm,
     FiltroDeManutencoesForm,
     ManutencaoForm,
     ModeloDeConferenciaForm,
     PlanoPreventivoForm,
     acoes_de_status,
+    avaliacoes_da_conferencia_no_envio,
     criterios_do_modelo_no_envio,
     escolha_de_frequencia,
 )
-from .models import Manutencao, ModeloConferenciaPreventiva, PlanoPreventivo
+from .models import (
+    EvidenciaManutencao,
+    Manutencao,
+    ModeloConferenciaPreventiva,
+    PlanoPreventivo,
+)
 from .permissoes import (
     condominios_para_administrar_modelos,
     condominios_para_criar,
     condominios_para_ver,
     pode_administrar_manutencao,
+    pode_anexar_evidencia,
     pode_cancelar_manutencao,
     pode_concluir,
+    pode_conferir,
     pode_editar_manutencao,
+    pode_registrar_execucao,
     situacoes_para_mudar,
     usuarios_elegiveis_entre,
 )
@@ -60,6 +82,7 @@ from .services import (
     acompanhamento_do_plano,
     alterar_status,
     aplicar_modelo_de_conferencia,
+    aprovar_conferencia,
     cancelar_manutencao,
     concluir_manutencao,
     criar_manutencao,
@@ -70,6 +93,9 @@ from .services import (
     editar_manutencao,
     editar_modelo_conferencia,
     editar_plano_preventivo,
+    nao_avaliar_conferencia,
+    registrar_execucao,
+    reprovar_conferencia,
 )
 
 # Tom de cada situação e prioridade no badge. Discreto: nada de cor agressiva,
@@ -87,6 +113,28 @@ TOM_POR_PRIORIDADE = {
     "normal": "secondary",
     "alta": "warning",
     "urgente": "danger",
+}
+
+# O estado da conferência e o resultado de cada item são vocabulários próprios,
+# separados da situação. O tom só ajuda a ler; a palavra é a do domínio.
+TOM_POR_CONFERENCIA = {
+    StatusConferencia.NAO_EXIGIDA: "secondary",
+    StatusConferencia.PENDENTE: "warning",
+    StatusConferencia.APROVADA: "success",
+    StatusConferencia.REPROVADA: "danger",
+}
+TOM_POR_RESULTADO = {
+    ResultadoCriterio.NAO_AVALIADO: "secondary",
+    ResultadoCriterio.CONFORME: "success",
+    ResultadoCriterio.NAO_CONFORME: "danger",
+    ResultadoCriterio.NAO_SE_APLICA: "secondary",
+}
+
+# O que dizer depois de cada decisão da conferência, em uma linha.
+RECADO_DA_CONFERENCIA = {
+    "aprovar": "Conferência aprovada.",
+    "reprovar": "Conferência reprovada. A correção ficou registrada.",
+    "nao_avaliar": "Conferência registrada como não avaliada.",
 }
 
 
@@ -300,6 +348,160 @@ def alternar_ativo(request, pk):
     else:
         messages.success(request, "Manutenção retirada da operação.")
     return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+# -- O ciclo da ocorrência ------------------------------------------------------
+#
+# Executar, anexar e conferir são passos da mesma ocorrência, e nenhum deles
+# conclui a manutenção: a conclusão é decisão à parte, e o domínio a cobra. Cada
+# passo tem uma porta própria, e todas escrevem pelo serviço oficial — a view só
+# organiza o que a pessoa respondeu. A tela oferece a ação do estado em que a
+# ocorrência está; quem decide de verdade é o domínio.
+
+
+@login_required
+@require_POST
+def executar(request, pk):
+    """Registra que o serviço foi executado, sem concluir a manutenção."""
+    manutencao = _manutencao_para_registrar_execucao(request, pk)
+    formulario = ExecucaoDeManutencaoForm(request.POST)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            manutencao,
+            formulario_execucao=formulario,
+            modal="execucao",
+            status=400,
+        )
+
+    try:
+        registrar_execucao(
+            manutencao=manutencao,
+            usuario=request.user,
+            descricao_servico=formulario.cleaned_data["descricao_servico"],
+            data_execucao=formulario.cleaned_data["data_execucao"],
+        )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+    messages.success(request, "Execução registrada.")
+    return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+@login_required
+@require_POST
+def conferir(request, pk):
+    """Decide a conferência de uma execução: aprovar, reprovar ou não avaliar."""
+    manutencao = _manutencao_para_conferir(request, pk)
+    formulario = ConferenciaDeManutencaoForm(request.POST)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            manutencao,
+            formulario_conferencia=formulario,
+            modal="conferir",
+            status=400,
+        )
+
+    decisao = formulario.cleaned_data["decisao"]
+    avaliacoes = avaliacoes_da_conferencia_no_envio(request.POST)
+    try:
+        if decisao == "aprovar":
+            aprovar_conferencia(
+                manutencao=manutencao,
+                usuario=request.user,
+                avaliacoes=avaliacoes,
+                observacao=formulario.cleaned_data["observacao"],
+            )
+        elif decisao == "reprovar":
+            reprovar_conferencia(
+                manutencao=manutencao,
+                usuario=request.user,
+                motivo=formulario.cleaned_data["motivo"],
+                criterios_nao_conformes=[
+                    avaliacao
+                    for avaliacao in avaliacoes
+                    if avaliacao["resultado"] == ResultadoCriterio.NAO_CONFORME
+                ],
+            )
+        else:
+            nao_avaliar_conferencia(
+                manutencao=manutencao,
+                usuario=request.user,
+                observacao=formulario.cleaned_data["observacao"],
+            )
+    except ErroDeManutencao as erro:
+        messages.error(request, str(erro))
+        return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+    messages.success(request, RECADO_DA_CONFERENCIA[decisao])
+    return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+@login_required
+@require_POST
+def anexar_evidencia(request, pk):
+    """Anexa provas à ocorrência sem mexer na situação nem na conferência.
+
+    É a mesma evidência da execução, por outra porta: quem só quer guardar a
+    prova não precisa registrar execução para isso. Cada arquivo entra pelo
+    serviço oficial, que o confere, guarda no bucket privado e anuncia no
+    histórico; anexar não conclui, não aprova e não reprova nada.
+    """
+    manutencao = _manutencao_para_anexar_evidencia(request, pk)
+    formulario = EvidenciaDaExecucaoForm(request.POST, request.FILES)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            manutencao,
+            formulario_evidencia=formulario,
+            modal="evidencia",
+            status=400,
+        )
+
+    arquivos = formulario.arquivos_enviados()
+    try:
+        for arquivo in arquivos:
+            adicionar_evidencia(
+                manutencao=manutencao,
+                arquivo=arquivo,
+                usuario=request.user,
+                contexto=ContextoEvidencia.EXECUCAO,
+            )
+    except (ErroDeEvidencia, ErroDeStorage) as erro:
+        formulario.add_error("evidencias", str(erro))
+        return _render_detalhe(
+            request,
+            manutencao,
+            formulario_evidencia=formulario,
+            modal="evidencia",
+            status=400,
+        )
+
+    recado = "Evidência anexada." if len(arquivos) == 1 else "Evidências anexadas."
+    messages.success(request, recado)
+    return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+@login_required
+def evidencia_arquivo(request, pk, evidencia_id):
+    """Entrega o arquivo de uma evidência a quem pode acompanhar a manutenção.
+
+    A autorização é a da própria manutenção: quem não a acompanha não descobre
+    que a evidência existe — a resposta é 404, e não uma negativa que
+    confirmaria o arquivo. O endereço devolvido é temporário, gerado na hora:
+    nunca fica guardado nem circula.
+    """
+    manutencao = _manutencao_autorizada(request, pk)
+    evidencia = get_object_or_404(
+        EvidenciaManutencao, pk=evidencia_id, manutencao=manutencao
+    )
+    try:
+        destino = acesso_temporario(evidencia)
+    except (ErroDeStorage, ImproperlyConfigured) as erro:
+        raise Http404("O arquivo desta evidência não está disponível.") from erro
+    return redirect(destino)
 
 
 # -- Planos preventivos ---------------------------------------------------------
@@ -628,6 +830,61 @@ def _manutencao_para_administrar(request, pk):
     return manutencao
 
 
+def _pode_conferir_agora(usuario, manutencao) -> bool:
+    """Diz se a conferência pode ser decidida neste momento.
+
+    Quem confere é decidido pelo domínio; quando, pelo estado da ocorrência. Uma
+    ocorrência nasce com a conferência pendente mesmo antes de o serviço ser
+    executado, então pendente sozinho não basta: a conferência pressupõe uma
+    execução registrada, porque é ela que se olha. ``data_execucao`` é o mesmo
+    sinal que o domínio usa para recusar — sem ele não há entrega para conferir.
+    Depois de aprovada o caminho é concluir, e depois de reprovada é registrar a
+    nova execução. Esta é a leitura compartilhada pela tela e pela porta da
+    view; a recusa de verdade continua sendo do serviço.
+    """
+    return (
+        pode_conferir(usuario, manutencao)
+        and manutencao.data_execucao is not None
+        and manutencao.status_conferencia == StatusConferencia.PENDENTE
+    )
+
+
+def _manutencao_para_registrar_execucao(request, pk):
+    """Resolve a manutenção e exige, no backend, o direito de registrar execução."""
+    manutencao = _manutencao_autorizada(request, pk)
+    if not pode_registrar_execucao(request.user, manutencao):
+        raise PermissionDenied(
+            "Esta pessoa não pode registrar execução desta manutenção."
+        )
+    return manutencao
+
+
+def _manutencao_para_conferir(request, pk):
+    """Resolve a manutenção e exige, no backend, o direito de conferi-la agora.
+
+    A mesma leitura que a tela usa governa o acesso direto: quem não pode
+    conferir neste momento — por não ter o direito, por não haver execução
+    registrada ou por a conferência já estar decidida — é recusado aqui, sem
+    depender de a tela ter escondido a ação.
+    """
+    manutencao = _manutencao_autorizada(request, pk)
+    if not _pode_conferir_agora(request.user, manutencao):
+        raise PermissionDenied(
+            "Esta pessoa não pode conferir esta manutenção agora."
+        )
+    return manutencao
+
+
+def _manutencao_para_anexar_evidencia(request, pk):
+    """Resolve a manutenção e exige, no backend, o direito de anexar prova."""
+    manutencao = _manutencao_autorizada(request, pk)
+    if not pode_anexar_evidencia(request.user, manutencao):
+        raise PermissionDenied(
+            "Esta pessoa não pode anexar evidência a esta manutenção."
+        )
+    return manutencao
+
+
 def _plano_autorizado(request, pk):
     """Resolve o plano dentro dos condomínios que esta pessoa acompanha."""
     condominios = _condominios_para_ver(request)
@@ -820,6 +1077,9 @@ def _render_detalhe(
     formulario_status=None,
     formulario_conclusao=None,
     formulario_cancelamento=None,
+    formulario_execucao=None,
+    formulario_conferencia=None,
+    formulario_evidencia=None,
     modal=None,
     status=200,
 ):
@@ -829,12 +1089,18 @@ def _render_detalhe(
     pode_editar = pode_editar_manutencao(request.user, manutencao)
     pode_concluir_agora = pode_concluir(request.user, manutencao)
     pode_cancelar_agora = pode_cancelar_manutencao(request.user, manutencao)
+    pode_executar_agora = pode_registrar_execucao(request.user, manutencao)
+    pode_conferir_agora = _pode_conferir_agora(request.user, manutencao)
+    pode_anexar_agora = pode_anexar_evidencia(request.user, manutencao)
 
     if (
         (modal == "editar" and not pode_editar)
         or (modal == "status" and not acoes)
         or (modal == "concluir" and not pode_concluir_agora)
         or (modal == "cancelar" and not pode_cancelar_agora)
+        or (modal == "execucao" and not pode_executar_agora)
+        or (modal == "conferir" and not pode_conferir_agora)
+        or (modal == "evidencia" and not pode_anexar_agora)
     ):
         modal = None
 
@@ -846,6 +1112,9 @@ def _render_detalhe(
         "pode_concluir": pode_concluir_agora,
         "pode_cancelar": pode_cancelar_agora,
         "pode_administrar": pode_administrar_manutencao(request.user, manutencao),
+        "pode_registrar_execucao": pode_executar_agora,
+        "pode_conferir": pode_conferir_agora,
+        "pode_anexar_evidencia": pode_anexar_agora,
         "formulario_manutencao": formulario
         or ManutencaoForm(
             condominio=manutencao.condominio,
@@ -857,6 +1126,11 @@ def _render_detalhe(
         "formulario_conclusao": formulario_conclusao or ConclusaoDeManutencaoForm(),
         "formulario_cancelamento": formulario_cancelamento
         or CancelamentoDeManutencaoForm(),
+        "formulario_execucao": formulario_execucao or ExecucaoDeManutencaoForm(),
+        "formulario_conferencia": formulario_conferencia
+        or ConferenciaDeManutencaoForm(),
+        "formulario_evidencia": formulario_evidencia or EvidenciaDaExecucaoForm(),
+        "resultados_da_conferencia": RESULTADOS_DA_CONFERENCIA,
         "modal_aberto": modal,
     }
     return render(request, "pages/manutencoes/detalhe.html", contexto, status=status)
@@ -1228,11 +1502,95 @@ def _acoes_da_linha(manutencao, usuario):
     return acoes
 
 
+def _referencia_da_manutencao(manutencao) -> str:
+    """O número curto pelo qual a ocorrência é citada na tela.
+
+    Não é um protocolo guardado — é a leitura curta do próprio identificador,
+    derivada e nunca persistida. Serve para a gestão citar a ocorrência sem
+    decorar o identificador inteiro.
+    """
+    return str(manutencao.pk).split("-")[0].upper()
+
+
+def _evidencias_para_tela(manutencao) -> list[dict]:
+    """As provas anexadas, como a lista compacta precisa delas.
+
+    Tipo, nome e data bastam para reconhecer o arquivo; o endereço é o da
+    própria evidência, que gera um acesso curto na hora de abrir. Nada aqui
+    afirma nada sobre a conferência: a evidência é prova, não decisão.
+    """
+    return [
+        {
+            "pk": evidencia.pk,
+            "tipo": evidencia.get_tipo_midia_display(),
+            "nome": evidencia.nome_original or "Arquivo",
+            "momento": _momento_por_extenso(evidencia.enviada_em),
+            "enviada_por": _nome_de(evidencia.enviada_por),
+            "url": reverse(
+                "manutencoes:evidencia_arquivo", args=[manutencao.pk, evidencia.pk]
+            ),
+        }
+        for evidencia in manutencao.evidencias.select_related("enviada_por").order_by(
+            "enviada_em"
+        )
+    ]
+
+
+def _criterios_da_ocorrencia_para_tela(manutencao) -> list[dict]:
+    """Os itens observáveis da ocorrência, como a conferência os lê.
+
+    A lista é o retrato copiado do plano quando a ocorrência nasceu — nunca
+    uma busca ao plano de agora. Cada item traz o que já foi respondido, se for
+    o caso, para a tela reabrir a conferência com o que ficou registrado.
+    """
+    return [
+        {
+            "pk": criterio.pk,
+            "descricao": criterio.descricao,
+            "obrigatorio": criterio.obrigatorio,
+            "resultado": criterio.resultado,
+            "resultado_rotulo": criterio.get_resultado_display(),
+            "resultado_tom": TOM_POR_RESULTADO.get(criterio.resultado, "secondary"),
+            "observacao": criterio.observacao,
+            "nao_conforme": criterio.resultado == ResultadoCriterio.NAO_CONFORME,
+            # Ninguém respondeu ainda quando o item continua no ponto de partida;
+            # a tela usa isto para não escolher uma resposta por conta própria.
+            "respondido": criterio.resultado != ResultadoCriterio.NAO_AVALIADO,
+        }
+        for criterio in manutencao.criterios_conferencia.all()
+    ]
+
+
+def _atencao_para_tela(manutencao):
+    """A atenção derivada da ocorrência, ou nada quando não há o que sinalizar.
+
+    A atenção não é guardada: é lida do estado real, pela mesma autoridade do
+    resto do sistema. Manutenção encerrada ou fora da operação não pede atenção
+    — do mesmo modo que a leitura de conjunto só devolve o que está aberto.
+    """
+    if manutencao.esta_encerrada or not manutencao.ativo:
+        return None
+
+    atencao = _atencao_da_manutencao(
+        manutencao,
+        hoje=timezone.localdate(),
+        dias_antecedencia=_dias_de_antecedencia(None),
+    )
+    if atencao is None:
+        return None
+    return {
+        "titulo": atencao.titulo,
+        "mensagem": atencao.mensagem,
+        "acao": atencao.acao_sugerida,
+    }
+
+
 def _manutencao_para_detalhe(manutencao) -> dict:
     """A manutenção como a página dela precisa: os dados e o que dá para fazer."""
     dados = _manutencao_para_tela(manutencao)
     dados.update(
         {
+            "referencia": _referencia_da_manutencao(manutencao),
             "problema": manutencao.descricao_problema,
             "servico": manutencao.descricao_servico,
             "fornecedor": (
@@ -1242,6 +1600,8 @@ def _manutencao_para_detalhe(manutencao) -> dict:
             "custo_real": _dinheiro(manutencao.custo_real),
             "inicio": _momento_por_extenso(manutencao.data_inicio),
             "conclusao": _momento_por_extenso(manutencao.data_conclusao),
+            "execucao": _momento_por_extenso(manutencao.data_execucao),
+            "tem_execucao": manutencao.data_execucao is not None,
             "criada_em": _momento_por_extenso(manutencao.criado_em),
             "criada_por": _nome_de(manutencao.criado_por),
             "demanda_origem": (
@@ -1249,8 +1609,32 @@ def _manutencao_para_detalhe(manutencao) -> dict:
             ),
             "demanda_origem_pk": manutencao.demanda_origem_id,
             "ativo": manutencao.ativo,
+            # A conferência é um vocabulário à parte da situação, e a tela lê as
+            # três palavras do estado para dizer onde ela está e o que vem agora.
+            "exige_conferencia": manutencao.exige_conferencia,
+            "conferencia": manutencao.get_status_conferencia_display(),
+            "conferencia_valor": manutencao.status_conferencia,
+            "conferencia_tom": TOM_POR_CONFERENCIA.get(
+                manutencao.status_conferencia, "secondary"
+            ),
+            "conferencia_pendente": (
+                manutencao.status_conferencia == StatusConferencia.PENDENTE
+            ),
+            "conferencia_aprovada": (
+                manutencao.status_conferencia == StatusConferencia.APROVADA
+            ),
+            "conferencia_reprovada": (
+                manutencao.status_conferencia == StatusConferencia.REPROVADA
+            ),
+            "criterios": _criterios_da_ocorrencia_para_tela(manutencao),
+            "evidencias": _evidencias_para_tela(manutencao),
+            "atencao": _atencao_para_tela(manutencao),
         }
     )
+    dados["tem_criterios"] = bool(dados["criterios"])
+    dados["nao_conformes"] = [
+        criterio["descricao"] for criterio in dados["criterios"] if criterio["nao_conforme"]
+    ]
     return dados
 
 
