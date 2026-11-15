@@ -2,11 +2,13 @@
 
 Pede-se apenas o necessário. A pergunta principal é uma só — o que aconteceu —,
 e o que der para ler desse relato já vem preenchido: assunto, local,
-equipamento, tipo de problema, impacto, risco, prioridade e prazo. O que não der
-continua sendo pergunta, com ajuste à mão.
+equipamento, tipo de problema, impacto e risco. O que não der continua sendo
+pergunta, com ajuste à mão.
 
-A prioridade não é campo: ela é consequência do que o relato sustenta, lida pela
-mesma regra que já existia. Quem registra corrige o fato, e o peso se recalcula.
+A prioridade é decisão de quem registra: ela aparece no fluxo como campo
+explícito, e o que a pessoa escolher é o que vale. A leitura do relato não
+escolhe mais o peso da demanda — ela continua identificando os demais
+elementos, mas nunca decide a prioridade operacional nem inventa prazo.
 
 Duas coisas que a leitura produz **não** viram campo, porque não são dado da
 demanda: a área sai do tipo do local cadastrado, e a recorrência é uma leitura
@@ -178,6 +180,15 @@ class DemandaForm(forms.Form):
         label="Descrição",
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+    # A prioridade operacional é escolha de quem registra, com o vocabulário que
+    # o domínio já tem. Sem escolha, responde o padrão do modelo — nunca uma
+    # derivação do relato.
+    prioridade = forms.ChoiceField(
+        label="Prioridade",
+        choices=PrioridadeDemanda.choices,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
     responsavel = forms.ModelChoiceField(
         label="Responsável",
@@ -395,9 +406,17 @@ class DemandaForm(forms.Form):
             )
             return dados
 
-        # O peso não se escolhe: ele é o que o relato sustenta. Corrigir o fato
-        # é o que muda a prioridade — por isso ela nunca vem do navegador.
-        dados["prioridade"] = self._leitura.prioridade
+        # A prioridade é decisão de quem registra — a leitura do relato não
+        # escolhe mais o peso da demanda. O que a tela manda vale; sem escolha,
+        # fica o padrão do domínio. Quando o envio não fala de prioridade alguma
+        # — a edição parcial de uma integração antiga —, a demanda mantém a que
+        # já tem, para que nenhum registro antigo mude de peso sozinho.
+        if "prioridade" in self.data:
+            dados["prioridade"] = dados.get("prioridade") or PrioridadeDemanda.NORMAL
+        elif self._instancia is not None:
+            dados["prioridade"] = self._instancia.prioridade
+        else:
+            dados["prioridade"] = PrioridadeDemanda.NORMAL
 
         # O prazo é derivado pela política do sistema, e nunca pela leitura do
         # relato: a regra configurada é quem define a data. O que a pessoa

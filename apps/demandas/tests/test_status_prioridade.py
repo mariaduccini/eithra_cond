@@ -1,10 +1,11 @@
-"""A situação e o peso de uma demanda são consequência, não escolha.
+"""A situação e o peso de uma demanda não se decidem do mesmo jeito.
 
-Esta frente tirou os dois da mão do formulário: não existe campo para escolher
-a situação nem o peso. A situação só se move por uma ação que a pessoa alcança,
-e o peso é sempre lido do relato pela mesma regra que o resto do sistema usa —
-``prioridade_do_relato``. O que o navegador mandar de fora é ignorado ou
-recusado, no backend.
+A situação continua sendo consequência, não escolha: não existe campo para
+escolhê-la, e ela só se move por uma ação que a pessoa alcança. O peso, ao
+contrário, passou a ser escolha explícita de quem registra — a tela pergunta, e
+o que a pessoa responde é o que vale. A leitura do relato não decide a
+prioridade operacional: mesmo um relato que antes seria lido como urgente não
+sobrepõe a escolha humana.
 """
 from django.test import TestCase
 from django.urls import reverse
@@ -12,7 +13,6 @@ from django.urls import reverse
 from apps.condominios.constants import Papel
 from apps.core.constants import Prioridade
 from apps.demandas.constants import StatusDemanda, TipoEventoDemanda
-from apps.demandas.derivacao import prioridade_do_relato
 from apps.demandas.forms import AcaoDeStatusForm, DemandaForm
 from apps.demandas.models import Demanda
 from apps.demandas.permissoes import status_permitidos_para
@@ -48,29 +48,40 @@ class BaseDeEstado(TestCase):
         return self.client.post(reverse("demandas:criar"), dados)
 
 
-class SemCampoDeEstadoTests(BaseDeEstado):
-    """Não existe campo para escolher situação nem peso (§10, §11)."""
+class SemCampoDeSituacaoTests(BaseDeEstado):
+    """A situação não tem campo; a prioridade tem (§2, §10)."""
 
-    def test_formulario_nao_oferece_situacao_nem_peso(self):
+    def test_formulario_oferece_prioridade_e_nao_situacao(self):
         formulario = DemandaForm(condominio=self.condominio)
         self.assertNotIn("status", formulario.fields)
-        self.assertNotIn("prioridade", formulario.fields)
+        self.assertIn("prioridade", formulario.fields)
 
 
-class BackendRecusaEscolhaManualTests(BaseDeEstado):
-    """O que o navegador manda de fora não move nada (§9, §12)."""
+class PrioridadeEscolhidaTests(BaseDeEstado):
+    """A prioridade gravada é a escolha de quem registra (§1, §10)."""
 
-    def test_peso_do_navegador_e_ignorado_no_registro(self):
-        resposta = self._registrar(prioridade=Prioridade.URGENTE)
+    def test_registro_grava_a_prioridade_escolhida(self):
+        resposta = self._registrar(prioridade=Prioridade.ALTA)
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
-        # O relato não sustenta urgência: o "Urgente" do POST não conta.
+        self.assertEqual(demanda.prioridade, Prioridade.ALTA)
+
+    def test_escolha_do_usuario_vence_a_leitura_do_relato(self):
+        # Sozinho, o relato antes derivaria urgência; a escolha humana manda, e
+        # é essa a regressão que fecha o escopo: a leitura não decide o peso.
+        resposta = self._registrar(relato=RELATO_URGENTE, prioridade=Prioridade.BAIXA)
+        self.assertEqual(resposta.status_code, 302)
+        demanda = Demanda.objects.get()
         self.assertEqual(demanda.prioridade, Prioridade.BAIXA)
 
-    def test_peso_do_navegador_e_ignorado_na_edicao(self):
-        demanda = self._demanda(
-            titulo="Comprar lâmpadas", descricao="para o corredor do bloco B"
-        )
+    def test_relato_urgente_sem_escolha_fica_no_padrao_do_dominio(self):
+        resposta = self._registrar(relato=RELATO_URGENTE)
+        self.assertEqual(resposta.status_code, 302)
+        demanda = Demanda.objects.get()
+        self.assertEqual(demanda.prioridade, Prioridade.NORMAL)
+
+    def test_edicao_muda_a_prioridade_quando_ha_permissao(self):
+        demanda = self._demanda()
         resposta = self.client.post(
             reverse("demandas:editar", args=[demanda.pk]),
             {
@@ -82,7 +93,33 @@ class BackendRecusaEscolhaManualTests(BaseDeEstado):
         )
         self.assertEqual(resposta.status_code, 302)
         demanda.refresh_from_db()
-        self.assertEqual(demanda.prioridade, Prioridade.NORMAL)
+        self.assertEqual(demanda.prioridade, Prioridade.URGENTE)
+
+    def test_edicao_sem_prioridade_no_envio_preserva_a_escolha_existente(self):
+        demanda = self._demanda(prioridade=Prioridade.ALTA)
+        resposta = self.client.post(
+            reverse("demandas:editar", args=[demanda.pk]),
+            {
+                "condominio": str(self.condominio.pk),
+                "titulo": demanda.titulo,
+                "descricao": demanda.descricao,
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        demanda.refresh_from_db()
+        # A edição que não fala de peso não mexe no peso: o registro antigo
+        # mantém a prioridade que já tinha.
+        self.assertEqual(demanda.prioridade, Prioridade.ALTA)
+
+    def test_registro_criado_com_prioridade_preserva_o_valor(self):
+        demanda = self._demanda(prioridade=Prioridade.URGENTE)
+        self.assertEqual(
+            Demanda.objects.get(pk=demanda.pk).prioridade, Prioridade.URGENTE
+        )
+
+
+class BackendRecusaSituacaoManualTests(BaseDeEstado):
+    """A situação não se decide por campo (§9, §12)."""
 
     def test_campo_status_no_post_nao_muda_a_situacao(self):
         demanda = self._demanda()
@@ -173,42 +210,26 @@ class AcaoMoveASituacaoTests(BaseDeEstado):
         self.assertIsNone(demanda.concluido_em)
 
 
-class PesoVemDoRelatoTests(BaseDeEstado):
-    """O peso sai da regra existente e acompanha a correção do relato (§3, §15)."""
+class PrioridadeNoHistoricoTests(BaseDeEstado):
+    """A prioridade muda com registro no histórico, sem reescrever o passado (§8)."""
 
-    def test_peso_segue_a_mesma_regra_do_relato(self):
-        resposta = self._registrar(relato=RELATO_URGENTE)
-        self.assertEqual(resposta.status_code, 302)
-        demanda = Demanda.objects.get()
-        esperado, _ = prioridade_do_relato(RELATO_URGENTE)
-        self.assertEqual(demanda.prioridade, esperado)
-        self.assertEqual(demanda.prioridade, Prioridade.URGENTE)
-
-    def test_corrigir_o_relato_recalcula_o_peso(self):
-        self._registrar(relato=RELATO_SEM_PRESSA)
-        demanda = Demanda.objects.get()
-        self.assertEqual(demanda.prioridade, Prioridade.BAIXA)
-
-        resposta = self.client.post(
+    def test_mudar_a_prioridade_registra_o_antes_e_o_depois(self):
+        demanda = self._demanda(prioridade=Prioridade.BAIXA)
+        self.client.post(
             reverse("demandas:editar", args=[demanda.pk]),
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
-                "descricao": RELATO_URGENTE,
+                "descricao": demanda.descricao,
+                "prioridade": Prioridade.URGENTE,
             },
         )
-        self.assertEqual(resposta.status_code, 302)
-        demanda.refresh_from_db()
-        # O fato mudou; o peso acompanha.
-        self.assertEqual(demanda.prioridade, Prioridade.URGENTE)
+        evento = demanda.historico.get(tipo_evento=TipoEventoDemanda.PRIORIDADE)
+        self.assertEqual(evento.dados_anteriores, {"prioridade": Prioridade.BAIXA})
+        self.assertEqual(evento.dados_novos, {"prioridade": Prioridade.URGENTE})
 
-
-class HistoricoNaoRecalculadoTests(BaseDeEstado):
-    """O passado guarda o que foi decidido; recalcular não reescreve história (§16)."""
-
-    def test_recalcular_o_peso_nao_reescreve_o_historico(self):
-        self._registrar(relato=RELATO_SEM_PRESSA)
-        demanda = Demanda.objects.get()
+    def test_o_evento_de_criacao_nao_e_reescrito_pela_edicao(self):
+        demanda = self._demanda()
         criada = demanda.historico.get(tipo_evento=TipoEventoDemanda.CRIADA)
         momento_da_criacao = criada.data_hora
 
@@ -217,7 +238,8 @@ class HistoricoNaoRecalculadoTests(BaseDeEstado):
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
-                "descricao": RELATO_URGENTE,
+                "descricao": demanda.descricao,
+                "prioridade": Prioridade.ALTA,
             },
         )
 
@@ -225,8 +247,3 @@ class HistoricoNaoRecalculadoTests(BaseDeEstado):
         criada.refresh_from_db()
         self.assertEqual(criada.data_hora, momento_da_criacao)
         self.assertIsNone(criada.dados_anteriores)
-
-        # A correção acrescenta o que mudou, sem apagar o que já estava.
-        peso = demanda.historico.get(tipo_evento=TipoEventoDemanda.PRIORIDADE)
-        self.assertEqual(peso.dados_anteriores, {"prioridade": Prioridade.BAIXA})
-        self.assertEqual(peso.dados_novos, {"prioridade": Prioridade.URGENTE})

@@ -2,8 +2,8 @@
 
 O domínio já sabe criar, editar, mover situação, observar e relacionar
 manutenção. Esta camada organiza isso na interface aprovada: tabela
-operacional, wizard curto de registro, detalhe com abas e atualização sem
-reinventar o backend.
+operacional, wizard curto de registro, detalhe em seções contínuas e
+atualização sem reinventar o backend.
 """
 import uuid
 
@@ -43,7 +43,6 @@ from .derivacao import (
     OrigemSugestao,
     area_do_contexto,
     assunto_do_relato,
-    prioridade_do_relato,
     sustenta_registro,
 )
 from .evidencias import (
@@ -873,7 +872,6 @@ def _render_detalhe(
     contexto = {
         "demanda": _demanda_para_detalhe(demanda),
         "aba": aba_atual,
-        "abas": _abas_para_tela(aba_atual),
         "historico": historico,
         # As janelas de ampliação só existem quando há o que ampliar: sem prova
         # no histórico, nenhuma delas ocupa a página.
@@ -886,7 +884,6 @@ def _render_detalhe(
             demanda=demanda, usuario=request.user
         ),
         "relacionadas": _relacionadas_para_tela(demanda, manutencao),
-        "motivo_prioridade": _motivo_da_prioridade(demanda),
         "pode_editar": pode_editar,
         "pode_observar": pode_observar,
         "pode_atualizar": bool(permitidos or pode_observar),
@@ -988,6 +985,9 @@ def _iniciais_da_demanda(demanda):
         "relato": demanda.descricao,
         "titulo": demanda.titulo,
         "descricao": demanda.descricao,
+        # O peso atual vem selecionado: editar mostra o que a demanda vale hoje
+        # e deixa quem tem permissão mudá-lo como qualquer outro campo.
+        "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
         "prazo": demanda.prazo,
         "local": demanda.local_id,
@@ -1023,6 +1023,10 @@ def _formulario_da_informacao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados["titulo"],
             "descricao": dados.get("descricao") or "",
+            # A prioridade é escolha de quem registra. A etapa já abre com o que
+            # estiver selecionado — o padrão do domínio quando ninguém escolheu
+            # ainda —, e é ela que segue adiante se a pessoa não tocar no campo.
+            "prioridade": dados.get("prioridade") or PrioridadeDemanda.NORMAL,
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -1058,6 +1062,10 @@ def _formulario_da_revisao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados.get("titulo") or leitura.assunto,
             "descricao": dados.get("descricao") or "",
+            # O peso escolhido na etapa anterior atravessa a revisão sem ser
+            # reaberto: a tela mostra o que será gravado, e o campo segue oculto
+            # para chegar inteiro ao registro.
+            "prioridade": dados.get("prioridade") or PrioridadeDemanda.NORMAL,
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -1142,9 +1150,11 @@ def _sugestoes_para_tela(formulario, usuario):
 
     A etapa existe para revisar e corrigir, não para classificar: por isso ela
     traz o resultado da leitura montado — assunto, lugar e tipo de problema,
-    peso e prazo, responsável —, e o ajuste fica atrás de uma ação discreta.
-    Cada campo guarda o motivo do domínio, para quem quiser saber de onde
-    aquilo veio; a tela mostra o motivo onde ele ajuda, e não em cada linha.
+    prazo e responsável —, e o ajuste fica atrás de uma ação discreta. A
+    prioridade não vem da leitura: é a escolha de quem registra, e a tela mostra
+    o que está selecionado no campo. Cada campo guarda o motivo do domínio,
+    para quem quiser saber de onde aquilo veio; a tela mostra o motivo onde ele
+    ajuda, e não em cada linha.
     """
     leitura = formulario.leitura
     dados = formulario.cleaned_data
@@ -1163,9 +1173,13 @@ def _sugestoes_para_tela(formulario, usuario):
         "tipo_problema": _proposta_para_tela(propostas["tipo_problema"], TipoProblema),
         "impacto": _proposta_para_tela(propostas["impacto"], ImpactoDemanda),
         "risco": _proposta_para_tela(propostas["risco"], RiscoDemanda),
+        # O peso é decisão de quem registra: a tela mostra o que está escolhido
+        # — o padrão do domínio quando ninguém tocou no campo —, e nunca um
+        # motivo que faria parecer que a leitura do relato o decidiu.
         "prioridade": {
-            "valor": PrioridadeDemanda(prioridade).label if prioridade else "",
-            "motivo": leitura.motivo,
+            "valor": PrioridadeDemanda(
+                prioridade or PrioridadeDemanda.NORMAL
+            ).label,
         },
         "prazo": {
             "valor": _prazo_por_extenso(dados.get("prazo")) if dados.get("prazo") else "",
@@ -1193,12 +1207,14 @@ def _resumo_do_registro(formulario, usuario):
         "assunto": dados.get("titulo") or leitura.assunto,
         "descricao_original": dados.get("descricao") or dados.get("relato") or "",
         "local": dados.get("local").nome if dados.get("local") else dados.get("local_texto") or "Sem local definido",
-        # O peso não se escolhe: ele é o que o relato sustenta, e a origem diz
-        # exatamente isso — não há mais um caso "informada pela gestão".
+        # A prioridade é a escolha de quem registra, levada adiante da etapa
+        # anterior. A origem diz isso sem rodeio: o peso não é lido do relato,
+        # então não há "sugerida pelo EITHRA" a exibir.
         "prioridade": {
-            "valor": PrioridadeDemanda(prioridade).label if prioridade else "Não identificada",
-            "origem": "Sugerida pelo EITHRA" if leitura.motivo else "Não identificada",
-            "motivo": leitura.motivo,
+            "valor": PrioridadeDemanda(
+                prioridade or PrioridadeDemanda.NORMAL
+            ).label,
+            "origem": "Definida no registro",
         },
         "prazo": {
             "valor": _prazo_por_extenso(dados.get("prazo")),
@@ -1227,17 +1243,6 @@ def _manutencao_da_demanda(demanda):
     passado da demanda, e o histórico dela já conta essa parte.
     """
     return demanda.manutencoes_geradas.abertas().order_by("-criado_em").first()
-
-
-def _motivo_da_prioridade(demanda) -> str:
-    """Por que esta demanda pesa o que pesa, quando o relato sustenta a razão.
-
-    A explicação só aparece quando a leitura do relato chega ao mesmo peso que
-    a demanda tem hoje. Se alguém mudou o peso à mão, ou se o relato não diz
-    nada sobre isso, não há explicação — e o silêncio é a resposta honesta.
-    """
-    prioridade, motivo = prioridade_do_relato(demanda.descricao or demanda.titulo)
-    return motivo if prioridade == demanda.prioridade else ""
 
 
 def _proximo_passo(demanda, usuario, manutencao):
@@ -1726,18 +1731,6 @@ def _etapas_para_tela(etapas, atual):
 def _aba_da_demanda(aba):
     disponiveis = {chave for chave, _, inativa in ABAS_DA_DEMANDA if not inativa}
     return aba if aba in disponiveis else "visao_geral"
-
-
-def _abas_para_tela(atual):
-    return [
-        {
-            "chave": chave,
-            "titulo": titulo,
-            "ativa": chave == atual,
-            "inativa": inativa,
-        }
-        for chave, titulo, inativa in ABAS_DA_DEMANDA
-    ]
 
 
 def _relacionadas_para_tela(demanda, manutencao):

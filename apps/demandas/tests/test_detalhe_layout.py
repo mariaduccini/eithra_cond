@@ -1,12 +1,12 @@
-"""Apresentação da Visão Geral da demanda: hierarquia operacional e densidade.
+"""Apresentação do detalhe da demanda: uma leitura só, de cima para baixo.
 
-A Visão Geral responde rápido a quatro perguntas: o que aconteceu, qual a
-situação, quem cuida e qual é o próximo passo. Ela é só composição — duas zonas
-em tela larga, uma só em tela estreita — sobre os mesmos dados e as mesmas ações
-que a tela já oferecia. Estes testes travam esse contrato: as abas continuam, a
-descrição continua, as informações essenciais continuam em grade, o
-acompanhamento vazio é curto, as ações continuam disponíveis quando permitidas e
-nenhum caminho funcional foi removido.
+O detalhe deixou de ser um painel de abas e virou seções contínuas: o que
+aconteceu, o que qualifica o problema, quem cuida dele, o que já passou e o que
+se liga a ele. Quem separa uma seção da outra é o fio discreto entre elas, não
+uma superfície com moldura própria. Estes testes travam esse contrato: a leitura
+segue nessa ordem, a descrição continua, as informações essenciais continuam em
+grade, o acompanhamento vazio é curto, as ações continuam disponíveis no
+cabeçalho e nenhum caminho funcional foi removido.
 """
 from pathlib import Path
 
@@ -25,8 +25,8 @@ from apps.demandas.tests.apoio import (
 )
 
 
-class VisaoGeralDaDemandaTests(TestCase):
-    """A Visão Geral de uma demanda comum, lida pela gestão do condomínio."""
+class DetalheDaDemandaTests(TestCase):
+    """O detalhe de uma demanda comum, lido pela gestão do condomínio."""
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
@@ -54,24 +54,34 @@ class VisaoGeralDaDemandaTests(TestCase):
 
     # -- Estrutura da tela ----------------------------------------------------
 
-    def test_as_abas_continuam_na_tela(self):
+    def test_as_secoes_da_demanda_aparecem(self):
+        """O corpo é uma sequência de seções, não um painel de abas."""
         conteudo = self._abrir().content.decode()
-        for aba in ("Visão geral", "Histórico", "Anexos", "Relacionadas"):
-            self.assertIn(aba, conteudo)
+        for titulo in (
+            ">Demanda</h2>",
+            ">Informações</h2>",
+            ">Acompanhamento</h2>",
+            ">Histórico</h2>",
+        ):
+            self.assertIn(titulo, conteudo)
+        # Nada de abas: a leitura é uma só, sem alternância de painéis.
+        self.assertNotIn('role="tablist"', conteudo)
+        self.assertNotIn("Visão geral", conteudo)
 
-    def test_a_visao_geral_se_divide_em_duas_zonas(self):
-        """A leitura tem uma zona principal e uma operacional, nesta ordem."""
+    def test_a_leitura_segue_de_cima_para_baixo(self):
+        """As seções se sucedem na ordem em que se lê a demanda."""
         conteudo = self._abrir().content.decode()
-        self.assertIn("eithra-vg-principal", conteudo)
-        self.assertIn("eithra-vg-operacional", conteudo)
-        self.assertLess(
-            conteudo.index("eithra-vg-principal"),
-            conteudo.index("eithra-vg-operacional"),
-        )
+        ordem = [
+            conteudo.index(">Demanda</h2>"),
+            conteudo.index(">Informações</h2>"),
+            conteudo.index(">Acompanhamento</h2>"),
+            conteudo.index(">Histórico</h2>"),
+        ]
+        self.assertEqual(ordem, sorted(ordem))
 
     def test_a_descricao_continua_renderizada(self):
         conteudo = self._abrir().content.decode()
-        self.assertIn("Descrição", conteudo)
+        self.assertIn("eithra-detail-leitura", conteudo)
         self.assertIn("Vazamento visível junto da base da bomba.", conteudo)
 
     def test_as_informacoes_essenciais_continuam(self):
@@ -104,27 +114,26 @@ class VisaoGeralDaDemandaTests(TestCase):
         self.assertIn("Confirmar a visita técnica", conteudo)
         self.assertNotIn("Nenhum acompanhamento definido.", conteudo)
 
-    # -- Próxima ação e ações -------------------------------------------------
+    # -- Ações ----------------------------------------------------------------
 
-    def test_a_proxima_acao_vive_na_zona_operacional(self):
-        """O próximo passo e os botões ficam juntos, na coluna da direita."""
+    def test_as_acoes_vivem_no_cabecalho(self):
+        """O que fazer agora fica no cabeçalho, junto do estado que o explica."""
         conteudo = self._abrir().content.decode()
-        operacional = conteudo[conteudo.index("eithra-vg-operacional"):]
+        cabecalho = conteudo[
+            conteudo.index("eithra-detail-header"):conteudo.index("eithra-detail-section")
+        ]
         for marca in (
-            "Próxima ação",
             "Registrar atualização",
             "Adicionar evidência",
             "Concluir demanda",
             "Mais ações",
         ):
-            self.assertIn(marca, operacional)
+            self.assertIn(marca, cabecalho)
 
     def test_nenhum_caminho_funcional_foi_removido(self):
         conteudo = self._abrir().content.decode()
-        detalhe = reverse("demandas:detalhe", args=[self.demanda.pk])
-        # Voltar para a lista e trocar de aba continuam valendo.
+        # Voltar para a lista continua valendo.
         self.assertIn(reverse("demandas:listagem"), conteudo)
-        self.assertIn(f"{detalhe}?aba=historico", conteudo)
         # As ações contextuais apontam para as janelas que a tela já oferecia.
         self.assertIn("?abrir=atualizar", conteudo)
         self.assertIn("?abrir=evidencia", conteudo)
@@ -137,28 +146,12 @@ class VisaoGeralDaDemandaTests(TestCase):
         self.assertIn("Editar demanda", conteudo)
         self.assertIn("?abrir=editar", conteudo)
 
-    # -- Responsividade -------------------------------------------------------
+    # -- Separação visual -----------------------------------------------------
 
-    def test_o_layout_tem_regra_responsiva(self):
-        """Em tela estreita as duas zonas viram uma só — a regra existe no CSS."""
+    def test_o_css_separa_as_secoes_por_um_fio(self):
+        """A leitura contínua separa uma seção da outra por um fio, não por card."""
         css = Path(settings.BASE_DIR, "static", "css", "eithra.css").read_text(
             encoding="utf-8"
         )
-        self.assertIn(".eithra-vg {", css)
-        self.assertIn("min-width: 992px", css)
-        # Em uma coluna só, a ordem é a da leitura operacional, não a do HTML.
-        self.assertIn("max-width: 991.98px", css)
-        self.assertIn("display: contents", css)
-        self.assertIn(".eithra-vg-bloco--acompanhamento", css)
-        self.assertIn("order: 2", css)
-
-    def test_em_uma_coluna_o_detalhamento_vem_por_ultimo(self):
-        """Os blocos carregam a marca que o CSS usa para reordenar no celular."""
-        conteudo = self._abrir().content.decode()
-        for marca in (
-            "eithra-vg-bloco--descricao",
-            "eithra-vg-bloco--acompanhamento",
-            "eithra-vg-bloco--acao",
-            "eithra-vg-bloco--informacoes",
-        ):
-            self.assertIn(marca, conteudo)
+        self.assertIn(".eithra-detail-section + .eithra-detail-section", css)
+        self.assertIn("border-top: 1px solid var(--bs-border-color)", css)

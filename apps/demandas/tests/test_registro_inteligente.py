@@ -320,8 +320,8 @@ class ClassificacaoAutomaticaTests(TestCase):
         self.assertEqual(demanda.equipamento.nome, "Portão externo")
 
 
-class PrioridadeAutomaticaTests(TestCase):
-    """§6: o peso continua sendo do sistema — não é decisão manual obrigatória."""
+class PrioridadeEscolhidaPeloUsuarioTests(TestCase):
+    """§1 e §10: o peso é escolha de quem registra, não leitura do relato."""
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
@@ -334,21 +334,29 @@ class PrioridadeAutomaticaTests(TestCase):
         dados.update(extra)
         return self.client.post(reverse("demandas:criar"), dados)
 
-    def test_a_prioridade_e_derivada_do_relato(self):
-        criar_equipamento(self.condominio, "Portão social")
-
-        self._registrar("O portão social parou.")
-
-        demanda = Demanda.objects.get()
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
-
-    def test_o_que_o_navegador_manda_nao_escolhe_o_peso(self):
-        """A prioridade não vem da tela: o relato é quem sustenta o peso."""
+    def test_a_prioridade_escolhida_e_a_que_vale(self):
         criar_equipamento(self.condominio, "Portão social")
 
         self._registrar("O portão social parou.", prioridade=PrioridadeDemanda.BAIXA)
 
-        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.ALTA)
+        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.BAIXA)
+
+    def test_o_relato_urgente_nao_sobrepoe_a_escolha_humana(self):
+        criar_equipamento(self.condominio, "Portão social")
+
+        # O mesmo relato, sozinho, antes derivaria "Alta". Com a escolha
+        # explícita de "Normal", é "Normal" que fica gravado: a leitura do
+        # relato deixou de decidir o peso da demanda.
+        self._registrar("O portão social parou.", prioridade=PrioridadeDemanda.NORMAL)
+
+        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.NORMAL)
+
+    def test_sem_escolha_o_peso_fica_no_padrao_do_dominio(self):
+        criar_equipamento(self.condominio, "Portão social")
+
+        self._registrar("O portão social parou.")
+
+        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.NORMAL)
 
 
 class PrazoPelaPoliticaTests(TestCase):
@@ -562,12 +570,12 @@ class SinteseDaEtapaDeInformacoesTests(TestCase):
         self.assertContains(resposta, "Informações identificadas")
         self.assertContains(resposta, "Revise apenas se algo precisar ser corrigido.")
         self.assertContains(resposta, "Ajustar informações")
-        self.assertContains(resposta, "Prioridade Normal")
 
-        # O peso não é perguntado em lugar nenhum do wizard: quem sustenta é o
-        # relato, e a tela só o apresenta.
+        # A prioridade é a exceção: a tela pergunta, e o campo já abre com o
+        # padrão do domínio selecionado — é essa escolha que segue adiante.
         wizard = resposta.content.decode().split('id="registrar-demanda"', 1)[1]
-        self.assertNotIn('name="prioridade"', wizard)
+        self.assertIn('name="prioridade"', wizard)
+        self.assertIn('value="normal" selected', wizard)
 
     def test_sem_equipamento_a_sintese_nao_mostra_linha_nem_alarme(self):
         """§2 e §9: ausência de equipamento é resposta comum, não campo pendente."""

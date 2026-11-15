@@ -362,13 +362,7 @@
                   {% if sugestoes.tipo_problema.valor %}· {{ sugestoes.tipo_problema.valor }}{% endif %}
                 </div>
                 <div class="text-body-secondary small">
-                  Prioridade {{ sugestoes.prioridade.valor|default:"Não identificada" }}
-                  · {{ sugestoes.prazo.texto }}
-                  {% comment %}O motivo do peso fica onde não compete com o resultado: um
-                  apoio discreto, ao alcance de quem quiser saber de onde ele veio.{% endcomment %}
-                  {% if sugestoes.prioridade.motivo %}
-                    <i class="bx bx-info-circle ms-1" title="{{ sugestoes.prioridade.motivo }}" aria-hidden="true"></i>
-                  {% endif %}
+                  {{ sugestoes.prazo.texto }}
                 </div>
                 <div class="small eithra-sintese-responsavel">Responsável: {{ sugestoes.responsavel.valor }}</div>
                 {% comment %}O equipamento só entra quando o cadastro o confirmou. Sem
@@ -377,6 +371,14 @@
                 {% if sugestoes.equipamento.valor %}
                   <div class="small">Equipamento: {{ sugestoes.equipamento.valor }}</div>
                 {% endif %}
+              </div>
+
+              {% comment %}O peso da demanda é decisão de quem registra, e não leitura
+              do relato: por isso é um campo de verdade nesta etapa, já com o padrão
+              do domínio selecionado. A escolha que aparece aqui é a que segue para o
+              registro — ninguém mais decide a prioridade no meio do caminho.{% endcomment %}
+              <div class="eithra-sintese-peso mt-3">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade classe="mb-0" %}
               </div>
 
               {% comment %}O relato pode ter deixado uma dúvida em aberto — no máximo uma.
@@ -455,6 +457,9 @@
             {{ formulario_demanda.condominio.as_hidden }}
             {{ formulario_demanda.relato.as_hidden }}
             {{ formulario_demanda.titulo.as_hidden }}
+            {% comment %}A prioridade escolhida na etapa anterior viaja oculta: a
+            revisão mostra o que será gravado e não reabre a decisão.{% endcomment %}
+            {{ formulario_demanda.prioridade.as_hidden }}
             {{ formulario_demanda.prazo.as_hidden }}
             {{ formulario_demanda.responsavel.as_hidden }}
             {{ formulario_demanda.local.as_hidden }}

@@ -561,7 +561,9 @@ class ClassificacaoNoRegistroTests(TestCase):
         self.assertEqual(demanda.equipamento, equipamento)
         self.assertEqual(demanda.tipo_problema, TipoProblema.ACESSO)
         self.assertEqual(demanda.impacto, ImpactoDemanda.EQUIPAMENTO)
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
+        # A prioridade não é lida do relato: sem escolha de quem registra, ela
+        # fica no padrão do domínio, mesmo quando o relato descreve uma parada.
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.NORMAL)
         # A recorrência não vira coluna: ela é leitura do histórico, e continua
         # sendo calculada na hora, sem virar fato guardado (§6-E).
 

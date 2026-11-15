@@ -430,8 +430,8 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
         self.assertEqual(resposta.context["registro_etapa"], "informacoes")
         sugestoes = resposta.context["sugestoes"]
         self.assertTrue(sugestoes["assunto"]["valor"])
-        self.assertEqual(sugestoes["prioridade"]["valor"], "Alta")
-        self.assertEqual(sugestoes["prioridade"]["motivo"], "Falha recorrente em portão")
+        # A prioridade não é lida do relato: sem escolha, fica no padrão do domínio.
+        self.assertEqual(sugestoes["prioridade"]["valor"], "Normal")
         self.assertEqual(sugestoes["prazo"]["valor"], "")
 
     def test_o_que_a_leitura_nao_sustentou_permanece_sem_resposta(self):
@@ -454,7 +454,10 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
         self.assertEqual(resposta.context["registro_etapa"], "revisao")
         revisao = resposta.context["revisao"]
         self.assertEqual(revisao["assunto"], "Nova falha no motor do portão interno")
-        self.assertEqual(revisao["prioridade"]["valor"], "Alta")
+        # A revisão exibe a prioridade que será gravada — escolha de quem registra,
+        # e não uma leitura do relato.
+        self.assertEqual(revisao["prioridade"]["valor"], "Normal")
+        self.assertEqual(revisao["prioridade"]["origem"], "Definida no registro")
         self.assertEqual(revisao["prazo"]["valor"], "Sem prazo")
 
     def test_prazo_nao_e_criado_automaticamente_pela_prioridade(self):
@@ -464,13 +467,15 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
                 "condominio": str(self.condominio.pk),
                 "relato": self.RELATO,
                 "titulo": "Nova falha no motor do portão interno",
+                "prioridade": PrioridadeDemanda.URGENTE,
             },
         )
 
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
         self.assertEqual(demanda.descricao, self.RELATO)
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
+        # O peso é o que a pessoa escolheu — e nem ele cria prazo sozinho.
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.URGENTE)
         self.assertIsNone(demanda.prazo)
 
 
@@ -498,14 +503,15 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
             self.assertIn(etapa, conteudo)
         self.assertIn("Descreva o que aconteceu", conteudo)
 
-    def test_detalhe_exibe_abas_aprovadas(self):
+    def test_detalhe_le_secoes_continuas(self):
         demanda = self._demanda()
         resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
         conteudo = resposta.content.decode()
 
         self.assertNotIn("Mudar situação", conteudo)
-        for aba in ("Visão geral", "Histórico", "Anexos", "Relacionadas"):
-            self.assertIn(aba, conteudo)
+        # O detalhe é uma leitura só, de cima para baixo — sem abas.
+        for secao in ("Demanda", "Informações", "Acompanhamento", "Histórico"):
+            self.assertIn(secao, conteudo)
         self.assertIn("Detalhe da demanda", conteudo)
 
     def test_detalhe_mostra_acao_contextual_e_modal_de_atualizacao(self):

@@ -2216,102 +2216,7 @@
   border-top: 1px solid var(--bs-border-color);
 }
 
-/* Visão geral da demanda --------------------------------------------------- */
-/* A tela responde rápido a quatro perguntas: o que aconteceu, qual a situação,
-   quem cuida e qual é o próximo passo. Em tela larga são duas zonas — à esquerda
-   o que aconteceu e o que qualifica o problema, à direita o que está em curso e
-   o que fazer agora. Nada de card por bloco: a superfície é contínua, e quem
-   separa é um fio entre as zonas e o ritmo entre os blocos. Em tela estreita as
-   duas zonas viram uma só, na ordem da leitura. */
-.eithra-vg {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
-}
-
-@media (min-width: 992px) {
-  .eithra-vg {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    gap: 0;
-  }
-
-  .eithra-vg-principal {
-    padding-inline-end: 2rem;
-  }
-
-  .eithra-vg-operacional {
-    border-inline-start: 1px solid var(--bs-border-color);
-    padding-inline-start: 2rem;
-  }
-}
-
-.eithra-vg-principal,
-.eithra-vg-operacional {
-  min-inline-size: 0;
-}
-
-/* O respiro entre blocos é o que os separa — sem fio depois de cada um. */
-.eithra-vg-bloco + .eithra-vg-bloco {
-  margin-block-start: 1.25rem;
-}
-
-/* Em uma coluna só, as duas zonas deixam de ser caixas e viram a ordem dos
-   blocos: primeiro o que aconteceu, depois quem cuida e o que fazer agora, e
-   por último o detalhamento do cadastro. O respiro passa a ser o vão da
-   grade, para que blocos que não eram vizinhos no HTML também respirem. */
-@media (max-width: 991.98px) {
-  .eithra-vg-principal,
-  .eithra-vg-operacional {
-    display: contents;
-  }
-
-  .eithra-vg-bloco + .eithra-vg-bloco {
-    margin-block-start: 0;
-  }
-
-  .eithra-vg-bloco--descricao {
-    order: 1;
-  }
-
-  .eithra-vg-bloco--acompanhamento {
-    order: 2;
-  }
-
-  .eithra-vg-bloco--acao {
-    order: 3;
-  }
-
-  .eithra-vg-bloco--informacoes {
-    order: 4;
-  }
-
-  .eithra-vg-bloco--governanca {
-    order: 5;
-  }
-}
-
-.eithra-vg-bloco-topo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-/* O rótulo do bloco é discreto de propósito: quem manda na leitura é o valor. */
-.eithra-vg-rotulo {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--bs-secondary-color);
-  margin: 0;
-}
-
-.eithra-vg-texto {
-  margin: 0.375rem 0 0;
-}
-
-/* O lápis do bloco é ação discreta: sem borda, sem texto, só o ícone. */
+/* O lápis da seção é ação discreta: sem borda, sem texto, só o ícone. */
 .eithra-vg-icone {
   color: var(--bs-secondary-color);
   line-height: 1;
@@ -2386,27 +2291,6 @@
   font-size: 0.8125rem;
   color: var(--bs-secondary-color);
   margin: 0.75rem 0 0;
-}
-
-/* Próxima ação: o passo de agora. A ação principal encabeça o bloco, sozinha no
-   peso forte; as demais se agrupam abaixo, discretas. */
-.eithra-vg-botoes {
-  margin-block-start: 0.75rem;
-}
-
-.eithra-vg-primario {
-  inline-size: 100%;
-}
-
-.eithra-vg-botoes-sec {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-block-start: 0.5rem;
-}
-
-.eithra-vg-botoes > .eithra-vg-botoes-sec:first-child {
-  margin-block-start: 0;
 }
 
 @media (max-width: 991.98px) {
