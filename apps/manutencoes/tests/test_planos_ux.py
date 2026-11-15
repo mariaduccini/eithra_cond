@@ -113,6 +113,17 @@ class CadastroTests(BaseDePlanos):
         self.assertNotEqual(plano.responsavel, self.admin_do_sistema)
         self.assertEqual(plano.responsavel, self.administradora)
 
+    def test_superuser_sem_vinculo_cadastra_e_nao_vira_responsavel(self):
+        """O escopo global alcança a tela, mas não assume o acompanhamento."""
+        AcessoUsuarioCondominio.objects.filter(usuario=self.admin_do_sistema).delete()
+        self.client.force_login(self.admin_do_sistema)
+
+        plano = self._plano(responsavel=str(self.admin_do_sistema.pk))
+
+        self.assertEqual(plano.criado_por, self.admin_do_sistema)
+        self.assertEqual(plano.responsavel, self.administradora)
+        self.assertNotEqual(plano.responsavel, self.admin_do_sistema)
+
     def test_supervisao_nunca_e_escolhida(self):
         plano = self._plano(responsavel=str(self.supervisora.pk))
         self.assertNotEqual(plano.responsavel, self.supervisora)

@@ -22,7 +22,7 @@ A pergunta "esta pessoa acessa este condomínio?" continua em
 from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
 
-from apps.condominios.acesso import condominios_do_usuario
+from apps.condominios.acesso import condominios_com_papel
 from apps.condominios.constants import Papel
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 
@@ -48,16 +48,13 @@ SITUACOES_DE_QUEM_OPERA = frozenset(
 
 
 def _com_papel(usuario, papeis: frozenset[str]) -> QuerySet[Condominio]:
-    """Condomínios em que a pessoa tem vínculo ativo com algum destes papéis."""
-    return (
-        condominios_do_usuario(usuario)
-        .filter(
-            acessos__usuario_id=getattr(usuario, "pk", None),
-            acessos__ativo=True,
-            acessos__papel__in=papeis,
-        )
-        .distinct()
-    )
+    """Condomínios em que a pessoa atua com algum destes papéis.
+
+    A regra — vínculo ativo com um dos papéis, ou o escopo global do
+    administrador do sistema — vem de ``apps.condominios.acesso``, em um lugar
+    só. Aqui se dizem apenas quais papéis importam para as rotinas.
+    """
+    return condominios_com_papel(usuario, papeis)
 
 
 def _papeis_do_usuario(usuario, condominio) -> frozenset[str]:

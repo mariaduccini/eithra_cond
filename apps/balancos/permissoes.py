@@ -11,7 +11,7 @@ mesma pergunta.
 """
 from django.db.models import QuerySet
 
-from apps.condominios.acesso import condominios_do_usuario
+from apps.condominios.acesso import condominios_com_papel
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
@@ -37,16 +37,13 @@ PAPEIS_QUE_GERENCIAM_EVIDENCIAS = PAPEIS_QUE_CORRIGEM
 
 
 def _com_papel(usuario, papeis: frozenset[str]) -> QuerySet[Condominio]:
-    """Condomínios em que a pessoa tem vínculo ativo com algum destes papéis."""
-    return (
-        condominios_do_usuario(usuario)
-        .filter(
-            acessos__usuario_id=getattr(usuario, "pk", None),
-            acessos__ativo=True,
-            acessos__papel__in=papeis,
-        )
-        .distinct()
-    )
+    """Condomínios em que a pessoa atua com algum destes papéis.
+
+    A regra — vínculo ativo com um dos papéis, ou o escopo global do
+    administrador do sistema — vem de ``apps.condominios.acesso``, em um lugar
+    só. Aqui se dizem apenas quais papéis importam para os balanços.
+    """
+    return condominios_com_papel(usuario, papeis)
 
 
 def condominios_para_importar(usuario) -> QuerySet[Condominio]:
