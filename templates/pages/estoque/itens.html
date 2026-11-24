@@ -7,10 +7,11 @@
 {% block title %}Estoque · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Estoque</h1>
-      <p class="text-body-secondary mb-0">
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Estoque</h1>
+      <p class="eithra-pagina-sub">
         O que o condomínio tem guardado{% if total %} · {{ total }} em vista{% endif %}.
       </p>
     </div>
@@ -23,9 +24,9 @@
         <i class="bx bx-plus me-1" aria-hidden="true"></i> Cadastrar item
       </button>
     {% endif %}
-  </div>
+  </header>
 
-  <div class="card mb-4">
+  <div class="card eithra-filter-shell mb-4">
     <div class="card-body">
       <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
         {% if mostrar_condominio %}
@@ -57,7 +58,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card eithra-operational-table-shell">
     {% if itens %}
       <div class="table-responsive d-none d-lg-block">
         <table class="table align-middle mb-0">

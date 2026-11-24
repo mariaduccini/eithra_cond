@@ -92,7 +92,7 @@ class ModalDeAtualizacaoTests(TestCase):
         janela = self._janela(resposta)
         self.assertIn("Registrar atualização", janela)
         self.assertIn(resposta.context["demanda"]["referencia"], janela)
-        self.assertIn("eithra-modal-identidade", janela)
+        self.assertIn("eithra-modal-hero-subtitulo", janela)
         # As duas etapas do fluxo continuam anunciadas no cabeçalho.
         self.assertIn("Informações", janela)
         self.assertIn("Conclusão", janela)
@@ -105,21 +105,21 @@ class ModalDeAtualizacaoTests(TestCase):
         self.assertLess(janela.index('name="texto"'), janela.index('name="acao"'))
         self.assertIn('<div class="col-12">', janela)
 
-    def test_os_complementos_se_leem_ao_lado(self):
-        """O que aconteceu com a demanda e o aviso das provas dividem a linha."""
+    def test_os_complementos_se_leem_em_grade_e_campos_opcionais_se_expandem(self):
+        """Situação, evidências e acompanhamento mantêm hierarquia responsiva."""
         janela = self._janela()
         self.assertIn("row g-3", janela)
-        self.assertEqual(janela.count("col-12 col-lg-6"), 2)
-        # O respiro vem do vão da grade, não de margem embaixo de cada bloco:
-        # o relato, a ação e o aviso das provas fecham com `mb-0`.
+        self.assertIn('name="acao"', janela)
+        self.assertIn("Na próxima etapa você pode anexar", janela)
+        self.assertLess(janela.index('name="proxima_acao"'), janela.index("<details"))
+        self.assertGreaterEqual(janela.count("col-12 col-lg-6"), 2)
         self.assertNotIn("mb-6", janela)
-        self.assertEqual(janela.count("mb-0"), 3)
 
     def test_o_rodape_tem_uma_acao_principal(self):
         janela = self._janela()
         self.assertIn(">Cancelar<", janela)
         self.assertIn(">Continuar<", janela)
-        self.assertEqual(janela.count("btn btn-primary"), 1)
+        self.assertEqual(janela.count("eithra-btn-primario"), 1)
 
     # -- nada do que a operação faz hoje foi perdido ---------------------------
 
@@ -128,6 +128,22 @@ class ModalDeAtualizacaoTests(TestCase):
         for campo in ("acao", "texto", "etapa_atualizacao"):
             self.assertIn(f'name="{campo}"', janela)
         self.assertIn("csrfmiddlewaretoken", janela)
+
+    def test_o_acompanhamento_faz_parte_da_mesma_janela(self):
+        janela = self._janela()
+        for campo in (
+            "proxima_acao",
+            "aguardando_tipo",
+            "aguardando_descricao",
+            "prazo_proxima_acao",
+            "previsao",
+            "impedimento",
+            "responsavel_acompanhamento",
+        ):
+            self.assertIn(f'name="{campo}"', janela)
+        self.assertIn("<details", janela)
+        self.assertIn("Mais informações de acompanhamento", janela)
+        self.assertNotIn("Atualizar acompanhamento", janela)
 
     def test_a_etapa_de_conclusao_continua_igual(self):
         """O segundo passo mostra a leitura, a consequência e as provas."""
@@ -141,9 +157,42 @@ class ModalDeAtualizacaoTests(TestCase):
         self.assertIn('name="evidencias"', janela)
         self.assertIn('value="corrigir"', janela)
         self.assertIn('value="conclusao"', janela)
+        self.assertIn('name="proxima_acao"', janela)
         # No segundo passo a ação principal é Confirmar; Cancelar e Corrigir
         # continuam secundárias.
-        self.assertEqual(janela.count("btn btn-primary"), 1)
+        self.assertEqual(janela.count("eithra-btn-primario"), 1)
+
+    def test_acompanhamento_e_confirmado_no_mesmo_fluxo_sem_mover_status(self):
+        dados = {
+            "etapa_atualizacao": "informacoes",
+            "texto": RELATO,
+            "proxima_acao": "Confirmar a visita técnica",
+            "aguardando_tipo": "",
+            "aguardando_descricao": "",
+            "prazo_proxima_acao": "",
+            "previsao": "",
+            "impedimento": "",
+            "responsavel_acompanhamento": "",
+        }
+        revisao = self.client.post(
+            reverse("demandas:atualizar", args=[self.demanda.pk]), dados
+        )
+        self.assertEqual(revisao.status_code, 200)
+        self.assertContains(revisao, "Confirmar a visita técnica")
+        self.assertContains(revisao, 'name="proxima_acao"')
+
+        dados.update(
+            etapa_atualizacao="conclusao",
+            confirmacao=revisao.context["confirmacao"],
+        )
+        resposta = self.client.post(
+            reverse("demandas:atualizar", args=[self.demanda.pk]), dados
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.proxima_acao, "Confirmar a visita técnica")
+        self.assertEqual(self.demanda.status, "aberta")
 
     @override_settings(**CONFIGURADO)
     def test_o_relato_continua_podendo_ser_ditado(self):

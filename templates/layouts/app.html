@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% load static %}
 
-{# Estrutura principal do sistema: menu lateral, barra superior e conteúdo. #}
+{# Estrutura principal do sistema: menu lateral, barra superior e conteÃºdo. #}
 
 {% block body %}
   <div class="layout-wrapper layout-content-navbar">
@@ -9,20 +9,21 @@
       <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
         <div class="app-brand">
           {% comment %}
-            O alto do menu identifica o condomínio em vista — a logo dele, ou as
-            iniciais do nome quando não há logo. A identidade principal é sempre
-            a do condomínio aberto: a marca do produto não entra aqui.
+            O alto do menu identifica o condomÃ­nio em vista â€” a logo dele, ou as
+            iniciais do nome quando nÃ£o hÃ¡ logo. A identidade principal Ã© sempre
+            a do condomÃ­nio aberto: a marca do produto nÃ£o entra aqui.
           {% endcomment %}
-          {% if condominio_da_marca %}
-            <a href="{% url 'core:home' %}" class="app-brand-link eithra-brand-link-condominio">
-              {% include "pages/cadastros/_logo_condominio.html" with condominio_atual=condominio_da_marca logo_do_condominio=logo_da_marca classe_logo="eithra-logo-condominio--shell" classe_imagem="eithra-logo-condominio-imagem--shell" %}
-            </a>
-          {% endif %}
+          <a href="{% url 'core:home' %}" class="app-brand-link eithra-brand-link-condominio">
+            <img
+              src="{% static 'img/logorveoficial.PNG' %}"
+              alt="Rio Vermelho Exclusive"
+              class="eithra-brand-implantacao-menu">
+          </a>
           {% comment %}
-            Não há controle de recolher/expandir neste ponto. O botão que o tema
-            desenha aqui só responde ao clique com o main.js do Sneat, que este
-            projeto não carrega — sem ele sobrava, ao lado da marca, um círculo
-            branco sem função nenhuma.
+            NÃ£o hÃ¡ controle de recolher/expandir neste ponto. O botÃ£o que o tema
+            desenha aqui sÃ³ responde ao clique com o main.js do Sneat, que este
+            projeto nÃ£o carrega â€” sem ele sobrava, ao lado da marca, um cÃ­rculo
+            branco sem funÃ§Ã£o nenhuma.
           {% endcomment %}
         </div>
 
@@ -32,7 +33,7 @@
         <ul class="menu-inner py-1">
           {% for item in navigation %}
             {% if item.filhos %}
-              {# Grupo: abre os cadastros e acende quando uma das telas dele está à vista. #}
+              {# Grupo: abre os cadastros e acende quando uma das telas dele estÃ¡ Ã  vista. #}
               <li class="menu-item{% if item.ativo %} active open{% endif %}">
                 <a href="javascript:void(0);" class="menu-link menu-toggle">
                   <i class="menu-icon tf-icons bx {{ item.icon }}" aria-hidden="true"></i>
@@ -192,9 +193,9 @@
   <script src="{% static 'vendor/sneat/js/menu.js' %}"></script>
   <script src="{% static 'js/eithra-listagens.js' %}"></script>
   <script>
-    // O menu do tema só ganha vida quando alguém o liga: no Sneat isso é feito
-    // em main.js, que este projeto não usa. Sem esta chamada, o grupo Cadastros
-    // abre no HTML mas o clique não faz nada — é o tema que cuida do clique
+    // O menu do tema sÃ³ ganha vida quando alguÃ©m o liga: no Sneat isso Ã© feito
+    // em main.js, que este projeto nÃ£o usa. Sem esta chamada, o grupo Cadastros
+    // abre no HTML mas o clique nÃ£o faz nada â€” Ã© o tema que cuida do clique
     // (no desktop e no celular) e do abrir/fechar dos submenus.
     document.addEventListener("DOMContentLoaded", function () {
       var menu = document.getElementById("layout-menu");
@@ -202,10 +203,10 @@
         new window.Menu(menu);
       }
 
-      // Abre e fecha a barra em telas estreitas. O tema já tem o estado e o
+      // Abre e fecha a barra em telas estreitas. O tema jÃ¡ tem o estado e o
       // CSS: a classe abaixo, no <html>, desliza a barra e acende a cortina.
-      // O que faltava era só quem respondesse ao clique — no Sneat isso vem do
-      // main.js, que este projeto não carrega.
+      // O que faltava era sÃ³ quem respondesse ao clique â€” no Sneat isso vem do
+      // main.js, que este projeto nÃ£o carrega.
       var raiz = document.documentElement;
       var botaoMenu = document.querySelector(".layout-navbar .layout-menu-toggle .nav-link");
       var cortina = document.querySelector(".layout-overlay");
@@ -255,18 +256,18 @@
         }
       });
 
-      // A janela pode crescer com a barra aberta: em tela larga esse estado não
-      // tem mais sentido, então ele sai — a faixa de desktop segue no que o
-      // tema já definia, sem classe de mobile presa.
+      // A janela pode crescer com a barra aberta: em tela larga esse estado nÃ£o
+      // tem mais sentido, entÃ£o ele sai â€” a faixa de desktop segue no que o
+      // tema jÃ¡ definia, sem classe de mobile presa.
       window.addEventListener("resize", function () {
         if (!telaEstreita() && menuAberto()) {
           mostrarMenu(false);
         }
       });
 
-      // Campos obrigatórios precisam aparecer como obrigatórios na própria
+      // Campos obrigatÃ³rios precisam aparecer como obrigatÃ³rios na prÃ³pria
       // leitura da tela. O backend continua mandando na regra; aqui a interface
-      // só marca com asterisco vermelho o que já veio como required.
+      // sÃ³ marca com asterisco vermelho o que jÃ¡ veio como required.
       document.querySelectorAll("label[for]").forEach(function (label) {
         var campo = document.getElementById(label.getAttribute("for"));
         if (!campo || !campo.required) {
@@ -283,8 +284,8 @@
         label.appendChild(marcador);
       });
 
-      // Nos modais, os campos do formulário devem aparecer abertos de saída.
-      // "Mais detalhes" só escondia parte do que a pessoa precisava preencher.
+      // Nos modais, os campos do formulÃ¡rio devem aparecer abertos de saÃ­da.
+      // "Mais detalhes" sÃ³ escondia parte do que a pessoa precisava preencher.
       document.querySelectorAll(".modal .collapse").forEach(function (bloco) {
         bloco.classList.add("show");
       });
@@ -296,20 +297,20 @@
           gatilho.setAttribute("tabindex", "-1");
         });
 
-      // Alguns modais desta base são reabertos pelo servidor: por ?abrir=...,
-      // ou pela volta de um formulário com erro, que devolve a mesma tela com
-      // o modal aberto. Em nenhum dos dois casos existe uma instância viva do
-      // Bootstrap — o botão de fechar não acharia nada para esconder. Por isso
-      // os modais que já vêm abertos ficam marcados, e quem os fecha é daqui.
+      // Alguns modais desta base sÃ£o reabertos pelo servidor: por ?abrir=...,
+      // ou pela volta de um formulÃ¡rio com erro, que devolve a mesma tela com
+      // o modal aberto. Em nenhum dos dois casos existe uma instÃ¢ncia viva do
+      // Bootstrap â€” o botÃ£o de fechar nÃ£o acharia nada para esconder. Por isso
+      // os modais que jÃ¡ vÃªm abertos ficam marcados, e quem os fecha Ã© daqui.
       document.querySelectorAll(".modal.show").forEach(function (modal) {
         modal.setAttribute("data-eithra-reaberto", "true");
 
         // Um passo de wizard que o servidor devolve pronto carrega, no corpo da
-        // página, o estado que a tela está mostrando — e o envio que o trouxe
-        // fica plantado no endereço. Enquanto esse endereço estiver na barra,
+        // pÃ¡gina, o estado que a tela estÃ¡ mostrando â€” e o envio que o trouxe
+        // fica plantado no endereÃ§o. Enquanto esse endereÃ§o estiver na barra,
         // recarregar repete o envio e devolve o mesmo passo. Aqui a barra volta
-        // para o endereço de leitura da própria tela: recarregar passa a ser uma
-        // leitura limpa, e o wizard só existe enquanto está na frente.
+        // para o endereÃ§o de leitura da prÃ³pria tela: recarregar passa a ser uma
+        // leitura limpa, e o wizard sÃ³ existe enquanto estÃ¡ na frente.
         if (modal.dataset.eithraDescartar) {
           window.history.replaceState(null, "", modal.dataset.eithraDescartar);
         }
@@ -343,31 +344,31 @@
         var url = new URL(window.location.href);
         var destino = "";
         if (url.searchParams.has("abrir")) {
-          // Com ?abrir=... na URL, fechar é voltar à mesma tela sem o parâmetro
-          // que mantém o modal aberto.
+          // Com ?abrir=... na URL, fechar Ã© voltar Ã  mesma tela sem o parÃ¢metro
+          // que mantÃ©m o modal aberto.
           url.searchParams.delete("abrir");
           url.searchParams.delete("item");
           destino = url.toString();
         } else if (modal.dataset.eithraDescartar) {
-          // Wizard de criação: o passo que está na tela não é um rascunho
-          // guardado, é a resposta do envio anterior. Fechar descarta esse
-          // passo e volta à tela de leitura — a próxima abertura começa do
+          // Wizard de criaÃ§Ã£o: o passo que estÃ¡ na tela nÃ£o Ã© um rascunho
+          // guardado, Ã© a resposta do envio anterior. Fechar descarta esse
+          // passo e volta Ã  tela de leitura â€” a prÃ³xima abertura comeÃ§a do
           // zero, na primeira etapa. Cancelar e o X chegam aqui do mesmo jeito,
-          // porque os dois são o mesmo gesto: `data-bs-dismiss="modal"`.
+          // porque os dois sÃ£o o mesmo gesto: `data-bs-dismiss="modal"`.
           destino = modal.dataset.eithraDescartar;
         }
 
         if (destino) {
-          // Quem estiver com trabalho em curso na tela é avisado antes de a
-          // página sair — hoje, só o microfone: uma gravação ativa precisa ser
-          // encerrada para o navegador não seguir gravando com o modal fora.
+          // Quem estiver com trabalho em curso na tela Ã© avisado antes de a
+          // pÃ¡gina sair â€” hoje, sÃ³ o microfone: uma gravaÃ§Ã£o ativa precisa ser
+          // encerrada para o navegador nÃ£o seguir gravando com o modal fora.
           document.dispatchEvent(new Event("eithra:descartar"));
           window.location.assign(destino);
           return;
         }
 
-        // Sem esse parâmetro, o endereço atual é o do envio do formulário e
-        // não pode ser pedido de novo por leitura: fechar é tirar o modal da
+        // Sem esse parÃ¢metro, o endereÃ§o atual Ã© o do envio do formulÃ¡rio e
+        // nÃ£o pode ser pedido de novo por leitura: fechar Ã© tirar o modal da
         // frente, sem recarregar.
         fecharModal(modal);
       });
@@ -434,3 +435,5 @@
     });
   </script>
 {% endblock %}
+
+

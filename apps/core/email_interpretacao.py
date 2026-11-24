@@ -131,6 +131,28 @@ PALAVRAS_DE_AGENDAMENTO = (
     "amanha",
 )
 
+# Uma mensagem que autoriza um acesso não é um problema do condomínio: ela diz
+# quem pode entrar e onde. Sem este vocabulário, "autorizo a entrada do técnico"
+# cairia na leitura genérica — e uma autorização de portaria não deve virar
+# demanda. As frases são as que a administração realmente escreve; o verbo solto
+# ("autorizado") fica de fora porque aparece em contexto que não é acesso.
+PALAVRAS_DE_AUTORIZACAO_DE_ACESSO = (
+    "autorizo",
+    "autorizamos",
+    "autorizado a entrar",
+    "autorizado a subir",
+    "autorizada a entrar",
+    "autorizada a subir",
+    "pode entrar",
+    "pode subir",
+    "liberar a entrada",
+    "liberacao de entrada",
+    "entrada de",
+    "visita de",
+    "visitante autorizado",
+    "prestador autorizado",
+)
+
 # Um recado de recebimento é curto por natureza. Quando a mensagem é longa, ela
 # está dizendo mais do que "ok, recebido" — e "mais" pode ser consequência.
 LIMITE_DE_RECADO_CURTO = 14
@@ -177,6 +199,10 @@ class AcaoProposta(models.TextChoices):
     REGISTRAR_AGENDAMENTO = "registrar_agendamento", "Considerar agendamento"
     REGISTRAR_COBRANCA = "registrar_cobranca", "Considerar cobrança"
     CRIAR_NOVA_DEMANDA = "criar_nova_demanda", "Considerar nova demanda"
+    CRIAR_AUTORIZACAO_PORTARIA = (
+        "criar_autorizacao_portaria",
+        "Considerar autorização de acesso",
+    )
     CONFIRMAR_CONTEXTO = "confirmar_contexto", "Confirmar o contexto"
 
 
@@ -365,8 +391,8 @@ INSTRUCAO = (
     "\n"
     "Responda SOMENTE com um objeto JSON, sem texto em volta, com exatamente "
     "estas chaves:\n"
-    '{"consequencia": "", "equipamento": "", "local": "", "resumo": "", '
-    '"pergunta": ""}\n'
+    '{"consequencia": "", "equipamento": "", "local": "", "nome": "", '
+    '"resumo": "", "pergunta": ""}\n'
     "\n"
     "Valores aceitos em consequencia: "
     "sem_acao = nada a fazer; atualizacao = atualiza algo já em andamento; "
@@ -377,8 +403,10 @@ INSTRUCAO = (
     "\n"
     "Regras, sem exceção:\n"
     "- Sem certeza, use ambiguo e deixe as demais strings vazias.\n"
-    "- Nunca invente nome de equipamento, de local ou número de documento: "
-    "copie exatamente como aparece na mensagem.\n"
+    "- Nunca invente nome de equipamento, de local, de pessoa ou número de "
+    "documento: copie exatamente como aparece na mensagem.\n"
+    "- nome é a pessoa citada na mensagem, quando houver; sem nome, use string "
+    "vazia.\n"
     "- resumo é uma frase curta, em português, do que a mensagem quer dizer.\n"
     "- pergunta é, no máximo, uma pergunta útil a quem lê. Sem pergunta, use "
     "string vazia.\n"
@@ -427,6 +455,10 @@ PADRAO_DE_UNIDADE = re.compile(
     r"([0-9][a-z0-9\-]{0,9})\b",
     re.IGNORECASE,
 )
+# Placa no padrão antigo (ABC1234) e no Mercosul (ABC1D23). Três letras
+# seguidas de dígitos não aparecem em palavra comum: o padrão casa a placa sem
+# confundir texto.
+PADRAO_DE_PLACA = re.compile(r"\b([A-Z]{3}[- ]?[0-9][A-Z0-9][0-9]{2})\b", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +572,22 @@ def _extrair_fatos(mensagem, *, texto: str) -> list[Fato]:
             )
         )
 
+    placa = PADRAO_DE_PLACA.search(texto)
+    if placa:
+        fatos.append(
+            Fato(
+                campo="placa",
+                valor=_normalizar_placa(placa.group(1)),
+                motivo="Placa citada na mensagem.",
+            )
+        )
+
     return fatos
+
+
+def _normalizar_placa(valor: str) -> str:
+    """A placa sem separador e em maiúsculas, como o domínio a guarda."""
+    return re.sub(r"[\s\-]", "", valor or "").upper()[:10]
 
 
 def _com_digito(padrao: re.Pattern, texto: str) -> str:
@@ -673,7 +720,7 @@ def _montar(*, fatos, consequencia: str, resposta=None, mensagem=None) -> Leitur
                     motivo="Leitura da mensagem.",
                 )
             )
-        for campo in ("equipamento", "local"):
+        for campo in ("equipamento", "local", "nome"):
             valor = _texto(resposta, campo)
             if valor and not any(fato.campo == campo for fato in fatos):
                 fatos.append(
@@ -1169,6 +1216,29 @@ def _historico(condominio, *, texto, equipamento, local):
 # ---------------------------------------------------------------------------
 
 
+def _parece_autorizacao_de_acesso(leitura, *, texto: str) -> bool:
+    """Se a mensagem autoriza um acesso de portaria.
+
+    O vocabulário de autorização sozinho não basta: "entrada de água" também
+    diria "entrada de". Para a leitura propor uma autorização, a mensagem
+    precisa dizer o vocabulário **e** trazer um dado que a portaria use para
+    liberar a passagem — quem entra ou para onde vai. Sem isso, a mensagem
+    continua sendo uma mensagem comum, e não se arrisca trocar uma ocorrência
+    real por uma autorização que ninguém escreveu.
+    """
+    if not contem(normalizar(texto), PALAVRAS_DE_AUTORIZACAO_DE_ACESSO):
+        return False
+    return _tem_dado_de_acesso(leitura)
+
+
+def _tem_dado_de_acesso(leitura) -> bool:
+    """Se a leitura já diz quem entra ou para onde a entrada vai."""
+    return any(
+        leitura.fato(campo) is not None and leitura.fato(campo).existe
+        for campo in ("nome", "unidade")
+    )
+
+
 def _decidir(
     leitura,
     *,
@@ -1198,6 +1268,24 @@ def _decidir(
                 motivo="A mensagem não pede ação e não muda nada no condomínio.",
             ),
             False,
+            "",
+        )
+
+    if _parece_autorizacao_de_acesso(leitura, texto=texto):
+        # Uma autorização de acesso não é ocorrência: ela diz quem pode entrar e
+        # para onde, e o destino dela é a Portaria — nunca uma demanda. Quem
+        # decide revisa antes, porque nada aqui cria pessoa nem unidade.
+        return (
+            Proposta(
+                acao=AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA,
+                confianca=Confianca.MEDIA,
+                rotulo="Considerar uma autorização de acesso",
+                motivo=(
+                    "A mensagem autoriza um acesso. Quem entra e para onde é "
+                    "confirmado antes de virar autorização da portaria."
+                ),
+            ),
+            True,
             "",
         )
 

@@ -1135,6 +1135,28 @@
   color: var(--bs-secondary-color);
 }
 
+/* O resumo da operação numa linha só: quem chega, quem está dentro e o que
+   passou hoje. Números discretos não disputam com a ação principal — o que
+   interessa à portaria é o toque, não a leitura do painel. */
+.eithra-portaria-resumo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  margin-block-end: 1rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.9375rem;
+}
+
+.eithra-portaria-resumo-item strong {
+  color: var(--bs-heading-color);
+  font-weight: 600;
+}
+
+.eithra-portaria-resumo-sep {
+  color: var(--bs-border-color);
+}
+
 /* A resposta da busca nasce colada ao campo que a pediu: mesma largura, logo
    abaixo dele, sem empurrar o resto da portaria. A altura é limitada e a
    rolagem é da própria lista. */
@@ -1365,12 +1387,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-  margin-block-end: 0.5rem;
+  inline-size: 100%;
+  margin-block-end: 1rem;
 }
 
 .eithra-portaria-entrada .eithra-busca {
-  flex: 1 1 18rem;
+  flex: 1 1 100%;
   max-width: none;
+  min-width: 0;
 }
 
 .eithra-portaria-entrada .eithra-busca .form-control {
@@ -1473,7 +1497,27 @@
 /* Ditar o que aconteceu: o microfone mora dentro do próprio campo e não tem
    borda — é um atalho do relato, não uma segunda forma de operar a portaria. */
 .eithra-portaria-relato-campo .form-control {
-  padding-right: 2.5rem;
+  padding-right: 2.75rem;
+}
+
+/* O microfone da tela principal é o mesmo controle compartilhado de ditado
+   (".eithra-ditar"), mas mora num campo de uma linha só: sem o deslocamento de
+   baixo, ele fica centrado no campo, no lado direito, à vista de quem opera.
+   A cor é o lilás de apoio da referência — discreto, mas reconhecível. */
+.eithra-portaria-relato-campo .eithra-ditar {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: 1.125rem;
+  color: var(--eithra-portaria-lilas);
+}
+
+.eithra-portaria-relato-campo .eithra-ditar:hover,
+.eithra-portaria-relato-campo .eithra-ditar:focus-visible {
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
 }
 
 .eithra-portaria-ditar {
@@ -1813,17 +1857,17 @@
 }
 
 /* A largura de cada coluna é decidida aqui, não pelo texto que chega: código,
-   título, local, prioridade, prazo, responsável e situação identificam coisas
-   diferentes e cada um recebe o espaço que o seu papel pede. Sem isto, uma
-   descrição longa estica a coluna e obriga todas as linhas da lista a crescer
-   na vertical.
+   título, local, prioridade, registrada em, prazo, responsável e situação
+   identificam coisas diferentes e cada um recebe o espaço que o seu papel pede.
+   Sem isto, uma descrição longa estica a coluna e obriga todas as linhas da
+   lista a crescer na vertical.
 
    Duas colunas têm largura fixa, e por um motivo: o código tem sempre o mesmo
    formato ("D-F810B566") e a coluna de ações, sempre um único botão. Em `rem`
    eles ficam do tamanho do próprio conteúdo em qualquer resolução, e o que
    sobra de largura vai todo para as colunas que variam de tamanho.
 
-   O restante é declarado por faixa, porque nem toda largura comporta as nove
+   O restante é declarado por faixa, porque nem toda largura comporta as dez
    colunas — e apertar todas para caber é pior do que mostrar menos. O que sai
    primeiro é o que menos decide: a descrição, e depois o responsável. As
    faixas seguem os cortes do tema (`xl` = 1200px, `xxl` = 1400px), que é onde
@@ -1837,8 +1881,8 @@
   inline-size: 100%;
 }
 
-/* O tema reserva 20px de cada lado de cada célula: nas nove colunas seriam
-   360px, mais de um quarto da tabela, gastos só em respiro. O recuo continua,
+/* O tema reserva 20px de cada lado de cada célula: nas dez colunas seriam
+   400px, mais de um quarto da tabela, gastos só em respiro. O recuo continua,
    apenas proporcional ao que cada coluna tem para mostrar — e igual no
    cabeçalho e no corpo, para o título da coluna começar exatamente onde o
    conteúdo dela começa. */
@@ -1847,7 +1891,7 @@
   padding-inline: 0.5rem;
 }
 
-/* Faixa estreita do desktop (a partir de `lg`): sete colunas — a descrição e o
+/* Faixa estreita do desktop (a partir de `lg`): oito colunas — a descrição e o
    responsável saíram, e o que fica tem espaço para respirar. */
 .eithra-operational-table .eithra-col-codigo {
   inline-size: 7rem;
@@ -1856,11 +1900,11 @@
 /* O título é o que se lê primeiro na linha; por isso é ele que cresce quando
    as outras colunas cedem espaço. */
 .eithra-operational-table .eithra-col-titulo {
-  inline-size: 32%;
+  inline-size: 26%;
 }
 
 .eithra-operational-table .eithra-col-local {
-  inline-size: 11%;
+  inline-size: 10%;
 }
 
 /* Prioridade e prazo não podem se encostar: o badge precisa do seu rótulo
@@ -1868,17 +1912,23 @@
    recebe largura de sobra para o próprio conteúdo — a lista não aperta nenhum
    dos dois para acomodar um terceiro. */
 .eithra-operational-table .eithra-col-prioridade {
-  inline-size: 11%;
+  inline-size: 10%;
+}
+
+/* "Registrada em" é uma data, do mesmo tamanho de "Prazo": as duas dividem o
+   mesmo espaço, e nenhuma das duas aperta a outra. */
+.eithra-operational-table .eithra-col-registrada {
+  inline-size: 10%;
 }
 
 .eithra-operational-table .eithra-col-prazo {
-  inline-size: 11%;
+  inline-size: 10%;
 }
 
 /* "Em andamento" é o rótulo mais longo da lista: um badge cortado informa menos
    do que um badge largo. A coluna cede o mínimo que o selo exige em uma linha. */
 .eithra-operational-table .eithra-col-situacao {
-  inline-size: 15%;
+  inline-size: 14%;
 }
 
 /* O menu de três pontos é o único controle desta coluna, e tem sempre o mesmo
@@ -1887,45 +1937,22 @@
   inline-size: 4.5rem;
 }
 
-/* Acima de `xl` o responsável volta: a lista passa a ter oito colunas e é ele
+/* Acima de `xl` o responsável volta: a lista passa a ter nove colunas e é ele
    que reequilibra a leitura. A descrição ainda não cabe aqui — com o menu
-   lateral aberto a área de conteúdo é estreita demais para nove colunas. */
+   lateral aberto a área de conteúdo é estreita demais para dez colunas. */
 @media (min-width: 1200px) {
   .eithra-operational-table .eithra-col-titulo {
-    inline-size: 21%;
-  }
-
-  .eithra-operational-table .eithra-col-local {
-    inline-size: 9%;
-  }
-
-  .eithra-operational-table .eithra-col-responsavel {
-    inline-size: 11%;
-  }
-}
-
-/* Acima de `xxl` a descrição volta, e é ela e o título que dividem o espaço
-   que as colunas curtas devolvem — o código e as ações continuam no tamanho do
-   próprio conteúdo. Só aqui as nove colunas cabem sem apertar ninguém. */
-@media (min-width: 1400px) {
-  .eithra-operational-table .eithra-col-titulo {
-    inline-size: 19%;
-  }
-
-  .eithra-operational-table .eithra-col-descricao {
-    inline-size: 13%;
+    inline-size: 17%;
   }
 
   .eithra-operational-table .eithra-col-local {
     inline-size: 8%;
   }
 
-  .eithra-operational-table .eithra-col-prioridade {
-    inline-size: 9%;
-  }
-
+  .eithra-operational-table .eithra-col-prioridade,
+  .eithra-operational-table .eithra-col-registrada,
   .eithra-operational-table .eithra-col-prazo {
-    inline-size: 9%;
+    inline-size: 10%;
   }
 
   .eithra-operational-table .eithra-col-responsavel {
@@ -1933,7 +1960,44 @@
   }
 
   .eithra-operational-table .eithra-col-situacao {
+    inline-size: 13%;
+  }
+}
+
+/* Acima de `xxl` a descrição volta, e é ela e o título que dividem o espaço
+   que as colunas curtas devolvem — o código e as ações continuam no tamanho do
+   próprio conteúdo. Só aqui as dez colunas cabem sem apertar ninguém. */
+@media (min-width: 1400px) {
+  .eithra-operational-table .eithra-col-titulo {
+    inline-size: 16%;
+  }
+
+  .eithra-operational-table .eithra-col-descricao {
     inline-size: 12%;
+  }
+
+  .eithra-operational-table .eithra-col-local {
+    inline-size: 7%;
+  }
+
+  .eithra-operational-table .eithra-col-prioridade {
+    inline-size: 8%;
+  }
+
+  .eithra-operational-table .eithra-col-registrada {
+    inline-size: 9%;
+  }
+
+  .eithra-operational-table .eithra-col-prazo {
+    inline-size: 8%;
+  }
+
+  .eithra-operational-table .eithra-col-responsavel {
+    inline-size: 9%;
+  }
+
+  .eithra-operational-table .eithra-col-situacao {
+    inline-size: 11%;
   }
 }
 
@@ -1941,10 +2005,32 @@
    "Em andamento" não ajuda ninguém. */
 .eithra-operational-table .eithra-col-codigo,
 .eithra-operational-table .eithra-col-prioridade,
+.eithra-operational-table .eithra-col-registrada,
 .eithra-operational-table .eithra-col-prazo,
 .eithra-operational-table .eithra-col-situacao,
 .eithra-operational-table .eithra-col-acoes {
   white-space: nowrap;
+}
+
+/* O cabeçalho ordenável é um link que se lê como texto: mesma cor e mesmo peso
+   do cabeçalho, sem sublinhado. O sinal aparece só na coluna em vigor, e a cor
+   da marca é o único realce — nada de setas em todas as colunas. */
+.eithra-operational-table thead th a.eithra-ordenar {
+  color: inherit;
+  text-decoration: none;
+}
+
+.eithra-operational-table thead th a.eithra-ordenar:hover,
+.eithra-operational-table thead th a.eithra-ordenar.is-ativo {
+  color: var(--eithra-primary);
+}
+
+.eithra-operational-table thead th a.eithra-ordenar.is-ativo {
+  font-weight: 700;
+}
+
+.eithra-ordenar-sinal {
+  font-size: 0.85em;
 }
 
 /* O código acompanha a demanda sem competir com o assunto: corpo menor que o
@@ -2474,23 +2560,22 @@
 
 /* Mapa de unidades -------------------------------------------------------- */
 /* Escolher o destino sem saber o nome de quem recebe: bloco/torre, andar e
-   unidade, do cadastro que já existe. Tudo por clique, sem tabela. */
+   unidade, do cadastro que já existe. Tudo por clique, sem card de formulário:
+   cada andar é uma linha, com as unidades reais logo ao lado. */
 .eithra-mapa-unidades {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  max-block-size: 18rem;
-  overflow-y: auto;
+  gap: 0.5rem;
 }
 
 .eithra-mapa-bloco {
-  border: 1px solid var(--bs-border-color);
-  border-radius: var(--bs-border-radius);
-  padding: 0.625rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .eithra-mapa-bloco-nome {
-  margin-block-end: 0.5rem;
+  margin-block-end: 0.25rem;
   font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -2499,12 +2584,12 @@
 }
 
 .eithra-mapa-andar + .eithra-mapa-andar {
-  margin-block-start: 0.5rem;
+  margin-block-start: 0;
 }
 
 .eithra-mapa-andar-nome {
   display: block;
-  margin-block-end: 0.25rem;
+  margin-block-end: 0;
   font-size: 0.8125rem;
   color: var(--bs-secondary-color);
 }
@@ -2515,27 +2600,135 @@
   gap: 0.375rem;
 }
 
+/* Pills compactos: os números do apartamento ficam legíveis sem virar botão
+   grande, como na referência. */
 .eithra-mapa-chip {
-  min-inline-size: 3rem;
-  padding: 0.375rem 0.625rem;
+  min-inline-size: 3.25rem;
+  padding: 0.3125rem 0.625rem;
   border: 1px solid var(--bs-border-color);
   border-radius: 50rem;
   background-color: var(--bs-body-bg);
   color: var(--bs-body-color);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
   cursor: pointer;
 }
 
 .eithra-mapa-chip:hover,
 .eithra-mapa-chip:focus-visible {
-  border-color: var(--bs-primary);
-  color: var(--bs-primary);
+  border-color: var(--eithra-portaria-teal, var(--bs-primary));
+  color: var(--eithra-portaria-teal, var(--bs-primary));
 }
 
+/* Unidade selecionada: fundo lilás, texto branco e check — contraste evidente
+   em relação às demais, como o "✓ 902" da referência. O check é só visual. */
 .eithra-mapa-chip.is-selected {
-  border-color: var(--bs-primary);
-  background-color: var(--bs-primary);
+  border-color: var(--eithra-portaria-lilas, var(--bs-primary));
+  background-color: var(--eithra-portaria-lilas, var(--bs-primary));
   color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(var(--eithra-portaria-lilas-rgb, 139, 92, 246), 0.28);
+}
+
+.eithra-mapa-chip.is-selected::before {
+  content: "✓";
+  margin-inline-end: 0.25rem;
+}
+
+/* O destino em vista, nos passos 2 e 3 ------------------------------------ */
+/* Quem já escolheu para onde a chegada vai não precisa lembrar de cabeça: o
+   destino acompanha os passos seguintes e se troca dali mesmo, sem recomeçar
+   a procura. É a mesma barra discreta da escolha do passo 1, no tom de apoio
+   que o tema já usa para o que está confirmado. */
+.eithra-portaria-contexto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  margin-block-end: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--bs-border-radius);
+  background-color: var(--bs-primary-bg-subtle);
+  color: var(--bs-primary-text-emphasis);
+  font-size: 0.875rem;
+}
+
+.eithra-portaria-contexto[hidden] {
+  display: none;
+}
+
+.eithra-portaria-contexto-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.eithra-portaria-contexto-rotulo {
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-contexto-valor {
+  font-weight: 600;
+}
+
+.eithra-portaria-contexto-trocar {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--bs-link-color);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* O interfone já é o meio combinado, e a tela só o diz por escrito: não há
+   escolha a fazer onde não há dúvida. */
+.eithra-portaria-meio {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-meio-rotulo {
+  font-weight: 500;
+}
+
+.eithra-portaria-meio-valor {
+  font-weight: 600;
+  color: var(--bs-heading-color);
+}
+
+/* O resumo que fecha o registro: duas linhas e nada além do que vai ser
+   gravado, para o último toque ser dado com o que se vê. */
+.eithra-portaria-resumo-chegada {
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.875rem;
+  background-color: var(--bs-tertiary-bg);
+  font-size: 0.9375rem;
+}
+
+.eithra-portaria-resumo-chegada[hidden] {
+  display: none;
+}
+
+.eithra-portaria-resumo-linha + .eithra-portaria-resumo-linha {
+  margin-block-start: 0.25rem;
+}
+
+/* A prévia da foto: o que foi capturado, para conferir antes de confirmar. */
+.eithra-foto-previa {
+  display: block;
+  max-inline-size: 12rem;
+  max-block-size: 9rem;
+  border-radius: var(--bs-border-radius);
+  object-fit: cover;
+}
+
+.eithra-foto-previa[hidden] {
+  display: none;
 }
 
 /* Empresa do prestador ---------------------------------------------------- */
@@ -2795,5 +2988,2624 @@ button:focus-visible,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Portaria — fidelidade visual às referências ---------------------------- */
+/* A paleta desta tela não é a lilás do resto do Eithra: o estrutural é o
+   azul-petróleo/teal, e o lilás fica só como apoio (ícone do Hoje, chip de
+   unidade selecionada, resultado "Autorizou"). Os botões primários da
+   portaria e dos seus modais passam a ser teal, sem tocar na paleta global. */
+.eithra-portaria,
+#registro-chegada,
+#novo-esperado,
+#verificar-autorizacao {
+  --eithra-portaria-teal: #0f766e;
+  --eithra-portaria-teal-escuro: #115e59;
+  --eithra-portaria-teal-claro: #ccfbf1;
+  --eithra-portaria-lilas: #8b5cf6;
+  --eithra-portaria-lilas-claro: #ede9fe;
+  --eithra-portaria-teal-rgb: 15, 118, 110;
+  --eithra-portaria-lilas-rgb: 139, 92, 246;
+}
+
+.eithra-portaria .btn-primary,
+#registro-chegada .btn-primary,
+#novo-esperado .btn-primary,
+#verificar-autorizacao .btn-primary {
+  --bs-btn-bg: var(--eithra-portaria-teal);
+  --bs-btn-border-color: var(--eithra-portaria-teal);
+  --bs-btn-hover-bg: var(--eithra-portaria-teal-escuro);
+  --bs-btn-hover-border-color: var(--eithra-portaria-teal-escuro);
+  --bs-btn-active-bg: var(--eithra-portaria-teal-escuro);
+  --bs-btn-active-border-color: var(--eithra-portaria-teal-escuro);
+  --bs-btn-disabled-bg: var(--eithra-portaria-teal);
+  --bs-btn-disabled-border-color: var(--eithra-portaria-teal);
+  --bs-btn-focus-shadow-rgb: 15, 118, 110;
+}
+
+/* Indicadores: três blocos compactos, ícone em círculo, título e número.
+   Superfície clara, pouco relevo, sem borda pesada. */
+.eithra-portaria-indicador {
+  background-color: var(--bs-paper-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.875rem;
+  padding: 0.875rem 1rem;
+}
+
+.eithra-portaria-indicador-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 50%;
+  font-size: 1.25rem;
+}
+
+.eithra-portaria-indicador--teal .eithra-portaria-indicador-icone {
+  background-color: var(--eithra-portaria-teal-claro);
+  color: var(--eithra-portaria-teal);
+}
+
+.eithra-portaria-indicador--lilas .eithra-portaria-indicador-icone {
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
+}
+
+.eithra-portaria-indicador-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-inline-size: 0;
+}
+
+.eithra-portaria-indicador-rotulo {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-indicador-valor {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--bs-heading-color);
+}
+
+/* Ícones dos títulos de seção: discretos, no tom estrutural. */
+.eithra-portaria-secao-icone {
+  margin-inline-end: 0.375rem;
+  color: var(--eithra-portaria-teal);
+  font-size: 1.125rem;
+  vertical-align: -0.125rem;
+}
+
+/* Listas compactas de Chegando e Aqui agora: uma linha por pessoa, sem
+   espaço vertical excessivo. */
+.eithra-portaria-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.eithra-portaria-linha {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+  background-color: var(--bs-paper-bg);
+}
+
+.eithra-portaria-linha .eithra-avatar {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 0.9375rem;
+}
+
+.eithra-avatar--success {
+  background-color: var(--eithra-portaria-teal-claro);
+  color: var(--eithra-portaria-teal);
+}
+
+.eithra-avatar--info {
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
+}
+
+/* O selo de horário da linha de "Aqui agora". Chama-se `.eithra-portaria-horario`
+   e não `.eithra-portaria-entrada`: o nome antigo colidia com o formulário do
+   relato, e a última definição vencia — o campo de entrada herdava o estilo do
+   selo. */
+.eithra-portaria-horario {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
+}
+
+.eithra-portaria-horario .bx {
+  font-size: 0.5rem;
+  color: var(--bs-success);
+}
+
+.eithra-portaria-vazio {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--bs-border-color);
+  border-radius: 0.75rem;
+  background-color: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* Quem entrou antes do turno de hoje continua dentro: a marca é discreta,
+   em âmbar, para não confundir com chegada recente. */
+.eithra-portaria-turno-anterior {
+  display: inline-block;
+  margin-inline-start: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background-color: #fff7ed;
+  color: #c2410c;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Modal equilibrado: os pavimentos e as unidades cabem sem ficarem
+   comprimidos. */
+.eithra-portaria-modal {
+  max-inline-size: 48rem;
+}
+
+/* O corpo do modal é uma coluna: cabeçalho e rodapé ficam fixos, e o único
+   scroll é o da lista de andares (passo 1). Sem segunda barra independente. */
+#registro-chegada .modal-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#registro-chegada .modal-body > [data-eithra-step-panel] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+/* No passo 1 só a região do prédio cresce e rola; busca, contexto, área comum
+   e rodapé permanecem no lugar. */
+#registro-chegada [data-eithra-step-panel="1"] > *:not(.eithra-mapa-unidades) {
+  flex: 0 0 auto;
+}
+
+/* Lista de andares: cada andar é uma linha — rótulo à esquerda, unidades reais
+   à direita — de cima para baixo. Sem fachada e sem coluna decorativa, a
+   largura inteira fica para as unidades; abre sempre no 16º (topo). */
+.eithra-mapa-andares {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A lista de andares é a única área de rolagem do passo 1. */
+.eithra-mapa-unidades {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding-inline-end: 0.25rem;
+  scroll-behavior: smooth;
+}
+
+.eithra-mapa-andar {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding-block: 0.3125rem;
+}
+
+.eithra-mapa-andar + .eithra-mapa-andar {
+  border-block-start: 1px solid var(--bs-border-color);
+}
+
+/* A coluna do andar é fixa: os números não flutuam fora de alinhamento. */
+.eithra-mapa-andar-nome {
+  flex: 0 0 2.75rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+}
+
+/* Cabeçalho do destino escolhido: faixa lilás bem suave, não card alto. */
+#registro-chegada .eithra-autorizador-escolhido {
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
+}
+
+#registro-chegada .eithra-autorizador-escolhido .bx,
+#registro-chegada .eithra-autorizador-trocar {
+  color: var(--eithra-portaria-lilas);
+}
+
+/* Cards de tipo de acesso: ícone acima do rótulo, área grande de toque. */
+.eithra-opcoes-cards {
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+}
+
+.eithra-opcao-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.eithra-opcao-card {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.375rem;
+  text-align: center;
+  min-block-size: 4.5rem;
+}
+
+.eithra-opcao-card .bx {
+  font-size: 1.375rem;
+}
+
+.eithra-opcao-card.is-selected {
+  border-color: var(--eithra-portaria-teal);
+  background-color: var(--eithra-portaria-teal-claro);
+  color: var(--eithra-portaria-teal-escuro);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.2);
+}
+
+.eithra-opcao-card-status.is-selected {
+  border-color: var(--eithra-portaria-lilas);
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.2);
+}
+
+/* Os botões de veículo (Sim/Não) são uma escolha binária, sem ícone:
+   mais compactos que os cartões de tipo, em linha só com o rótulo. */
+#registro-chegada [data-eithra-veiculo-sim],
+#registro-chegada [data-eithra-veiculo-nao] {
+  flex-direction: row;
+  min-block-size: 2.75rem;
+  padding-block: 0.5rem;
+}
+
+/* Contexto do passo 3 em chips: Destino em lilás, tipo em teal. */
+#registro-chegada .eithra-portaria-contexto {
+  background: none;
+  border: 0;
+  padding: 0;
+  gap: 0.5rem;
+}
+
+#registro-chegada .eithra-portaria-contexto-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 50rem;
+  font-size: 0.875rem;
+}
+
+#registro-chegada .eithra-portaria-contexto-item:first-child {
+  background-color: var(--eithra-portaria-lilas-claro);
+  color: var(--eithra-portaria-lilas);
+}
+
+#registro-chegada [data-eithra-contexto-tipo] {
+  background-color: var(--eithra-portaria-teal-claro);
+  color: var(--eithra-portaria-teal-escuro);
+}
+
+#registro-chegada .eithra-portaria-contexto-trocar {
+  color: var(--eithra-portaria-lilas);
+}
+
+@media (max-width: 575.98px) {
+  .eithra-portaria-modal {
+    max-inline-size: none;
+    margin-inline: 0.5rem;
+  }
+
+  /* Sem fachada, as unidades usam toda a largura; os chips ganham área de
+     toque confortável para o dedo. */
+  .eithra-mapa-chip {
+    min-inline-size: 3.75rem;
+    padding-block: 0.5rem;
+  }
+}
+
+/* =========================================================
+   Branding da implantação - Rio Vermelho Exclusive
+   ========================================================= */
+
+.eithra-brand-link-condominio {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.menu .app-brand {
+  min-height: 96px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eithra-brand-implantacao-menu {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 190px;
+  max-height: 74px;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+.eithra-brand-implantacao-login {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(320px, 80vw);
+  max-height: 130px;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+
+/* =========================================================
+   EITHRA — refinamento visual institucional
+   Teal estrutural + lilás de apoio
+   ========================================================= */
+
+:root {
+  /* Estrutura e ação principal */
+  --eithra-refino-teal: #176f73;
+  --eithra-refino-teal-escuro: #12595d;
+  --eithra-refino-teal-claro: #e7f4f3;
+
+  /* Lilás somente como apoio/seleção */
+  --eithra-refino-lilas-claro: #f1edf8;
+  --eithra-refino-lilas: #76659a;
+
+  /* Texto */
+  --eithra-refino-grafite: #2f4146;
+  --eithra-refino-texto-suave: #6c7b80;
+
+  /* Atenção */
+  --eithra-refino-alerta-bg: #fff4dd;
+  --eithra-refino-alerta-texto: #8a5a00;
+}
+
+/* Ação primária do sistema */
+.btn-primary {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--eithra-refino-teal);
+  --bs-btn-border-color: var(--eithra-refino-teal);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--eithra-refino-teal-escuro);
+  --bs-btn-hover-border-color: var(--eithra-refino-teal-escuro);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--eithra-refino-teal-escuro);
+  --bs-btn-active-border-color: var(--eithra-refino-teal-escuro);
+}
+
+/* Mantém a identidade já refinada da Portaria */
+.eithra-portaria .btn-primary,
+#registro-chegada .btn-primary,
+#novo-esperado .btn-primary,
+#verificar-autorizacao .btn-primary {
+  --bs-btn-bg: var(--eithra-portaria-teal);
+  --bs-btn-border-color: var(--eithra-portaria-teal);
+}
+
+/* Links principais */
+a:not(.btn):not(.menu-link) {
+  color: var(--eithra-refino-teal);
+}
+
+a:not(.btn):not(.menu-link):hover {
+  color: var(--eithra-refino-teal-escuro);
+}
+
+/* Sidebar: lilás fica somente como fundo de seleção */
+.menu-vertical .menu-item.active > .menu-link {
+  background-color: var(--eithra-refino-lilas-claro);
+  color: var(--eithra-refino-teal-escuro);
+}
+
+.menu-vertical .menu-item.active > .menu-link .menu-icon {
+  color: var(--eithra-refino-teal);
+}
+
+.menu-vertical .menu-link {
+  color: var(--eithra-refino-grafite);
+}
+
+/* Títulos */
+h1, h2, h3, h4, h5, h6,
+.card-title,
+.eithra-section-title {
+  color: var(--eithra-refino-grafite);
+}
+
+/* Textos secundários */
+.text-muted,
+.text-secondary {
+  color: var(--eithra-refino-texto-suave) !important;
+}
+
+/* Alertas operacionais / fora do prazo */
+.badge.bg-warning,
+.bg-label-warning,
+.text-bg-warning {
+  background-color: var(--eithra-refino-alerta-bg) !important;
+  color: var(--eithra-refino-alerta-texto) !important;
+}
+
+/* Logo do menu: maior e realmente centralizada */
+.menu .app-brand {
+  min-height: 108px;
+  padding: 14px 14px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eithra-brand-link-condominio {
+  width: 100%;
+  justify-content: center;
+}
+
+.eithra-brand-implantacao-menu {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 205px;
+  max-height: 86px;
+  object-fit: contain;
+  object-position: center;
+  margin: 0 auto;
+}
+
+/* Login: presença institucional um pouco maior */
+.eithra-brand-implantacao-login {
+  max-width: min(370px, 84vw);
+  max-height: 150px;
+}
+
+/* Ritmo visual da Home */
+.eithra-home .list-group-item,
+.eithra-home .eithra-list-item {
+  padding-block: 0.85rem;
+}
+
+.eithra-home .list-group-item + .list-group-item,
+.eithra-home .eithra-list-item + .eithra-list-item {
+  border-top-color: rgba(47, 65, 70, 0.08);
+}
+
+
+/* =========================================================
+   EITHRA — fundo institucional neutro
+   ========================================================= */
+
+body,
+.layout-wrapper,
+.layout-page,
+.content-wrapper {
+  background-color: #F6F8F8;
+}
+
+.layout-menu {
+  background-color: #FAFBFB !important;
+}
+
+.navbar,
+.layout-navbar {
+  background-color: #FFFFFF !important;
+}
+
+.card,
+.eithra-surface,
+.eithra-section {
+  background-color: #FFFFFF;
+}
+
+/* divisores mais neutros */
+hr,
+.menu-divider {
+  border-color: #E7ECEC;
+}
+
+/* seleção continua lilás, mas muito discreta */
+.menu-vertical .menu-item.active > .menu-link {
+  background-color: #F0EDF7;
+  color: #12595D;
+}
+
+
+/* =========================================================
+   EITHRA — fundo institucional neutro
+   ========================================================= */
+
+body,
+.layout-wrapper,
+.layout-page,
+.content-wrapper {
+  background-color: #F6F8F8;
+}
+
+.layout-menu {
+  background-color: #FAFBFB !important;
+}
+
+.navbar,
+.layout-navbar {
+  background-color: #FFFFFF !important;
+}
+
+.card,
+.eithra-surface,
+.eithra-section {
+  background-color: #FFFFFF;
+}
+
+/* divisores mais neutros */
+hr,
+.menu-divider {
+  border-color: #E7ECEC;
+}
+
+/* seleção continua lilás, mas muito discreta */
+.menu-vertical .menu-item.active > .menu-link {
+  background-color: #F0EDF7;
+  color: #12595D;
+}
+
+
+/* Ajuste fino após recorte da marca */
+.menu .app-brand {
+  min-height: 96px;
+  padding: 8px 12px;
+}
+
+.eithra-brand-implantacao-menu {
+  max-width: 190px;
+  max-height: 82px;
+}
+
+
+/* Logo oficial RVE no topo do menu */
+.menu .app-brand {
+  min-height: 145px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eithra-brand-link-condominio {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eithra-brand-implantacao-menu {
+  display: block;
+  width: auto;
+  height: 120px;
+  max-width: 190px;
+  max-height: 120px;
+  object-fit: contain;
+  object-position: center;
+  margin: 0 auto;
+}
+
+
+/* =========================================================
+   EITHRA — paleta final institucional
+   ========================================================= */
+
+:root {
+  --eithra-bg-geral: #F3F6F6;
+  --eithra-bg-superficie: #FFFFFF;
+  --eithra-bg-sidebar: #FAFBFB;
+  --eithra-divisor: #E5EBEB;
+
+  --eithra-teal: #176F73;
+  --eithra-teal-escuro: #12595D;
+  --eithra-teal-suave: #E7F4F3;
+
+  --eithra-grafite: #2F4146;
+  --eithra-texto-secundario: #6C7B80;
+
+  --eithra-lilas-selecao: #F2EEF8;
+  --eithra-lilas-apoio: #76659A;
+
+  --eithra-alerta-bg: #FFF4DD;
+  --eithra-alerta-texto: #8A5A00;
+}
+
+/* Fundo geral */
+html,
+body,
+.layout-wrapper,
+.layout-page,
+.content-wrapper,
+.container-xxl {
+  background-color: var(--eithra-bg-geral);
+}
+
+/* Sidebar */
+.layout-menu,
+.menu-vertical {
+  background-color: var(--eithra-bg-sidebar) !important;
+}
+
+/* Superfícies principais */
+.card,
+.layout-navbar,
+.navbar,
+.eithra-surface,
+.eithra-section {
+  background-color: var(--eithra-bg-superficie) !important;
+}
+
+/* Divisores */
+hr,
+.menu-divider,
+.card,
+.list-group-item,
+.eithra-list-item {
+  border-color: var(--eithra-divisor) !important;
+}
+
+/* Item ativo da navegação */
+.menu-vertical .menu-item.active > .menu-link {
+  background-color: var(--eithra-lilas-selecao) !important;
+  color: var(--eithra-teal-escuro) !important;
+}
+
+.menu-vertical .menu-item.active > .menu-link .menu-icon {
+  color: var(--eithra-teal) !important;
+}
+
+/* Navegação normal */
+.menu-vertical .menu-link {
+  color: var(--eithra-grafite);
+}
+
+/* Botão principal */
+.btn-primary {
+  --bs-btn-bg: var(--eithra-teal);
+  --bs-btn-border-color: var(--eithra-teal);
+  --bs-btn-hover-bg: var(--eithra-teal-escuro);
+  --bs-btn-hover-border-color: var(--eithra-teal-escuro);
+  --bs-btn-active-bg: var(--eithra-teal-escuro);
+  --bs-btn-active-border-color: var(--eithra-teal-escuro);
+}
+
+/* Textos */
+h1, h2, h3, h4, h5, h6,
+.card-title,
+.eithra-section-title {
+  color: var(--eithra-grafite);
+}
+
+.text-muted,
+.text-secondary {
+  color: var(--eithra-texto-secundario) !important;
+}
+
+/* Links */
+a:not(.btn):not(.menu-link) {
+  color: var(--eithra-teal);
+}
+
+a:not(.btn):not(.menu-link):hover {
+  color: var(--eithra-teal-escuro);
+}
+
+/* Alertas */
+.badge.bg-warning,
+.bg-label-warning,
+.text-bg-warning {
+  background-color: var(--eithra-alerta-bg) !important;
+  color: var(--eithra-alerta-texto) !important;
+}
+
+
+/* =========================================================
+   EITHRA — refinamentos finais de contraste e densidade
+   ========================================================= */
+
+/* Estado vazio: quase neutro, com leve assinatura lilás */
+.eithra-portaria .eithra-empty-state,
+.eithra-portaria .empty-state,
+.eithra-portaria [class*="empty"] {
+  background-color: #F6F4F9;
+}
+
+/* Indicador vertical do item ativo: teal em vez de roxo */
+.menu-vertical .menu-item.active::after,
+.menu-vertical .menu-item.active > .menu-link::after {
+  background-color: var(--eithra-teal) !important;
+}
+
+/* Caso a barra seja desenhada pelo próprio menu-link */
+.menu-vertical .menu-item.active > .menu-link {
+  border-right-color: var(--eithra-teal) !important;
+}
+
+/* Topbar mais compacta */
+.layout-navbar,
+.navbar {
+  min-height: 64px;
+}
+
+.layout-navbar {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Reduz o vazio vertical sem apertar o conteúdo */
+.layout-page > .content-wrapper {
+  padding-top: 0;
+}
+
+
+/* =========================================================
+   EITHRA — Redesign das telas operacionais
+   ---------------------------------------------------------
+   Camada aditiva: define a linguagem de página das telas
+   redesenhadas — cabeçalho de página, painéis e grades. Os
+   nomes são novos (`.eithra-pagina-*`, `.eithra-painel*`,
+   `.eithra-home-*`), então nada aqui sobrescreve componente
+   antigo: a tela antiga continua funcionando até ser migrada.
+   ========================================================= */
+
+/* Cabeçalho de página -----------------------------------------------------
+   A abertura de cada tela deixa de ser um cartão e passa a ser uma faixa:
+   o olho recebe título e contexto antes do primeiro bloco de dado. */
+.eithra-pagina-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  margin-block-end: 1.5rem;
+  padding-block-end: 1.25rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-pagina-topo-texto {
+  min-inline-size: 0;
+}
+
+.eithra-eyebrow {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-pagina-titulo {
+  margin: 0.375rem 0 0.375rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-pagina-sub {
+  margin: 0;
+  max-inline-size: 46rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Painel ------------------------------------------------------------------
+   A superfície de conteúdo das telas novas: fio em vez de sombra, cabeçalho
+   com ícone e legenda, e a lista logo abaixo. */
+.eithra-painel {
+  background-color: var(--eithra-bg-superficie, #fff);
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.eithra-painel--decisao {
+  border-inline-start-width: 3px;
+  border-inline-start-color: var(--bs-warning, #b89252);
+}
+
+.eithra-painel-cabecalho {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-block-end: 1rem;
+  padding-block-end: 0.875rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-painel-icone {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 0.75rem;
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal, #176f73);
+  font-size: 1.25rem;
+}
+
+.eithra-painel-icone--hoje {
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-painel-icone--alerta {
+  background-color: var(--eithra-alerta-bg, #fff4dd);
+  color: var(--eithra-alerta-texto, #8a5a00);
+}
+
+.eithra-painel-texto {
+  min-inline-size: 0;
+}
+
+.eithra-painel-titulo {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-painel-legenda {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-painel-ver {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-block-start: 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* Home --------------------------------------------------------------------
+   A Home é folha, não grade: nenhum bloco da página é emoldurado. O que
+   separa um assunto do outro é o fio e o espaço, e o peso vem do corpo do
+   título e do acento de cor — não da caixa. */
+.eithra-home-marcador {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-inline-size: 26rem;
+  margin: 0;
+  padding-inline-start: 1.125rem;
+  border-inline-start: 2px solid var(--eithra-divisor);
+}
+
+.eithra-home-marcador--atencao {
+  border-inline-start-color: var(--eithra-ambar);
+}
+
+.eithra-home-marcador--ok {
+  border-inline-start-color: var(--eithra-verde);
+}
+
+.eithra-home-marcador-icone {
+  flex: 0 0 auto;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--eithra-verde);
+}
+
+/* A frase da atenção responde à pergunta que trouxe a pessoa à Home: por
+   isso vem em corpo de manchete, com o fio âmbar ao lado no lugar da caixa. */
+.eithra-home-marcador-texto {
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--eithra-petroleo);
+}
+
+/* Sem nada pendente, a frase deixa de ser manchete: é uma confirmação, dita
+   no corpo de quem apenas informa. */
+.eithra-home-marcador--ok .eithra-home-marcador-texto {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.eithra-home-marcador-icone--atencao {
+  color: var(--eithra-ambar);
+}
+
+/* A coluna da operação e a coluna da fila são separadas por um fio, como as
+   de uma página impressa: nenhuma das duas precisa de moldura para se
+   distinguir da outra. */
+.eithra-home-grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.eithra-home-principal,
+.eithra-home-lateral {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.eithra-home-principal {
+  padding-inline-end: 2.5rem;
+}
+
+.eithra-home-lateral {
+  padding-inline-start: 2.5rem;
+  border-inline-start: 1px solid var(--eithra-divisor);
+}
+
+/* Seção -------------------------------------------------------------------
+   O assunto da Home não é uma caixa: abre com o título e o fio que o separa
+   do assunto anterior, e o que vem depois é a lista. */
+.eithra-home-secao + .eithra-home-secao {
+  margin-block-start: 2.25rem;
+  padding-block-start: 2.25rem;
+  border-block-start: 1px solid var(--eithra-divisor);
+}
+
+.eithra-home-secao-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.125rem 1.5rem;
+}
+
+.eithra-home-secao-texto {
+  min-inline-size: 0;
+}
+
+.eithra-home-secao-titulo {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--eithra-petroleo);
+}
+
+/* O que espera decisão é o único assunto da página que pede sinal próprio:
+   um ponto âmbar antes do título, que não chega a ser moldura. */
+.eithra-home-secao--decisao .eithra-home-secao-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-home-secao--decisao .eithra-home-secao-titulo::before {
+  content: "";
+  flex: 0 0 auto;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--eithra-ambar);
+}
+
+.eithra-home-secao-legenda {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--eithra-texto-suave);
+}
+
+.eithra-home-secao-ver {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--eithra-lilas-escuro);
+  text-decoration: none;
+}
+
+.eithra-home-secao-ver:hover,
+.eithra-home-secao-ver:focus {
+  color: var(--eithra-lilas-profundo);
+  text-decoration: underline;
+}
+
+.eithra-home-lista .eithra-linha {
+  padding-block: 0.75rem;
+}
+
+.eithra-home-subsecao {
+  margin-block-start: 1.25rem;
+  padding-block-start: 1.125rem;
+  border-block-start: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-home-subsecao-titulo {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Entrada suave: as seções sobem alguns pixels ao carregar, em cascata
+   curta. Quem pediu menos movimento no sistema não recebe animação. */
+@keyframes eithra-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.eithra-home-grade > * > .eithra-home-secao,
+.eithra-home-grade > .eithra-home-secao {
+  animation: eithra-rise 0.32s ease both;
+}
+
+.eithra-home-principal > .eithra-home-secao:nth-child(1) { animation-delay: 0.02s; }
+.eithra-home-principal > .eithra-home-secao:nth-child(2) { animation-delay: 0.08s; }
+.eithra-home-lateral > .eithra-home-secao:nth-child(1) { animation-delay: 0.14s; }
+.eithra-home-lateral > .eithra-home-secao:nth-child(2) { animation-delay: 0.2s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .eithra-home-grade > * > .eithra-home-secao,
+  .eithra-home-grade > .eithra-home-secao {
+    animation: none;
+  }
+}
+
+/* Numa coluna só, o fio vertical vira horizontal: a fila passa a vir abaixo
+   da operação, com a mesma separação de fio. */
+@media (max-width: 991.98px) {
+  .eithra-pagina-topo {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .eithra-home-grade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eithra-home-principal {
+    padding-inline-end: 0;
+  }
+
+  .eithra-home-lateral {
+    margin-block-start: 2.25rem;
+    padding-block-start: 2.25rem;
+    padding-inline-start: 0;
+    border-block-start: 1px solid var(--eithra-divisor);
+    border-inline-start: 0;
+  }
+
+  .eithra-home-marcador {
+    max-inline-size: none;
+  }
+}
+
+
+/* =========================================================
+   EITHRA — Redesign aplicado: Portaria e listagens
+   ---------------------------------------------------------
+   Segunda camada do redesign. A linguagem definida acima
+   (`.eithra-pagina-*`, `.eithra-painel*`) passa a valer nas
+   telas que já existiam. O alvo é sempre uma classe de escopo
+   próprio — `.eithra-portaria-*` e as conchas das listagens —,
+   então nenhum domínio muda de aparência sem ser migrado.
+   ========================================================= */
+
+/* Portaria — cabeçalho de página ------------------------------------------
+   O topo deixa de ser título solto e passa a ser abertura de página: fio
+   embaixo, título maior, contexto em segundo plano. */
+.eithra-portaria-topo {
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+  margin-block-end: 1.75rem;
+  padding-block-end: 1.25rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-portaria-titulo {
+  margin-block: 0 0.375rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-portaria-subtitulo {
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Portaria — busca e ação principal numa barra só -------------------------
+   A busca e o "Registrar chegada" deixam de flutuar sobre o fundo e passam
+   a viver dentro de um painel, com o campo encostado no fundo suave até
+   receber o foco. */
+.eithra-portaria-barra {
+  align-items: center;
+  gap: 1rem;
+  margin-block-end: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  background-color: var(--eithra-bg-superficie, #fff);
+}
+
+.eithra-portaria-barra .form-control {
+  border-color: transparent;
+  background-color: var(--bs-tertiary-bg, #f3f6f6);
+}
+
+.eithra-portaria-barra .form-control:focus {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-bg-superficie, #fff);
+}
+
+.eithra-portaria-barra-acoes .btn {
+  padding-inline: 1.25rem;
+  font-weight: 600;
+}
+
+/* Portaria — o relato é a entrada da operação -----------------------------
+   O campo "Diga o que aconteceu..." é a peça principal da tela: ganha corpo
+   de painel, altura de toque e o foco em teal. */
+.eithra-portaria-entrada {
+  padding: 1rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  background-color: var(--eithra-bg-superficie, #fff);
+  box-shadow: 0 1px 0 rgb(23 111 115 / 6%), 0 14px 30px -24px rgb(47 65 70 / 40%);
+}
+
+.eithra-portaria-entrada .eithra-busca .form-control {
+  min-block-size: 3.25rem;
+  border-color: var(--eithra-divisor, #e5ebeb);
+  background-color: var(--bs-tertiary-bg, #f3f6f6);
+  font-size: 1rem;
+}
+
+.eithra-portaria-entrada .eithra-busca .form-control:focus {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-bg-superficie, #fff);
+  box-shadow: 0 0 0 0.2rem rgb(23 111 115 / 14%);
+}
+
+/* Portaria — números de relance ------------------------------------------- */
+.eithra-portaria-indicador {
+  border-color: var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  padding: 0.875rem 1rem;
+}
+
+.eithra-portaria-indicador-valor {
+  color: var(--eithra-grafite, #2f4146);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Portaria — "Chegando" e "Aqui agora" como painéis ----------------------- */
+.eithra-portaria-superficie-interna {
+  border-color: var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+.eithra-portaria-cabecalho-secao {
+  padding-block-end: 0.875rem;
+  margin-block-end: 1rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-portaria-secao-titulo-grande {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+/* "Adicionar esperado" é cadastro, não navegação: ganha contorno tracejado
+   e a cor da marca para não se confundir com o "Ver histórico" ao lado. */
+.eithra-portaria-superficie-interna .eithra-portaria-cabecalho-secao .btn-label-secondary {
+  border: 1px dashed var(--eithra-teal, #176f73);
+  color: var(--eithra-teal, #176f73);
+  font-weight: 600;
+}
+
+.eithra-portaria-superficie-interna .eithra-portaria-cabecalho-secao .btn-label-secondary:hover,
+.eithra-portaria-superficie-interna .eithra-portaria-cabecalho-secao .btn-label-secondary:focus {
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+/* Listagens — conchas de filtro, indicadores e tabela --------------------
+   As listagens operacionais compartilham estas três peças; alinhá-las à
+   linguagem de painel é o que faz a tela inteira parecer outra, sem tocar
+   no conteúdo de nenhuma linha. */
+.eithra-filter-shell {
+  border-color: var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+}
+
+.eithra-operational-table-shell {
+  border-color: var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+}
+
+.eithra-summary-indicator {
+  border-color: var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+}
+
+.eithra-summary-indicator-value {
+  color: var(--eithra-grafite, #2f4146);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* =========================================================
+   EITHRA — Detalhes operacionais e modais de ação
+   ---------------------------------------------------------
+   Camada aditiva para as telas de detalhe de Demanda e
+   Manutenção, e os modais de atualização e atividade.
+   Linguagem: fundo claro, teal como estrutura, lilás como
+   apoio, cantos arredondados, chips suaves e timeline.
+   ========================================================= */
+
+/* Cabeçalho de detalhe ---------------------------------------------------- */
+.eithra-detalhe-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  margin-block-end: 1.5rem;
+  padding-block-end: 1.25rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-detalhe-identidade {
+  min-inline-size: 0;
+}
+
+.eithra-detalhe-voltar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-block-end: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-detalhe-voltar:hover,
+.eithra-detalhe-voltar:focus {
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-detalhe-icone {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  border-radius: 0.875rem;
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal, #176f73);
+  font-size: 1.375rem;
+}
+
+.eithra-detalhe-titulo {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-detalhe-codigo {
+  display: block;
+  margin-block-start: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Chips de situação ------------------------------------------------------- */
+.eithra-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.875rem;
+}
+
+.eithra-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-chip i {
+  font-size: 0.9375rem;
+  opacity: 0.85;
+}
+
+.eithra-chip--teal {
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-chip--lilas {
+  background-color: var(--eithra-lilas-selecao, #f2eef8);
+  color: var(--eithra-lilas-apoio, #76659a);
+  border-color: transparent;
+}
+
+.eithra-chip--sucesso {
+  background-color: #e8f3ef;
+  color: #2d6a52;
+}
+
+.eithra-chip--alerta {
+  background-color: var(--eithra-alerta-bg, #fff4dd);
+  color: var(--eithra-alerta-texto, #8a5a00);
+}
+
+.eithra-chip--neutro {
+  background-color: #f0f2f4;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Ações do cabeçalho ------------------------------------------------------ */
+.eithra-detalhe-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-detalhe-acoes .btn {
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.eithra-btn-primario {
+  --bs-btn-bg: var(--eithra-teal, #176f73);
+  --bs-btn-border-color: var(--eithra-teal, #176f73);
+  --bs-btn-hover-bg: var(--eithra-teal-escuro, #12595d);
+  --bs-btn-hover-border-color: var(--eithra-teal-escuro, #12595d);
+  --bs-btn-active-bg: var(--eithra-teal-escuro, #12595d);
+  --bs-btn-active-border-color: var(--eithra-teal-escuro, #12595d);
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+}
+
+.eithra-btn-secundario {
+  --bs-btn-bg: var(--eithra-bg-superficie, #fff);
+  --bs-btn-border-color: var(--eithra-divisor, #e5ebeb);
+  --bs-btn-color: var(--eithra-grafite, #2f4146);
+  --bs-btn-hover-bg: var(--eithra-teal-suave, #e7f4f3);
+  --bs-btn-hover-border-color: var(--eithra-teal, #176f73);
+  --bs-btn-hover-color: var(--eithra-teal-escuro, #12595d);
+  --bs-btn-active-bg: var(--eithra-teal-suave, #e7f4f3);
+  --bs-btn-active-border-color: var(--eithra-teal, #176f73);
+  --bs-btn-active-color: var(--eithra-teal-escuro, #12595d);
+}
+
+/* Grade do corpo ---------------------------------------------------------- */
+.eithra-detalhe-grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 991.98px) {
+  .eithra-detalhe-grade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.eithra-detalhe-coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-inline-size: 0;
+}
+
+/* Cartão de informação ---------------------------------------------------- */
+.eithra-cartao {
+  background-color: var(--eithra-bg-superficie, #fff);
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.eithra-cartao-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 1rem 1.25rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-cartao-cabecalho i {
+  font-size: 1.125rem;
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-cartao-titulo {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-cartao-corpo {
+  padding: 1.25rem;
+}
+
+.eithra-cartao-corpo--sem-padding {
+  padding: 0;
+}
+
+/* Grid de informações principais ----------------------------------------- */
+.eithra-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+  gap: 0.75rem;
+}
+
+.eithra-info-item {
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background-color: #f7f9f9;
+  min-inline-size: 0;
+}
+
+.eithra-info-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-info-rotulo i {
+  font-size: 0.875rem;
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-info-valor {
+  margin-block-start: 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+  word-break: break-word;
+}
+
+/* Próximo passo destacado ------------------------------------------------- */
+.eithra-proximo-passo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1.125rem 1.25rem;
+  border-radius: 1rem;
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  border: 1px solid color-mix(in sRGB, var(--eithra-teal, #176f73) 18%, transparent);
+}
+
+.eithra-proximo-passo-icone {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 0.75rem;
+  background-color: var(--eithra-bg-superficie, #fff);
+  color: var(--eithra-teal, #176f73);
+  font-size: 1.125rem;
+}
+
+.eithra-proximo-passo-texto {
+  min-inline-size: 0;
+}
+
+.eithra-proximo-passo-titulo {
+  margin: 0 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-proximo-passo-valor {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+/* Timeline do histórico --------------------------------------------------- */
+.eithra-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.eithra-timeline-item {
+  position: relative;
+  display: flex;
+  gap: 0.875rem;
+  padding-block-end: 1.25rem;
+}
+
+.eithra-timeline-item:last-child {
+  padding-block-end: 0;
+}
+
+.eithra-timeline-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0.625rem;
+  inset-block-start: 1.75rem;
+  inset-block-end: -0.25rem;
+  inline-size: 2px;
+  background-color: var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-timeline-marcador {
+  flex: 0 0 auto;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 50%;
+  margin-block-start: 0.125rem;
+  background-color: var(--eithra-teal, #176f73);
+  border: 3px solid var(--eithra-bg-superficie, #fff);
+  box-shadow: 0 0 0 1px var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-timeline-marcador--lilas {
+  background-color: var(--eithra-lilas-apoio, #76659a);
+}
+
+.eithra-timeline-marcador--alerta {
+  background-color: var(--eithra-alerta-texto, #8a5a00);
+}
+
+.eithra-timeline-marcador--sucesso {
+  background-color: #2d6a52;
+}
+
+.eithra-timeline-marcador--neutro {
+  background-color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-timeline-corpo {
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.eithra-timeline-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.eithra-timeline-titulo {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-timeline-momento {
+  font-size: 0.75rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+  white-space: nowrap;
+}
+
+.eithra-timeline-descricao {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-timeline-autor {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Evidências miniatura ---------------------------------------------------- */
+.eithra-evidencias-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.75rem;
+}
+
+.eithra-evidencia-card {
+  position: relative;
+  display: block;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  background-color: #f7f9f9;
+  aspect-ratio: 1 / 1;
+}
+
+.eithra-evidencia-card img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.eithra-evidencia-card--vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-style: dashed;
+  color: var(--eithra-texto-secundario, #6c7b80);
+  text-align: center;
+  padding: 0.75rem;
+}
+
+.eithra-evidencia-card--vazio i {
+  font-size: 1.5rem;
+}
+
+/* Modal operacional redesenhado ------------------------------------------ */
+.eithra-modal-hero {
+  background: linear-gradient(135deg, var(--eithra-teal-suave, #e7f4f3) 0%, var(--eithra-lilas-selecao, #f2eef8) 100%);
+  padding: 1.5rem 1.75rem;
+  border-block-end: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+.eithra-modal-hero-titulo {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-modal-hero-subtitulo {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-modal-pergunta {
+  margin: 0 0 0.75rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-modal-apoio {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+/* Textarea principal do modal -------------------------------------------- */
+.eithra-campo-hero {
+  position: relative;
+}
+
+.eithra-campo-hero textarea {
+  min-block-size: 7.5rem;
+  padding: 1rem 3.5rem 1rem 1rem;
+  border-radius: 1rem;
+  border: 1.5px solid var(--eithra-divisor, #e5ebeb);
+  background-color: var(--eithra-bg-superficie, #fff);
+  font-size: 1rem;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.eithra-campo-hero textarea:focus {
+  border-color: var(--eithra-teal, #176f73);
+  box-shadow: 0 0 0 0.2rem rgb(23 111 115 / 14%);
+  outline: none;
+}
+
+.eithra-microfone {
+  position: absolute;
+  inset-inline-end: 0.75rem;
+  inset-block-end: 0.75rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 50%;
+  border: 0;
+  background-color: var(--eithra-lilas-selecao, #f2eef8);
+  color: var(--eithra-lilas-apoio, #76659a);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.eithra-microfone:hover,
+.eithra-microfone:focus {
+  background-color: color-mix(in sRGB, var(--eithra-lilas-apoio, #76659a) 18%, var(--eithra-lilas-selecao, #f2eef8));
+}
+
+/* Chips de situação clicáveis -------------------------------------------- */
+.eithra-chip-opcao {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1.5px solid var(--eithra-divisor, #e5ebeb);
+  background-color: var(--eithra-bg-superficie, #fff);
+  color: var(--eithra-grafite, #2f4146);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.eithra-chip-opcao:hover {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-chip-opcao.is-active {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal, #176f73);
+  color: #fff;
+}
+
+.eithra-chip-opcao.is-active i {
+  color: #fff;
+}
+
+/* Área de evidência no modal --------------------------------------------- */
+.eithra-evidencia-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  border: 2px dashed var(--eithra-divisor, #e5ebeb);
+  border-radius: 1rem;
+  background-color: #fafbfb;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.eithra-evidencia-drop:hover {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+}
+
+.eithra-evidencia-drop-icone {
+  font-size: 2rem;
+  color: var(--eithra-teal, #176f73);
+}
+
+/* Blocos de classificação sugerida --------------------------------------- */
+.eithra-classificacao-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+}
+
+.eithra-classificacao-bloco {
+  padding: 0.875rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  background-color: #fafbfb;
+}
+
+.eithra-classificacao-rotulo {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-classificacao-rotulo i {
+  font-size: 0.875rem;
+  color: var(--eithra-teal, #176f73);
+}
+
+.eithra-classificacao-valor {
+  margin-block-start: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--eithra-grafite, #2f4146);
+  word-break: break-word;
+}
+
+/* Rodapé de confirmação -------------------------------------------------- */
+.eithra-modal-rodape-aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--eithra-texto-secundario, #6c7b80);
+}
+
+.eithra-modal-rodape-aviso i {
+  color: var(--eithra-lilas-apoio, #76659a);
+}
+
+/* Banner de alerta sem responsável --------------------------------------- */
+.eithra-alerta-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: 0.875rem;
+  background-color: var(--eithra-alerta-bg, #fff4dd);
+  border: 1px solid color-mix(in sRGB, var(--eithra-alerta-texto, #8a5a00) 20%, transparent);
+  margin-block-end: 1.25rem;
+}
+
+.eithra-alerta-banner-icone {
+  color: var(--eithra-alerta-texto, #8a5a00);
+  font-size: 1.25rem;
+}
+
+.eithra-alerta-banner-texto {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.eithra-alerta-banner-titulo {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--eithra-alerta-texto, #8a5a00);
+}
+
+.eithra-alerta-banner-sub {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--eithra-alerta-texto, #8a5a00);
+  opacity: 0.85;
+}
+
+/* Ajuste do step wizard para usar teal ----------------------------------- */
+.eithra-step.is-active .eithra-step-number,
+.eithra-step.is-complete .eithra-step-number {
+  background-color: var(--eithra-teal, #176f73);
+  color: #fff;
+}
+
+.eithra-step.is-active {
+  color: var(--eithra-grafite, #2f4146);
+}
+
+/* Campo hero do modal de atualização: textarea grande com microfone embutido. */
+.eithra-campo-hero-wrapper {
+  margin-block-end: 0.5rem;
+}
+
+.eithra-campo-hero-wrapper .form-label {
+  display: none;
+}
+
+.eithra-campo-hero-wrapper .eithra-campo-voz {
+  position: relative;
+}
+
+.eithra-campo-hero-wrapper textarea {
+  min-block-size: 8rem;
+  padding: 1rem 3.5rem 1rem 1rem;
+  border-radius: 1rem;
+  border: 1.5px solid var(--eithra-divisor, #e5ebeb);
+  background-color: var(--eithra-bg-superficie, #fff);
+  font-size: 1rem;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.eithra-campo-hero-wrapper textarea:focus {
+  border-color: var(--eithra-teal, #176f73);
+  box-shadow: 0 0 0 0.2rem rgb(23 111 115 / 14%);
+  outline: none;
+}
+
+.eithra-campo-hero-wrapper .eithra-ditar {
+  position: absolute;
+  inset-inline-end: 0.75rem;
+  inset-block-end: 0.75rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 50%;
+  border: 0;
+  background-color: var(--eithra-lilas-selecao, #f2eef8);
+  color: var(--eithra-lilas-apoio, #76659a);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.eithra-campo-hero-wrapper .eithra-ditar:hover,
+.eithra-campo-hero-wrapper .eithra-ditar:focus {
+  background-color: color-mix(in sRGB, var(--eithra-lilas-apoio, #76659a) 18%, var(--eithra-lilas-selecao, #f2eef8));
+}
+
+/* Ajuste do modal-content para o hero header ocupar toda a largura. */
+.eithra-modal-hero .btn-close {
+  margin: 0;
+}
+
+.eithra-modal-wizard .modal-body {
+  padding: 1.5rem 1.75rem;
+}
+
+.eithra-modal-wizard .modal-footer {
+  padding: 1rem 1.75rem 1.5rem;
+  border-block-start: 1px solid var(--eithra-divisor, #e5ebeb);
+}
+
+/* Chips de exemplo de situação no modal. */
+.eithra-chips-exemplos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+}
+
+/* Toggle de "Ajustes iniciais" no modal de rotina: seta gira ao abrir. */
+.eithra-ajustes-toggle {
+  background: none;
+  border: 0;
+  color: var(--eithra-grafite, #2f4146);
+  font-size: 0.9375rem;
+}
+
+.eithra-ajustes-toggle:not(.collapsed) .bx-chevron-down {
+  transform: rotate(180deg);
+}
+
+.eithra-ajustes-toggle .bx-chevron-down {
+  transition: transform 0.2s ease;
+}
+
+/* O chip ativo de periodicidade ganha um visto discreto. */
+.eithra-chip-opcao.is-active::before {
+  content: "\ea10";
+  font-family: "boxicons";
+  font-size: 0.75rem;
+  margin-inline-end: 0.125rem;
+}
+
+/* Resumo financeiro compartilhado pela Home e pela transparência. */
+.eithra-financeiro-resumo {
+  position: relative;
+  overflow: hidden;
+  margin-block: 1.25rem 1.5rem;
+  padding: clamp(1.1rem, 2.5vw, 1.65rem);
+  border: 1px solid #dfe9e9;
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(118 101 154 / 9%), transparent 36%),
+    linear-gradient(135deg, #fff 8%, #f3fafa 100%);
+  box-shadow: 0 0.65rem 1.7rem rgb(28 68 71 / 6%);
+}
+
+.eithra-financeiro-resumo-topo,
+.eithra-transparencia-secao-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eithra-financeiro-resumo-topo h2,
+.eithra-transparencia-secao-topo h2 {
+  margin: 0;
+  color: #123c42;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.eithra-financeiro-resumo-topo > .bx {
+  display: grid;
+  flex: 0 0 2.8rem;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 0.9rem;
+  background: #e1f3f1;
+  color: #176f73;
+  font-size: 1.5rem;
+}
+
+.eithra-financeiro-periodo {
+  margin: 0.25rem 0 0;
+  color: #627378;
+  font-size: 0.88rem;
+}
+
+.eithra-financeiro-valores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-block-start: 1.1rem;
+}
+
+.eithra-financeiro-valor {
+  display: flex;
+  min-width: 0;
+  min-height: 5.1rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+}
+
+.eithra-financeiro-valor span {
+  color: #42575c;
+  font-size: 0.84rem;
+}
+
+.eithra-financeiro-valor strong {
+  overflow-wrap: anywhere;
+  color: #173b43;
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.eithra-financeiro-valor--teal {
+  border-color: #d7ecea;
+  background: #e8f6f4;
+}
+
+.eithra-financeiro-valor--lilas {
+  border-color: #ebe3f3;
+  background: #f4eff9;
+}
+
+.eithra-financeiro-valor--lilas strong {
+  color: #554273;
+}
+
+.eithra-financeiro-valor--menta {
+  border-color: #dcefe7;
+  background: #eaf7f0;
+}
+
+.eithra-financeiro-valores--detalhe {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.eithra-financeiro-valor--neutro {
+  border-color: #e2e8ea;
+  background: #f2f5f6;
+}
+
+.eithra-transparencia-nota {
+  margin: 0.6rem 0 1rem;
+  padding: 0.65rem 0.95rem;
+  border-inline-start: 3px solid #cdd9da;
+  border-radius: 0 0.7rem 0.7rem 0;
+  background: #f6f9f9;
+  color: #4c6166;
+  font-size: 0.84rem;
+}
+
+.eithra-transparencia-nota strong {
+  color: #334d53;
+}
+
+.eithra-financeiro-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-block-start: 1rem;
+  color: #176f73;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.eithra-financeiro-link:hover,
+.eithra-financeiro-link:focus {
+  color: #10585c;
+  text-decoration: underline;
+}
+
+.eithra-financeiro-vazio {
+  margin: 1rem 0 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid #dcebea;
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 76%);
+  color: #43595e;
+}
+
+.eithra-compromisso-resumo {
+  margin-block-start: 0.8rem;
+  padding: 0.8rem 1rem;
+  border-inline-start: 3px solid #76659a;
+  border-radius: 0 0.8rem 0.8rem 0;
+  background: #f7f4fa;
+}
+
+.eithra-compromisso-resumo strong {
+  display: block;
+  margin-block-start: 0.2rem;
+  color: #47375f;
+  font-size: 1.1rem;
+  font-weight: 750;
+}
+
+.eithra-compromisso-resumo p {
+  margin: 0.2rem 0 0;
+  color: #5f596b;
+  font-size: 0.84rem;
+}
+
+.eithra-home-condominio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block: 1rem 0;
+  color: #40565b;
+  font-size: 0.88rem;
+}
+
+.eithra-home-condominio label {
+  font-weight: 700;
+}
+
+.eithra-home-condominio select {
+  min-width: min(18rem, 100%);
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  border: 1px solid #d9e4e5;
+  border-radius: 0.7rem;
+  background: #fff;
+  color: #173b43;
+}
+
+.eithra-home-condominio button {
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-radius: 0.7rem;
+  background: #176f73;
+  color: #fff;
+  font-weight: 700;
+}
+
+.eithra-transparencia .eithra-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-block-end: 1rem;
+  color: #68797d;
+  font-size: 0.88rem;
+}
+
+.eithra-transparencia .eithra-breadcrumb a {
+  color: #176f73;
+  text-decoration: none;
+}
+
+.eithra-transparencia-grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
+  gap: 1rem;
+  margin-block-start: 1rem;
+}
+
+.eithra-transparencia-secao {
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  border: 1px solid #e1e8e9;
+  border-radius: 1.15rem;
+  background: #fff;
+  box-shadow: 0 0.5rem 1.3rem rgb(28 68 71 / 4%);
+}
+
+.eithra-transparencia-secao-topo {
+  justify-content: flex-start;
+  align-items: center;
+  margin-block-end: 0.9rem;
+}
+
+.eithra-transparencia-secao-topo p {
+  margin: 0.2rem 0 0;
+  color: #68797d;
+  font-size: 0.88rem;
+}
+
+.eithra-financeiro-icone {
+  display: grid;
+  flex: 0 0 2.8rem;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 0.9rem;
+  background: #e4f4f2;
+  color: #176f73;
+  font-size: 1.5rem;
+}
+
+.eithra-financeiro-icone--lilas {
+  background: #f2edf8;
+  color: #76659a;
+}
+
+.eithra-categorias-lista {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eithra-categorias-lista li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 0.15rem;
+  border-block-start: 1px solid #edf0f0;
+}
+
+.eithra-categorias-lista li span {
+  color: #40565b;
+}
+
+.eithra-categorias-lista li strong,
+.eithra-comparacao strong {
+  color: #173b43;
+  font-weight: 750;
+  text-align: end;
+}
+
+.eithra-comparacao {
+  padding: 1rem;
+  border-radius: 0.95rem;
+  background: linear-gradient(135deg, #f3eff9, #f6fafa);
+}
+
+.eithra-comparacao > span {
+  display: block;
+  color: #627378;
+  font-size: 0.88rem;
+}
+
+.eithra-comparacao strong {
+  display: block;
+  margin-block: 0.35rem;
+  font-size: 1.25rem;
+}
+
+.eithra-comparacao p {
+  margin: 0.5rem 0 0;
+  color: #43595e;
+}
+
+.eithra-transparencia-fonte {
+  margin-block: 1rem 0;
+  color: #738286;
+  font-size: 0.8rem;
+}
+
+.eithra-financeiro-explicacao {
+  margin: 0.55rem 0 1rem;
+  color: #697a7e;
+  font-size: 0.84rem;
+}
+
+.eithra-filtros-financeiros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-block: 0 1rem;
+  color: #40565b;
+  font-size: 0.86rem;
+}
+
+.eithra-filtros-financeiros label {
+  font-weight: 700;
+}
+
+.eithra-filtros-financeiros select,
+.eithra-filtros-financeiros input {
+  min-height: 2.4rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #d9e4e5;
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #173b43;
+}
+
+.eithra-filtros-financeiros button {
+  min-height: 2.4rem;
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: #176f73;
+  color: #fff;
+  font-weight: 700;
+}
+
+.eithra-filtros-financeiros a {
+  color: #625080;
+  font-weight: 650;
+}
+
+.eithra-filtros-financeiros--itens {
+  padding-block: 0.85rem;
+  border-block: 1px solid #edf0f0;
+}
+
+.eithra-filtros-financeiros--itens input {
+  min-width: min(14rem, 100%);
+}
+
+.eithra-evolucao,
+.eithra-gastos {
+  margin-block-start: 1rem;
+}
+
+.eithra-evolucao-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block: 0.5rem 0.9rem;
+  color: #627378;
+  font-size: 0.82rem;
+}
+
+.eithra-evolucao-legenda > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.eithra-evolucao-ponto {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+}
+
+.eithra-evolucao-ponto--entrada {
+  background: #299c96;
+}
+
+.eithra-evolucao-ponto--saida {
+  background: #8874a9;
+}
+
+.eithra-evolucao-lista {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.eithra-evolucao-mes {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.65fr) minmax(8rem, 1.5fr) minmax(13rem, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.eithra-evolucao-mes-nome {
+  color: #40565b;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.eithra-evolucao-barras {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.eithra-evolucao-barra {
+  display: block;
+  min-width: 0.2rem;
+  height: 0.48rem;
+  border-radius: 99px;
+}
+
+.eithra-evolucao-barra--entrada {
+  background: #299c96;
+}
+
+.eithra-evolucao-barra--saida {
+  background: #8874a9;
+}
+
+.eithra-evolucao-valores {
+  color: #68797d;
+  font-size: 0.78rem;
+  text-align: end;
+}
+
+.eithra-detalhamento-nota {
+  margin: 0 0 0.8rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #efe3c7;
+  border-radius: 0.75rem;
+  background: #fffaf0;
+  color: #69552c;
+  font-size: 0.86rem;
+}
+
+.eithra-gastos-subtitulo {
+  margin: 0.9rem 0 0.35rem;
+  color: #334d53;
+  font-size: 0.96rem;
+  font-weight: 750;
+}
+
+.eithra-principais-gastos {
+  display: grid;
+  gap: 0;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  list-style: none;
+}
+
+.eithra-principais-gastos li,
+.eithra-gasto-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.1rem;
+  border-block-end: 1px solid #edf0f0;
+}
+
+.eithra-principais-gastos li > span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.eithra-principais-gastos strong,
+.eithra-gasto-item-principal strong {
+  color: #213f45;
+  font-size: 0.9rem;
+}
+
+.eithra-principais-gastos small {
+  color: #6e7d81;
+}
+
+.eithra-gastos-lista {
+  display: grid;
+}
+
+.eithra-gasto-item {
+  display: block;
+}
+
+.eithra-gasto-item-principal {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eithra-gasto-item-principal > span {
+  flex: 0 0 auto;
+  color: #213f45;
+  font-weight: 750;
+}
+
+.eithra-gasto-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+  margin-block-start: 0.25rem;
+  color: #6e7d81;
+  font-size: 0.78rem;
+}
+
+.eithra-categorias-lista li a {
+  color: #176f73;
+  text-decoration: none;
+}
+
+.eithra-categorias-lista li a:hover,
+.eithra-categorias-lista li a:focus {
+  text-decoration: underline;
+}
+
+@media (max-width: 767.98px) {
+  .eithra-financeiro-valores {
+    grid-template-columns: 1fr;
+  }
+
+  .eithra-financeiro-valor {
+    min-height: 4.2rem;
+  }
+
+  .eithra-transparencia-grade {
+    grid-template-columns: 1fr;
+  }
+
+  .eithra-evolucao-mes {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+    padding-block: 0.45rem;
+    border-block-end: 1px solid #edf0f0;
+  }
+
+  .eithra-evolucao-valores {
+    text-align: start;
+  }
+
+  .eithra-gasto-item-principal {
+    align-items: flex-start;
+  }
+
+  .eithra-gasto-item-principal > span {
+    font-size: 0.86rem;
   }
 }

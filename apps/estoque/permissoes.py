@@ -281,3 +281,18 @@ def pode_cancelar_compra(usuario, compra) -> bool:
     return condominios_para_gerenciar_compras(usuario).filter(
         pk=compra.condominio_id
     ).exists()
+
+
+def pode_registrar_reembolso(usuario, compra) -> bool:
+    """Só a gestão do condomínio registra que o dinheiro foi devolvido."""
+    from .constants import StatusReembolso
+
+    if not pode_ver_compra(usuario, compra):
+        return False
+    if compra.status != StatusCompra.CONFIRMADA:
+        return False
+    if compra.status_reembolso != StatusReembolso.PENDENTE:
+        return False
+    return condominios_para_gerenciar_compras(usuario).filter(
+        pk=compra.condominio_id
+    ).exists()

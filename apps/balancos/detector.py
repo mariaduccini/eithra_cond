@@ -24,8 +24,6 @@ from __future__ import annotations
 import io
 import time
 import unicodedata
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -33,7 +31,7 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from apps.balancos.constants import LayoutBalanco, StatusImportacao
-from apps.balancos.storage import ErroDeStorage, TEMPO_LIMITE_SEGUNDOS, obter_provider
+from apps.balancos.storage import ErroDeStorage, obter_provider
 
 PAGINAS_PADRAO = 15
 
@@ -215,29 +213,24 @@ def detectar_layout_do_pdf(
 
 
 def _baixar_pdf_privado(importacao, *, provider=None) -> tuple[bytes, int]:
-    """Acessa o PDF no storage privado usando signed URL curta."""
+    """Traz o PDF do storage privado pela abstracao do provedor.
+
+    O conteudo e resolvido por ``provider.baixar`` — o provedor local le do
+    disco da propria aplicacao (``MEDIA_ROOT``) e o remoto baixa por HTTP —, e
+    nao por um endereco tratado como rede. Em ambiente local ``url_assinada``
+    devolve um caminho de midia, que nunca foi endereco de rede: abri-lo como
+    HTTP era o que fazia a leitura falhar mesmo com o arquivo no disco.
+    """
     if not importacao.storage_key:
         raise ErroDeDeteccaoDeLayout("O arquivo desta importacao nao esta disponivel.")
 
     provider = provider or obter_provider()
     inicio = time.monotonic()
     try:
-        url = provider.url_assinada(
-            key=importacao.storage_key,
-            validade_segundos=int(
-                getattr(settings, "BALANCOS_URL_ACESSO_SEGUNDOS", 60) or 60
-            ),
-        )
-        requisicao = urllib.request.Request(url, headers={"Accept": "application/pdf"})
-        with urllib.request.urlopen(requisicao, timeout=TEMPO_LIMITE_SEGUNDOS) as resposta:
-            conteudo = resposta.read()
-    except urllib.error.HTTPError as erro:
+        conteudo = provider.baixar(key=importacao.storage_key)
+    except ErroDeStorage as erro:
         raise ErroDeDeteccaoDeLayout(
             "Nao foi possivel acessar o PDF desta importacao."
-        ) from erro
-    except (urllib.error.URLError, TimeoutError, OSError) as erro:
-        raise ErroDeDeteccaoDeLayout(
-            "Nao foi possivel falar com o armazenamento para ler o PDF."
         ) from erro
 
     if not conteudo:

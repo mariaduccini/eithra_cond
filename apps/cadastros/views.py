@@ -38,6 +38,7 @@ from apps.comunidade.permissoes import (
 )
 from apps.condominios import logo
 from apps.condominios import services as servicos_de_acesso
+from apps.condominios.acesso import administra_o_sistema
 from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
@@ -46,7 +47,7 @@ from apps.governanca.permissoes import (
     pode_ver_governanca,
 )
 
-from . import services
+from . import memoria, services
 from .forms import (
     AdicionarAcessoForm,
     CondominioForm,
@@ -819,6 +820,27 @@ def alternar_local(request, pk):
     return _alternar(request, local, destino="cadastros:locais", nome="Local")
 
 
+@login_required
+def local(request, pk):
+    """O que já aconteceu neste lugar, e o que continua acontecendo aqui.
+
+    A tela não é a ficha do cadastro: é a memória do lugar — o que está aberto,
+    os ativos que ficam ali, a manutenção recente, o que se repetiu e as últimas
+    provas. Nada é copiado para o local: cada bloco projeta o vínculo que o
+    domínio de origem já tem com ele.
+    """
+    base = _base_da_pagina(request)
+    registro = _obter_ou_404(
+        LocalOperacional.objects.filter(condominio__in=base["condominios"]), pk
+    )
+    contexto = {
+        **_base_da_memoria(base, registro),
+        "pode_gerenciar": pode_gerenciar_cadastros(request.user, registro.condominio),
+        "memoria": memoria.memoria_do_local(registro, request.user),
+    }
+    return render(request, "pages/cadastros/local.html", contexto)
+
+
 def _render_locais(
     request,
     *,
@@ -1042,6 +1064,27 @@ def alternar_equipamento(request, pk):
     return _alternar(
         request, equipamento, destino="cadastros:equipamentos", nome="Equipamento"
     )
+
+
+@login_required
+def equipamento(request, pk):
+    """O que já aconteceu com este equipamento, e o que o cobre hoje.
+
+    A tela é operacional, não uma ficha cadastral: identidade, local, o que está
+    aberto, quem atende, o que cobre, a manutenção, as demandas, o que se repete
+    e o que está guardado sobre ele. Nada disso é escrito aqui — cada bloco lê o
+    vínculo que o domínio de origem já tem com o equipamento.
+    """
+    base = _base_da_pagina(request)
+    registro = _obter_ou_404(
+        Equipamento.objects.filter(condominio__in=base["condominios"]), pk
+    )
+    contexto = {
+        **_base_da_memoria(base, registro),
+        "pode_gerenciar": pode_gerenciar_cadastros(request.user, registro.condominio),
+        "memoria": memoria.memoria_do_equipamento(registro, request.user),
+    }
+    return render(request, "pages/cadastros/equipamento.html", contexto)
 
 
 def _render_equipamentos(
@@ -1519,6 +1562,21 @@ def _base_da_pagina(request):
     }
 
 
+def _base_da_memoria(base, registro) -> dict:
+    """A base da tela de memória: o registro decide o condomínio em vista.
+
+    O endereço do ativo e o do lugar não carregam o condomínio escolhido: quem
+    manda é o próprio registro, achado entre os condomínios que a pessoa
+    consulta. A logo acompanha essa escolha, para a tela não mostrar a marca de
+    um condomínio junto do conteúdo de outro.
+    """
+    return {
+        **base,
+        "condominio_atual": registro.condominio,
+        "logo_do_condominio": logo.endereco(registro.condominio),
+    }
+
+
 def _item_em_edicao(request, modelo, condominios, abrir=("editar",)):
     """O registro que um modal deve abrir, quando a tela pede um.
 
@@ -1680,7 +1738,23 @@ def _foto_do_acesso(usuario) -> str:
 
 
 def _condominios_para_tela(request, condominios):
-    """Traduz os condomínios autorizados para a grade inicial do módulo."""
+    """Traduz os condominios autorizados para a grade inicial do modulo.
+
+    O administrador do sistema ja recebeu todos os condominios ativos pela
+    regra central de acesso e nao precisa de vinculo artificial por condominio.
+    As demais pessoas continuam representadas exclusivamente por seus vinculos
+    ativos.
+    """
+    if administra_o_sistema(request.user):
+        return [
+            _condominio_para_tela(
+                condominio,
+                usuario=request.user,
+                papel="Administrador do sistema",
+            )
+            for condominio in condominios.order_by("nome")
+        ]
+
     vinculos = (
         AcessoUsuarioCondominio.objects.filter(
             usuario=request.user,
@@ -1690,32 +1764,38 @@ def _condominios_para_tela(request, condominios):
         .select_related("condominio")
         .order_by("condominio__nome")
     )
-    return [_condominio_para_tela(item) for item in vinculos]
+    return [
+        _condominio_para_tela(
+            vinculo.condominio,
+            usuario=vinculo.usuario,
+            papel=vinculo.get_papel_display(),
+        )
+        for vinculo in vinculos
+    ]
 
 
-def _condominio_para_tela(vinculo) -> dict:
-    """O condomínio como a grade de cadastros precisa ler."""
-    condominio = vinculo.condominio
+def _condominio_para_tela(condominio, *, usuario, papel) -> dict:
+    """O condominio como a grade de cadastros precisa ler."""
     localizacao = ", ".join(
         trecho
         for trecho in [condominio.cidade, condominio.uf]
         if trecho
-    ) or "Localização não informada"
-    # "Pode gerenciar" na grade de condomínios é a leitura da ficha do
-    # condomínio — configuração estrutural, e não a operação do dia a dia.
-    pode_configurar = pode_configurar_condominio(vinculo.usuario, condominio)
+    ) or "Localiza??o n?o informada"
+
+    # "Pode gerenciar" na grade de condominios e a leitura da ficha do
+    # condominio ? configuracao estrutural, e nao a operacao do dia a dia.
+    pode_configurar = pode_configurar_condominio(usuario, condominio)
+
     return {
         "pk": condominio.pk,
         "nome": condominio.nome,
         "cnpj": condominio.cnpj or "",
         "localizacao": localizacao,
         "quantidade_unidades": condominio.quantidade_unidades,
-        "papel": vinculo.get_papel_display(),
+        "papel": papel,
         "pode_gerenciar": pode_configurar,
         "texto": "Ativo" if condominio.ativo else "Inativo",
         "tom": "success" if condominio.ativo else "secondary",
-        # Abrir o condomínio é a própria linha: a ficha em modal é o destino
-        # dela. O que sobra na coluna é o que a linha não faz sozinha.
         "acao_label": "Editar" if pode_configurar else "",
         "acao_icone": "bx-edit" if pode_configurar else "",
         "url": f"{reverse('cadastros:condominios')}?abrir=editar&item={condominio.pk}",

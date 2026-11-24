@@ -1,0 +1,103 @@
+{% with modelo=item.modelo %}
+  <div class="col-12 col-xl-6">
+    <article class="card h-100 eithra-modelo-preventivo">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+          <div>
+            <span class="badge bg-label-secondary mb-2">{{ modelo.categoria }}</span>
+            <h3 class="h5 mb-1">{{ modelo.titulo }}</h3>
+          </div>
+          {% if item.estado == estado_ativado %}
+            <span class="badge bg-label-success">Ativada</span>
+          {% elif item.estado == estado_nao_aplica %}
+            <span class="badge bg-label-secondary">Não se aplica</span>
+          {% elif item.rotina_existente %}
+            <span class="badge bg-label-warning">Já existe atividade</span>
+          {% else %}
+            <span class="badge bg-label-primary">Disponível</span>
+          {% endif %}
+        </div>
+
+        {% if modelo.descricao %}
+          <p class="text-body-secondary mb-2">{{ modelo.descricao }}</p>
+        {% endif %}
+        <p class="mb-2">
+          <span class="fw-medium">Frequência sugerida:</span>
+          <span>{{ modelo.periodicidade_sugerida }}</span>
+        </p>
+        {% if item.evidencias %}
+          <div class="small text-body-secondary mb-3">
+            <span class="fw-medium">Por que apareceu:</span>
+            {% for evidencia in item.evidencias %}
+              <div>{{ evidencia }}</div>
+            {% endfor %}
+          </div>
+        {% elif modelo.condicional %}
+          <p class="small text-warning-emphasis mb-3">
+            Confirme antes: {{ modelo.condicao_necessaria }}
+          </p>
+        {% endif %}
+
+        {% if modelo.observacoes %}
+          <p class="small text-body-secondary mb-3">{{ modelo.observacoes }}</p>
+        {% endif %}
+        {% if modelo.exige_fornecedor_especializado or modelo.exige_validacao_tecnica %}
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            {% if modelo.exige_fornecedor_especializado %}
+              <span class="badge bg-label-warning">Fornecedor especializado</span>
+            {% endif %}
+            {% if modelo.exige_validacao_tecnica %}
+              <span class="badge bg-label-warning">Validar frequência técnica</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <details class="small mb-3">
+          <summary class="fw-medium">Conferir checklist sugerido ({{ modelo.checklist_sugerido|length }})</summary>
+          <ul class="mt-2 mb-0 ps-4">
+            {% for tarefa in modelo.checklist_sugerido %}
+              <li>{{ tarefa }}</li>
+            {% endfor %}
+          </ul>
+        </details>
+
+        <div class="mt-auto pt-2">
+          {% if item.estado == estado_ativado and item.decisao.rotina %}
+            <a href="{% url 'rotinas:detalhe' item.decisao.rotina.pk %}" class="btn btn-label-success w-100">
+              <i class="bx bx-check me-1" aria-hidden="true"></i> Abrir atividade criada
+            </a>
+          {% elif item.estado == estado_nao_aplica %}
+            <p class="small text-body-secondary mb-2">
+              {{ item.decisao.observacao|default:"Este modelo foi dispensado para este condomínio." }}
+            </p>
+            <form method="post" action="{% url 'rotinas:reabrir_modelo_preventivo' modelo.chave %}">
+              {% csrf_token %}
+              <input type="hidden" name="condominio" value="{{ condominio.pk }}">
+              <button type="submit" class="btn btn-label-secondary w-100">Revisar novamente</button>
+            </form>
+          {% elif item.rotina_existente %}
+            <a href="{% url 'rotinas:detalhe' item.rotina_existente.pk %}" class="btn btn-label-warning w-100">
+              Conferir atividade existente
+            </a>
+          {% else %}
+            <a
+              href="{% url 'rotinas:revisar_modelo_preventivo' modelo.chave %}?condominio={{ condominio.pk }}"
+              class="btn btn-primary w-100">
+              {% if item.sugerido %}Ativar{% else %}Revisar antes de ativar{% endif %}
+            </a>
+            <details class="mt-2">
+              <summary class="btn btn-text-secondary btn-sm w-100">Não se aplica</summary>
+              <form method="post" action="{% url 'rotinas:dispensar_modelo_preventivo' modelo.chave %}" class="mt-2">
+                {% csrf_token %}
+                <input type="hidden" name="condominio" value="{{ condominio.pk }}">
+                <label class="form-label small" for="motivo-{{ modelo.chave }}">Por que não se aplica?</label>
+                <textarea id="motivo-{{ modelo.chave }}" name="observacao" class="form-control form-control-sm mb-2" rows="2" required></textarea>
+                <button type="submit" class="btn btn-label-secondary btn-sm w-100">Confirmar não se aplica</button>
+              </form>
+            </details>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+  </div>
+{% endwith %}

@@ -44,6 +44,7 @@ CAMPOS_DO_ACOMPANHAMENTO = (
     "aguardando_tipo",
     "aguardando_descricao",
     "proxima_acao",
+    "prazo_proxima_acao",
     "previsao",
     "impedimento",
     "responsavel_acompanhamento",
@@ -360,6 +361,28 @@ class HistoricoDoAcompanhamentoTests(BaseDoAcompanhamento):
         evento = self._eventos(TipoEventoDemanda.ACOMPANHAMENTO).get()
         self.assertEqual(evento.usuario, outra)
 
+    def test_prazo_da_proxima_acao_fica_rastreado_com_antes_e_depois(self):
+        # §12 — a data da próxima ação é uma decisão operacional: quem a definiu,
+        # quando e de que valor para que valor ficam na memória da demanda. Ela
+        # não é o prazo de solução, mas também precisa de rastro.
+        alvo = timezone.localdate() + timedelta(days=2)
+
+        atualizar_acompanhamento(
+            demanda=self.demanda,
+            usuario=self.gestao,
+            proxima_acao="Cobrar retorno do fornecedor",
+            prazo_proxima_acao=alvo,
+        )
+
+        evento = self._eventos(TipoEventoDemanda.ACOMPANHAMENTO).get()
+        self.assertEqual(evento.usuario, self.gestao)
+        self.assertIsNone(evento.dados_anteriores["prazo_proxima_acao"])
+        self.assertEqual(evento.dados_novos["prazo_proxima_acao"], alvo.isoformat())
+        self.assertIn(
+            f"Prazo da próxima ação: sem data → {alvo.strftime('%d/%m/%Y')}",
+            evento.descricao,
+        )
+
     def test_limpar_o_acompanhamento_nao_conclui_a_demanda(self):
         alterar_status(
             demanda=self.demanda,
@@ -449,7 +472,8 @@ class TelaDaDemandaTests(BaseDoAcompanhamento):
 
         self.assertEqual(resposta.status_code, 200)
         self.assertIn("Acompanhamento", conteudo)
-        self.assertIn("Atualizar acompanhamento", conteudo)
+        self.assertIn("Confirmar a visita técnica", conteudo)
+        self.assertNotIn("Atualizar acompanhamento", conteudo)
 
         linhas = resposta.context["demanda"]["acompanhamento"]
         self.assertEqual(
@@ -467,10 +491,11 @@ class TelaDaDemandaTests(BaseDoAcompanhamento):
         conteudo = resposta.content.decode()
 
         self.assertEqual(resposta.context["demanda"]["acompanhamento"], [])
-        # Sem acompanhamento, a tela diz isso em uma linha — e oferece a porta
-        # para preencher, em vez de gastar altura com um vazio longo.
+        # Sem acompanhamento, a tela diz isso em uma linha e mantém a edição
+        # dentro do fluxo unificado, sem uma ação paralela.
         self.assertIn("Nenhum acompanhamento definido.", conteudo)
-        self.assertIn("Atualizar acompanhamento", conteudo)
+        self.assertIn("Registrar atualização", conteudo)
+        self.assertNotIn("Atualizar acompanhamento", conteudo)
 
     def test_listagem_mostra_o_sinal_sem_abrir_coluna_nova(self):
         self._com_acompanhamento()

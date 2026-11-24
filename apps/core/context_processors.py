@@ -63,13 +63,17 @@ NAVIGATION = [
         "visivel_para": pode_ver_comunicacao_em_algum,
     },
     {
-        "label": "Rotinas",
+        # O que se repete sem depender de alguém lembrar. O rótulo fala de
+        # "atividades programadas" porque quem opera não precisa saber a
+        # diferença técnica entre rotina e preventiva: as duas chegam aqui como
+        # o que está marcado para acontecer. O endereço e o nome interno seguem
+        # sendo "rotinas" — o que mudou foi só como a porta se chama.
+        "label": "Atividades programadas",
         "view_name": "rotinas:listagem",
         "icon": "bx-repeat",
-        # O que se repete sem depender de alguém lembrar. Quem responde,
-        # supervisiona ou executa enxerga o item: a operação entra pela lista de
-        # ocorrências dela, com o conteúdo filtrado. O menu não autoriza — a
-        # view é que decide.
+        # Quem responde, supervisiona ou executa enxerga o item: a operação
+        # entra pela lista de ocorrências dela, com o conteúdo filtrado. O menu
+        # não autoriza — a view é que decide.
         "visivel_para": pode_ver_alguma_rotina,
     },
     {

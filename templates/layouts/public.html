@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% load static %}
 
-{# Tela pública e centralizada: entrada no sistema e páginas de erro. #}
+{# Tela pÃºblica e centralizada: entrada no sistema e pÃ¡ginas de erro. #}
 
 {% block extra_css %}
   <link rel="stylesheet" href="{% static 'vendor/sneat/css/page-auth.css' %}" />
@@ -14,10 +14,13 @@
         <div class="card">
           <div class="card-body">
             <div class="app-brand justify-content-center mb-4">
-              <span class="app-brand-link gap-2">
-                {% include "components/brand.html" with brand_text_class="app-brand-text fw-bold fs-3" %}
-              </span>
-            </div>
+  <span class="app-brand-link justify-content-center w-100">
+    <img
+      src="{% static 'img/logorveteladelogin.png' %}"
+      alt="Rio Vermelho Exclusive"
+      class="eithra-brand-implantacao-login">
+  </span>
+</div>
 
             {% include "components/messages.html" %}
 
@@ -33,3 +36,4 @@
   <script src="{% static 'vendor/sneat/js/popper.js' %}"></script>
   <script src="{% static 'vendor/sneat/js/bootstrap.js' %}"></script>
 {% endblock %}
+

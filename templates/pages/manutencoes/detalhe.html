@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {# A ocorrência preventiva do começo ao fim: o que ela é, o que já foi feito, as
    provas, a conferência e só então a conclusão. Cada estado oferece uma única
@@ -8,125 +9,79 @@
 {% block title %}{{ manutencao.titulo }} · Manutenções · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
-    <div>
-      <a
-        href="{% url 'manutencoes:listagem' %}"
-        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
-        <i class="bx bx-chevron-left" aria-hidden="true"></i> Manutenções
-      </a>
-      <h1 class="h4 mb-1">
-        {{ manutencao.titulo }}
-        <span class="text-body-secondary fs-6">· {{ manutencao.referencia }}</span>
-      </h1>
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <span class="badge bg-label-{{ manutencao.status_tom }}">{{ manutencao.status }}</span>
-        <span class="badge bg-label-{{ manutencao.prioridade_tom }}">{{ manutencao.prioridade }}</span>
-        <span class="badge bg-label-secondary">{{ manutencao.tipo }}</span>
-        {% if manutencao.exige_conferencia %}
-          <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
-        {% endif %}
-        <span class="text-body-secondary small">{{ manutencao.condominio }}</span>
-      </div>
-      <div class="text-body-secondary small mt-2">
-        {% if manutencao.local %}
-          <span class="me-3"><i class="bx bx-map-pin" aria-hidden="true"></i> {{ manutencao.local }}</span>
-        {% endif %}
-        {% if manutencao.equipamento %}
-          <span class="me-3"><i class="bx bx-cog" aria-hidden="true"></i> {{ manutencao.equipamento }}</span>
-        {% endif %}
-        {% if manutencao.fornecedor %}
-          <span class="me-3"><i class="bx bx-buildings" aria-hidden="true"></i> {{ manutencao.fornecedor }}</span>
-        {% endif %}
-        <span><i class="bx bx-user" aria-hidden="true"></i> {{ manutencao.responsavel }}</span>
+  {# Cabeçalho: identidade, chips de contexto e ações operacionais. #}
+  <div class="eithra-detalhe-topo">
+    <div class="d-flex align-items-start gap-3">
+      <span class="eithra-detalhe-icone" aria-hidden="true"><i class="bx bx-wrench"></i></span>
+      <div class="eithra-detalhe-identidade">
+        <a href="{% url 'manutencoes:listagem' %}" class="eithra-detalhe-voltar">
+          <i class="bx bx-chevron-left" aria-hidden="true"></i> Manutenções
+        </a>
+        <h1 class="eithra-detalhe-titulo">{{ manutencao.titulo }}</h1>
+        {% if manutencao.referencia %}<span class="eithra-detalhe-codigo">Cód. {{ manutencao.referencia }}</span>{% endif %}
+        <div class="eithra-chips">
+          <span class="eithra-chip eithra-chip--{% if manutencao.status_tom == 'success' %}sucesso{% elif manutencao.status_tom == 'warning' or manutencao.status_tom == 'danger' %}alerta{% elif manutencao.status_tom == 'info' %}teal{% else %}neutro{% endif %}">
+            <i class="bx bx-circle" aria-hidden="true"></i>{{ manutencao.status }}
+          </span>
+          <span class="eithra-chip eithra-chip--{% if manutencao.prioridade_tom == 'warning' or manutencao.prioridade_tom == 'danger' %}alerta{% elif manutencao.prioridade_tom == 'info' %}teal{% else %}neutro{% endif %}">
+            <i class="bx bx-flag" aria-hidden="true"></i>Prioridade: {{ manutencao.prioridade }}
+          </span>
+          <span class="eithra-chip eithra-chip--lilas"><i class="bx bx-cog" aria-hidden="true"></i>Tipo: {{ manutencao.tipo }}</span>
+          {% if manutencao.local %}
+            <span class="eithra-chip eithra-chip--neutro"><i class="bx bx-map-pin" aria-hidden="true"></i>{{ manutencao.local }}</span>
+          {% endif %}
+        </div>
       </div>
     </div>
 
-    {# A ação primária muda com o estado da ocorrência: registrar a execução
-       enquanto ela é devida, conferir enquanto está pendente, concluir quando o
-       domínio libera. As demais são apoio. #}
-    <div class="d-flex flex-wrap align-items-center gap-2">
-      {% if pode_registrar_execucao %}
-        <button
-          type="button"
-          class="btn btn-primary"
-          data-bs-toggle="modal"
-          data-bs-target="#registrar-execucao">
+    <div class="eithra-detalhe-acoes">
+      {% if pode_conferir %}
+        <button type="button" class="btn eithra-btn-primario" data-bs-toggle="modal" data-bs-target="#conferir-execucao">
+          <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir execução
+        </button>
+      {% elif pode_registrar_execucao %}
+        <button type="button" class="btn eithra-btn-primario" data-bs-toggle="modal" data-bs-target="#registrar-execucao">
           <i class="bx bx-play-circle me-1" aria-hidden="true"></i>
           {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
-        </button>
-      {% elif pode_conferir %}
-        <button
-          type="button"
-          class="btn btn-primary"
-          data-bs-toggle="modal"
-          data-bs-target="#conferir-execucao">
-          <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir execução
         </button>
       {% endif %}
 
       {% if pode_anexar_evidencia %}
-        <button
-          type="button"
-          class="btn btn-label-secondary"
-          data-bs-toggle="modal"
-          data-bs-target="#anexar-evidencia">
-          <i class="bx bx-paperclip me-1" aria-hidden="true"></i> Anexar evidência
+        <button type="button" class="btn eithra-btn-secundario" data-bs-toggle="modal" data-bs-target="#anexar-evidencia">
+          <i class="bx bx-paperclip me-1" aria-hidden="true"></i>Adicionar evidência
         </button>
       {% endif %}
-      {% if pode_concluir %}
-        <button
-          type="button"
-          class="btn btn-label-success"
-          data-bs-toggle="modal"
-          data-bs-target="#concluir-manutencao">
-          <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Concluir
-        </button>
-      {% endif %}
-      {% if pode_alterar_status %}
-        <button
-          type="button"
-          class="btn btn-label-secondary"
-          data-bs-toggle="modal"
-          data-bs-target="#mudar-situacao">
-          <i class="bx bx-transfer me-1" aria-hidden="true"></i> Mudar situação
-        </button>
-      {% endif %}
-      {% if pode_editar %}
-        <button
-          type="button"
-          class="btn btn-icon btn-text-primary rounded-pill"
-          data-bs-toggle="modal"
-          data-bs-target="#editar-manutencao"
-          title="Editar manutenção"
-          aria-label="Editar manutenção">
-          <i class="bx bx-pencil" aria-hidden="true"></i>
-        </button>
-      {% endif %}
-      {% if pode_cancelar and manutencao.status_valor != 'cancelada' %}
-        <button
-          type="button"
-          class="btn btn-label-danger"
-          data-bs-toggle="modal"
-          data-bs-target="#cancelar-manutencao">
-          Cancelar manutenção
-        </button>
-      {% endif %}
-      {# Avisar os moradores é uma capacidade à parte desta ocorrência: a manutenção
-         é a origem do comunicado, e quem escreve o aviso é quem responde pelo
-         condomínio. O comunicado nasce apontando para esta manutenção. #}
-      {% if pode_gerar_comunicado %}
-        <a
-          href="{% url 'comunicacao:criar' %}?manutencao={{ manutencao.pk }}"
-          class="btn btn-label-primary"
-          title="Escrever um comunicado a partir desta manutenção">
-          <i class="bx bx-megaphone me-1" aria-hidden="true"></i> Comunicação
-        </a>
+
+      {% if pode_anexar_evidencia or pode_concluir or pode_alterar_status or pode_editar or pode_cancelar or pode_gerar_comunicado %}
+        <div class="dropdown">
+          <button class="btn eithra-btn-secundario dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            Mais ações
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            {% if pode_concluir %}
+              <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#concluir-manutencao"><i class="bx bx-check-circle me-2" aria-hidden="true"></i>Concluir</button></li>
+            {% endif %}
+            {% if pode_alterar_status %}
+              <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#mudar-situacao"><i class="bx bx-transfer me-2" aria-hidden="true"></i>Mudar situação</button></li>
+            {% endif %}
+            {% if pode_editar %}
+              <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#editar-manutencao"><i class="bx bx-pencil me-2" aria-hidden="true"></i>Editar manutenção</button></li>
+            {% endif %}
+            {% if pode_cancelar and manutencao.status_valor != 'cancelada' %}
+              <li><button type="button" class="dropdown-item text-danger" data-bs-toggle="modal" data-bs-target="#cancelar-manutencao">Cancelar manutenção</button></li>
+            {% endif %}
+            {% if pode_gerar_comunicado %}
+              <li><a href="{% url 'comunicacao:criar' %}?manutencao={{ manutencao.pk }}" class="dropdown-item"><i class="bx bx-megaphone me-2" aria-hidden="true"></i>Comunicação</a></li>
+            {% endif %}
+          </ul>
+        </div>
       {% endif %}
     </div>
   </div>
 
-  {% if manutencao.atencao %}
+  {% comment %}Atenção genérica: atraso, vencimento hoje, etc. O caso "sem
+  responsável" tem banner próprio logo abaixo, então não se repete aqui.{% endcomment %}
+  {% if manutencao.atencao and manutencao.atencao.titulo != "Sem responsável" %}
     <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
       <i class="bx bx-bell mt-1" aria-hidden="true"></i>
       <div>
@@ -146,115 +101,248 @@
     </div>
   {% endif %}
 
-  {# -- Execução ------------------------------------------------------------- #}
-  <div class="card mb-4">
-    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <h2 class="h6 mb-0">Execução</h2>
-      {% if manutencao.tem_execucao and manutencao.exige_conferencia %}
-        <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
-      {% endif %}
-    </div>
-    <div class="card-body">
-      {% if manutencao.tem_execucao %}
-        <div class="d-flex justify-content-between gap-3 py-1">
-          <span class="text-body-secondary">Executado em</span>
-          <span class="fw-medium text-end">{{ manutencao.execucao }}</span>
-        </div>
-        {% if manutencao.servico %}
-          <div class="text-body-secondary small mt-3 mb-1">O que foi executado</div>
-          <p class="mb-0">{{ manutencao.servico|linebreaksbr }}</p>
-        {% endif %}
-      {% else %}
-        <p class="text-body-secondary mb-0">
-          O serviço ainda não foi registrado como executado. Registrar a execução não conclui a manutenção.
-        </p>
-      {% endif %}
-
-      {% if manutencao.conferencia_reprovada %}
-        <div class="alert alert-danger mt-3 mb-0" role="alert">
-          <div class="fw-medium">Correção necessária</div>
-          <div class="small">A conferência apontou o que precisa ser refeito. Registre uma nova execução depois da correção.</div>
-          {% if manutencao.nao_conformes %}
-            <ul class="mb-0 mt-2 small">
-              {% for item in manutencao.nao_conformes %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-        </div>
-      {% endif %}
-
-      {% if manutencao.conferencia_aprovada %}
-        <div class="alert alert-success mt-3 mb-0 small" role="alert">
-          Conferência aprovada — falta concluir a manutenção.
-        </div>
-      {% endif %}
-
-      {% if pode_registrar_execucao %}
-        <div class="mt-3">
-          <button
-            type="button"
-            class="btn btn-primary"
-            data-bs-toggle="modal"
-            data-bs-target="#registrar-execucao">
-            {% if manutencao.conferencia_reprovada %}Registrar nova execução{% else %}Registrar execução{% endif %}
-          </button>
-        </div>
-      {% endif %}
-    </div>
-  </div>
-
-  {# -- Evidências ----------------------------------------------------------- #}
-  <div class="card mb-4">
-    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <h2 class="h6 mb-0">Evidências da execução</h2>
-      {% if pode_anexar_evidencia %}
-        <button
-          type="button"
-          class="btn btn-sm btn-label-primary"
-          data-bs-toggle="modal"
-          data-bs-target="#anexar-evidencia">
-          <i class="bx bx-paperclip me-1" aria-hidden="true"></i> Anexar
+  {% comment %}Banner de responsável: quando ninguém cuida, a manutenção precisa de
+  alguém. O botão abre a edição para definir.{% endcomment %}
+  {% if not manutencao.responsavel or manutencao.responsavel == "Sem responsável" %}
+    <div class="eithra-alerta-banner">
+      <i class="bx bx-error-circle eithra-alerta-banner-icone" aria-hidden="true"></i>
+      <div class="eithra-alerta-banner-texto">
+        <p class="eithra-alerta-banner-titulo">Sem responsável</p>
+        <p class="eithra-alerta-banner-sub">Defina um responsável para a manutenção.</p>
+      </div>
+      {% if pode_editar %}
+        <button type="button" class="btn eithra-btn-secundario btn-sm" data-bs-toggle="modal" data-bs-target="#editar-manutencao">
+          <i class="bx bx-user-plus me-1" aria-hidden="true"></i>Definir responsável
         </button>
       {% endif %}
     </div>
-    {% if manutencao.evidencias %}
-      <ul class="list-group list-group-flush">
-        {% for evidencia in manutencao.evidencias %}
-          <li class="list-group-item d-flex align-items-center justify-content-between gap-3">
-            <div class="min-w-0">
-              <div class="fw-medium text-truncate">{{ evidencia.nome }}</div>
-              <div class="text-body-secondary small">
-                {{ evidencia.tipo }} · {{ evidencia.momento }} · {{ evidencia.enviada_por }}
+  {% endif %}
+
+  {# Primeira linha: resumo, execução e histórico. #}
+  <div class="row g-4 mb-4">
+    <div class="col-12 col-lg-5">
+      <section class="eithra-cartao h-100">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-file" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Resumo da manutenção</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          {% if manutencao.problema %}
+            <p class="mb-3">{{ manutencao.problema|linebreaksbr }}</p>
+          {% endif %}
+          <div class="eithra-info-grid">
+            {% if manutencao.fornecedor %}
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-buildings" aria-hidden="true"></i>Fornecedor</span>
+                <div class="eithra-info-valor">{{ manutencao.fornecedor }}</div>
+              </div>
+            {% endif %}
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-user" aria-hidden="true"></i>Responsável</span>
+              <div class="eithra-info-valor">{{ manutencao.responsavel }}</div>
+            </div>
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-calendar" aria-hidden="true"></i>Previsão</span>
+              <div class="eithra-info-valor">
+                {{ manutencao.previsao }}
+                {% if manutencao.previsao_situacao %}
+                  <span class="eithra-chip eithra-chip--{% if manutencao.previsao_tom == 'warning' or manutencao.previsao_tom == 'danger' %}alerta{% elif manutencao.previsao_tom == 'success' %}sucesso{% else %}neutro{% endif %} mt-1">{{ manutencao.previsao_situacao }}</span>
+                {% endif %}
               </div>
             </div>
-            <a
-              href="{{ evidencia.url }}"
-              class="btn btn-sm btn-label-primary flex-shrink-0"
-              target="_blank"
-              rel="noopener">
-              <i class="bx bx-show" aria-hidden="true"></i> Ver
-            </a>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      {% include "components/state.html" with state_icon="bx-paperclip" state_title="Sem evidências ainda" state_message="Fotos, vídeos e PDF do serviço aparecem aqui. Anexar não decide a conferência." %}
-    {% endif %}
+            {% if manutencao.local %}
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-map-pin" aria-hidden="true"></i>Local</span>
+                <div class="eithra-info-valor">{{ manutencao.local }}</div>
+              </div>
+            {% endif %}
+            {% if manutencao.equipamento %}
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-cog" aria-hidden="true"></i>Equipamento</span>
+                <div class="eithra-info-valor">{{ manutencao.equipamento }}</div>
+              </div>
+            {% endif %}
+          </div>
+          {% if manutencao.demanda_origem %}
+            <div class="small text-body-secondary mt-3">
+              Veio da demanda
+              <a href="{% url 'demandas:detalhe' manutencao.demanda_origem_pk %}" class="fw-medium text-decoration-none">«{{ manutencao.demanda_origem }}»</a>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <section class="eithra-cartao h-100">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-play-circle" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Execução</h2>
+          {% if manutencao.tem_execucao and manutencao.exige_conferencia %}
+            <span class="badge bg-label-{{ manutencao.conferencia_tom }} ms-auto">{{ manutencao.conferencia }}</span>
+          {% endif %}
+        </div>
+        <div class="eithra-cartao-corpo">
+          {% if manutencao.tem_execucao %}
+            <div class="text-body-secondary small">Executado em</div>
+            <div class="fw-medium mb-3">{{ manutencao.execucao }}</div>
+            {% if manutencao.servico %}
+              <div class="text-body-secondary small mb-1">O que foi executado</div>
+              <p class="mb-0">{{ manutencao.servico|linebreaksbr }}</p>
+            {% endif %}
+          {% else %}
+            <p class="text-body-secondary mb-3">
+              O serviço ainda não foi registrado como executado.
+            </p>
+            {% if pode_registrar_execucao %}
+              <button type="button" class="btn eithra-btn-primario" data-bs-toggle="modal" data-bs-target="#registrar-execucao">
+                <i class="bx bx-play-circle me-1" aria-hidden="true"></i>Registrar execução
+              </button>
+            {% endif %}
+          {% endif %}
+
+          {% if manutencao.conferencia_reprovada %}
+            <div class="alert alert-danger mt-3 mb-0" role="alert">
+              <div class="fw-medium">Correção necessária</div>
+              <div class="small">A conferência apontou o que precisa ser refeito.</div>
+              {% if manutencao.nao_conformes %}
+                <ul class="mb-0 mt-2 small">
+                  {% for item in manutencao.nao_conformes %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if manutencao.conferencia_aprovada %}
+            <div class="alert alert-success mt-3 mb-0 small" role="alert">
+              Conferência aprovada — falta concluir a manutenção.
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-12 col-lg-3">
+      <section class="eithra-cartao h-100">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-history" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Histórico</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          {% if historico %}
+            <ul class="eithra-timeline">
+              {% for evento in historico %}
+                <li class="eithra-timeline-item">
+                  <span class="eithra-timeline-marcador eithra-timeline-marcador--{% if forloop.first %}sucesso{% else %}neutro{% endif %}" aria-hidden="true"></span>
+                  <div class="eithra-timeline-corpo">
+                    <div class="eithra-timeline-topo">
+                      <h3 class="eithra-timeline-titulo">{{ evento.tipo }}</h3>
+                      <span class="eithra-timeline-momento">{{ evento.momento }}</span>
+                    </div>
+                    {% if evento.descricao %}
+                      <p class="eithra-timeline-descricao">{{ evento.descricao }}</p>
+                    {% endif %}
+                    {% if evento.quem %}
+                      <p class="eithra-timeline-autor">{{ evento.quem }}</p>
+                    {% endif %}
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-body-secondary mb-0"><i class="bx bx-history me-1" aria-hidden="true"></i>O que acontecer com esta manutenção aparece aqui.</p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
   </div>
 
-  {# -- Conferência ---------------------------------------------------------- #}
+  {# Segunda linha: evidências e custos. #}
+  <div class="row g-4 mb-4">
+    <div class="col-12 col-lg-7">
+      <section class="eithra-cartao h-100">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-image" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Evidências</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          {% if manutencao.evidencias %}
+            <div class="eithra-evidencias-grid">
+              {% for evidencia in manutencao.evidencias %}
+                <a href="{{ evidencia.url }}" class="eithra-evidencia-card" target="_blank" rel="noopener" title="{{ evidencia.nome }}">
+                  {% if evidencia.tipo == 'imagem' %}
+                    <img src="{{ evidencia.url }}" alt="{{ evidencia.nome }}" loading="lazy">
+                  {% else %}
+                    <div class="d-flex flex-column align-items-center justify-content-center h-100 text-center p-2">
+                      <i class="bx bx-file text-body-secondary" style="font-size: 2rem;"></i>
+                      <span class="small text-body-secondary text-truncate w-100">{{ evidencia.nome }}</span>
+                    </div>
+                  {% endif %}
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="eithra-evidencia-card eithra-evidencia-card--vazio">
+              <i class="bx bx-paperclip" aria-hidden="true"></i>
+              <span class="small">Sem evidências ainda</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="col-12 col-lg-5">
+      <section class="eithra-cartao h-100">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-wallet" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Custos</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          <dl class="eithra-vg-info mb-0">
+            <div class="eithra-vg-par">
+              <dt>Custo previsto</dt>
+              <dd>{{ manutencao.custo_previsto }}</dd>
+            </div>
+            <div class="eithra-vg-par">
+              <dt>Custo real</dt>
+              <dd>{{ manutencao.custo_real }}</dd>
+            </div>
+            {% if manutencao.inicio %}
+              <div class="eithra-vg-par">
+                <dt>Iniciada em</dt>
+                <dd>{{ manutencao.inicio }}</dd>
+              </div>
+            {% endif %}
+            {% if manutencao.conclusao %}
+              <div class="eithra-vg-par">
+                <dt>Concluída em</dt>
+                <dd>{{ manutencao.conclusao }}</dd>
+              </div>
+            {% endif %}
+          </dl>
+          {% if manutencao.criada_por %}
+            <p class="small text-body-secondary mt-3 mb-0">Registrada por {{ manutencao.criada_por }} em {{ manutencao.criada_em }}</p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+  </div>
+
+  {# Conferência: só aparece quando a manutenção exige. #}
   {% if manutencao.exige_conferencia %}
-    <div class="card mb-4">
-      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <h2 class="h6 mb-0">Conferência</h2>
-        <span class="badge bg-label-{{ manutencao.conferencia_tom }}">{{ manutencao.conferencia }}</span>
+    <section class="eithra-cartao mb-4">
+      <div class="eithra-cartao-cabecalho">
+        <i class="bx bx-check-shield" aria-hidden="true"></i>
+        <h2 class="eithra-cartao-titulo">Conferência</h2>
+        <span class="badge bg-label-{{ manutencao.conferencia_tom }} ms-auto">{{ manutencao.conferencia }}</span>
       </div>
-      <div class="card-body">
+      <div class="eithra-cartao-corpo eithra-cartao-corpo--sem-padding">
         {% if manutencao.tem_criterios %}
           <ul class="list-unstyled mb-0">
             {% for criterio in manutencao.criterios %}
-              <li class="d-flex align-items-start justify-content-between gap-3 py-2{% if not forloop.last %} border-bottom{% endif %}">
+              <li class="d-flex align-items-start justify-content-between gap-3 px-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
                 <div>
                   <div>{{ criterio.descricao }}</div>
                   {% if criterio.obrigatorio %}
@@ -269,143 +357,31 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="text-body-secondary mb-0">Esta ocorrência não tem itens de conferência registrados.</p>
+          <p class="text-body-secondary px-4 py-3 mb-0">Esta ocorrência não tem itens de conferência registrados.</p>
         {% endif %}
-
-        {% if pode_conferir %}
-          <div class="mt-3">
-            <button
-              type="button"
-              class="btn btn-primary"
-              data-bs-toggle="modal"
-              data-bs-target="#conferir-execucao">
-              <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir execução
-            </button>
-          </div>
-        {% elif not manutencao.tem_execucao %}
-          <p class="text-body-secondary mt-3 mb-0">
-            Aguardando registro da execução. A conferência olha o que foi entregue, e só depois que a execução é registrada.
+        {% if not manutencao.tem_execucao %}
+          <p class="text-body-secondary px-4 pb-3 mb-0">
+            Aguardando registro da execução.
           </p>
         {% endif %}
       </div>
-    </div>
+    </section>
   {% endif %}
 
-  <div class="row g-4">
-    <div class="col-12 col-lg-5">
-      <div class="card h-100">
-        <div class="card-header">
-          <h2 class="h6 mb-0">A manutenção</h2>
-        </div>
-        <div class="card-body">
-          {% if manutencao.problema %}
-            <p class="mb-4">{{ manutencao.problema|linebreaksbr }}</p>
+  {% if pode_administrar and manutencao.criada_por %}
+    <div class="d-flex justify-content-end mb-4">
+      <form method="post" action="{% url 'manutencoes:alternar_ativo' manutencao.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-text-secondary btn-sm">
+          {% if manutencao.ativo %}
+            <i class="bx bx-block me-1" aria-hidden="true"></i> Retirar da operação
+          {% else %}
+            <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Devolver à operação
           {% endif %}
-
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Responsável</span>
-            <span class="fw-medium text-end">{{ manutencao.responsavel }}</span>
-          </div>
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Previsão</span>
-            <span class="text-end">
-              {{ manutencao.previsao }}
-              {% if manutencao.previsao_situacao %}
-                <span class="badge bg-label-{{ manutencao.previsao_tom }} ms-1">{{ manutencao.previsao_situacao }}</span>
-              {% endif %}
-            </span>
-          </div>
-          {% if manutencao.local %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Local</span>
-              <span class="text-end">{{ manutencao.local }}</span>
-            </div>
-          {% endif %}
-          {% if manutencao.equipamento %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Equipamento</span>
-              <span class="text-end">{{ manutencao.equipamento }}</span>
-            </div>
-          {% endif %}
-          {% if manutencao.fornecedor %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Fornecedor</span>
-              <span class="text-end">{{ manutencao.fornecedor }}</span>
-            </div>
-          {% endif %}
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Custo previsto</span>
-            <span class="text-end">{{ manutencao.custo_previsto }}</span>
-          </div>
-          <div class="d-flex justify-content-between gap-3 py-1">
-            <span class="text-body-secondary">Custo real</span>
-            <span class="text-end">{{ manutencao.custo_real }}</span>
-          </div>
-          {% if manutencao.inicio %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Iniciada em</span>
-              <span class="text-end">{{ manutencao.inicio }}</span>
-            </div>
-          {% endif %}
-          {% if manutencao.conclusao %}
-            <div class="d-flex justify-content-between gap-3 py-1">
-              <span class="text-body-secondary">Concluída em</span>
-              <span class="text-end">{{ manutencao.conclusao }}</span>
-            </div>
-          {% endif %}
-          {% if manutencao.demanda_origem %}
-            <hr>
-            <div class="text-body-secondary small">
-              Veio da demanda
-              <a href="{% url 'demandas:detalhe' manutencao.demanda_origem_pk %}" class="fw-medium text-decoration-none">
-                «{{ manutencao.demanda_origem }}»</a>
-            </div>
-          {% endif %}
-        </div>
-        <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-          <span class="text-body-secondary small">
-            Registrada por {{ manutencao.criada_por }} em {{ manutencao.criada_em }}
-          </span>
-          {% if pode_administrar %}
-            <form method="post" action="{% url 'manutencoes:alternar_ativo' manutencao.pk %}">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-text-secondary btn-sm">
-                {% if manutencao.ativo %}
-                  <i class="bx bx-block me-1" aria-hidden="true"></i> Retirar da operação
-                {% else %}
-                  <i class="bx bx-check-circle me-1" aria-hidden="true"></i> Devolver à operação
-                {% endif %}
-              </button>
-            </form>
-          {% endif %}
-        </div>
-      </div>
+        </button>
+      </form>
     </div>
-
-    <div class="col-12 col-lg-7">
-      <div class="card h-100">
-        <div class="card-header">
-          <h2 class="h6 mb-0">Histórico</h2>
-        </div>
-        {% if historico %}
-          <ul class="list-group list-group-flush">
-            {% for evento in historico %}
-              <li class="list-group-item">
-                <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
-                  <span class="fw-medium">{{ evento.tipo }}</span>
-                  <span class="text-body-secondary small">{{ evento.momento }}</span>
-                </div>
-                <p class="mb-0">{{ evento.descricao }}</p>
-                <div class="text-body-secondary small">{{ evento.quem }}</div>
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          {% include "components/state.html" with state_icon="bx-history" state_title="Sem histórico ainda" state_message="O que acontecer com esta manutenção aparece aqui." %}
-        {% endif %}
-      </div>
-    </div>
-  </div>
+  {% endif %}
 
   {% if pode_registrar_execucao %}
     <div
@@ -431,7 +407,15 @@
               Registrar a execução não conclui a manutenção: a conclusão é uma decisão à parte.
             </p>
             {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.data_execucao %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico classe="mb-0" %}
+            {% comment %}O que foi feito é texto livre: escrever e falar são a mesma
+            coisa dita de dois jeitos — a fala só produz o texto deste campo.{% endcomment %}
+            {% if voz_disponivel %}
+              {% url 'demandas:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico voz_url=url_da_transcricao classe="mb-0" %}
+              <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico classe="mb-0" %}
+            {% endif %}
           </div>
 
           <div class="modal-footer">
@@ -547,8 +531,17 @@
               {% endfor %}
             {% endif %}
 
-            {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao classe="mb-0" %}
+            {% comment %}O parecer é texto livre — motivo e observação se escrevem
+            ou se ditam, e a fala só preenche o campo que ela alimenta.{% endcomment %}
+            {% if voz_disponivel %}
+              {% url 'demandas:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo voz_url=url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao voz_url=url_da_transcricao classe="mb-0" %}
+              <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao classe="mb-0" %}
+            {% endif %}
           </div>
 
           <div class="modal-footer">
@@ -776,15 +769,16 @@
               {% endfor %}
             </div>
 
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_conclusao.descricao_servico.id_for_label }}">
-                {{ formulario_conclusao.descricao_servico.label }}
-              </label>
-              {{ formulario_conclusao.descricao_servico }}
-              {% for erro in formulario_conclusao.descricao_servico.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
+            {% comment %}O serviço realizado é texto livre: quem conclui escreve — ou
+            fala, e a fala vira o texto deste campo. A conclusão continua sendo
+            uma decisão à parte, confirmada no botão.{% endcomment %}
+            {% if voz_disponivel %}
+              {% url 'demandas:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.descricao_servico voz_url=url_da_transcricao %}
+              <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.descricao_servico %}
+            {% endif %}
 
             <div class="mb-0">
               <label class="form-label" for="{{ formulario_conclusao.custo_real.id_for_label }}">
@@ -829,15 +823,15 @@
             <p class="text-body-secondary">
               Cancelar encerra esta manutenção sem que o serviço aconteça. O motivo fica guardado no histórico.
             </p>
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_cancelamento.motivo.id_for_label }}">
-                {{ formulario_cancelamento.motivo.label }}
-              </label>
-              {{ formulario_cancelamento.motivo }}
-              {% for erro in formulario_cancelamento.motivo.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
+            {% comment %}O motivo é texto livre: pode ser escrito ou ditado, e a fala
+            só preenche este campo — cancelar continua exigindo o clique.{% endcomment %}
+            {% if voz_disponivel %}
+              {% url 'demandas:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_cancelamento.motivo voz_url=url_da_transcricao classe="mb-0" %}
+              <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_cancelamento.motivo classe="mb-0" %}
+            {% endif %}
           </div>
 
           <div class="modal-footer">
@@ -849,5 +843,15 @@
         </form>
       </div>
     </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  {% comment %}O controlador de voz só é carregado quando há para onde transcrever: sem
+  serviço configurado não existe botão, e não faz sentido baixar código para um
+  botão que não está na tela.{% endcomment %}
+  {% if voz_disponivel %}
+    <script src="{% static 'js/eithra-ditar.js' %}"></script>
   {% endif %}
 {% endblock %}

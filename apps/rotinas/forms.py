@@ -337,6 +337,59 @@ class RotinaForm(forms.Form):
         return dados
 
 
+class AtivacaoModeloForm(RotinaForm):
+    """Revisão humana das escolhas antes de criar uma atividade do modelo."""
+
+    execucao_unica = forms.BooleanField(
+        label="Criar apenas uma ocorrência, sem repetição",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    confirmar_frequencia = forms.BooleanField(
+        label="Revisei e confirmei a frequência ou ocorrência única para este condomínio",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    confirmar_condicao = forms.BooleanField(
+        label="Confirmo que a estrutura indicada existe no condomínio",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    confirmar_fornecedor = forms.BooleanField(
+        label="Vou confirmar o fornecedor especializado antes da execução",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    confirmar_validacao_tecnica = forms.BooleanField(
+        label="Confirmei a frequência com profissional ou documentação técnica",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def __init__(self, *args, modelo, **kwargs):
+        self.modelo = modelo
+        super().__init__(*args, **kwargs)
+        if not modelo.periodicidade_tipo:
+            campo = self.fields["periodicidade_tipo"]
+            campo.required = False
+            campo.choices = [("", "Escolha uma frequência"), *campo.choices]
+        self.fields["confirmar_condicao"].required = modelo.condicional
+        self.fields["confirmar_fornecedor"].required = (
+            modelo.exige_fornecedor_especializado
+        )
+        self.fields["confirmar_validacao_tecnica"].required = (
+            modelo.exige_validacao_tecnica
+        )
+
+    def clean(self):
+        dados = super().clean()
+        if not dados.get("execucao_unica") and not dados.get("periodicidade_tipo"):
+            self.add_error(
+                "periodicidade_tipo",
+                "Escolha uma frequência ou crie apenas uma ocorrência.",
+            )
+        return dados
+
+
 class ChecklistForm(forms.Form):
     """Cria ou edita um modelo de checklist do condomínio.
 

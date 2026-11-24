@@ -422,6 +422,22 @@ class AcessoPortaria(models.Model):
         default="",
         help_text="Como a entrega deve ser tratada no destino.",
     )
+    # Referência da foto da chegada no armazenamento privado. É evidência
+    # opcional: sem foto, todos estes campos ficam vazios. Guarda-se a
+    # referência do objeto — nunca URL pública nem o arquivo em disco local.
+    foto_storage_provider = models.CharField(
+        "Provedor da foto", max_length=50, blank=True, default=""
+    )
+    foto_storage_bucket = models.CharField(
+        "Local da foto", max_length=150, blank=True, default=""
+    )
+    foto_storage_key = models.CharField(
+        "Referência da foto", max_length=500, blank=True, default=""
+    )
+    foto_mime_type = models.CharField(
+        "Tipo da foto", max_length=120, blank=True, default=""
+    )
+    foto_tamanho_bytes = models.PositiveBigIntegerField("Tamanho da foto", default=0)
     chave_presenca = models.CharField(
         "Chave da presença",
         max_length=64,

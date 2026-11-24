@@ -1,0 +1,229 @@
+{% extends "layouts/app.html" %}
+
+{# O que já aconteceu neste lugar. A tela abre pelo que pede resposta — o que
+   está aberto, os ativos que ficam aqui, a manutenção recente, o que se repete,
+   as últimas provas —, e só depois mostra o que o lugar é. Nada é copiado para
+   o local: cada bloco projeta o vínculo que o domínio de origem já tem com ele. #}
+
+{% block title %}{{ memoria.local.nome }} · Locais · Eithra{% endblock %}
+
+{% block content %}
+  <div class="eithra-detail-header mb-3">
+    <a
+      href="{% url 'cadastros:locais' %}?condominio={{ condominio_atual.pk }}"
+      class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+      <i class="bx bx-chevron-left" aria-hidden="true"></i> Locais
+    </a>
+    <div class="text-body-secondary small">Local</div>
+    <h1 class="h4 mb-1">{{ memoria.local.nome }}</h1>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge bg-label-{{ memoria.local.situacao.tom }}">{{ memoria.local.situacao.texto }}</span>
+      {% if memoria.local.tipo %}
+        <span class="badge bg-label-secondary">{{ memoria.local.tipo }}</span>
+      {% endif %}
+      <span class="text-body-secondary small">{{ condominio_atual.nome }}</span>
+    </div>
+    {% if pode_gerenciar %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <a
+          class="btn btn-label-secondary"
+          href="{% url 'cadastros:locais' %}?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ memoria.local.pk }}">
+          <i class="bx bx-pencil me-1" aria-hidden="true"></i>Editar cadastro
+        </a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if not memoria.local.ativo %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-block mt-1" aria-hidden="true"></i>
+      <div>Este local foi retirado da operação. Ele não aparece nas listas, mas a memória dele continua guardada.</div>
+    </div>
+  {% endif %}
+
+  {# O que continua dependendo de uma ação aqui: problemas abertos do lugar. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Problemas abertos</h2>
+    {% if memoria.abertos %}
+      <ul class="eithra-lista">
+        {% for item in memoria.abertos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ item.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ item.tipo }} · {{ item.detalhe }}{% if item.quando %} <span aria-hidden="true">·</span> {{ item.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ item.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-check-circle" aria-hidden="true"></i>Nada aberto neste local.</p>
+    {% endif %}
+  </section>
+
+  {# Os ativos que ficam aqui: a porta para a memória de cada um. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Ativos neste local{% if memoria.total_de_ativos %} <span class="text-body-secondary">({{ memoria.total_de_ativos }})</span>{% endif %}</h2>
+    {% if memoria.ativos %}
+      <ul class="eithra-lista">
+        {% for ativo in memoria.ativos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ ativo.nome }}</div>
+              <div class="eithra-linha-contexto">{% if ativo.tipo %}{{ ativo.tipo }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <span class="badge bg-label-{{ ativo.situacao.tom }} me-2">{{ ativo.situacao.texto }}</span>
+              <a class="btn btn-sm btn-label-secondary" href="{{ ativo.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if memoria.total_de_ativos > memoria.ativos|length %}
+        <p class="eithra-vg-movimento mb-0">Há mais ativos neste local.</p>
+      {% endif %}
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-cog" aria-hidden="true"></i>Nenhum ativo cadastrado neste local.</p>
+    {% endif %}
+  </section>
+
+  {# A próxima manutenção preventiva marcada para este lugar. #}
+  {% if memoria.proxima %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Próxima manutenção</h2>
+      <ul class="eithra-lista">
+        <li class="eithra-linha">
+          <div class="eithra-linha-corpo">
+            <div class="eithra-linha-nome">{{ memoria.proxima.titulo }}</div>
+            <div class="eithra-linha-contexto">{{ memoria.proxima.quando }} <span aria-hidden="true">·</span> <span class="text-{{ memoria.proxima.tom }}-emphasis">{{ memoria.proxima.detalhe }}</span></div>
+          </div>
+        </li>
+      </ul>
+    </section>
+  {% endif %}
+
+  {# A manutenção recente do lugar, com o resultado que ela deixou. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Manutenção recente</h2>
+    {% if memoria.manutencoes %}
+      <ul class="eithra-lista">
+        {% for manutencao in memoria.manutencoes %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ manutencao.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ manutencao.situacao }}{% if manutencao.quando %} <span aria-hidden="true">·</span> {{ manutencao.quando }}{% endif %}{% if manutencao.fornecedor %} <span aria-hidden="true">·</span> {{ manutencao.fornecedor }}{% endif %}</div>
+              {% if manutencao.resultado %}
+                <div class="eithra-linha-contexto text-body-secondary">{{ manutencao.resultado }}</div>
+              {% endif %}
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ manutencao.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-wrench" aria-hidden="true"></i>Nenhuma manutenção registrada para este local.</p>
+    {% endif %}
+  </section>
+
+  {# O problema que se repetiu neste lugar — só quando os dados sustentam. #}
+  {% if memoria.reincidencia %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Reincidência</h2>
+      <ul class="eithra-lista">
+        {% for item in memoria.reincidencia %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ item.tema }}</div>
+              <div class="eithra-linha-contexto">{{ item.quantidade }} ocorrências nos últimos {{ item.janela }}</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# As últimas provas anexadas às manutenções deste local. A foto continua onde
+     foi tirada — a memória só aponta para lá. #}
+  {% if memoria.evidencias %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Últimas evidências</h2>
+      <ul class="eithra-lista">
+        {% for evidencia in memoria.evidencias %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ evidencia.tipo }}</div>
+              <div class="eithra-linha-contexto">{{ evidencia.contexto }}{% if evidencia.quando %} <span aria-hidden="true">·</span> {{ evidencia.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ evidencia.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# O que a Governança já sabe sobre este lugar. Só aparece quando há algo a
+     dizer; nada é copiado para o local. #}
+  {% if memoria.governanca.pode_consultar %}{% if memoria.governanca.contratos %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">O que cobre este local</h2>
+      <ul class="eithra-lista">
+        {% for contrato in memoria.governanca.contratos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ contrato.objeto }}</div>
+              <div class="eithra-linha-contexto">
+                {% if contrato.fornecedor %}{{ contrato.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Contrato{% if contrato.fim %} até {{ contrato.fim|date:"d/m/Y" }}{% endif %}
+              </div>
+            </div>
+            <div class="eithra-linha-acao">
+              <span class="badge bg-label-{{ contrato.tom }}">{{ contrato.situacao }}</span>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}{% endif %}
+
+  {# As demandas ligadas a este lugar. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Demandas relacionadas</h2>
+    {% if memoria.demandas %}
+      <ul class="eithra-lista">
+        {% for demanda in memoria.demandas %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ demanda.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ demanda.situacao }}{% if demanda.tema %} <span aria-hidden="true">·</span> {{ demanda.tema }}{% endif %}{% if demanda.quando %} <span aria-hidden="true">·</span> {{ demanda.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ demanda.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-flag" aria-hidden="true"></i>Nenhuma demanda relacionada a este local.</p>
+    {% endif %}
+  </section>
+
+  {# O que o lugar é, por último: a ficha não é a porta de entrada. #}
+  {% if memoria.local.pares %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">O lugar</h2>
+      <dl class="eithra-vg-info">
+        {% for par in memoria.local.pares %}
+          <div class="eithra-vg-par">
+            <dt>{{ par.rotulo }}</dt>
+            <dd>{{ par.valor }}</dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </section>
+  {% endif %}
+{% endblock %}

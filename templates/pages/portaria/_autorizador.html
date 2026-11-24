@@ -19,6 +19,8 @@ pessoas (quem responde, com o nome, o papel e a unidade).
 <div class="eithra-autorizador-lista">
   {% if not termo %}
     <p class="eithra-autorizador-dica">Digite o nome do morador ou apartamento.</p>
+  {% elif sugestao %}
+    <p class="eithra-autorizador-dica">{{ sugestao }}</p>
   {% elif not unidades and not pessoas %}
     <p class="eithra-autorizador-dica">Não encontrei esse morador ou apartamento.</p>
   {% else %}

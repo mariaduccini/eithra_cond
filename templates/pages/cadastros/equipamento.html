@@ -1,0 +1,267 @@
+{% extends "layouts/app.html" %}
+
+{# O que já aconteceu com este equipamento. A tela não é a ficha do cadastro: é
+   a memória do ativo — o que é, onde está, o que está aberto, quem atende, o
+   que cobre, o que já foi feito, o que falhou, o que se repete e o que está
+   guardado sobre ele. Nada aqui é copiado: cada bloco lê o vínculo que o
+   domínio de origem já tem com o equipamento. #}
+
+{% block title %}{{ memoria.ativo.nome }} · Equipamentos · Eithra{% endblock %}
+
+{% block content %}
+  <div class="eithra-detail-header mb-3">
+    <a
+      href="{% url 'cadastros:equipamentos' %}?condominio={{ condominio_atual.pk }}"
+      class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+      <i class="bx bx-chevron-left" aria-hidden="true"></i> Equipamentos
+    </a>
+    <div class="text-body-secondary small">Equipamento</div>
+    <h1 class="h4 mb-1">{{ memoria.ativo.nome }}</h1>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge bg-label-{{ memoria.ativo.situacao.tom }}">{{ memoria.ativo.situacao.texto }}</span>
+      {% if memoria.ativo.tipo %}
+        <span class="badge bg-label-secondary">{{ memoria.ativo.tipo }}</span>
+      {% endif %}
+      <span class="text-body-secondary small">{{ condominio_atual.nome }}</span>
+    </div>
+    {% if pode_gerenciar %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <a
+          class="btn btn-label-secondary"
+          href="{% url 'cadastros:equipamentos' %}?condominio={{ condominio_atual.pk }}&abrir=editar&item={{ memoria.ativo.pk }}">
+          <i class="bx bx-pencil me-1" aria-hidden="true"></i>Editar cadastro
+        </a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if not memoria.ativo.ativo %}
+    <div class="alert alert-secondary d-flex align-items-start gap-2" role="alert">
+      <i class="bx bx-block mt-1" aria-hidden="true"></i>
+      <div>Este equipamento foi retirado da operação. Ele não aparece nas listas, mas a memória dele continua guardada.</div>
+    </div>
+  {% endif %}
+
+  {# Identidade: o que o ativo é. Só o que existe vira par — campo sem resposta
+     não aparece vazio. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Identidade</h2>
+    <dl class="eithra-vg-info">
+      {% if memoria.local %}
+        <div class="eithra-vg-par">
+          <dt>Local</dt>
+          <dd><a href="{{ memoria.local.url }}" class="text-decoration-none">{{ memoria.local.nome }}</a></dd>
+        </div>
+      {% endif %}
+      {% for par in memoria.ativo.pares %}
+        <div class="eithra-vg-par">
+          <dt>{{ par.rotulo }}</dt>
+          <dd>{{ par.valor }}</dd>
+        </div>
+      {% endfor %}
+    </dl>
+  </section>
+
+  {# O que continua dependendo de uma ação aqui. É o primeiro bloco de propósito:
+     antes do histórico, o que ainda pede resposta. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">O que está aberto</h2>
+    {% if memoria.abertos %}
+      <ul class="eithra-lista">
+        {% for item in memoria.abertos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ item.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ item.tipo }} · {{ item.detalhe }}{% if item.quando %} <span aria-hidden="true">·</span> {{ item.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ item.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-check-circle" aria-hidden="true"></i>Nada aberto para este equipamento.</p>
+    {% endif %}
+  </section>
+
+  {# A próxima manutenção: a data que a prevenção já marcou. Vem do plano, nunca
+     de uma cópia guardada aqui. #}
+  {% if memoria.proxima %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Próxima manutenção</h2>
+      <ul class="eithra-lista">
+        <li class="eithra-linha">
+          <div class="eithra-linha-corpo">
+            <div class="eithra-linha-nome">{{ memoria.proxima.titulo }}</div>
+            <div class="eithra-linha-contexto">{{ memoria.proxima.quando }} <span aria-hidden="true">·</span> <span class="text-{{ memoria.proxima.tom }}-emphasis">{{ memoria.proxima.detalhe }}</span></div>
+          </div>
+        </li>
+      </ul>
+    </section>
+  {% endif %}
+
+  {# Quem atende: o contrato diz um, a manutenção mostra outro. As duas fontes
+     são declaradas na linha, para a tela não confundi-las. #}
+  {% if memoria.fornecedores %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Quem atende</h2>
+      <ul class="eithra-lista">
+        {% for fornecedor in memoria.fornecedores %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ fornecedor.nome }}</div>
+              <div class="eithra-linha-contexto">Declarado por {{ fornecedor.via }}</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# O que a Governança já sabe sobre este ativo. Só aparece quando há algo a
+     dizer; nada é copiado para o equipamento. #}
+  {% if memoria.governanca.pode_consultar %}{% if memoria.governanca.contratos or memoria.governanca.garantias %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">O que cobre</h2>
+      <ul class="eithra-lista">
+        {% for contrato in memoria.governanca.contratos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ contrato.objeto }}</div>
+              <div class="eithra-linha-contexto">
+                {% if contrato.fornecedor %}{{ contrato.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Contrato{% if contrato.fim %} até {{ contrato.fim|date:"d/m/Y" }}{% endif %}
+              </div>
+            </div>
+            <div class="eithra-linha-acao">
+              <span class="badge bg-label-{{ contrato.tom }}">{{ contrato.situacao }}</span>
+            </div>
+          </li>
+        {% endfor %}
+        {% for garantia in memoria.governanca.garantias %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ garantia.descricao }}</div>
+              <div class="eithra-linha-contexto">
+                {% if garantia.fornecedor %}{{ garantia.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Garantia{% if garantia.fim %} até {{ garantia.fim|date:"d/m/Y" }}{% endif %}
+              </div>
+            </div>
+            <div class="eithra-linha-acao">
+              <span class="badge bg-label-{{ garantia.tom }}">{{ garantia.situacao }}</span>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}{% endif %}
+
+  {# A manutenção já registrada, com o resultado que ela deixou. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Manutenção</h2>
+    {% if memoria.manutencoes %}
+      <ul class="eithra-lista">
+        {% for manutencao in memoria.manutencoes %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ manutencao.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ manutencao.situacao }}{% if manutencao.quando %} <span aria-hidden="true">·</span> {{ manutencao.quando }}{% endif %}{% if manutencao.fornecedor %} <span aria-hidden="true">·</span> {{ manutencao.fornecedor }}{% endif %}</div>
+              {% if manutencao.resultado %}
+                <div class="eithra-linha-contexto text-body-secondary">{{ manutencao.resultado }}</div>
+              {% endif %}
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ manutencao.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-wrench" aria-hidden="true"></i>Nenhuma manutenção registrada para este equipamento.</p>
+    {% endif %}
+  </section>
+
+  {# O problema que se repetiu — só quando os dados sustentam. Não é diagnóstico
+     técnico: é repetição estrutural, lida dos vínculos que já existem. #}
+  {% if memoria.reincidencia %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Reincidência</h2>
+      <ul class="eithra-lista">
+        {% for item in memoria.reincidencia %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ item.tema }}</div>
+              <div class="eithra-linha-contexto">{{ item.quantidade }} ocorrências nos últimos {{ item.janela }}</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# As demandas ligadas a este ativo: o que falhou, o que foi pedido, o que
+     ainda está aberto. #}
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-2">Demandas relacionadas</h2>
+    {% if memoria.demandas %}
+      <ul class="eithra-lista">
+        {% for demanda in memoria.demandas %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ demanda.titulo }}</div>
+              <div class="eithra-linha-contexto">{{ demanda.situacao }}{% if demanda.tema %} <span aria-hidden="true">·</span> {{ demanda.tema }}{% endif %}{% if demanda.quando %} <span aria-hidden="true">·</span> {{ demanda.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ demanda.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="eithra-vazio mb-0"><i class="bx bx-flag" aria-hidden="true"></i>Nenhuma demanda relacionada a este equipamento.</p>
+    {% endif %}
+  </section>
+
+  {# Os documentos que pertencem a ele. O arquivo continua sendo da Governança:
+     aqui só se diz que existe e até quando vale. #}
+  {% if memoria.documentos %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Documentos</h2>
+      <ul class="eithra-lista">
+        {% for documento in memoria.documentos %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ documento.titulo }}</div>
+              <div class="eithra-linha-contexto">
+                {% if documento.tipo %}{{ documento.tipo }}{% endif %}{% if documento.validade %}{% if documento.tipo %} <span aria-hidden="true">·</span> {% endif %}vale até {{ documento.validade }}{% endif %}
+              </div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ documento.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {# As últimas provas anexadas às manutenções deste ativo. A foto continua onde
+     foi tirada — a memória só aponta para lá. #}
+  {% if memoria.evidencias %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Últimas evidências</h2>
+      <ul class="eithra-lista">
+        {% for evidencia in memoria.evidencias %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <div class="eithra-linha-nome">{{ evidencia.tipo }}</div>
+              <div class="eithra-linha-contexto">{{ evidencia.contexto }}{% if evidencia.quando %} <span aria-hidden="true">·</span> {{ evidencia.quando }}{% endif %}</div>
+            </div>
+            <div class="eithra-linha-acao">
+              <a class="btn btn-sm btn-label-secondary" href="{{ evidencia.url }}">Abrir</a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+{% endblock %}

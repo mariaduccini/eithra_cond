@@ -15,6 +15,26 @@ app_name = "rotinas"
 urlpatterns = [
     path("", views.listagem, name="listagem"),
     path("registrar/", views.criar, name="criar"),
+    path(
+        "modelos-preventivos/",
+        views.biblioteca_preventiva,
+        name="biblioteca_preventiva",
+    ),
+    path(
+        "modelos-preventivos/<slug:chave>/revisar/",
+        views.revisar_modelo_preventivo,
+        name="revisar_modelo_preventivo",
+    ),
+    path(
+        "modelos-preventivos/<slug:chave>/nao-aplica/",
+        views.dispensar_modelo_preventivo,
+        name="dispensar_modelo_preventivo",
+    ),
+    path(
+        "modelos-preventivos/<slug:chave>/reabrir/",
+        views.reabrir_modelo_preventivo,
+        name="reabrir_modelo_preventivo",
+    ),
     path("execucoes/", views.execucoes, name="execucoes"),
     path("execucoes/<uuid:pk>/", views.execucao_detalhe, name="execucao"),
     path(

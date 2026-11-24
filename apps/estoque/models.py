@@ -28,6 +28,7 @@ from django.db.models.functions import Coalesce, Lower
 
 from apps.cadastros.models import Fornecedor, LocalOperacional
 from apps.condominios.models import Condominio
+from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
 from apps.manutencoes.models import Manutencao
 
 from .constants import (
@@ -35,7 +36,10 @@ from .constants import (
     TIPOS_DE_SAIDA,
     TIPOS_QUE_EXIGEM_MOTIVO,
     DestinoDoItem,
+    StatusLeituraDocumentoCompra,
     StatusCompra,
+    StatusReembolso,
+    TipoDocumentoCompra,
     TipoMovimentacaoEstoque,
     UnidadeMedida,
     direcao_do_tipo,
@@ -603,7 +607,16 @@ class Compra(models.Model):
     )
     data_compra = models.DateField(
         "Data da compra",
+        null=True,
+        blank=True,
         help_text="Quando a compra aconteceu.",
+    )
+    forma_pagamento = models.CharField(
+        "Forma de pagamento",
+        max_length=60,
+        blank=True,
+        default="",
+        help_text="Informação operacional registrada ou conferida pela gestão.",
     )
     numero_documento = models.CharField(
         "Documento",
@@ -648,6 +661,47 @@ class Compra(models.Model):
         verbose_name="Registrada por",
         help_text="Quem registrou a compra. Preservado para rastreabilidade.",
     )
+    comprada_por_outra_pessoa = models.BooleanField(
+        "Compra feita por outra pessoa",
+        default=False,
+    )
+    precisa_reembolso = models.BooleanField(
+        "Precisa de reembolso",
+        default=False,
+    )
+    reembolso_para = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reembolsos_de_compras",
+        verbose_name="Reembolsar para",
+    )
+    valor_reembolso = models.DecimalField(
+        "Valor do reembolso",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    observacao_reembolso = models.CharField(
+        "Observação do reembolso",
+        max_length=500,
+        blank=True,
+        default="",
+    )
+    status_reembolso = models.CharField(
+        "Situação do reembolso",
+        max_length=15,
+        choices=StatusReembolso.choices,
+        default=StatusReembolso.NAO_SOLICITADO,
+        blank=True,
+    )
+    reembolsado_em = models.DateTimeField(
+        "Reembolsado em",
+        null=True,
+        blank=True,
+    )
     criado_em = models.DateTimeField("Criada em", auto_now_add=True)
     atualizado_em = models.DateTimeField("Atualizada em", auto_now=True)
 
@@ -662,13 +716,57 @@ class Compra(models.Model):
             # confirmada registra o momento, e as outras não registram.
             models.CheckConstraint(
                 condition=(
-                    Q(status=StatusCompra.CONFIRMADA, confirmada_em__isnull=False)
+                    Q(
+                        status=StatusCompra.CONFIRMADA,
+                        confirmada_em__isnull=False,
+                        data_compra__isnull=False,
+                    )
                     | (
                         ~Q(status=StatusCompra.CONFIRMADA)
                         & Q(confirmada_em__isnull=True)
                     )
                 ),
                 name="compra_confirmada_registra_quando",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        comprada_por_outra_pessoa=True,
+                        precisa_reembolso=True,
+                        reembolso_para__isnull=False,
+                        valor_reembolso__gt=0,
+                        status_reembolso__in=[
+                            StatusReembolso.PENDENTE,
+                            StatusReembolso.REEMBOLSADO,
+                        ],
+                    )
+                    | Q(
+                        precisa_reembolso=False,
+                        reembolso_para__isnull=True,
+                        valor_reembolso__isnull=True,
+                        observacao_reembolso="",
+                        status_reembolso=StatusReembolso.NAO_SOLICITADO,
+                        reembolsado_em__isnull=True,
+                    )
+                ),
+                name="compra_reembolso_coerente",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status_reembolso=StatusReembolso.NAO_SOLICITADO,
+                        reembolsado_em__isnull=True,
+                    )
+                    | Q(
+                        status_reembolso=StatusReembolso.PENDENTE,
+                        reembolsado_em__isnull=True,
+                    )
+                    | Q(
+                        status_reembolso=StatusReembolso.REEMBOLSADO,
+                        reembolsado_em__isnull=False,
+                    )
+                ),
+                name="compra_reembolso_data_coerente",
             ),
         ]
         indexes = [
@@ -682,12 +780,15 @@ class Compra(models.Model):
         ]
 
     def __str__(self):
+        if self.data_compra is None:
+            return "Compra em revisão"
         return f"Compra de {self.data_compra:%d/%m/%Y}"
 
     def save(self, *args, **kwargs):
         """Guarda a compra já normalizada."""
         self.numero_documento = _texto(self.numero_documento)
         self.observacao = _texto_longo(self.observacao)
+        self.observacao_reembolso = _texto_longo(self.observacao_reembolso)
         super().save(*args, **kwargs)
 
     def clean(self):
@@ -719,6 +820,62 @@ class Compra(models.Model):
                 "Só uma compra confirmada registra a data de confirmação."
             )
 
+        if self.status == StatusCompra.CONFIRMADA and self.data_compra is None:
+            erros["data_compra"] = "Informe a data antes de confirmar a compra."
+
+        precisa_reembolso = bool(self.precisa_reembolso)
+        se_de_outra_pessoa = bool(self.comprada_por_outra_pessoa)
+        if precisa_reembolso and not se_de_outra_pessoa:
+            erros["precisa_reembolso"] = (
+                "Marque que a compra foi feita por outra pessoa para solicitar reembolso."
+            )
+        if precisa_reembolso:
+            if self.reembolso_para_id is None:
+                erros["reembolso_para"] = "Escolha quem receberá o reembolso."
+            elif not self.reembolso_para.is_active:
+                erros["reembolso_para"] = "O usuário escolhido não está ativo."
+            elif self.reembolso_para_id and self.reembolso_para.acessos_condominio.filter(
+                condominio_id=self.condominio_id, ativo=True
+            ).exists() is False:
+                erros["reembolso_para"] = (
+                    "O usuário escolhido não possui vínculo ativo com este condomínio."
+                )
+            if self.valor_reembolso is None or self.valor_reembolso <= 0:
+                erros["valor_reembolso"] = "Informe um valor de reembolso maior que zero."
+            elif self.valor_reembolso > self.total_calculado():
+                erros["valor_reembolso"] = (
+                    "O reembolso não pode superar o total das linhas da compra."
+                )
+            if self.status_reembolso == StatusReembolso.NAO_SOLICITADO:
+                erros["status_reembolso"] = (
+                    "Uma solicitação de reembolso precisa estar pendente ou reembolsada."
+                )
+        elif (
+            self.reembolso_para_id
+            or self.valor_reembolso is not None
+            or self.observacao_reembolso
+            or self.status_reembolso != StatusReembolso.NAO_SOLICITADO
+            or self.reembolsado_em is not None
+        ):
+            erros["precisa_reembolso"] = (
+                "Os dados de reembolso só podem existir quando ele foi solicitado."
+            )
+
+        if (
+            self.status_reembolso == StatusReembolso.REEMBOLSADO
+            and self.reembolsado_em is None
+        ):
+            erros["reembolsado_em"] = (
+                "Registre quando o reembolso foi realizado."
+            )
+        if (
+            self.status_reembolso == StatusReembolso.PENDENTE
+            and self.reembolsado_em is not None
+        ):
+            erros["reembolsado_em"] = (
+                "Um reembolso pendente não tem data de realização."
+            )
+
         if erros:
             raise ValidationError(erros)
 
@@ -736,6 +893,91 @@ class Compra(models.Model):
         """A soma das linhas, calculada na hora. Zero quando não há linhas."""
         agregado = self.itens.aggregate(t=models.Sum("valor_total"))["t"]
         return _dinheiro(agregado)
+
+
+class DocumentoCompra(models.Model):
+    """Arquivo comprobatório e propostas de leitura ligados à compra canônica.
+
+    O banco guarda metadados e a referência do storage privado; nunca os bytes.
+    A leitura é uma proposta revisável, não uma gravação automática na compra.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    compra = models.ForeignKey(
+        Compra,
+        on_delete=models.CASCADE,
+        related_name="documentos",
+        verbose_name="Compra",
+    )
+    tipo_documento = models.CharField(
+        "Tipo de documento",
+        max_length=20,
+        choices=TipoDocumentoCompra.choices,
+        default=TipoDocumentoCompra.OUTRO,
+    )
+    nome_original = models.CharField("Nome original", max_length=255)
+    storage_provider = models.CharField(
+        "Provedor", max_length=50, blank=True, default=""
+    )
+    storage_bucket = models.CharField(
+        "Local de armazenamento", max_length=150, blank=True, default=""
+    )
+    storage_key = models.CharField("Referência do objeto", max_length=500)
+    mime_type = models.CharField("Tipo do arquivo", max_length=120)
+    tamanho_bytes = models.PositiveBigIntegerField("Tamanho", default=0)
+    sha256 = models.CharField(
+        "Hash do arquivo",
+        max_length=64,
+        validators=[FORMATO_SHA256],
+    )
+    status_leitura = models.CharField(
+        "Situação da leitura",
+        max_length=20,
+        choices=StatusLeituraDocumentoCompra.choices,
+        default=StatusLeituraDocumentoCompra.PENDENTE,
+    )
+    dados_extraidos = models.JSONField(
+        "Dados sugeridos pela leitura",
+        default=dict,
+        blank=True,
+    )
+    erro_leitura = models.TextField("Observação da leitura", blank=True, default="")
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="documentos_de_compra_enviados",
+        verbose_name="Enviado por",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Documento de compra"
+        verbose_name_plural = "Documentos de compra"
+        ordering = ["-criado_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["compra", "sha256"],
+                name="documento_compra_hash_unico",
+            ),
+            models.CheckConstraint(
+                condition=Q(tamanho_bytes__gte=0),
+                name="documento_compra_tamanho_nao_negativo",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["compra", "status_leitura"],
+                name="doc_compra_status_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return self.nome_original
+
+    def clean(self):
+        erros = erros_de_referencia_de_storage(self)
+        if erros:
+            raise ValidationError(erros)
 
 
 class ItemCompraQuerySet(models.QuerySet):

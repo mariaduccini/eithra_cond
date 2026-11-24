@@ -48,7 +48,7 @@ class PortariaViewsTests(TestCase):
         )
         self.assertEqual(resposta.status_code, 302)
         painel = self.client.get(reverse("portaria:painel"))
-        self.assertContains(painel, "Movimentação atual")
+        self.assertContains(painel, "Chegando")
         self.assertContains(painel, "João Esperado")
         self.assertContains(painel, "Saiu")
 
@@ -153,8 +153,8 @@ class PortariaBuscaDaTelaTests(TestCase):
     A busca da portaria usa o mesmo caminho do modal de chegada — digita,
     espera, e a lista aparece abaixo do campo, sem recarregar a página. Estes
     testes prendem o campo marcado, o endereço que ele consulta, o condomínio
-    que viaja junto e o lugar da lista: colada ao campo e antes do relato, dos
-    indicadores e da movimentação. Nada vem pronto do servidor.
+    que viaja junto e o lugar da lista: colada ao campo e antes do relato, do
+    resumo e da movimentação. Nada vem pronto do servidor.
     """
 
     def setUp(self):
@@ -213,7 +213,7 @@ class PortariaBuscaDaTelaTests(TestCase):
         """Sem termo, nada pronto: a lista nasce logo abaixo do próprio campo.
 
         Quem busca não deve procurar onde a resposta apareceu: ela vem antes do
-        relato, dos indicadores e da movimentação — e nada dela vem do servidor.
+        relato, do resumo e da movimentação — e nada dela vem do servidor.
         """
         conteudo = self._painel()
         resultado = conteudo.find("data-eithra-portaria-resultado")
@@ -223,8 +223,8 @@ class PortariaBuscaDaTelaTests(TestCase):
         for seguinte in (
             "eithra-portaria-barra-acoes",
             'id="relato-portaria"',
-            "eithra-portaria-indicadores",
-            "Movimentação atual",
+            "eithra-portaria-resumo",
+            "Chegando",
         ):
             self.assertLess(resultado, conteudo.find(seguinte), seguinte)
 
@@ -606,7 +606,7 @@ class PortariaFormulariosTests(TestCase):
         self.assertContains(painel, "Correios")
 
     def test_chegada_nao_prevista_pergunta_so_o_necessario(self):
-        """A conversa tem duas perguntas; o resto entra por contexto.
+        """Três decisões bastam; o resto entra por contexto.
 
         Informação disponível não é informação necessária: telefone, documento
         e observação existem no formulário, mas não viram pergunta. Placa e
@@ -618,12 +618,12 @@ class PortariaFormulariosTests(TestCase):
 
         for visivel in (
             "Registrar chegada",
-            "Identificação",
-            "Autorização",
-            "Registro",
+            "Passo 1 de 3",
+            "Quem recebe / para onde vai?",
             "Digite o nome do morador ou apartamento",
             "Quem chegou?",
             "Tipo de acesso",
+            "Quem autorizou?",
             "Resultado da autorização",
         ):
             self.assertIn(visivel, corpo)
@@ -634,36 +634,52 @@ class PortariaFormulariosTests(TestCase):
         self.assertNotIn("<details", corpo)
         self.assertNotIn("Mais informações", corpo)
 
-        # O contexto tem gatilho próprio, e o campo nasce fora de vista.
+        # O contexto tem gatilho próprio, e o campo nasce fora de vista: a placa
+        # só passa a valer para quem respondeu que chegou de veículo.
         self.assertIn('data-eithra-revelado="placa"', corpo)
         self.assertIn('data-eithra-revelado="local"', corpo)
-        self.assertIn('data-eithra-revelar="placa"', corpo)
+        self.assertIn("data-eithra-veiculo-sim", corpo)
+        self.assertIn("data-eithra-veiculo-nao", corpo)
         self.assertIn('data-eithra-revelar="local"', corpo)
 
-    def test_esperado_pergunta_o_essencial_e_deriva_o_resto(self):
-        """O esperado se cria com três respostas; o resto é do domínio.
+    def test_esperado_reusa_o_fluxo_de_chegada(self):
+        """O esperado se registra no mesmo fluxo de três decisões da chegada.
 
-        Situação, janela de validade e dados administrativos existem no
-        formulário, mas não viram pergunta: quem registra já está autorizando, e
-        a validade nasce junto com o registro.
+        O modal antigo pedia Tipo, Nome, Unidade e Local num formulário só.
+        Agora ele é o mesmo wizard da chegada — para onde vai, quem é esperado,
+        quem autorizou — e o que é derivado (situação e janela de validade)
+        continua fora da pergunta.
         """
+        comunidade_apoio.criar_unidade(self.condominio, identificador="902")
         conteudo = self.client.get(reverse("portaria:painel")).content.decode()
         corpo = conteudo[
             conteudo.find('id="novo-esperado"') : conteudo.find('id="registro-chegada"')
         ]
 
-        for visivel in ("Registrar esperado", "Salvar esperado", "Buscar ou digitar empresa"):
+        for visivel in (
+            "Adicionar esperado",
+            "Passo 1 de 3",
+            "Quem recebe / para onde vai?",
+            "Quem é esperado?",
+            "Tipo de acesso",
+            "Quem autorizou?",
+            "Buscar ou digitar empresa",
+        ):
             self.assertIn(visivel, corpo)
 
-        for ausente in (
-            "Situação",
-            "Previsto para",
-            "Até quando",
-            "Telefone",
-            "Documento",
-            "Observação",
-        ):
+        # O que o domínio deriva continua sem virar pergunta.
+        for ausente in ("Situação", "Previsto para", "Até quando", "Telefone", "Documento"):
             self.assertNotIn(ausente, corpo)
+
+        # A estrutura é a mesma da chegada: mapa de destino, autorizadores do
+        # cadastro real e o conteúdo livre pelo mesmo controlador.
+        for marcador in (
+            'data-eithra-wizard="esperado"',
+            "data-eithra-mapa-unidade",
+            "data-eithra-autorizadores",
+            'data-eithra-revelar-observacao',
+        ):
+            self.assertIn(marcador, corpo)
 
         self.assertNotIn("<details", corpo)
         self.assertNotIn("Mais informações", corpo)
@@ -686,6 +702,155 @@ class PortariaFormulariosTests(TestCase):
         self.assertEqual(autorizacao.unidade_id, unidade.pk)
         self.assertIsNotNone(autorizacao.inicio_previsto)
         self.assertIsNotNone(autorizacao.fim_previsto)
+
+    def test_esperado_nao_vira_acesso_antes_do_chegou(self):
+        """Esperar não é entrar: o esperado só vira presença no toque de Chegou.
+
+        Quem registra um esperado cria uma autorização; nenhuma presença nasce
+        disso. A entrada continua dependendo do toque que o porteiro dá quando a
+        pessoa efetivamente chega.
+        """
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="704")
+        resposta = self.client.post(
+            reverse("portaria:criar_esperado"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "visitante",
+                "nome": "Esperado sem entrar",
+                "unidade": str(unidade.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Esperado sem entrar")
+        self.assertFalse(
+            AcessoPortaria.objects.filter(autorizacao=autorizacao).exists()
+        )
+        painel = self.client.get(reverse("portaria:painel"))
+        self.assertContains(painel, "Esperado sem entrar")
+
+    def test_chegou_nao_duplica_a_autorizacao(self):
+        """A ação Chegou aproveita a autorização existente; não cria outra.
+
+        O esperado é o mesmo objeto operacional em qualquer caminho: a chegada
+        de quem já foi avisado abre presença sobre a autorização que já existia,
+        sem uma segunda autorização para o mesmo fato.
+        """
+        autorizacao = apoio.criar_autorizacao(
+            self.condominio, self.usuario, nome="João da ClimaTech"
+        )
+        antes = AutorizacaoPortaria.objects.count()
+        acesso = apoio.criar_acesso(self.condominio, self.usuario, nome="Outro")
+
+        self.client.post(
+            reverse("portaria:chegou", args=[autorizacao.pk]),
+            {"condominio": str(self.condominio.pk)},
+        )
+
+        self.assertEqual(AutorizacaoPortaria.objects.count(), antes)
+        presenca = AcessoPortaria.objects.get(autorizacao=autorizacao)
+        self.assertTrue(presenca.esta_dentro)
+        self.assertNotEqual(presenca.pk, acesso.pk)
+
+    def test_esperado_exige_destino_do_condominio(self):
+        """O destino do esperado é do condomínio em vista, sempre."""
+        outro = apoio.criar_condominio("Outro")
+        unidade_de_fora = comunidade_apoio.criar_unidade(outro, identificador="999")
+        resposta = self.client.post(
+            reverse("portaria:criar_esperado"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "visitante",
+                "nome": "Destino de fora",
+                "unidade": str(unidade_de_fora.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertFalse(
+            AutorizacaoPortaria.objects.filter(nome="Destino de fora").exists()
+        )
+
+    def test_esperado_recusa_autorizador_de_outro_condominio(self):
+        """Quem autoriza é do condomínio; autorizador de fora não vale."""
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="801")
+        outro = apoio.criar_condominio("Outro")
+        de_fora = comunidade_apoio.criar_pessoa_da_comunidade(outro, "Ana de Fora")
+        resposta = self.client.post(
+            reverse("portaria:criar_esperado"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "visitante",
+                "nome": "Esperado com autorizador de fora",
+                "unidade": str(unidade.pk),
+                "autorizador_pessoa": str(de_fora.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertFalse(
+            AutorizacaoPortaria.objects.filter(
+                nome="Esperado com autorizador de fora"
+            ).exists()
+        )
+
+    def test_esperado_guarda_quem_autorizou_da_unidade(self):
+        """Quem autorizou sai do cadastro real de quem mora na unidade."""
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="802")
+        morador = comunidade_apoio.criar_pessoa_da_comunidade(
+            self.condominio, "Ana Moradora"
+        )
+        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, morador, unidade)
+
+        resposta = self.client.post(
+            reverse("portaria:criar_esperado"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "visitante",
+                "nome": "Visita da Ana",
+                "unidade": str(unidade.pk),
+                "autorizador_pessoa": str(morador.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao = AutorizacaoPortaria.objects.get(nome="Visita da Ana")
+        self.assertEqual(autorizacao.autorizador_pessoa_id, morador.pk)
+        self.assertEqual(autorizacao.destino_para_exibir, unidade.rotulo)
+
+    def test_esperado_funciona_para_cada_tipo(self):
+        """Visitante, prestador, fornecedor e delivery andam pelo mesmo fluxo."""
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="803")
+        for tipo in ("visitante", "prestador", "fornecedor", "delivery"):
+            resposta = self.client.post(
+                reverse("portaria:criar_esperado"),
+                {
+                    "condominio": str(self.condominio.pk),
+                    "tipo_acesso": tipo,
+                    "nome": "Esperado %s" % tipo,
+                    "unidade": str(unidade.pk),
+                    "empresa": "Empresa %s" % tipo,
+                },
+            )
+            self.assertEqual(resposta.status_code, 302)
+            autorizacao = AutorizacaoPortaria.objects.get(nome="Esperado %s" % tipo)
+            self.assertEqual(autorizacao.tipo_acesso, tipo)
+            self.assertEqual(autorizacao.status, "autorizado")
+            self.assertFalse(
+                AcessoPortaria.objects.filter(autorizacao=autorizacao).exists()
+            )
+
+    def test_erro_reabre_o_esperado_no_passo_do_erro(self):
+        """O esperado reabre onde o erro está, como o registro de chegada."""
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="804")
+        resposta = self.client.post(
+            reverse("portaria:criar_esperado"),
+            {
+                "condominio": str(self.condominio.pk),
+                "passo": "3",
+                "tipo_acesso": "visitante",
+                "unidade": str(unidade.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertContains(resposta, 'name="passo" value="2"', status_code=400)
+        self.assertContains(resposta, "Informe quem está chegando.", status_code=400)
 
     def test_chegada_nao_prevista_exige_quem_chegou(self):
         unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="901")
@@ -712,19 +877,19 @@ class PortariaFormulariosTests(TestCase):
         self.assertEqual(resposta.status_code, 400)
         self.assertContains(
             resposta,
-            "Escolha a unidade que está recebendo a visita.",
+            "Escolha a unidade ou a área comum que recebe esta visita.",
             status_code=400,
         )
 
     def test_erro_reabre_o_wizard_no_passo_do_erro(self):
         """O modal reabre onde o erro está, não onde a pessoa parou.
 
-        Quem envia do último passo e erra a identificação precisa ver o erro;
+        Quem envia do último passo e erra quem chegou precisa ver o erro;
         reabrir mudo em outro passo deixa a correção sem explicação na tela.
         """
         unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="905")
 
-        # Erro do passo 1, enviado a partir do passo 3.
+        # Erro do passo 2 — quem chegou —, enviado a partir do passo 3.
         resposta = self.client.post(
             reverse("portaria:criar_chegada_nao_prevista"),
             {
@@ -735,10 +900,10 @@ class PortariaFormulariosTests(TestCase):
             },
         )
         self.assertEqual(resposta.status_code, 400)
-        self.assertContains(resposta, 'name="passo" value="1"', status_code=400)
+        self.assertContains(resposta, 'name="passo" value="2"', status_code=400)
         self.assertContains(resposta, "Informe quem chegou.", status_code=400)
 
-        # Erro do passo 2 — o meio da autorização — reabre na autorização.
+        # Erro do passo 3 — o meio da autorização — reabre na autorização.
         resposta = self.client.post(
             reverse("portaria:criar_chegada_nao_prevista"),
             {
@@ -751,7 +916,7 @@ class PortariaFormulariosTests(TestCase):
             },
         )
         self.assertEqual(resposta.status_code, 400)
-        self.assertContains(resposta, 'name="passo" value="2"', status_code=400)
+        self.assertContains(resposta, 'name="passo" value="3"', status_code=400)
         self.assertContains(
             resposta,
             "Informe por qual meio esse resultado foi registrado.",
@@ -799,6 +964,31 @@ class PortariaFormulariosTests(TestCase):
         self.assertEqual(autorizacao.empresa, "Bombas Eithra")
         self.assertEqual(autorizacao.local_id, local.pk)
         self.assertIsNone(autorizacao.pessoa_id)
+
+    def test_fornecedor_e_tecnico_registram_sem_pessoa_permanente(self):
+        """Os outros dois tipos de serviço andam pelo mesmo caminho.
+
+        Fornecedor e Técnico estão em uso — o segundo vive atrás de "Mais
+        tipos" — e ambos carregam empresa como o prestador, sem virar cadastro
+        de pessoa. Sem esta prova, só o prestador teria ido ponta a ponta.
+        """
+        local = apoio.criar_local(self.condominio, nome="Casa de bombas")
+        for tipo in ("fornecedor", "tecnico"):
+            resposta = self.client.post(
+                reverse("portaria:criar_chegada_nao_prevista"),
+                {
+                    "condominio": str(self.condominio.pk),
+                    "tipo_acesso": tipo,
+                    "nome": "Serviço %s" % tipo,
+                    "empresa": "Empresa %s" % tipo,
+                    "local": str(local.pk),
+                },
+            )
+            self.assertEqual(resposta.status_code, 302)
+            autorizacao = AutorizacaoPortaria.objects.get(nome="Serviço %s" % tipo)
+            self.assertEqual(autorizacao.tipo_acesso, tipo)
+            self.assertEqual(autorizacao.empresa, "Empresa %s" % tipo)
+            self.assertIsNone(autorizacao.pessoa_id)
 
     def test_morador_nao_e_oferecido_como_terceiro(self):
         unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="301")
@@ -963,6 +1153,102 @@ class PortariaAutorizadorTests(TestCase):
         resposta = self._buscar("301")
 
         self.assertEqual(resposta.status_code, 404)
+
+
+class PortariaDestinoPorVozTests(TestCase):
+    """O destino falado: a fala vira número, o cadastro confirma.
+
+    O áudio já transcreve fiel; o que faltava era ler o número ditado como o
+    condomínio o escreve. "novecentos e dois" e "nove zero dois" são o 902 —
+    desde que o 902 exista. Número que não existe não vira destino: no máximo
+    vira uma pergunta, e só quando há um vizinho seguro no cadastro.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+        self.url = reverse("portaria:buscar_autorizador")
+
+    def _buscar(self, termo):
+        return self.client.get(
+            self.url, {"q": termo, "condominio": str(self.condominio.pk)}
+        )
+
+    def _unidade_com_morador(self, identificador):
+        unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador=identificador
+        )
+        morador = comunidade_apoio.criar_pessoa_da_comunidade(
+            self.condominio, "Carlos Mendes"
+        )
+        comunidade_apoio.criar_vinculo_pessoa_unidade(
+            self.condominio, morador, unidade
+        )
+        return unidade
+
+    def test_por_extenso_encontra_o_apartamento(self):
+        unidade = self._unidade_com_morador("902")
+
+        resposta = self._buscar("novecentos e dois")
+
+        self.assertContains(resposta, f'data-destino="{unidade.rotulo}"')
+        self.assertContains(resposta, "Carlos Mendes")
+
+    def test_o_numero_em_digitos_como_sempre_foi(self):
+        unidade = self._unidade_com_morador("902")
+
+        resposta = self._buscar("902")
+
+        self.assertContains(resposta, f'data-destino="{unidade.rotulo}"')
+
+    def test_com_a_palavra_apartamento_na_frente(self):
+        unidade = self._unidade_com_morador("902")
+
+        resposta = self._buscar("apartamento 902")
+
+        self.assertContains(resposta, f'data-destino="{unidade.rotulo}"')
+
+    def test_com_a_abreviacao_apto_na_frente(self):
+        unidade = self._unidade_com_morador("902")
+
+        resposta = self._buscar("apto 902")
+
+        self.assertContains(resposta, f'data-destino="{unidade.rotulo}"')
+
+    def test_digito_a_digito(self):
+        unidade = self._unidade_com_morador("902")
+
+        resposta = self._buscar("nove zero dois")
+
+        self.assertContains(resposta, f'data-destino="{unidade.rotulo}"')
+
+    def test_numero_inexistente_sugere_o_vizinho_sem_selecionar(self):
+        self._unidade_com_morador("902")
+
+        resposta = self._buscar("906")
+
+        self.assertNotContains(resposta, "data-unidade=")
+        self.assertContains(
+            resposta, "Não encontrei o apartamento 906. Você quis dizer 902?"
+        )
+
+    def test_numero_inexistente_sem_vizinho_seguro_nao_sugere(self):
+        self._unidade_com_morador("902")
+
+        resposta = self._buscar("999")
+
+        self.assertNotContains(resposta, "data-unidade=")
+        self.assertContains(resposta, "Não encontrei esse morador ou apartamento.")
+        self.assertNotContains(resposta, "Você quis dizer")
+
+    def test_a_busca_por_nome_continua_intacta(self):
+        self._unidade_com_morador("902")
+
+        resposta = self._buscar("Carlos Mendes")
+
+        self.assertContains(resposta, "Carlos Mendes")
 
 
 class PortariaEmpresaTests(TestCase):
@@ -1194,8 +1480,8 @@ class PortariaMapaDeUnidadesTests(TestCase):
             estrutura[1]["andares"][0]["unidades"][0]["identificador"], "201"
         )
 
-    def test_o_andar_ordena_como_numero(self):
-        """O andar 10 vem depois do andar 2, como o condomínio lê."""
+    def test_o_predio_se_le_de_cima_para_baixo(self):
+        """O prédio aparece de pé: o 10º andar acima do 2º, como a planta o tem."""
         comunidade_apoio.criar_unidade(
             self.condominio, identificador="102", bloco_torre="A", andar="10"
         )
@@ -1206,7 +1492,38 @@ class PortariaMapaDeUnidadesTests(TestCase):
         estrutura = self._painel().context["estrutura_unidades"]
 
         self.assertEqual(
-            [andar["nome"] for andar in estrutura[0]["andares"]], ["2", "10"]
+            [andar["nome"] for andar in estrutura[0]["andares"]], ["10", "2"]
+        )
+        self.assertEqual(
+            [andar["rotulo"] for andar in estrutura[0]["andares"]], ["10º", "2º"]
+        )
+
+    def test_o_andar_ordena_como_numero(self):
+        """Dez andares de um bloco não se leem como texto: 2º, 9º, 10º."""
+        for andar in ("10", "9", "2"):
+            comunidade_apoio.criar_unidade(
+                self.condominio, identificador=f"1{andar}", bloco_torre="A", andar=andar
+            )
+
+        estrutura = self._painel().context["estrutura_unidades"]
+
+        self.assertEqual(
+            [andar["nome"] for andar in estrutura[0]["andares"]], ["10", "9", "2"]
+        )
+
+    def test_o_andar_sem_numero_fica_por_ultimo_e_sem_rotulo(self):
+        """O cadastro incompleto não vira andar inventado nem rótulo falso."""
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="101", bloco_torre="A", andar="2"
+        )
+        comunidade_apoio.criar_unidade(
+            self.condominio, identificador="900", bloco_torre="A"
+        )
+
+        estrutura = self._painel().context["estrutura_unidades"]
+
+        self.assertEqual(
+            [andar["rotulo"] for andar in estrutura[0]["andares"]], ["2º", ""]
         )
 
     def test_o_mapa_nao_traz_outro_condominio(self):
@@ -1231,8 +1548,223 @@ class PortariaMapaDeUnidadesTests(TestCase):
     def test_sem_unidades_o_mapa_avisa(self):
         resposta = self._painel()
 
-        self.assertContains(resposta, "Escolher pelo condomínio")
+        self.assertEqual(resposta.context["estrutura_unidades"], [])
         self.assertContains(resposta, "Nenhuma unidade cadastrada neste condomínio.")
+
+    def test_a_unidade_oferece_os_moradores_como_autorizadores(self):
+        """O mapa escolhe a unidade; quem autoriza sai dos moradores dela.
+
+        A lista de "Autorizado por" não é um cadastro paralelo: é o vínculo
+        vigente da própria unidade, do cadastro que já existe.
+        """
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="101")
+        ana = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Ana Paula")
+        bruno = comunidade_apoio.criar_pessoa_da_comunidade(self.condominio, "Bruno Dias")
+        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, ana, unidade)
+        comunidade_apoio.criar_vinculo_pessoa_unidade(self.condominio, bruno, unidade)
+
+        resposta = self._painel()
+        moradores = resposta.context["moradores_por_unidade"]
+
+        self.assertEqual(
+            [morador["nome"] for morador in moradores[str(unidade.pk)]],
+            ["Ana Paula", "Bruno Dias"],
+        )
+        self.assertContains(resposta, 'id="moradores-por-unidade"')
+
+    def test_unidade_sem_morador_nao_oferece_autorizador(self):
+        """Sem vínculo vigente, a unidade não inventa quem autorizou."""
+        unidade = comunidade_apoio.criar_unidade(self.condominio, identificador="102")
+
+        moradores = self._painel().context["moradores_por_unidade"]
+
+        self.assertNotIn(str(unidade.pk), moradores)
+
+
+class PortariaFidelidadeDasTelasTests(TestCase):
+    """A Portaria com as telas que ela promete: decidir, tocar, confirmar.
+
+    O que se prende aqui é a estrutura que a tela oferece, não o desenho dela: a
+    chegada em três decisões, o destino que acompanha os passos seguintes, a
+    placa que só existe para quem chegou de veículo, a foto opcional e o resumo
+    que precede o último toque. É o que o porteiro vê e usa.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+
+    def _painel(self):
+        return self.client.get(reverse("portaria:painel")).content.decode()
+
+    def test_a_tela_principal_diz_o_que_a_portaria_faz(self):
+        pagina = self._painel()
+
+        for visivel in (
+            "Portaria",
+            "Controle de chegadas e saídas.",
+            "Buscar nome, apartamento, morador, placa ou empresa...",
+            "Registrar chegada",
+            "Conte o que está acontecendo... Ex.: o elevador parou, há água na garagem ou chegou um visitante para o 902.",
+            "Chegando",
+            "Aqui agora",
+            "Hoje",
+        ):
+            self.assertIn(visivel, pagina)
+
+    def test_o_registro_de_chegada_se_abre_em_tres_decisoes(self):
+        pagina = self._painel()
+
+        for painel in ('"1"', '"2"', '"3"'):
+            self.assertIn(f"data-eithra-step-panel={painel}", pagina)
+
+        for visivel in (
+            "Passo 1 de 3",
+            "Quem recebe / para onde vai?",
+            "Digite o nome do morador ou apartamento",
+            "Quem chegou?",
+            "Tipo de acesso",
+            "Chegou de veículo?",
+            "Tirar foto",
+            "Quem autorizou?",
+            "Autorizado por",
+            "Resultado da autorização",
+        ):
+            self.assertIn(visivel, pagina)
+
+    def test_o_destino_acompanha_os_passos_seguintes(self):
+        """Quem já escolheu para onde vai não precisa lembrar de cabeça."""
+        unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="902", andar="9"
+        )
+
+        pagina = self._painel()
+
+        self.assertIn("data-eithra-contexto-destino", pagina)
+        self.assertIn("data-eithra-contexto-destino-rotulo", pagina)
+        self.assertIn('data-eithra-ir-para="1"', pagina)
+        self.assertIn(">Trocar<", pagina)
+        self.assertIn(f'data-unidade="{unidade.pk}"', pagina)
+        self.assertIn('data-rotulo="902"', pagina)
+
+        # O destino escolhido acompanha os dois passos seguintes: avançar não
+        # apaga para onde a pessoa vai.
+        passo2 = pagina[
+            pagina.find('data-eithra-step-panel="2"') : pagina.find(
+                'data-eithra-step-panel="3"'
+            )
+        ]
+        self.assertIn("data-eithra-contexto-destino", passo2)
+        passo3 = pagina[pagina.find('data-eithra-step-panel="3"') :]
+        self.assertIn("data-eithra-contexto-destino", passo3)
+
+    def test_o_voltar_nao_reconstroi_o_que_ja_foi_escolhido(self):
+        """Voltar é reaparecer, não recomeçar: a escolha fica onde foi feita."""
+        pagina = self._painel()
+        corpo = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn("data-eithra-step-voltar", corpo)
+        # O passo 1 é alternado por visibilidade, e os chips continuam nele:
+        # voltar encontra o que foi marcado, sem redesenhar a planta.
+        self.assertIn('data-eithra-step-panel="1"', corpo)
+        self.assertIn("data-eithra-unidade-chip", corpo)
+
+    def test_a_proxima_chegada_comeca_sem_o_destino_anterior(self):
+        """Registrada uma chegada, a tela reabre limpa: nada do registro anterior."""
+        unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="902", andar="9"
+        )
+
+        resposta = self.client.post(
+            reverse("portaria:criar_chegada_nao_prevista"),
+            {
+                "condominio": str(self.condominio.pk),
+                "tipo_acesso": "visitante",
+                "nome": "Visitante Um",
+                "unidade": str(unidade.pk),
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+
+        pagina = self.client.get(reverse("portaria:painel")).content.decode()
+
+        # Nenhuma unidade marcada e nenhum contexto aberto: cada chegada é
+        # decidida de novo, e nunca herda para onde a anterior foi. O tipo de
+        # acesso nasce no primeiro da lista, como a própria tela define.
+        self.assertNotIn("eithra-mapa-chip is-selected", pagina)
+        self.assertNotIn('class="eithra-autorizador-escolhido" data-eithra-autorizador-escolhido>', pagina)
+        chegada = pagina[pagina.find('id="registro-chegada"') :]
+        self.assertEqual(chegada.count("data-eithra-contexto-destino hidden"), 2)
+
+    def test_a_placa_so_vale_depois_do_sim_ao_veiculo(self):
+        """A placa é do carro: sem carro, ela não é perguntada."""
+        pagina = self._painel()
+        corpo = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn("Chegou de veículo?", corpo)
+        self.assertIn("data-eithra-veiculo-sim", corpo)
+        self.assertIn("data-eithra-veiculo-nao", corpo)
+        self.assertIn('class="d-none mt-3" data-eithra-revelado="placa"', corpo)
+
+    def test_a_foto_e_opcional_e_tem_captura_no_celular(self):
+        """A câmera é capacidade de verdade — e a foto nunca é exigida."""
+        pagina = self._painel()
+        corpo = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn('name="foto"', corpo)
+        self.assertIn('accept="image/*"', corpo)
+        self.assertIn('capture="environment"', corpo)
+        self.assertIn("data-eithra-foto-entrada", corpo)
+        self.assertIn("data-eithra-foto-tirar", corpo)
+        self.assertIn("data-eithra-foto-remover", corpo)
+        self.assertIn("data-eithra-foto-previa", corpo)
+        self.assertIn("Tirar foto", corpo)
+
+    def test_o_interfone_e_o_meio_e_nao_se_pergunta_de_novo(self):
+        """O meio já está definido: a decisão do passo 3 é quem autorizou."""
+        pagina = self._painel()
+        corpo = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn("Meio:", corpo)
+        self.assertIn("Interfone", corpo)
+        self.assertIn('name="meio_autorizacao"', corpo)
+
+    def test_o_resumo_precede_a_acao_final(self):
+        """Antes do último toque, o que vai ser gravado cabe em duas linhas."""
+        pagina = self._painel()
+        corpo = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn("data-eithra-resumo-chegada", corpo)
+        self.assertIn("data-eithra-resumo-tipo", corpo)
+        self.assertIn("data-eithra-resumo-nome", corpo)
+        self.assertIn("data-eithra-resumo-destino", corpo)
+
+    def test_a_acao_final_e_registrar_chegada(self):
+        pagina = self._painel()
+        rodape = pagina[pagina.find('id="registro-chegada"') :]
+
+        self.assertIn(">Cancelar<", rodape)
+        self.assertIn(">Voltar<", rodape)
+        self.assertIn("Registrar chegada", rodape)
+        self.assertNotIn("Registrar entrada<", rodape)
+
+    def test_nenhum_comentario_tecnico_aparece_no_html(self):
+        """Comentário de template é recado para quem escreve, não para a tela.
+
+        O ``{# … #}`` de várias linhas não é comentário para o Django: ele
+        precisa caber numa linha só para sumir, e o que não couber vira texto na
+        cara de quem opera a portaria. Aqui a página inteira é conferida.
+        """
+        for caminho in (
+            reverse("portaria:painel"),
+            reverse("portaria:painel") + "?aba=historico",
+        ):
+            pagina = self.client.get(caminho).content.decode()
+
+            self.assertNotIn("{#", pagina)
+            self.assertNotIn("{%", pagina)
 
 
 class PortariaRelatoTests(TestCase):
@@ -1507,3 +2039,125 @@ class PortariaRelatoTests(TestCase):
         self.assertNotContains(resposta, 'name="acao"')
         self.assertEqual(AutorizacaoPortaria.objects.count(), 0)
         self.assertEqual(AcessoPortaria.objects.count(), 0)
+
+
+class PortariaVerificacaoTests(TestCase):
+    """Concluir a chegada que ficou aguardando confirmação.
+
+    A chegada não prevista nasce aguardando: só depois de falar com a unidade
+    o resultado se fecha. E o desfecho decide a passagem — apenas "Autorizado"
+    abre a presença; os demais encerram a espera sem deixar ninguém dentro.
+    """
+
+    def setUp(self):
+        self.usuario = apoio.criar_pessoa("porteiro@teste.com", "Porteiro")
+        self.condominio = apoio.criar_condominio()
+        apoio.criar_vinculo(self.usuario, self.condominio, papel=Papel.PORTEIRO)
+        self.client.force_login(self.usuario)
+        self.unidade = comunidade_apoio.criar_unidade(
+            self.condominio, identificador="902"
+        )
+
+    def _aguardando(self, nome="Visitante Aguardando"):
+        return apoio.criar_autorizacao(
+            self.condominio,
+            self.usuario,
+            nome=nome,
+            unidade=self.unidade,
+            status="aguardando_confirmacao",
+        )
+
+    def _verificar(self, autorizacao, **campos):
+        dados = {"condominio": str(self.condominio.pk), "status": "autorizado"}
+        dados.update(campos)
+        return self.client.post(
+            reverse("portaria:verificar", args=[autorizacao.pk]), dados
+        )
+
+    def test_autorizado_abre_a_passagem(self):
+        autorizacao = self._aguardando()
+
+        resposta = self._verificar(autorizacao, meio_autorizacao="interfone")
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao.refresh_from_db()
+        self.assertEqual(autorizacao.status, "autorizado")
+        self.assertTrue(
+            AcessoPortaria.objects.filter(autorizacao=autorizacao).exists()
+        )
+
+    def test_negado_encerra_sem_abrir_a_passagem(self):
+        autorizacao = self._aguardando()
+
+        resposta = self._verificar(
+            autorizacao, status="nao_autorizado", meio_autorizacao="interfone"
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao.refresh_from_db()
+        self.assertEqual(autorizacao.status, "nao_autorizado")
+        self.assertFalse(
+            AcessoPortaria.objects.filter(autorizacao=autorizacao).exists()
+        )
+
+    def test_sem_resposta_encerra_e_nao_guarda_autorizador(self):
+        """Sem resposta não há quem autorizou: nome solto não vira autorizador."""
+        autorizacao = self._aguardando()
+
+        resposta = self._verificar(
+            autorizacao, status="sem_resposta", autorizador_nome="Fulano Solto"
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        autorizacao.refresh_from_db()
+        self.assertEqual(autorizacao.status, "sem_resposta")
+        self.assertEqual(autorizacao.autorizador_nome, "")
+        self.assertFalse(
+            AcessoPortaria.objects.filter(autorizacao=autorizacao).exists()
+        )
+
+    def test_resultado_decisivo_exige_o_meio(self):
+        autorizacao = self._aguardando()
+
+        resposta = self._verificar(autorizacao)
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertContains(
+            resposta,
+            "Informe por qual meio esse resultado foi registrado.",
+            status_code=400,
+        )
+        autorizacao.refresh_from_db()
+        self.assertEqual(autorizacao.status, "aguardando_confirmacao")
+
+    def test_a_passagem_ja_aberta_nao_abre_de_novo(self):
+        autorizacao = self._aguardando()
+        apoio.criar_acesso(
+            self.condominio,
+            self.usuario,
+            autorizacao=autorizacao,
+            unidade=self.unidade,
+            nome=autorizacao.nome,
+        )
+
+        resposta = self._verificar(autorizacao, meio_autorizacao="interfone")
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertContains(
+            resposta,
+            "A entrada desta pessoa já foi registrada.",
+            status_code=400,
+        )
+        self.assertEqual(
+            AcessoPortaria.objects.filter(autorizacao=autorizacao).count(), 1
+        )
+
+    def test_nao_verifica_outro_condominio(self):
+        outro = apoio.criar_condominio("Outro")
+        autorizacao = apoio.criar_autorizacao(
+            outro, self.usuario, nome="Fora do escopo", status="aguardando_confirmacao"
+        )
+
+        resposta = self._verificar(autorizacao, meio_autorizacao="interfone")
+
+        self.assertEqual(resposta.status_code, 404)

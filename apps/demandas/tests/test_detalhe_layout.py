@@ -58,8 +58,8 @@ class DetalheDaDemandaTests(TestCase):
         """O corpo é uma sequência de seções, não um painel de abas."""
         conteudo = self._abrir().content.decode()
         for titulo in (
-            ">Demanda</h2>",
-            ">Informações</h2>",
+            ">Resumo da demanda</h2>",
+            ">Informações principais</h2>",
             ">Acompanhamento</h2>",
             ">Histórico</h2>",
         ):
@@ -72,8 +72,8 @@ class DetalheDaDemandaTests(TestCase):
         """As seções se sucedem na ordem em que se lê a demanda."""
         conteudo = self._abrir().content.decode()
         ordem = [
-            conteudo.index(">Demanda</h2>"),
-            conteudo.index(">Informações</h2>"),
+            conteudo.index(">Resumo da demanda</h2>"),
+            conteudo.index(">Informações principais</h2>"),
             conteudo.index(">Acompanhamento</h2>"),
             conteudo.index(">Histórico</h2>"),
         ]
@@ -81,20 +81,20 @@ class DetalheDaDemandaTests(TestCase):
 
     def test_a_descricao_continua_renderizada(self):
         conteudo = self._abrir().content.decode()
-        self.assertIn("eithra-detail-leitura", conteudo)
+        self.assertIn("Resumo da demanda", conteudo)
         self.assertIn("Vazamento visível junto da base da bomba.", conteudo)
 
     def test_as_informacoes_essenciais_continuam(self):
         conteudo = self._abrir().content.decode()
-        for rotulo in ("Local", "Responsável", "Prazo", "Registrado por", "Data de registro"):
+        for rotulo in ("Local", "Responsável", "Prazo", "Data de registro"):
             self.assertIn(rotulo, conteudo)
         self.assertIn("Casa de máquinas", conteudo)
 
     def test_as_informacoes_sao_uma_grade_de_pares(self):
         """Deixaram de ser uma lista vertical: são pares em grade compacta."""
         resposta = self._abrir()
-        self.assertContains(resposta, 'class="eithra-vg-info"')
-        self.assertContains(resposta, "eithra-vg-par")
+        self.assertContains(resposta, "eithra-info-grid")
+        self.assertContains(resposta, "eithra-info-item")
 
     # -- Acompanhamento -------------------------------------------------------
 
@@ -120,7 +120,7 @@ class DetalheDaDemandaTests(TestCase):
         """O que fazer agora fica no cabeçalho, junto do estado que o explica."""
         conteudo = self._abrir().content.decode()
         cabecalho = conteudo[
-            conteudo.index("eithra-detail-header"):conteudo.index("eithra-detail-section")
+            conteudo.index("eithra-detalhe-topo"):conteudo.index("eithra-detalhe-grade")
         ]
         for marca in (
             "Registrar atualização",
@@ -134,10 +134,12 @@ class DetalheDaDemandaTests(TestCase):
         conteudo = self._abrir().content.decode()
         # Voltar para a lista continua valendo.
         self.assertIn(reverse("demandas:listagem"), conteudo)
-        # As ações contextuais apontam para as janelas que a tela já oferecia.
+        # Atualizar e anexar continuam acessíveis sem duplicar acompanhamento.
         self.assertIn("?abrir=atualizar", conteudo)
         self.assertIn("?abrir=evidencia", conteudo)
-        self.assertIn("?abrir=acompanhamento", conteudo)
+        self.assertNotIn("?abrir=acompanhamento", conteudo)
+        self.assertNotIn("Atualizar acompanhamento", conteudo)
+        self.assertIn('id="atualizar-demanda"', conteudo)
 
     def test_o_editar_continua_alcancavel_pelas_mais_acoes(self):
         """O lápis solto saiu da descrição; editar vive nas Mais ações."""
@@ -149,9 +151,9 @@ class DetalheDaDemandaTests(TestCase):
     # -- Separação visual -----------------------------------------------------
 
     def test_o_css_separa_as_secoes_por_um_fio(self):
-        """A leitura contínua separa uma seção da outra por um fio, não por card."""
+        """A leitura contínua separa uma seção da outra por cards com borda discreta."""
         css = Path(settings.BASE_DIR, "static", "css", "eithra.css").read_text(
             encoding="utf-8"
         )
-        self.assertIn(".eithra-detail-section + .eithra-detail-section", css)
-        self.assertIn("border-top: 1px solid var(--bs-border-color)", css)
+        self.assertIn(".eithra-cartao", css)
+        self.assertIn("border: 1px solid var(--eithra-divisor", css)

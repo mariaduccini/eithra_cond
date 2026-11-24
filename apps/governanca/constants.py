@@ -40,6 +40,32 @@ class SituacaoVigencia(models.TextChoices):
     SEM_VALIDADE = "sem_validade", "Sem validade"
 
 
+class StatusProjeto(models.TextChoices):
+    """Em que ponto do seu andamento um projeto está.
+
+    Diferente da situação de vigência de um prazo, isto não é lido de uma data:
+    é o estado que a gestão declara sobre o projeto. Por isso é guardado, e não
+    recalculado.
+    """
+
+    EM_ESTUDO = "em_estudo", "Em estudo"
+    EM_ANDAMENTO = "em_andamento", "Em andamento"
+    AGUARDANDO = "aguardando", "Aguardando"
+    CONCLUIDO = "concluido", "Concluído"
+    CANCELADO = "cancelado", "Cancelado"
+
+
+class TipoItemProjeto(models.TextChoices):
+    """O nível que um item ocupa dentro da hierarquia do projeto.
+
+    Um projeto se abre em etapas, e cada etapa em entregas — a mesma tabela,
+    apontando para si mesma. O tipo diz em que nível o item está.
+    """
+
+    ETAPA = "etapa", "Etapa"
+    ENTREGA = "entrega", "Entrega"
+
+
 # Como cada situação aparece na tela. Um vencimento próximo pede atenção sem
 # alarme; um vencimento passado é um fato consumado.
 TOM_POR_SITUACAO = {

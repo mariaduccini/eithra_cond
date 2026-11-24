@@ -1,0 +1,114 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}{{ acompanhamento.titulo }} · Eithra{% endblock %}
+
+{% block content %}
+  {% comment %}
+    A visita conduzida sem cadastrar nada: o registro canônico (manutenção,
+    ocorrência ou demanda) e os três gestos da jornada — começar, atualizar e
+    encerrar. Cada gesto é o serviço do próprio domínio; a tela só apresenta.
+  {% endcomment %}
+  <div class="eithra-detail-header mb-3">
+    <a href="{% url 'core:home' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+      <i class="bx bx-chevron-left" aria-hidden="true"></i> Painel
+    </a>
+    <div class="text-body-secondary small">Acompanhamento</div>
+    <h1 class="h4 mb-1">{{ acompanhamento.titulo }}</h1>
+    {% if acompanhamento.contexto %}
+      <div class="text-body-secondary small">{{ acompanhamento.contexto }}</div>
+    {% endif %}
+  </div>
+
+  <p class="mb-3">
+    {% if acompanhamento.iniciado_em %}
+      <span class="badge bg-label-success">Acompanhamento iniciado às {{ acompanhamento.iniciado_em|date:"H:i" }}</span>
+    {% else %}
+      <span class="badge bg-label-secondary">Ainda não iniciado</span>
+    {% endif %}
+  </p>
+
+  {% if acompanhamento.mostra_prestador %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-2">Prestador</h2>
+      <p class="mb-1">{{ acompanhamento.nome_do_prestador }}</p>
+      {% if not acompanhamento.fornecedor_vinculado %}
+        <p class="text-body-secondary small mb-0">Fornecedor ainda não vinculado ao cadastro.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if acompanhamento.pode_iniciar %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Começar</h2>
+      <form method="post" action="{% url 'core:acompanhar' acompanhamento.origem acompanhamento.objeto.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="gesto" value="iniciar">
+        <button type="submit" class="btn btn-primary">Iniciar acompanhamento</button>
+      </form>
+    </section>
+  {% endif %}
+
+  <section class="eithra-detail-section">
+    <h2 class="h6 mb-3">O que já foi registrado</h2>
+    {% if acompanhamento.atualizacoes %}
+      <ul class="eithra-lista">
+        {% for registro in acompanhamento.atualizacoes %}
+          <li class="eithra-linha">
+            <div class="eithra-linha-corpo">
+              <span class="eithra-linha-nome d-block">{{ registro.texto }}</span>
+              {% if registro.autor or registro.quando %}
+                <span class="eithra-linha-contexto d-block text-body-secondary">
+                  {{ registro.autor }}{% if registro.autor and registro.quando %} <span aria-hidden="true">·</span> {% endif %}{% if registro.quando %}{{ registro.quando|date:"d/m/Y H:i" }}{% endif %}
+                </span>
+              {% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-body-secondary small mb-0">Nada registrado até agora.</p>
+    {% endif %}
+  </section>
+
+  {% if acompanhamento.pode_atualizar %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Registrar atualização</h2>
+      <form method="post" action="{% url 'core:acompanhar' acompanhamento.origem acompanhamento.objeto.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="gesto" value="atualizar">
+        <div class="mb-2">
+          <label for="eithra-acompanhamento-texto" class="form-label">O que aconteceu</label>
+          <textarea id="eithra-acompanhamento-texto" name="texto" class="form-control" rows="2" maxlength="255" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Registrar atualização</button>
+      </form>
+    </section>
+  {% endif %}
+
+  {% if acompanhamento.pode_encerrar %}
+    <section class="eithra-detail-section">
+      <h2 class="h6 mb-3">Encerrar acompanhamento</h2>
+      <form method="post" action="{% url 'core:acompanhar' acompanhamento.origem acompanhamento.objeto.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="gesto" value="encerrar">
+        {% if acompanhamento.resultado_opcoes %}
+          <div class="mb-2">
+            <label for="eithra-acompanhamento-resultado" class="form-label">O que se encontrou</label>
+            <select id="eithra-acompanhamento-resultado" name="resultado" class="form-select" required>
+              {% for valor, rotulo in acompanhamento.resultado_opcoes %}
+                <option value="{{ valor }}">{{ rotulo }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        {% endif %}
+        <div class="mb-2">
+          <label for="eithra-acompanhamento-encerrar" class="form-label">
+            O que foi feito{% if not acompanhamento.exige_texto_no_encerramento %} (opcional){% endif %}
+          </label>
+          <textarea id="eithra-acompanhamento-encerrar" name="texto" class="form-control" rows="2" maxlength="255"{% if acompanhamento.exige_texto_no_encerramento %} required{% endif %}></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Encerrar acompanhamento</button>
+      </form>
+    </section>
+  {% endif %}
+{% endblock %}

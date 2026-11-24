@@ -24,6 +24,9 @@ from apps.governanca.models import (
     GarantiaEquipamento,
     GarantiaItemCompra,
     GarantiaManutencao,
+    Projeto,
+    ProjetoDemanda,
+    ProjetoItem,
     TipoContrato,
     TipoDocumento,
 )
@@ -220,6 +223,53 @@ class DocumentoGarantiaAdmin(admin.ModelAdmin):
     list_display = ("documento", "garantia")
     search_fields = ("documento__titulo", "garantia__descricao")
     autocomplete_fields = ("documento", "garantia")
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        """O vínculo é ajustado pelo domínio, não apagado pela tela."""
+        return False
+
+
+class ProjetoItemInline(admin.TabularInline):
+    """Etapas e entregas do projeto, editadas junto com ele."""
+
+    model = ProjetoItem
+    extra = 0
+    fields = ("parent", "tipo", "nome", "status", "ordem")
+    autocomplete_fields = ("parent",)
+    ordering = ("ordem", "nome")
+
+
+@admin.register(Projeto)
+class ProjetoAdmin(SemExclusaoAdmin):
+    list_display = (
+        "nome",
+        "condominio",
+        "status",
+        "data_inicio",
+        "data_prevista_fim",
+        "ativo",
+    )
+    list_filter = ("ativo", "status", "condominio")
+    search_fields = ("nome", "identificacao", "descricao", "condominio__nome")
+    autocomplete_fields = ("condominio", "responsavel_interno", "criado_por")
+    ordering = ("condominio__nome", "nome")
+    inlines = (ProjetoItemInline,)
+
+
+@admin.register(ProjetoItem)
+class ProjetoItemAdmin(SemExclusaoAdmin):
+    list_display = ("nome", "projeto", "tipo", "status", "ordem")
+    list_filter = ("tipo", "status")
+    search_fields = ("nome", "projeto__nome")
+    autocomplete_fields = ("projeto", "parent")
+    ordering = ("projeto__nome", "ordem", "nome")
+
+
+@admin.register(ProjetoDemanda)
+class ProjetoDemandaAdmin(admin.ModelAdmin):
+    list_display = ("projeto", "demanda")
+    search_fields = ("projeto__nome", "demanda__titulo")
+    autocomplete_fields = ("projeto", "demanda")
 
     def has_delete_permission(self, request, obj=None) -> bool:
         """O vínculo é ajustado pelo domínio, não apagado pela tela."""

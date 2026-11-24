@@ -245,8 +245,8 @@ class ListagemDeDemandasTests(TestCase):
         self.assertEqual(
             [acao["label"] for acao in acoes],
             [
+                "Ver detalhes",
                 "Registrar atualização",
-                "Atualizar acompanhamento",
                 "Adicionar evidência",
                 "Editar",
             ],
@@ -256,6 +256,26 @@ class ListagemDeDemandasTests(TestCase):
         detalhe = reverse("demandas:detalhe", args=[resposta.context["demandas"][0]["pk"]])
         for acao in acoes:
             self.assertTrue(acao["url"].startswith(detalhe))
+
+    def test_o_acompanhamento_nao_tem_entrada_propria(self):
+        """O acompanhamento passou a fazer parte do fluxo de atualização.
+
+        Duas entradas para a mesma decisão faziam parecer que registrar a
+        atualização e mexer no acompanhamento eram coisas diferentes.
+        """
+        self._demanda()
+        resposta = self._abrir()
+
+        self.assertNotContains(resposta, "Atualizar acompanhamento")
+        self.assertEqual(
+            [acao["label"] for acao in resposta.context["demandas"][0]["acoes"]],
+            [
+                "Ver detalhes",
+                "Registrar atualização",
+                "Adicionar evidência",
+                "Editar",
+            ],
+        )
 
     # -- Scroll ----------------------------------------------------------------
 

@@ -91,6 +91,11 @@ from apps.balancos.validacao_financeira import TOLERANCIA, validar_balanco
 # demonstrativo estruturado está na abertura, e os anexos não entram na conta.
 PAGINAS_PADRAO = 40
 
+# A partir de quantas páginas faz sentido procurar moldura de navegação. Em um
+# documento de uma ou duas páginas tudo aparece em "quase toda página", e o
+# rótulo de um agrupamento acabaria tomado por moldura.
+PAGINAS_MINIMAS_PARA_MOLDURA = 3
+
 # Valor com cara de dinheiro em qualquer posição da linha: o demonstrativo
 # escreve o valor antes ou depois da descrição e costuma repetir ao lado dele o
 # acumulado e o percentual de rateio.
@@ -662,6 +667,7 @@ def _varrer(linhas: list[tuple[int, str]]) -> _Varredura:
     """Percorre as linhas, seguindo os blocos até os lançamentos."""
     varredura = _Varredura()
     repetidas = _linhas_repetidas(linhas)
+    moldura = _moldura_do_relatorio(linhas)
     secao: str | None = None
     grupo: str | None = None
     # Uma continuação só vale para a linha imediatamente posterior a um
@@ -674,8 +680,16 @@ def _varrer(linhas: list[tuple[int, str]]) -> _Varredura:
     # A tabela separa abertura e fechamento? Só com essa estrutura a primeira
     # coluna vira saldo anterior e a última, saldo atual.
     colunas_de_movimento = False
+    # Um bloco de lançamento já lido não volta a valer. O mesmo demonstrativo
+    # pode reaparecer adiante no documento — o RVE traz o consolidado na
+    # abertura e o repete destacado mais adiante —, e ler o segundo bloco conta
+    # a mesma despesa duas vezes. Basta a primeira cópia.
+    blocos_de_lancamento_lidos: set[str] = set()
+    despesas_ao_abrir_a_secao = 0
+    ignorar_lancamentos = False
 
     for pagina, linha in linhas:
+        linha = _sem_moldura_no_fim(linha, moldura)
         chave = chave_de_comparacao(linha)
         if not chave:
             continue
@@ -690,7 +704,25 @@ def _varrer(linhas: list[tuple[int, str]]) -> _Varredura:
         if token is None:
             nome = _secao_da_linha(chave)
             if nome is not None:
+                # Ao TROCAR de bloco, um bloco de lançamento que já rendeu
+                # despesas fica marcado como lido: reabri-lo adiante é a
+                # repetição do mesmo demonstrativo, e não um segundo rol de
+                # despesas. Um marcador que reaparece no topo da página seguinte
+                # — o gerador repete "Demonstrativo de Despesas" a cada página —
+                # não troca de bloco: é o cabeçalho do próprio demonstrativo, e a
+                # leitura continua de onde estava.
+                if (
+                    secao in SECOES_DE_LANCAMENTO
+                    and nome != secao
+                    and len(varredura.despesas) > despesas_ao_abrir_a_secao
+                ):
+                    blocos_de_lancamento_lidos.add(secao)
                 secao = nome
+                despesas_ao_abrir_a_secao = len(varredura.despesas)
+                ignorar_lancamentos = (
+                    nome in SECOES_DE_LANCAMENTO
+                    and nome in blocos_de_lancamento_lidos
+                )
                 grupo = None
                 em_bloco_de_saldo = False
                 colunas_de_movimento = False
@@ -782,6 +814,11 @@ def _varrer(linhas: list[tuple[int, str]]) -> _Varredura:
         # anexos, saldos, inadimplência — o valor não é lançamento nem anomalia.
         papel = _papel_da_secao(secao)
         if papel not in (PAPEL_DETALHE, PAPEL_RESUMO):
+            continue
+
+        if ignorar_lancamentos:
+            # Bloco repetido do mesmo demonstrativo, já lido antes: o que ele
+            # traz não vira lançamento de novo.
             continue
 
         if len(valores) >= 3:
@@ -1176,6 +1213,42 @@ def _linhas_repetidas(linhas: list[tuple[int, str]]) -> frozenset[str]:
     return frozenset(
         chave for chave, paginas in paginas_por_chave.items() if len(paginas) > 1
     )
+
+
+def _moldura_do_relatorio(linhas: list[tuple[int, str]]) -> frozenset[str]:
+    """Os rótulos de navegação que o gerador do relatório repete página a página.
+
+    A camada textual do PDF junta numa mesma linha o que está na mesma faixa
+    horizontal: o rótulo de navegação ("ContasData", "Doctos", "Panel53") chega
+    colado ao fim de uma linha de conteúdo. Sem tirá-lo, a descrição sai poluída
+    e o total do documento — "total das despesas ContasData" — deixa de ser
+    reconhecido, e o mês fica sem total declarado.
+
+    Moldura é o rótulo curto que aparece sozinho em (quase) toda página; o nome
+    de um agrupamento, de um fornecedor ou de um lançamento não se repete assim.
+    A régua vem do próprio documento, e não de uma lista de nomes: um rótulo
+    que se repete em metade ou mais das páginas é moldura daquele relatório.
+    """
+    paginas = {pagina for pagina, _ in linhas}
+    if len(paginas) < PAGINAS_MINIMAS_PARA_MOLDURA:
+        return frozenset()
+    paginas_por_chave: dict[str, set[int]] = {}
+    for pagina, linha in linhas:
+        chave = chave_de_comparacao(linha)
+        if chave and " " not in chave:
+            paginas_por_chave.setdefault(chave, set()).add(pagina)
+    limite = len(paginas) / 2
+    return frozenset(
+        chave for chave, vistas in paginas_por_chave.items() if len(vistas) >= limite
+    )
+
+
+def _sem_moldura_no_fim(linha: str, moldura: frozenset[str]) -> str:
+    """Tira do fim da linha o rótulo de navegação que veio colado a ela."""
+    palavras = linha.split()
+    while palavras and chave_de_comparacao(palavras[-1]) in moldura:
+        palavras.pop()
+    return " ".join(palavras)
 
 
 def _e_cabecalho_de_colunas(chave: str) -> bool:

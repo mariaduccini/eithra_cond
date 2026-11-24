@@ -407,19 +407,54 @@ class ControladorDeVozTests(SimpleTestCase):
         ).read_text(encoding="utf-8")
 
     def test_a_fala_acrescenta_em_vez_de_substituir(self):
-        self.assertIn("campo.value = juntar(campo.value, leitura.texto)", self.fonte)
+        self.assertIn("alvo.value = juntar(alvo.value, leitura.texto)", self.fonte)
         self.assertIn('return atual ? atual + "\\n" + novo : novo', self.fonte)
-        self.assertNotIn("campo.value = leitura.texto", self.fonte)
+        self.assertNotIn(".value = leitura.texto", self.fonte)
 
     def test_falhar_nao_toca_no_texto_existente(self):
         """Só o sucesso escreve no campo: o resto do caminho não mexe nele."""
-        self.assertEqual(self.fonte.count("campo.value ="), 1)
+        self.assertEqual(self.fonte.count(".value = juntar("), 1)
 
     def test_a_gravacao_comeca_e_termina_pelo_mesmo_controle(self):
         self.assertIn("gravador.start()", self.fonte)
         self.assertIn("gravador.stop()", self.fonte)
         self.assertIn("Gravando…", self.fonte)
         self.assertIn("Transcrevendo…", self.fonte)
+
+    def test_o_botao_encontra_o_campo_do_proprio_formulario(self):
+        """O campo do microfone tocado, e não o primeiro da página.
+
+        A Portaria tem dois formulários com os mesmos nomes de campo; procurar
+        pelo documento inteiro escreveria no campo que está atrás do modal.
+        """
+        self.assertIn("function acharCampo(botao)", self.fonte)
+        self.assertIn('var formulario = botao.closest("form");', self.fonte)
+        self.assertIn("formulario.querySelector(seletor)", self.fonte)
+        self.assertIn("achado.isConnected ? achado : null", self.fonte)
+
+    def test_o_campo_e_reencontrado_na_hora_de_escrever(self):
+        """Alvo fora do documento não recebe a fala: a tela perdeu o campo."""
+        self.assertIn("var alvo = acharCampo(botao);", self.fonte)
+        self.assertLess(
+            self.fonte.index("var alvo = acharCampo(botao);"),
+            self.fonte.index("alvo.value = juntar("),
+        )
+        self.assertIn("avisar(TEXTO_SEM_CAMPO, \"erro\");", self.fonte)
+
+    def test_a_transcricao_acorda_o_campo_como_a_digitacao(self):
+        """Quem procura sozinho enquanto se digita — o destino da chegada —
+        precisa saber que a fala mudou o campo."""
+        self.assertIn(
+            'alvo.dispatchEvent(new Event("input", { bubbles: true }));', self.fonte
+        )
+        self.assertIn(
+            'alvo.dispatchEvent(new Event("change", { bubbles: true }));', self.fonte
+        )
+        depois = self.fonte.index("alvo.value = juntar(")
+        entrada = self.fonte.index('alvo.dispatchEvent(new Event("input"')
+        mudanca = self.fonte.index('alvo.dispatchEvent(new Event("change"')
+        self.assertLess(depois, entrada)
+        self.assertLess(entrada, mudanca)
 
     def test_nao_mostra_dois_erros_ao_mesmo_tempo(self):
         self.assertIn("calarAvisoDoCampo", self.fonte)

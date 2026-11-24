@@ -2,102 +2,332 @@
 
 {% block title %}Painel · Eithra{% endblock %}
 
+{% comment %}
+  O painel é uma folha de trabalho, não uma pilha de cartões iguais.
+
+  A abertura diz de quem é o dia e, ao lado, o número que responde à pergunta
+  que trouxe a pessoa aqui — quantas coisas pedem atenção hoje. O corpo é uma
+  página de duas colunas separadas por um fio: a principal conduz a operação
+  (decisão e o dia), a lateral guarda a fila que ainda depende de alguém.
+
+  Nenhum bloco é emoldurado: o que separa um assunto do outro é o fio e o
+  espaço, não a moldura. O peso vem do título da seção e do acento de cor que
+  marca o que exige decisão.
+
+  Nada aqui recalcula regra: exceções vêm de apps.demandas.excecoes, atenção
+  vem de apps.manutencoes.atencao, demandas vêm na ordem de atenção do
+  domínio. A página só organiza e apresenta.
+{% endcomment %}
 {% block content %}
-  <div class="card">
-    <div class="card-body">
-      <h1 class="h4 mb-1">Olá, {{ user.short_name }}</h1>
-      <p class="text-body-secondary mb-0">Bom ter você por aqui.</p>
-    </div>
-  </div>
-
-  {% comment %}
-    A resposta do dia: o que precisa de atenção agora. A leitura vem inteira de
-    apps.manutencoes.atencao — a Home não recalcula atraso, conferência nem
-    conclusão, só agrupa e apresenta. Itens inteiros levam ao detalhe; a ação
-    fica lá ("Visualizar pelo registro. Agir pelo ⋮.").
-  {% endcomment %}
-  <div class="card mt-3">
-    <div class="card-body">
-      <h2 class="h6 mb-1">Hoje</h2>
-
-      {% if total_de_hoje %}
-        <p class="text-body-secondary small mb-0">
-          {% if total_de_hoje == 1 %}1 coisa precisa da sua atenção{% else %}{{ total_de_hoje }} coisas precisam da sua atenção{% endif %}
+  <div class="eithra-home">
+    <header class="eithra-pagina-topo">
+      <div class="eithra-pagina-topo-texto">
+        <span class="eithra-eyebrow">{% if experiencia_morador %}Minha unidade{% else %}Painel{% endif %}</span>
+        <h1 class="eithra-pagina-titulo">Olá, {{ user.short_name }}</h1>
+        <p class="eithra-pagina-sub">
+          {% if experiencia_morador %}
+            Acompanhe as informações do condomínio em um só lugar.
+          {% else %}
+            Bom ter você por aqui. Este é o resumo do que pede a sua atenção agora.
+          {% endif %}
         </p>
-        <ul class="eithra-lista mt-3 mb-0">
-          {% for item in atencao_de_hoje %}
-            <li class="eithra-linha">
-              <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
-                <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
-                <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
-                {% if item.contexto %}
-                  <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
-                {% endif %}
-              </a>
-            </li>
-          {% endfor %}
-        </ul>
-        {% if tem_mais_atencao %}
-          <p class="mb-0 mt-2">
-            <a class="small text-decoration-none" href="{% url 'manutencoes:listagem' %}">Ver todas</a>
-          </p>
-        {% endif %}
-      {% else %}
-        <p class="eithra-vazio mt-2">
-          <i class="bx bx-check-circle" aria-hidden="true"></i>
-          <span>Tudo em ordem por aqui.</span>
-        </p>
-      {% endif %}
-
-      {% if atencao_proxima %}
-        <hr class="my-3">
-        <h2 class="h6 mb-1">Próximos dias</h2>
-        <ul class="eithra-lista mt-3 mb-0">
-          {% for item in atencao_proxima %}
-            <li class="eithra-linha">
-              <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
-                <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
-                <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
-                {% if item.contexto %}
-                  <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
-                {% endif %}
-              </a>
-            </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </div>
-  </div>
-
-  {% comment %}
-    O que entrou e ainda depende de alguém. Não é caixa de entrada de e-mail:
-    é a lista curta do que a leitura identificou e não pôde seguir sozinha.
-    Aparece só quando há mensagens — o estado vazio da Home é o de "Hoje".
-  {% endcomment %}
-  {% if pendencias %}
-    <div class="card mt-3">
-      <div class="card-body">
-        <h2 class="h6 mb-1">Mensagens que pedem uma decisão</h2>
-        <p class="text-body-secondary small mb-0">
-          O EITHRA leu estas mensagens e separou o que pode precisar da sua atenção.
-        </p>
-        <ul class="eithra-lista mt-3 mb-0">
-          {% for item in pendencias %}
-            <li class="eithra-linha">
-              <div class="eithra-linha-corpo">
-                <a class="eithra-linha-nome eithra-duas-linhas text-decoration-none" href="{% url 'core:confirmacao' item.pk %}">
-                  {{ item.assunto|default:"Mensagem recebida" }}
-                </a>
-                <div class="eithra-linha-contexto">{{ item.remetente }}</div>
-              </div>
-              <span class="eithra-linha-hora">{{ item.momento_da_mensagem|date:"d/m H:i" }}</span>
-              <div class="eithra-linha-acao">
-                <a class="btn btn-sm btn-label-secondary" href="{% url 'core:confirmacao' item.pk %}">Revisar</a>
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
       </div>
+
+      {% if not experiencia_morador %}
+        <p class="eithra-home-marcador{% if total_de_hoje %} eithra-home-marcador--atencao{% else %} eithra-home-marcador--ok{% endif %}">
+          <span class="eithra-home-marcador-icone{% if total_de_hoje %} eithra-home-marcador-icone--atencao{% endif %}" aria-hidden="true">
+            <i class="bx {% if total_de_hoje %}bx-error-circle{% else %}bx-check-circle{% endif %}"></i>
+          </span>
+          <span class="eithra-home-marcador-texto">
+            {% if total_de_hoje %}{% if total_de_hoje == 1 %}1 coisa precisa da sua atenção{% else %}{{ total_de_hoje }} coisas precisam da sua atenção{% endif %}{% else %}Nada pede sua atenção hoje{% endif %}
+          </span>
+        </p>
+      {% endif %}
+    </header>
+
+    {% if condominios_financeiros|length > 1 %}
+      <form class="eithra-home-condominio" method="get">
+        <label for="eithra-home-condominio">Resumo financeiro de</label>
+        <select id="eithra-home-condominio" name="condominio">
+          {% for condominio in condominios_financeiros %}
+            <option value="{{ condominio.pk }}"{% if home_condominio.pk == condominio.pk %} selected{% endif %}>
+              {{ condominio.nome }}
+            </option>
+          {% endfor %}
+        </select>
+        <button type="submit">Aplicar</button>
+      </form>
+    {% endif %}
+
+    {% if financeiro.disponivel %}
+      <section class="eithra-financeiro-resumo" aria-labelledby="eithra-financeiro-titulo">
+        <div class="eithra-financeiro-resumo-topo">
+          <div>
+            <span class="eithra-eyebrow">{% if experiencia_morador %}{{ financeiro.condominio.nome }}{% else %}Resumo financeiro{% endif %}</span>
+            <h2 id="eithra-financeiro-titulo">
+              {% if experiencia_morador %}Transparência do condomínio{% else %}Finanças do condomínio{% endif %}
+            </h2>
+            {% if financeiro.balanco %}
+              <p class="eithra-financeiro-periodo">
+                {% if experiencia_morador %}Publicado{% else %}Balanço confirmado{% endif %} · {{ financeiro.competencia }}
+              </p>
+            {% endif %}
+          </div>
+          <i class="bx bx-wallet-alt" aria-hidden="true"></i>
+        </div>
+
+        {% if financeiro.sem_balanco %}
+          <p class="eithra-financeiro-vazio">
+            {% if experiencia_morador %}
+              A prestação de contas deste condomínio ainda está sendo preparada.
+            {% else %}
+              Ainda não há um balanço confirmado para mostrar.
+            {% endif %}
+          </p>
+          {% if financeiro.contratos_mensais %}
+            <div class="eithra-compromisso-resumo">
+              <span class="eithra-eyebrow">Contratos mensais em vigor</span>
+              <strong>
+                {% if financeiro.contratos_mensais.valor %}
+                  {{ financeiro.contratos_mensais.valor }} por mês
+                {% else %}
+                  Valor ainda não consolidado
+                {% endif %}
+              </strong>
+              <p>
+                {{ financeiro.contratos_mensais.quantidade }} contratos com cobrança mensal.
+                O valor contratado não indica parcelas que ainda faltam pagar.
+              </p>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="eithra-financeiro-valores">
+            <div class="eithra-financeiro-valor eithra-financeiro-valor--teal">
+              <span>Quanto entrou</span>
+              <strong>{% if financeiro.receitas %}{{ financeiro.receitas }}{% else %}Não informado{% endif %}</strong>
+            </div>
+            <div class="eithra-financeiro-valor eithra-financeiro-valor--lilas">
+              <span>Quanto foi gasto</span>
+              <strong>{% if financeiro.despesas %}{{ financeiro.despesas }}{% else %}Não informado{% endif %}</strong>
+            </div>
+            <div class="eithra-financeiro-valor eithra-financeiro-valor--menta">
+              <span>Saldo do período</span>
+              <strong>{% if financeiro.saldo_periodo %}{{ financeiro.saldo_periodo }}{% else %}Não informado{% endif %}</strong>
+            </div>
+          </div>
+          {% if financeiro.contratos_mensais %}
+            <div class="eithra-compromisso-resumo">
+              <span class="eithra-eyebrow">Já contratado em cobranças mensais</span>
+              <strong>
+                {% if financeiro.contratos_mensais.valor %}
+                  {{ financeiro.contratos_mensais.valor }} por mês
+                {% else %}
+                  Valor ainda não consolidado
+                {% endif %}
+              </strong>
+              <p>
+                {{ financeiro.contratos_mensais.quantidade }} contratos mensais em vigor.
+                Este valor não informa parcelas que ainda faltam pagar.
+              </p>
+            </div>
+          {% endif %}
+          <a class="eithra-financeiro-link" href="{% url 'core:transparencia' financeiro.balanco.pk %}">
+            Ver detalhes do balanço <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+          </a>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if not experiencia_morador %}
+    <div class="eithra-home-grade">
+      <div class="eithra-home-principal">
+        {% if blocos_da_supervisao %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">O que precisa de você</h2>
+                <p class="eithra-home-secao-legenda">O que pede a sua atenção agora.</p>
+              </div>
+            </div>
+
+            {% for bloco in blocos_da_supervisao %}
+              <div class="eithra-home-subsecao">
+                <h3 class="eithra-home-subsecao-titulo">{{ bloco.rotulo }}</h3>
+                <ul class="eithra-lista eithra-home-lista">
+                  {% for item in bloco.itens %}
+                    <li class="eithra-linha">
+                      <a class="eithra-linha-corpo text-decoration-none" href="{{ item.url }}">
+                        <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                        <span class="eithra-linha-contexto d-block">
+                          <span class="badge bg-label-{{ item.tom }}">{{ item.rotulo }}</span>
+                          {{ item.mensagem }}
+                        </span>
+                        {% if item.contexto %}
+                          <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                        {% endif %}
+                        {% if item.acao %}
+                          <span class="eithra-linha-contexto d-block text-primary small">
+                            {{ item.acao }} <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+                          </span>
+                        {% endif %}
+                      </a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endfor %}
+          </section>
+        {% endif %}
+
+        {% if excecoes %}
+          <section class="eithra-home-secao eithra-home-secao--decisao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Precisa da sua decisão</h2>
+                <p class="eithra-home-secao-legenda">O que exige uma decisão sua agora.</p>
+              </div>
+              {% if tem_mais_excecoes %}
+                <a class="eithra-home-secao-ver" href="{% url 'demandas:listagem' %}">
+                  Ver todas <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+                </a>
+              {% endif %}
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in excecoes %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{% url 'demandas:detalhe' item.id %}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    <span class="eithra-linha-contexto d-block">
+                      <span class="badge bg-label-{{ item.tom }}">{{ item.motivo }}</span>
+                      {{ item.acao }}
+                    </span>
+                    {% if item.contexto %}
+                      <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
+        <section class="eithra-home-secao">
+          <div class="eithra-home-secao-topo">
+            <div class="eithra-home-secao-texto">
+              <h2 class="eithra-home-secao-titulo">Hoje</h2>
+              <p class="eithra-home-secao-legenda">O que precisa de atenção agora.</p>
+            </div>
+            {% if tem_mais_atencao %}
+              <a class="eithra-home-secao-ver" href="{% url 'manutencoes:listagem' %}">
+                Ver todas <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+              </a>
+            {% endif %}
+          </div>
+
+          {% if total_de_hoje %}
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in atencao_de_hoje %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
+                    {% if item.contexto %}
+                      <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="eithra-vazio">
+              <i class="bx bx-check-circle" aria-hidden="true"></i>
+              <span>Tudo em ordem por aqui.</span>
+            </p>
+          {% endif %}
+
+          {% if atencao_proxima %}
+            <div class="eithra-home-subsecao">
+              <h3 class="eithra-home-subsecao-titulo">Próximos dias</h3>
+              <ul class="eithra-lista eithra-home-lista">
+                {% for item in atencao_proxima %}
+                  <li class="eithra-linha">
+                    <a class="eithra-linha-corpo text-decoration-none" href="{% url 'manutencoes:detalhe' item.id %}">
+                      <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                      <span class="eithra-linha-contexto d-block">{{ item.mensagem }}</span>
+                      {% if item.contexto %}
+                        <span class="eithra-linha-contexto d-block text-body-secondary">{{ item.contexto }}</span>
+                      {% endif %}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </section>
+      </div>
+
+      <aside class="eithra-home-lateral">
+        {% if demandas_de_hoje %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Demandas</h2>
+                <p class="eithra-home-secao-legenda">O que ainda depende de uma ação.</p>
+              </div>
+              {% if tem_mais_demandas %}
+                <a class="eithra-home-secao-ver" href="{% url 'demandas:listagem' %}">
+                  Ver todas <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+                </a>
+              {% endif %}
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in demandas_de_hoje %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{% url 'demandas:detalhe' item.id %}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    {% if item.contexto %}
+                      <span class="eithra-linha-contexto d-block">{{ item.contexto }}</span>
+                    {% endif %}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
+        {% if pendencias %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Mensagens que pedem uma decisão</h2>
+                <p class="eithra-home-secao-legenda">
+                  O EITHRA leu estas mensagens e separou o que pode precisar da sua atenção.
+                </p>
+              </div>
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in pendencias %}
+                <li class="eithra-linha">
+                  <div class="eithra-linha-corpo">
+                    <a class="eithra-linha-nome eithra-duas-linhas text-decoration-none" href="{% url 'core:confirmacao' item.pk %}">
+                      {{ item.assunto|default:"Mensagem recebida" }}
+                    </a>
+                    <div class="eithra-linha-contexto">{{ item.remetente }}</div>
+                  </div>
+                  <span class="eithra-linha-hora">{{ item.momento_da_mensagem|date:"d/m H:i" }}</span>
+                  <div class="eithra-linha-acao">
+                    <a class="btn btn-sm btn-label-secondary" href="{% url 'core:confirmacao' item.pk %}">Revisar</a>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+      </aside>
     </div>
-  {% endif %}
+    {% endif %}
+  </div>
 {% endblock %}

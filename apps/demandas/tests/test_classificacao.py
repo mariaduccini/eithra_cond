@@ -561,9 +561,10 @@ class ClassificacaoNoRegistroTests(TestCase):
         self.assertEqual(demanda.equipamento, equipamento)
         self.assertEqual(demanda.tipo_problema, TipoProblema.ACESSO)
         self.assertEqual(demanda.impacto, ImpactoDemanda.EQUIPAMENTO)
-        # A prioridade não é lida do relato: sem escolha de quem registra, ela
-        # fica no padrão do domínio, mesmo quando o relato descreve uma parada.
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.NORMAL)
+        # O peso vem do motor: o elevador essencial parado é um sinal de atenção
+        # e a reincidência declarada ("novamente") é outro — dois sinais juntos
+        # sustentam "Crítica", sem que ninguém escolha a prioridade.
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.URGENTE)
         # A recorrência não vira coluna: ela é leitura do histórico, e continua
         # sendo calculada na hora, sem virar fato guardado (§6-E).
 

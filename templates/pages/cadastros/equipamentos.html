@@ -7,10 +7,11 @@
 {% block title %}Equipamentos · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Equipamentos</h1>
-      <p class="text-body-secondary mb-0">O que existe neste condomínio e precisa de manutenção.</p>
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Cadastros</span>
+      <h1 class="eithra-pagina-titulo">Equipamentos</h1>
+      <p class="eithra-pagina-sub">O que existe neste condomínio e precisa de manutenção.</p>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
       {% include "pages/cadastros/_seletor_condominio.html" %}
@@ -25,9 +26,9 @@
         </button>
       {% endif %}
     </div>
-  </div>
+  </header>
 
-  <div class="card">
+  <div class="card eithra-operational-table-shell">
     {% if equipamentos %}
       <div class="table-responsive d-none d-lg-block">
         <table class="table align-middle mb-0">
@@ -44,7 +45,7 @@
             {% for equipamento in equipamentos %}
               <tr>
                 <td>
-                  <span class="fw-medium">{{ equipamento.nome }}</span>
+                  <a class="fw-medium text-decoration-none" href="{% url 'cadastros:equipamento' equipamento.pk %}?condominio={{ condominio_atual.pk }}">{{ equipamento.nome }}</a>
                   {% if equipamento.tipo %}
                     <div class="text-body-secondary small">{{ equipamento.tipo }}</div>
                   {% endif %}
@@ -93,7 +94,7 @@
         {% for equipamento in equipamentos %}
           <div class="list-group-item">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <span class="fw-medium">{{ equipamento.nome }}</span>
+              <a class="fw-medium text-decoration-none" href="{% url 'cadastros:equipamento' equipamento.pk %}?condominio={{ condominio_atual.pk }}">{{ equipamento.nome }}</a>
               <span class="badge bg-label-{{ equipamento.tom }} flex-shrink-0">{{ equipamento.texto }}</span>
             </div>
             {% if equipamento.tipo %}

@@ -153,6 +153,11 @@ class FluxoAprovadoTests(BaseDoCiclo):
         self.assertEqual(resposta.status_code, 200)
         self.assertTrue(resposta.context["pode_registrar_execucao"])
         self.assertContains(resposta, "Registrar execução")
+        # O botão aparece no cabeçalho e no card de execução.
+        self.assertGreaterEqual(
+            resposta.content.decode().count('data-bs-target="#registrar-execucao"'),
+            1,
+        )
 
     def test_registrar_execucao_grava_a_data_do_fato_sem_concluir(self):
         manutencao = self._ocorrencia()
@@ -214,6 +219,10 @@ class FluxoAprovadoTests(BaseDoCiclo):
         self.assertTrue(resposta.context["manutencao"]["conferencia_aprovada"])
         self.assertContains(
             resposta, "Conferência aprovada — falta concluir a manutenção."
+        )
+        self.assertEqual(
+            resposta.content.decode().count('data-bs-target="#concluir-manutencao"'),
+            1,
         )
 
     def test_concluir_apos_aprovacao_encerra_a_manutencao(self):
@@ -487,7 +496,11 @@ class EvidenciasDoCicloTests(BaseDoCiclo):
         )
 
         self.assertEqual(len(resposta.context["manutencao"]["evidencias"]), 1)
-        self.assertContains(resposta, "Evidências da execução")
+        self.assertContains(resposta, "Evidências")
+        self.assertEqual(
+            resposta.content.decode().count('data-bs-target="#anexar-evidencia"'),
+            1,
+        )
 
 
 # -- Histórico -------------------------------------------------------------------
@@ -592,6 +605,10 @@ class ConferenciaDependeDaExecucaoTests(BaseDoCiclo):
         self.assertTrue(resposta.context["pode_conferir"])
         self.assertContains(resposta, "Conferir execução")
         self.assertNotContains(resposta, "Aguardando registro da execução")
+        self.assertEqual(
+            resposta.content.decode().count('data-bs-target="#conferir-execucao"'),
+            1,
+        )
 
         decisao = self._aprovar(manutencao)
         self.assertEqual(decisao.status_code, 302)

@@ -13,6 +13,8 @@ existência já é legítima, a decisão não é. A operação não alcança o c
 rotinas: o que ela vê são as ocorrências atribuídas a ela, na mesma rota, com o
 conteúdo filtrado.
 """
+from itertools import groupby
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -24,11 +26,20 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, LocalOperacional
+from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 
+from .biblioteca import (
+    ErroDeBiblioteca,
+    ativar_modelo,
+    marcar_nao_aplica,
+    modelos_para_condominio,
+    reabrir_modelo,
+)
 from .constants import Periodicidade, StatusExecucao, StatusItemChecklist
 from .forms import (
+    AtivacaoModeloForm,
     ChecklistForm,
     ConclusaoDeExecucaoForm,
     DemandaDaExecucaoForm,
@@ -42,9 +53,12 @@ from .forms import (
     TratamentoDeItemForm,
 )
 from .models import (
+    DecisaoModeloAtividade,
     ExecucaoRotina,
+    EstadoModeloAtividade,
     ItemExecucaoChecklist,
     ItemModeloChecklist,
+    ModeloAtividadeProgramada,
     RotinaRecorrente,
 )
 from .permissoes import (
@@ -94,6 +108,25 @@ from .services import (
 # Quantas ocorrências recentes a ficha da rotina mostra. A ficha é um resumo,
 # não um arquivo: o histórico inteiro vive na lista de ocorrências.
 LIMITE_DE_OCORRENCIAS_NA_FICHA = 50
+RESUMO_DA_ROTINA = (
+    ("titulo", "Atividade"),
+    ("descricao", "Descrição"),
+    ("tipo", "Tipo"),
+    ("prioridade", "Prioridade"),
+    ("periodicidade_tipo", "Periodicidade"),
+    ("intervalo", "A cada"),
+    ("dia_semana", "Dia da semana"),
+    ("dia_mes", "Dia do mês"),
+    ("mes_ano", "Mês"),
+    ("data_inicio", "Início"),
+    ("data_fim", "Fim"),
+    ("responsavel", "Responsável"),
+    ("local", "Local"),
+    ("equipamento", "Equipamento"),
+    ("fornecedor", "Fornecedor"),
+    ("checklist_modelo", "Checklist"),
+    ("gera_manutencao", "Manutenção preventiva"),
+)
 
 # Tom de cada situação de execução no badge. Discreto: a lista inteira não
 # pode gritar.
@@ -839,8 +872,190 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         "formulario_rotina": formulario,
         "modal_aberto": modal,
         "mostrar_condominio": condominios.count() > 1,
+        "resumo_da_rotina": RESUMO_DA_ROTINA,
+        # A gravação usa o mesmo endpoint autorizado de relato por voz: os
+        # papéis que criam rotinas também podem criar demandas.
+        "voz_disponivel": audio.disponivel() and pode_criar,
     }
     return render(request, "pages/rotinas/listagem.html", contexto, status=status)
+
+
+def _condominio_da_biblioteca(request, condominios):
+    """Resolve só o condomínio que a pessoa pode operar."""
+    fonte = request.POST if request.method == "POST" else request.GET
+    informado = fonte.get("condominio")
+    if not informado:
+        elegiveis = list(condominios[:2])
+        return elegiveis[0] if len(elegiveis) == 1 else None
+    return _obter_ou_404(condominios, informado)
+
+
+def _categorias_da_biblioteca(itens):
+    """Agrupa cartões preservando a ordem do catálogo."""
+    categorias = []
+    for categoria, grupo in groupby(itens, key=lambda item: item["modelo"].categoria):
+        categorias.append({"nome": categoria, "itens": list(grupo)})
+    return categorias
+
+
+@login_required
+def biblioteca_preventiva(request):
+    """Mostra modelos sugeridos e modelos disponíveis para revisão manual."""
+    condominios = condominios_para_criar(request.user)
+    if not condominios.exists():
+        raise Http404("Nenhum condomínio disponível para revisar modelos.")
+    condominio = _condominio_da_biblioteca(request, condominios)
+    sugestoes, demais = modelos_para_condominio(condominio) if condominio else ([], [])
+    return render(
+        request,
+        "pages/rotinas/biblioteca_preventiva.html",
+        {
+            "condominios": condominios,
+            "condominio": condominio,
+            "categorias_sugeridas": _categorias_da_biblioteca(sugestoes),
+            "categorias_demais": _categorias_da_biblioteca(demais),
+            "total_sugeridos": len(sugestoes),
+            "estado_disponivel": EstadoModeloAtividade.DISPONIVEL,
+            "estado_ativado": EstadoModeloAtividade.ATIVADA,
+            "estado_nao_aplica": EstadoModeloAtividade.NAO_APLICA,
+        },
+    )
+
+
+@login_required
+def revisar_modelo_preventivo(request, chave):
+    """Exige a revisão da atividade e da frequência antes de qualquer gravação."""
+    condominios = condominios_para_criar(request.user)
+    condominio = _condominio_da_biblioteca(request, condominios)
+    if condominio is None:
+        raise Http404("Escolha um condomínio autorizado.")
+    modelo = get_object_or_404(
+        ModeloAtividadeProgramada.objects.ativos(), chave=chave
+    )
+    sugestoes, demais = modelos_para_condominio(condominio)
+    item = next(
+        (
+            candidato
+            for candidato in (*sugestoes, *demais)
+            if candidato["modelo"].pk == modelo.pk
+        ),
+        None,
+    )
+    if item is None:
+        raise Http404("Modelo não encontrado.")
+
+    equipamentos = list(
+        condominio.equipamentos.ativos()
+        .select_related("tipo_equipamento", "local")
+        .order_by("nome")
+    )
+    locais = list(
+        condominio.locais.ativos().select_related("tipo_local").order_by("nome")
+    )
+    from .biblioteca import _equipamentos_compativeis, _locais_compativeis
+
+    equipamentos_sugeridos = _equipamentos_compativeis(
+        modelo, equipamentos
+    ) if modelo.gatilhos_equipamento else []
+    locais_sugeridos = _locais_compativeis(modelo, locais) if modelo.gatilhos_local else []
+    initial = {
+        "titulo": modelo.titulo,
+        "descricao": modelo.descricao or modelo.observacoes,
+        "tipo": modelo.tipo,
+        "periodicidade_tipo": modelo.periodicidade_tipo,
+        "intervalo": modelo.periodicidade_intervalo or 1,
+        "dia_semana": timezone.localdate().weekday(),
+        "dia_mes": timezone.localdate().day,
+        "mes_ano": timezone.localdate().month,
+        "data_inicio": timezone.localdate(),
+        "prioridade": modelo.prioridade,
+        "equipamento": (
+            equipamentos_sugeridos[0].pk if len(equipamentos_sugeridos) == 1 else None
+        ),
+        "local": locais_sugeridos[0].pk if len(locais_sugeridos) == 1 else None,
+    }
+    formulario = AtivacaoModeloForm(
+        request.POST or None,
+        condominios=condominios,
+        condominio=condominio,
+        initial=initial,
+        modelo=modelo,
+    )
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            rotina = ativar_modelo(
+                modelo=modelo,
+                condominio=condominio,
+                usuario=request.user,
+                dados=formulario.cleaned_data,
+            )
+        except ErroDeBiblioteca as erro:
+            formulario.add_error(None, str(erro))
+        else:
+            messages.success(
+                request, "Atividade programada criada e vinculada ao modelo."
+            )
+            return redirect("rotinas:detalhe", pk=rotina.pk)
+
+    return render(
+        request,
+        "pages/rotinas/revisar_modelo_preventivo.html",
+        {
+            "modelo": modelo,
+            "condominio": condominio,
+            "formulario": formulario,
+            "evidencias": item["evidencias"],
+            "total_de_tarefas": len(modelo.checklist_sugerido),
+        },
+        status=400 if request.method == "POST" else 200,
+    )
+
+
+@login_required
+@require_POST
+def dispensar_modelo_preventivo(request, chave):
+    condominios = condominios_para_criar(request.user)
+    condominio = _condominio_da_biblioteca(request, condominios)
+    if condominio is None:
+        raise Http404("Escolha um condomínio autorizado.")
+    modelo = get_object_or_404(
+        ModeloAtividadeProgramada.objects.ativos(), chave=chave
+    )
+    observacao = (request.POST.get("observacao") or "").strip()
+    if not observacao:
+        messages.error(request, "Diga por que este modelo não se aplica.")
+    else:
+        try:
+            marcar_nao_aplica(
+                modelo=modelo,
+                condominio=condominio,
+                usuario=request.user,
+                observacao=observacao,
+            )
+        except ErroDeBiblioteca as erro:
+            messages.error(request, str(erro))
+        else:
+            messages.success(request, "Modelo marcado como não aplicável.")
+    return redirect(f"{reverse('rotinas:biblioteca_preventiva')}?condominio={condominio.pk}")
+
+
+@login_required
+@require_POST
+def reabrir_modelo_preventivo(request, chave):
+    condominios = condominios_para_criar(request.user)
+    condominio = _condominio_da_biblioteca(request, condominios)
+    if condominio is None:
+        raise Http404("Escolha um condomínio autorizado.")
+    modelo = get_object_or_404(
+        ModeloAtividadeProgramada.objects.ativos(), chave=chave
+    )
+    try:
+        reabrir_modelo(modelo=modelo, condominio=condominio, usuario=request.user)
+    except ErroDeBiblioteca as erro:
+        messages.error(request, str(erro))
+    else:
+        messages.success(request, "Modelo disponível novamente para revisão.")
+    return redirect(f"{reverse('rotinas:biblioteca_preventiva')}?condominio={condominio.pk}")
 
 
 def _render_detalhe(request, rotina, *, formulario=None, modal=None, status=200):

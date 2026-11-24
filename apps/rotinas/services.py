@@ -514,6 +514,40 @@ def iniciar_execucao(*, execucao: ExecucaoRotina, usuario) -> ExecucaoRotina:
 
 
 @transaction.atomic
+def registrar_atualizacao(
+    *, execucao: ExecucaoRotina, usuario, texto: str
+) -> ExecucaoRotina:
+    """Anota uma atualização curta na ocorrência, sem mexer na situação.
+
+    A ocorrência não tem histórico próprio: o que se registra sobre ela vive em
+    ``observacao_execucao``, o mesmo campo do que se encontrou ao encerrar. Cada
+    atualização é acrescentada com o momento e quem a escreveu, para que o
+    relato não perca a mão de quem conduz — e o texto acumulado é o que a
+    ocorrência leva para a conclusão. Uma ocorrência encerrada não muda mais.
+    """
+    if execucao.esta_encerrada:
+        raise ErroDeRotina("Esta ocorrência já foi encerrada.")
+
+    texto = _texto(texto)
+    if not texto:
+        raise ErroDeRotina("Escreva a atualização antes de registrar.")
+
+    nome = (
+        getattr(usuario, "full_name", "")
+        or getattr(usuario, "short_name", "")
+        or getattr(usuario, "email", "")
+        or "Sem responsável"
+    )
+    linha = f"[{timezone.localtime():%d/%m %H:%M} — {nome}] {texto}"
+    anterior = (execucao.observacao_execucao or "").strip()
+
+    execucao.observacao_execucao = f"{anterior}\n{linha}".strip() if anterior else linha
+    _validar(execucao)
+    execucao.save(update_fields=["observacao_execucao", "atualizado_em"])
+    return execucao
+
+
+@transaction.atomic
 def concluir_execucao(
     *,
     execucao: ExecucaoRotina,

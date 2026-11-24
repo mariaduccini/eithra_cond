@@ -4,10 +4,11 @@
 {% block title %}Demandas · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Demandas</h1>
-      <p class="text-body-secondary mb-0">Acompanhe e gerencie o que precisa ser resolvido.</p>
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Demandas</h1>
+      <p class="eithra-pagina-sub">Acompanhe e gerencie o que precisa ser resolvido.</p>
     </div>
     {% if pode_criar %}
       <button
@@ -18,105 +19,72 @@
         <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar demanda
       </button>
     {% endif %}
-  </div>
+  </header>
 
-  <div class="row g-3 mb-3">
-    {% for indicador in indicadores %}
-      <div class="col-6 col-xl-3">
-        <div class="card eithra-summary-indicator h-100">
-          <div class="card-body d-flex align-items-center gap-3">
-            <span class="eithra-summary-indicator-icon text-{{ indicador.tom }}">
-              <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
-            </span>
-            <div>
-              <div class="eithra-summary-indicator-value">{{ indicador.valor }}</div>
-              <div class="eithra-summary-indicator-label">{{ indicador.titulo }}</div>
+  {% comment %}
+    Os indicadores vêm separados por quem controla o resultado: desempenho
+    interno é o que a operação decide, desempenho externo é o que depende de
+    terceiros. A separação impede que atraso de fornecedor seja lido como falha
+    da equipe.
+  {% endcomment %}
+  {% regroup indicadores by grupo as grupos_de_indicadores %}
+  {% for grupo in grupos_de_indicadores %}
+    <div class="d-flex align-items-center justify-content-between mt-1 mb-2">
+      <h2 class="h6 mb-0">{{ grupo.grouper }}</h2>
+    </div>
+    <div class="row g-3 mb-3">
+      {% for indicador in grupo.list %}
+        <div class="col-6 col-xl-3">
+          <div class="card eithra-summary-indicator h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+              <span class="eithra-summary-indicator-icon text-{{ indicador.tom }}">
+                <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
+              </span>
+              <div>
+                <div class="eithra-summary-indicator-value">{{ indicador.valor }}</div>
+                <div class="eithra-summary-indicator-label">{{ indicador.titulo }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    {% endfor %}
-  </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
 
-  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
+  {% comment %}
+    A busca é o único recorte à mão. Os filtros finos continuam existindo no
+    backend — indicadores e endereços antigos ainda os usam —, mas não ocupam
+    mais a tela: a operação pediu uma lista limpa. O que está em vigor, a aba e
+    a ordenação, viaja escondido com a busca, para procurar não desfazer o que
+    já foi ajustado; trocar o termo recomeça na primeira página.
+  {% endcomment %}
+  <form method="get" class="card eithra-filter-shell mb-3" role="search">
     <div class="card-body">
-      <div class="d-flex flex-column flex-lg-row align-items-stretch gap-2">
-        <div class="eithra-search-field flex-grow-1">
-          <i class="bx bx-search" aria-hidden="true"></i>
-          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
-          {{ filtros.busca }}
-        </div>
-        <button
-          type="button"
-          class="btn btn-label-secondary eithra-filter-button"
-          data-bs-toggle="collapse"
-          data-bs-target="#demandas-filtros"
-          aria-expanded="{% if filtros_ativos %}true{% else %}false{% endif %}"
-          aria-controls="demandas-filtros">
-          <i class="bx bx-slider-alt me-1" aria-hidden="true"></i> Filtros
-        </button>
+      <div class="eithra-search-field">
+        <i class="bx bx-search" aria-hidden="true"></i>
+        <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
+        {{ filtros.busca }}
       </div>
-
-      {# A faixa só ocupa espaço quando serve: abre sozinha se já há filtro valendo. #}
-      <div class="collapse{% if filtros_ativos %} show{% endif %}" id="demandas-filtros">
-        <div class="row g-2 align-items-end mt-3">
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.status.id_for_label }}">Situação</label>
-            {{ filtros.status }}
-          </div>
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.prioridade.id_for_label }}">Prioridade</label>
-            {{ filtros.prioridade }}
-          </div>
-          {% if mostrar_condominio %}
-            <div class="col-12 col-lg-2">
-              <label class="form-label small text-body-secondary" for="{{ filtros.condominio.id_for_label }}">Condomínio</label>
-              {{ filtros.condominio }}
-            </div>
-          {% endif %}
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.local.id_for_label }}">Local</label>
-            {{ filtros.local }}
-          </div>
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.responsavel.id_for_label }}">Responsável</label>
-            {{ filtros.responsavel }}
-          </div>
-          <div class="col-8 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.prazo.id_for_label }}">Prazo</label>
-            {{ filtros.prazo }}
-          </div>
-        </div>
-
-        {% comment %}A lente fina: o que só interessa quando já se sabe o que se procura.
-        Fica na linha de baixo para não apertar os filtros do dia a dia.{% endcomment %}
-        <div class="row g-2 align-items-end mt-2">
-          <div class="col-6 col-lg-3">
-            <label class="form-label small text-body-secondary" for="{{ filtros.equipamento.id_for_label }}">Equipamento</label>
-            {{ filtros.equipamento }}
-          </div>
-          <div class="col-6 col-lg-3">
-            <label class="form-label small text-body-secondary" for="{{ filtros.tipo_problema.id_for_label }}">Tipo de problema</label>
-            {{ filtros.tipo_problema }}
-          </div>
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.impacto.id_for_label }}">Impacto</label>
-            {{ filtros.impacto }}
-          </div>
-          <div class="col-6 col-lg-2">
-            <label class="form-label small text-body-secondary" for="{{ filtros.risco.id_for_label }}">Risco</label>
-            {{ filtros.risco }}
-          </div>
-          <div class="col-12 col-lg-2">
-            {% if filtros_ativos %}
-              {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
-              <a class="btn btn-sm btn-text-secondary w-100" href="{{ filtros_limpos }}">Limpar filtros</a>
-            {% endif %}
-          </div>
-        </div>
-      </div>
+      {% if aba %}<input type="hidden" name="aba" value="{{ aba }}">{% endif %}
+      {% if ordenacao.valor %}<input type="hidden" name="ordenar" value="{{ ordenacao.valor }}">{% endif %}
     </div>
   </form>
+
+  {% comment %}
+    Ativas e concluídas são recortes distintos: a operação corrente de um lado, o
+    histórico encerrado do outro. Trocar de aba volta à primeira página — a
+    página 4 de um recorte não existe no outro — e leva junto a busca e a
+    ordenação, que continuam valendo.
+  {% endcomment %}
+  <nav class="eithra-abas" aria-label="Recorte da lista">
+    <a class="eithra-aba{% if aba == 'ativas' %} active{% endif %}"
+       href="{% querystring aba='ativas' page=None %}"
+       {% if aba == 'ativas' %}aria-current="page"{% endif %}>Ativas</a>
+    <a class="eithra-aba{% if aba == 'concluidas' %} active{% endif %}"
+       href="{% querystring aba='concluidas' page=None %}"
+       {% if aba == 'concluidas' %}aria-current="page"{% endif %}>Concluídas</a>
+  </nav>
+
 
   <div class="card eithra-operational-table-shell">
     {% if demandas %}
@@ -134,15 +102,21 @@
               Nem toda largura comporta as nove colunas: quando a tabela aperta,
               o que sai primeiro é o que menos decide — a descrição, e depois o
               responsável. O que sobra é o essencial: o que é (código, título,
-              local, prioridade, prazo, situação) e o que se faz com isso.{% endcomment %}
+              local, prioridade, prazo, situação) e o que se faz com isso.
+
+              Onde há o que ordenar, o título da coluna é o próprio comando: um
+              clique põe a lista naquela ordem, e o segundo inverte. O sinal só
+              aparece na coluna em vigor — nada de uma fileira de ícones
+              competindo com o cabeçalho.{% endcomment %}
               <th scope="col" class="eithra-col-codigo">Código</th>
-              <th scope="col" class="eithra-col-titulo">Título</th>
+              <th scope="col" class="eithra-col-titulo" aria-sort="{{ ordenacao.colunas.titulo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.titulo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.titulo.url }}">Título{% if ordenacao.colunas.titulo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.titulo.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-descricao d-none d-xxl-table-cell">Descrição</th>
-              <th scope="col" class="eithra-col-local">Local</th>
-              <th scope="col" class="eithra-col-prioridade">Prioridade</th>
-              <th scope="col" class="eithra-col-prazo">Prazo</th>
+              <th scope="col" class="eithra-col-local" aria-sort="{{ ordenacao.colunas.local.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.local.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.local.url }}">Local{% if ordenacao.colunas.local.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.local.indicador }}</span>{% endif %}</a></th>
+              <th scope="col" class="eithra-col-prioridade" aria-sort="{{ ordenacao.colunas.prioridade.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.prioridade.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.prioridade.url }}">Prioridade{% if ordenacao.colunas.prioridade.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.prioridade.indicador }}</span>{% endif %}</a></th>
+              <th scope="col" class="eithra-col-registrada" aria-sort="{{ ordenacao.colunas.criado_em.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.criado_em.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.criado_em.url }}">Registrada em{% if ordenacao.colunas.criado_em.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.criado_em.indicador }}</span>{% endif %}</a></th>
+              <th scope="col" class="eithra-col-prazo" aria-sort="{{ ordenacao.colunas.prazo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.prazo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.prazo.url }}">Prazo{% if ordenacao.colunas.prazo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.prazo.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-responsavel d-none d-xl-table-cell">Responsável</th>
-              <th scope="col" class="eithra-col-situacao">Situação</th>
+              <th scope="col" class="eithra-col-situacao" aria-sort="{{ ordenacao.colunas.status.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.status.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.status.url }}">Situação{% if ordenacao.colunas.status.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.status.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-acoes text-end">Ações</th>
             </tr>
           </thead>
@@ -166,6 +140,9 @@
                 </td>
                 <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
                 <td class="eithra-col-prioridade"><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
+                {% comment %}A data em que a demanda entrou no sistema. Sem hora: na
+                lista ela situa o registro no tempo, e a hora só pesaria.{% endcomment %}
+                <td class="eithra-col-registrada"><div class="small">{{ demanda.registrada_em }}</div></td>
                 <td class="eithra-col-prazo">
                   <div class="small">{{ demanda.prazo }}</div>
                   {% if demanda.prazo_destaque %}
@@ -226,6 +203,7 @@
               <div class="col-6"><span class="text-body-secondary">Local</span><br>{{ demanda.local }}</div>
               <div class="col-6"><span class="text-body-secondary">Prazo</span><br>{{ demanda.prazo }}</div>
               <div class="col-6"><span class="text-body-secondary">Prioridade</span><br>{{ demanda.prioridade }}</div>
+              <div class="col-6"><span class="text-body-secondary">Registrada em</span><br>{{ demanda.registrada_em }}</div>
               <div class="col-6"><span class="text-body-secondary">Responsável</span><br>{{ demanda.responsavel }}</div>
             </div>
             {% if demanda.acoes %}
@@ -254,10 +232,14 @@
     {% else %}
       <div class="card-body">
         {% if filtros_ativos %}
+          {% comment %}Com busca ou recorte ativo, o vazio é resultado do que foi
+          pedido — a saída é limpar o pedido, não registrar de novo.{% endcomment %}
           {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
-          {% include "components/state.html" with state_icon="bx-search" state_title="Nenhuma demanda encontrada" state_message="Nenhuma demanda corresponde aos filtros atuais. Ajuste os filtros ou limpe a busca." state_action_url=filtros_limpos state_action_label="Limpar busca" state_action_tone="discreta" %}
+          {% include "components/state.html" with state_icon="bx-search" state_title="Nenhuma demanda encontrada" state_message="Nenhuma demanda corresponde à busca ou ao recorte atual. Tente outro termo ou limpe a busca." state_action_url=filtros_limpos state_action_label="Limpar busca" state_action_tone="discreta" %}
+        {% elif aba == 'concluidas' %}
+          {% include "components/state.html" with state_icon="bx-check-circle" state_title="Nenhuma demanda concluída" state_message="As demandas concluídas e canceladas aparecem aqui." %}
         {% else %}
-          {% include "components/state.html" with state_icon="bx-clipboard" state_title="Nenhuma demanda registrada" state_message="Demandas operacionais aparecem aqui quando forem registradas." %}
+          {% include "components/state.html" with state_icon="bx-clipboard" state_title="Nenhuma demanda ativa" state_message="As demandas operacionais aparecem aqui quando forem registradas." %}
         {% endif %}
       </div>
     {% endif %}
@@ -373,11 +355,11 @@
                 {% endif %}
               </div>
 
-              {% comment %}O peso da demanda é decisão de quem registra, e não leitura
-              do relato: por isso é um campo de verdade nesta etapa, já com o padrão
-              do domínio selecionado. A escolha que aparece aqui é a que segue para o
-              registro — ninguém mais decide a prioridade no meio do caminho.{% endcomment %}
-              <div class="eithra-sintese-peso mt-3">
+              {% comment %}O peso chega calculado pelo motor e já vem selecionado. O
+              campo existe para a correção de quem tem permissão: o que aparece aqui é o
+              valor operacional, sem rótulo dizendo que foi automático. A escolha feita
+              nesta etapa é a que segue para o registro.{% endcomment %}
+              <div class="mt-3">
                 {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade classe="mb-0" %}
               </div>
 
@@ -426,8 +408,9 @@
                     {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel classe="mb-0" %}
                   </div>
                   <div class="col-12 col-lg-6">
-                    {% comment %}O prazo vem da política e aparece calculado; a data só é
-                    tocada aqui, quando quem registra decide corrigir por conta própria.{% endcomment %}
+                    {% comment %}O prazo não é criado automaticamente: a data só existe
+                    quando quem registra a informa. O campo fica aqui exatamente para essa
+                    decisão, e nunca é exigido para concluir o registro.{% endcomment %}
                     {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo classe="mb-0" %}
                     <div class="eithra-field-help">
                       {{ sugestoes.prazo.origem }}{% if sugestoes.prazo.motivo %} · {{ sugestoes.prazo.motivo }}{% endif %}
@@ -497,7 +480,6 @@
                   <div class="col-12 col-lg-6">
                     <div class="text-body-secondary small">Prioridade</div>
                     <div class="fw-medium">{{ revisao.prioridade.valor }}</div>
-                    <div class="small text-body-secondary">{{ revisao.prioridade.origem }}{% if revisao.prioridade.motivo %} · {{ revisao.prioridade.motivo }}{% endif %}</div>
                   </div>
                   <div class="col-12 col-lg-6">
                     <div class="text-body-secondary small">Prazo</div>

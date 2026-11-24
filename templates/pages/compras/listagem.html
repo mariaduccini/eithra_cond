@@ -6,25 +6,22 @@
 {% block title %}Compras · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Compras</h1>
-      <p class="text-body-secondary mb-0">
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Compras</h1>
+      <p class="eithra-pagina-sub">
         O que o condomínio adquiriu{% if total %} · {{ total }} em vista{% endif %}.
       </p>
     </div>
     {% if pode_criar %}
-      <button
-        type="button"
-        class="btn btn-primary"
-        data-bs-toggle="modal"
-        data-bs-target="#registrar-compra">
+      <a href="{% url 'compras:criar' %}" class="btn btn-primary">
         <i class="bx bx-plus me-1" aria-hidden="true"></i> Registrar compra
-      </button>
+      </a>
     {% endif %}
-  </div>
+  </header>
 
-  <div class="card mb-4">
+  <div class="card eithra-filter-shell mb-4">
     <div class="card-body">
       <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
         {% if mostrar_condominio %}
@@ -62,7 +59,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card eithra-operational-table-shell">
     {% if compras %}
       <div class="table-responsive d-none d-lg-block">
         <table class="table align-middle mb-0">
@@ -130,18 +127,18 @@
 
   {% if pode_criar and formulario_compra %}
     <div
-      class="modal fade{% if modal_aberto == 'criar' %} show{% endif %}"
+      class="modal fade{% if modal_aberto == 'criar' or modal_aberto == 'manual' %} show{% endif %}"
       id="registrar-compra"
       tabindex="-1"
       role="dialog"
       aria-labelledby="registrar-compra-titulo"
-      aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
-      {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
+      aria-hidden="{% if modal_aberto == 'criar' or modal_aberto == 'manual' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'criar' or modal_aberto == 'manual' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <form class="modal-content" method="post" action="{% url 'compras:criar' %}" novalidate>
           {% csrf_token %}
           <div class="modal-header">
-            <h5 class="modal-title" id="registrar-compra-titulo">Registrar compra</h5>
+            <h5 class="modal-title" id="registrar-compra-titulo">Cadastrar manualmente</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
 
@@ -233,4 +230,3 @@
     </div>
   {% endif %}
 {% endblock %}
-

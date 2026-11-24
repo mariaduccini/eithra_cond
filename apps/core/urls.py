@@ -7,6 +7,17 @@ app_name = "core"
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("transparencia/<uuid:pk>/", views.transparencia, name="transparencia"),
     path("decisoes/<uuid:pk>/", views.confirmacao, name="confirmacao"),
     path("decisoes/<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),
+    path(
+        "acompanhamento/<str:origem>/<uuid:pk>/",
+        views.acompanhamento,
+        name="acompanhamento",
+    ),
+    path(
+        "acompanhamento/<str:origem>/<uuid:pk>/gesto/",
+        views.acompanhar,
+        name="acompanhar",
+    ),
 ]

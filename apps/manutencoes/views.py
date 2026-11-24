@@ -26,6 +26,7 @@ from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.comunicacao.permissoes import pode_criar_comunicacao
+from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
@@ -73,6 +74,7 @@ from .permissoes import (
     pode_cancelar_manutencao,
     pode_concluir,
     pode_conferir,
+    pode_criar_manutencao,
     pode_editar_manutencao,
     pode_registrar_execucao,
     situacoes_para_mudar,
@@ -1054,6 +1056,10 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         "demanda_origem": origem,
         "modal_aberto": modal,
         "mostrar_condominio": condominios.count() > 1,
+        # Ditar é escrever: o microfone só se oferece onde a pessoa poderia
+        # registrar manutenção — a mesma permissão que o serviço de transcrição
+        # confere no backend. O botão nunca leva a um lugar sem saída.
+        "voz_disponivel": audio.disponivel() and pode_criar,
     }
     return render(request, "pages/manutencoes/listagem.html", contexto, status=status)
 
@@ -1138,6 +1144,11 @@ def _render_detalhe(
         "formulario_evidencia": formulario_evidencia or EvidenciaDaExecucaoForm(),
         "resultados_da_conferencia": RESULTADOS_DA_CONFERENCIA,
         "modal_aberto": modal,
+        # Ditar é escrever: o microfone aparece onde a pessoa pode registrar
+        # manutenção neste condomínio — a mesma permissão que o serviço de
+        # transcrição confere no backend, para o botão nunca dar em nada.
+        "voz_disponivel": audio.disponivel()
+        and pode_criar_manutencao(request.user, manutencao.condominio),
     }
     return render(request, "pages/manutencoes/detalhe.html", contexto, status=status)
 

@@ -1,5 +1,6 @@
 """Telas de rotinas: listagem, detalhe, filtros, ocorrências e ações (§70)."""
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -138,6 +139,46 @@ class AcessoAsTelasTests(BaseDeTelas):
 
 class CriacaoTests(BaseDeTelas):
     """Registrar a rotina pela tela, já com a primeira ocorrência."""
+
+    def test_modal_de_criacao_guia_descricao_classificacao_e_revisao(self):
+        resposta = self.client.get(reverse("rotinas:listagem"))
+
+        self.assertEqual(resposta.status_code, 200)
+        html = resposta.content.decode()
+        for etapa in ("Descrição", "Classificação", "Revisão"):
+            self.assertIn(etapa, html)
+        for campo in (
+            "titulo",
+            "descricao",
+            "tipo",
+            "periodicidade_tipo",
+            "intervalo",
+            "dia_semana",
+            "dia_mes",
+            "mes_ano",
+            "data_inicio",
+            "data_fim",
+            "prioridade",
+            "local",
+            "equipamento",
+            "fornecedor",
+            "responsavel",
+            "checklist_modelo",
+            "gera_manutencao",
+        ):
+            self.assertIn(f'name="{campo}"', html)
+        self.assertIn('data-rotina-wizard', html)
+        self.assertIn("js/eithra-rotina-wizard.js", html)
+        self.assertIn(reverse("rotinas:criar"), html)
+
+    @patch("apps.rotinas.views.audio.disponivel", return_value=True)
+    def test_descricao_reutiliza_o_controlador_de_voz_existente(self, _disponivel):
+        resposta = self.client.get(reverse("rotinas:listagem"))
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "data-eithra-ditar")
+        self.assertContains(resposta, reverse("demandas:transcrever"))
+        self.assertContains(resposta, "js/eithra-ditar.js")
 
     def test_criar_redireciona_para_o_detalhe(self):
         resposta = self.client.post(
@@ -585,12 +626,14 @@ class MenuTests(BaseDeTelas):
         return [item["label"] for item in navigation(request)["navigation"]]
 
     def test_gestao_recebe_o_item(self):
-        self.assertIn("Rotinas", self._labels(self.gestao))
+        # A porta se chama "Atividades programadas": quem opera não precisa
+        # saber a diferença entre rotina e preventiva para encontrá-la.
+        self.assertIn("Atividades programadas", self._labels(self.gestao))
 
     def test_morador_nao_recebe_o_item(self):
         morador = criar_pessoa("morador@exemplo.test", "Morador")
         criar_vinculo(morador, self.condominio, papel=Papel.MORADOR)
-        self.assertNotIn("Rotinas", self._labels(morador))
+        self.assertNotIn("Atividades programadas", self._labels(morador))
 
 
 class MobileTests(BaseDeTelas):

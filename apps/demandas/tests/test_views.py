@@ -93,7 +93,10 @@ class AcessoAsTelasTests(BaseDeTelas):
 class CriacaoTests(BaseDeTelas):
     """Registrar demanda pela tela (§16, §35)."""
 
-    def test_criar_redireciona_para_o_detalhe(self):
+    def test_criar_redireciona_para_a_listagem(self):
+        """Depois de registrar, a pessoa volta para a lista — e a demanda nova
+        aparece no recorte operacional, sem filtro herdado que a esconda (§6).
+        """
         resposta = self.client.post(
             reverse("demandas:criar"),
             {
@@ -104,7 +107,14 @@ class CriacaoTests(BaseDeTelas):
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
         self.assertEqual(demanda.titulo, "Vazamento na garagem")
-        self.assertEqual(resposta.url, reverse("demandas:detalhe", args=[demanda.pk]))
+        self.assertEqual(resposta.url, reverse("demandas:listagem"))
+
+        listagem = self.client.get(resposta.url)
+        self.assertEqual(listagem.status_code, 200)
+        self.assertIn(
+            "Vazamento na garagem",
+            [linha["titulo"] for linha in listagem.context["demandas"]],
+        )
 
     def test_titulo_obrigatorio(self):
         resposta = self.client.post(
@@ -304,6 +314,259 @@ class ListagemEFiltrosTests(BaseDeTelas):
         self.assertEqual(indicadores["Em andamento"], 2)
         self.assertEqual(indicadores["Concluídas no mês"], 1)
 
+    def test_indicadores_separam_desempenho_interno_e_externo(self):
+        # A operação interna não é penalizada pelo atraso de terceiros: o
+        # compromisso formal de conclusão e a data prometida por quem se aguarda
+        # ficam no grupo externo; o que a equipe decide, no interno.
+        self._demanda(titulo="Aberta")
+        self._demanda(
+            titulo="Vencida", prazo=timezone.localdate() - timedelta(days=1)
+        )
+
+        resposta = self.client.get(reverse("demandas:listagem"))
+        grupos = {
+            item["titulo"]: item["grupo"] for item in resposta.context["indicadores"]
+        }
+
+        self.assertEqual(grupos["Em aberto"], "Desempenho interno")
+        self.assertEqual(grupos["Próxima ação vencida"], "Desempenho interno")
+        self.assertEqual(grupos["Vencidas"], "Desempenho externo")
+        self.assertEqual(grupos["Previsão atrasada"], "Desempenho externo")
+
+
+class ListagemPorAbasEOrdenacaoTests(BaseDeTelas):
+    """Abas Ativas/Concluídas e ordenação pelas colunas da grade (§5–§12)."""
+
+    def _abrir(self, **parametros):
+        resposta = self.client.get(reverse("demandas:listagem"), parametros)
+        self.assertEqual(resposta.status_code, 200)
+        return resposta
+
+    def _titulos(self, resposta):
+        return [linha["titulo"] for linha in resposta.context["demandas"]]
+
+    # -- Separação entre ativas e concluídas ---------------------------------
+
+    def test_ativas_trazem_so_o_que_ainda_pede_acao(self):
+        self._demanda(titulo="Aberta")
+        self._demanda(titulo="Andamento", status=StatusDemanda.EM_ANDAMENTO)
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
+        self._demanda(titulo="Cancelada", status=StatusDemanda.CANCELADA)
+
+        self.assertEqual(set(self._titulos(self._abrir())), {"Aberta", "Andamento"})
+
+    def test_concluidas_trazem_encerradas(self):
+        self._demanda(titulo="Aberta")
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
+        self._demanda(titulo="Cancelada", status=StatusDemanda.CANCELADA)
+
+        resposta = self._abrir(aba="concluidas")
+        self.assertEqual(set(self._titulos(resposta)), {"Concluída", "Cancelada"})
+
+    def test_ativa_nao_aparece_em_concluidas(self):
+        self._demanda(titulo="Aberta")
+        self.assertEqual(self._abrir(aba="concluidas").context["total"], 0)
+
+    def test_aba_desconhecida_cai_nas_ativas(self):
+        self._demanda(titulo="Aberta")
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
+        self.assertEqual(self._titulos(self._abrir(aba="qualquer")), ["Aberta"])
+
+    def test_trocar_de_aba_volta_a_primeira_pagina(self):
+        for numero in range(1, 26):
+            self._demanda(titulo=f"Ativa {numero:02d}")
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
+
+        resposta = self._abrir(aba="concluidas", page=3)
+        self.assertEqual(resposta.context["pagina_demandas"].number, 1)
+        self.assertEqual(self._titulos(resposta), ["Concluída"])
+
+    def test_concluidas_ordenam_pela_conclusao_mais_recente(self):
+        agora = timezone.now()
+        antiga = self._demanda(titulo="Concluída antiga", status=StatusDemanda.CONCLUIDA)
+        recente = self._demanda(titulo="Concluída recente", status=StatusDemanda.CONCLUIDA)
+        Demanda.objects.filter(pk=antiga.pk).update(concluido_em=agora - timedelta(days=5))
+        Demanda.objects.filter(pk=recente.pk).update(concluido_em=agora)
+
+        self.assertEqual(
+            self._titulos(self._abrir(aba="concluidas")),
+            ["Concluída recente", "Concluída antiga"],
+        )
+
+    # -- Ordenação por coluna ------------------------------------------------
+
+    def test_ordena_por_titulo_nos_dois_sentidos(self):
+        self._demanda(titulo="Banana")
+        self._demanda(titulo="Abacaxi")
+        self._demanda(titulo="Caju")
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="titulo")), ["Abacaxi", "Banana", "Caju"]
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-titulo")), ["Caju", "Banana", "Abacaxi"]
+        )
+
+    def test_ordena_por_local_e_deixa_o_vazio_no_fim(self):
+        alfa = criar_local(self.condominio, "Alfa")
+        zulu = criar_local(self.condominio, "Zulu")
+        self._demanda(titulo="Da Zulu", local=zulu)
+        self._demanda(titulo="Da Alfa", local=alfa)
+        self._demanda(titulo="Sem local")
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="local")),
+            ["Da Alfa", "Da Zulu", "Sem local"],
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-local")),
+            ["Da Zulu", "Da Alfa", "Sem local"],
+        )
+
+    def test_prioridade_ordena_na_ordem_do_dominio(self):
+        self._demanda(titulo="Baixa", prioridade=PrioridadeDemanda.BAIXA)
+        self._demanda(titulo="Média", prioridade=PrioridadeDemanda.NORMAL)
+        self._demanda(titulo="Alta", prioridade=PrioridadeDemanda.ALTA)
+        self._demanda(titulo="Crítica", prioridade=PrioridadeDemanda.URGENTE)
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="prioridade")),
+            ["Crítica", "Alta", "Média", "Baixa"],
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-prioridade")),
+            ["Baixa", "Média", "Alta", "Crítica"],
+        )
+
+    def test_ordena_por_registrada_em_nos_dois_sentidos(self):
+        primeira = self._demanda(titulo="Primeira")
+        segunda = self._demanda(titulo="Segunda")
+        agora = timezone.now()
+        Demanda.objects.filter(pk=primeira.pk).update(criado_em=agora - timedelta(days=2))
+        Demanda.objects.filter(pk=segunda.pk).update(criado_em=agora)
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="criado_em")), ["Primeira", "Segunda"]
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-criado_em")), ["Segunda", "Primeira"]
+        )
+
+    def test_ordena_por_prazo_e_deixa_o_vazio_no_fim(self):
+        hoje = timezone.localdate()
+        self._demanda(titulo="Sem prazo")
+        self._demanda(titulo="Longe", prazo=hoje + timedelta(days=10))
+        self._demanda(titulo="Perto", prazo=hoje + timedelta(days=1))
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="prazo")),
+            ["Perto", "Longe", "Sem prazo"],
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-prazo")),
+            ["Longe", "Perto", "Sem prazo"],
+        )
+
+    def test_situacao_ordena_na_ordem_do_ciclo(self):
+        self._demanda(titulo="Aberta")
+        self._demanda(titulo="Andamento", status=StatusDemanda.EM_ANDAMENTO)
+        self._demanda(titulo="Aguardando", status=StatusDemanda.AGUARDANDO)
+
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="status")),
+            ["Aberta", "Andamento", "Aguardando"],
+        )
+        self.assertEqual(
+            self._titulos(self._abrir(ordenar="-status")),
+            ["Aguardando", "Andamento", "Aberta"],
+        )
+
+    # -- Segurança do parâmetro de ordenação ---------------------------------
+
+    def test_ordenar_invalido_volta_a_ordem_padrao(self):
+        self._demanda(titulo="Vencida", prazo=timezone.localdate() - timedelta(days=1))
+        self._demanda(titulo="Futura", prazo=timezone.localdate() + timedelta(days=5))
+
+        resposta = self._abrir(ordenar="prioridade); DROP TABLE demandas; --")
+        # O valor bruto nunca chega ao ORM: a lista cai na ordem de atenção.
+        self.assertEqual(self._titulos(resposta), ["Vencida", "Futura"])
+        self.assertEqual(resposta.context["ordenacao"]["chave"], "")
+
+    def test_ordenar_por_coluna_desconhecida_e_ignorado(self):
+        self._demanda(titulo="Um")
+        resposta = self._abrir(ordenar="__class__")
+        self.assertEqual(resposta.context["ordenacao"]["chave"], "")
+
+    # -- Cabeçalhos ordenáveis ------------------------------------------------
+
+    def test_so_a_coluna_ativa_mostra_o_sinal(self):
+        self._demanda(titulo="Um")
+        colunas = self._abrir(ordenar="titulo").context["ordenacao"]["colunas"]
+
+        self.assertEqual(colunas["titulo"]["indicador"], "↑")
+        for outra in ("local", "prioridade", "criado_em", "prazo", "status"):
+            self.assertEqual(colunas[outra]["indicador"], "")
+
+    def test_o_segundo_clique_inverte_a_direcao(self):
+        self._demanda(titulo="Um")
+
+        # Sem ordenação, "Registrada em" começa pela mais recente (decrescente).
+        padrao = self._abrir().context["ordenacao"]["colunas"]["criado_em"]
+        self.assertTrue(padrao["url"].endswith("ordenar=-criado_em"))
+
+        desce = self._abrir(ordenar="-criado_em").context["ordenacao"]["colunas"]["criado_em"]
+        self.assertTrue(desce["ativo"])
+        self.assertEqual(desce["indicador"], "↓")
+        self.assertTrue(desce["url"].endswith("ordenar=criado_em"))
+
+        sobe = self._abrir(ordenar="criado_em").context["ordenacao"]["colunas"]["criado_em"]
+        self.assertEqual(sobe["indicador"], "↑")
+
+    def test_ordenar_preserva_a_busca_e_a_aba_e_zera_a_pagina(self):
+        self._demanda(titulo="Barulho na garagem")
+        resposta = self._abrir(busca="garagem", aba="ativas", ordenar="titulo", page=2)
+        url_do_local = resposta.context["ordenacao"]["colunas"]["local"]["url"]
+
+        self.assertIn("busca=garagem", url_do_local)
+        self.assertIn("aba=ativas", url_do_local)
+        self.assertIn("ordenar=local", url_do_local)
+        self.assertNotIn("page=", url_do_local)
+
+    def test_a_troca_de_aba_leva_a_busca_junto(self):
+        self._demanda(titulo="Barulho na garagem")
+        resposta = self._abrir(busca="garagem")
+        self.assertContains(resposta, "busca=garagem")
+        self.assertContains(resposta, "aba=concluidas")
+
+    # -- Interface visível ----------------------------------------------------
+
+    def test_o_recorte_visivel_e_so_a_busca(self):
+        self._demanda()
+        html = self._abrir().content.decode()
+        inicio = html.rindex("<form", 0, html.index("eithra-filter-shell"))
+        formulario = html[inicio : html.index("</form>", inicio)]
+
+        self.assertIn('name="busca"', formulario)
+        for campo in (
+            "status",
+            "prioridade",
+            "local",
+            "responsavel",
+            "prazo",
+            "equipamento",
+            "tipo_problema",
+            "impacto",
+            "risco",
+            "minhas",
+        ):
+            self.assertNotIn(f'name="{campo}"', formulario)
+
+    def test_registrada_em_vem_imediatamente_antes_de_prazo(self):
+        self._demanda()
+        html = self._abrir().content.decode()
+        self.assertLess(html.index("Registrada em"), html.index(">Prazo"))
+        self.assertIn("eithra-col-registrada", html)
+
 
 class AcoesTests(BaseDeTelas):
     """Editar, mudar situação e observar pela tela (§20, §29)."""
@@ -430,16 +693,19 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
         self.assertEqual(resposta.context["registro_etapa"], "informacoes")
         sugestoes = resposta.context["sugestoes"]
         self.assertTrue(sugestoes["assunto"]["valor"])
-        # A prioridade não é lida do relato: sem escolha, fica no padrão do domínio.
-        self.assertEqual(sugestoes["prioridade"]["valor"], "Normal")
+        # O peso sai do motor estruturado, que lê os sinais do relato — aqui
+        # "nova falha" (reincidência) e um equipamento essencial fora de
+        # operação somam dois sinais de atenção e sobem o peso.
+        self.assertEqual(sugestoes["prioridade"]["valor"], "Crítica")
         self.assertEqual(sugestoes["prazo"]["valor"], "")
 
     def test_o_que_a_leitura_nao_sustentou_permanece_sem_resposta(self):
         resposta = self._descricao(relato="Comprar lâmpadas para o corredor")
         sugestoes = resposta.context["sugestoes"]
-        # Sem sinal objetivo o peso fica no padrão do domínio, e não há data a
-        # inventar: a etapa também não exige que a pessoa escolha a outra.
-        self.assertEqual(sugestoes["prioridade"]["valor"], "Normal")
+        # Sem sinal que eleve o peso, o motor fica no degrau padrão — Média —, e
+        # não há data a inventar: a etapa também não exige que a pessoa escolha a
+        # outra.
+        self.assertEqual(sugestoes["prioridade"]["valor"], "Média")
         self.assertEqual(sugestoes["prazo"]["texto"], "Sem prazo definido")
         self.assertEqual(sugestoes["local"]["valor"], "")
 
@@ -454,10 +720,9 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
         self.assertEqual(resposta.context["registro_etapa"], "revisao")
         revisao = resposta.context["revisao"]
         self.assertEqual(revisao["assunto"], "Nova falha no motor do portão interno")
-        # A revisão exibe a prioridade que será gravada — escolha de quem registra,
-        # e não uma leitura do relato.
-        self.assertEqual(revisao["prioridade"]["valor"], "Normal")
-        self.assertEqual(revisao["prioridade"]["origem"], "Definida no registro")
+        # A revisão exibe o peso que será gravado — o que o motor sustentou a
+        # partir dos sinais do relato.
+        self.assertEqual(revisao["prioridade"]["valor"], "Crítica")
         self.assertEqual(revisao["prazo"]["valor"], "Sem prazo")
 
     def test_prazo_nao_e_criado_automaticamente_pela_prioridade(self):
@@ -490,9 +755,10 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
         self.assertIn("Em aberto", conteudo)
         self.assertIn("Concluídas no mês", conteudo)
         self.assertIn("<table", conteudo)
-        # Código, título e descrição ocupam colunas próprias na grid.
+        # Código, título e descrição ocupam colunas próprias na grid. O título
+        # passou a ser o próprio comando de ordenação — o cabeçalho é um link.
         self.assertIn(">Código<", conteudo)
-        self.assertIn(">Título<", conteudo)
+        self.assertIn('class="eithra-col-titulo"', conteudo)
         self.assertIn(">Descrição<", conteudo)
         self.assertNotIn('<ul class="eithra-lista">', conteudo)
 
@@ -585,8 +851,10 @@ class ContextoOperacionalTests(BaseDeTelas):
         )
         titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
         self.assertEqual(titulos, ["Bomba de recalque com vazamento"])
-        # O filtro aparece com o nome que a gestão lê, não com o do campo.
-        self.assertIn("Tipo de problema", resposta.content.decode())
+        # O recorte continua valendo pelo endereço, mas não ocupa mais a tela: o
+        # filtro fino saiu da interface (§3) e segue vivo no backend (§19). O
+        # campo de filtro não é renderizado como controle na listagem.
+        self.assertNotIn('id="id_tipo_problema"', resposta.content.decode())
 
         vazia = self.client.get(
             reverse("demandas:listagem"), {"tipo_problema": TipoProblema.RUIDO}
@@ -655,3 +923,39 @@ class ContextoOperacionalTests(BaseDeTelas):
         self.assertIn("Contratos e garantias", conteudo)
         self.assertIn("Manutenção de elevadores", conteudo)
         self.assertIn("Garantia da bomba de recalque", conteudo)
+
+    def test_sla_do_contrato_projeta_o_prazo_contratual(self):
+        _, equipamento, demanda = self._contexto()
+        contrato = criar_contrato(self.condominio, self.gestao, sla_dias=4)
+        ContratoEquipamento.objects.create(
+            contrato=contrato, equipamento=equipamento
+        )
+
+        resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
+        conteudo = resposta.content.decode()
+        esperado = timezone.localdate(demanda.criado_em) + timedelta(days=4)
+
+        # O SLA estruturado do contrato é a base formal do prazo — exibido com o
+        # contrato e o prazo contratual, sem nada deduzido do texto do documento.
+        self.assertIn("SLA: 4 dias", conteudo)
+        self.assertIn(f"Prazo contratual: {esperado.strftime('%d/%m/%Y')}", conteudo)
+        self.assertEqual(
+            resposta.context["contexto_governanca"]["prazo_do_contrato"], esperado
+        )
+
+    def test_contrato_sem_sla_nao_inventa_prazo(self):
+        _, equipamento, demanda = self._contexto()
+        contrato = criar_contrato(self.condominio, self.gestao)
+        ContratoEquipamento.objects.create(
+            contrato=contrato, equipamento=equipamento
+        )
+
+        resposta = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
+        conteudo = resposta.content.decode()
+
+        # Contrato vigente, mas sem SLA: não há prazo a inventar a partir dele.
+        self.assertIn("Sem SLA registrado — não gera prazo", conteudo)
+        self.assertNotIn("Prazo contratual", conteudo)
+        self.assertIsNone(
+            resposta.context["contexto_governanca"]["prazo_do_contrato"]
+        )

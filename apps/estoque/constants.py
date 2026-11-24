@@ -59,6 +59,32 @@ class StatusCompra(models.TextChoices):
     CANCELADA = "cancelada", "Cancelada"
 
 
+class StatusLeituraDocumentoCompra(models.TextChoices):
+    """Resultado honesto da leitura local de um documento de compra."""
+
+    PENDENTE = "pendente", "Aguardando revisão"
+    LIDO = "lido", "Sugestões disponíveis"
+    REVISAO_MANUAL = "revisao_manual", "Revisão manual necessária"
+    ERRO = "erro", "Não foi possível ler"
+
+
+class TipoDocumentoCompra(models.TextChoices):
+    """Tipos de comprovante aceitos na origem da compra."""
+
+    NOTA_FISCAL = "nota_fiscal", "Nota fiscal"
+    RECIBO = "recibo", "Recibo"
+    CUPOM = "cupom", "Cupom"
+    OUTRO = "outro", "Outro documento"
+
+
+class StatusReembolso(models.TextChoices):
+    """Situação do reembolso, sem criar uma conta a pagar paralela."""
+
+    NAO_SOLICITADO = "", "Não solicitado"
+    PENDENTE = "pendente", "Pendente"
+    REEMBOLSADO = "reembolsado", "Reembolsado"
+
+
 class TipoMovimentacaoEstoque(models.TextChoices):
     """O que aconteceu com o estoque, e por quê.
 

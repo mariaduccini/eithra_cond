@@ -531,6 +531,21 @@ def _unidade_casa(identificador: str, citacoes) -> bool:
     return any(citacao in pedacos for citacao in citacoes)
 
 
+def unidade_citada(identificacao: str, condominio) -> Unidade | None:
+    """A unidade do cadastro que responde por este número — ou nenhuma.
+
+    É a mesma conferência que a portaria faz da fala, exposta para quem chega
+    por outro canal: um e-mail que cita "apto 902" só vira unidade de verdade
+    quando o cadastro confirma uma só. Havendo mais de uma — o número existe no
+    bloco A e no B — ou nenhuma, devolve ``None``: quem decide é a pessoa, e
+    quem lê não escolhe no lugar dela.
+    """
+    entidade, _ = _unidade_da_fala(texto.normalizar(identificacao), condominio)
+    if entidade.estado == Estado.CONFIRMADA and entidade.objeto is not None:
+        return entidade.objeto
+    return None
+
+
 def _pessoa_da_fala(lido: str, original: str, condominio, verbos) -> Entidade:
     """A pessoa nomeada em volta de um verbo — confirmada ou apenas declarada."""
     nome = _nome_em_volta_do_verbo(original, verbos)

@@ -208,3 +208,7 @@ class TipoEventoManutencao(models.TextChoices):
     # evento que a manutenção recebe de fora: o fato é da comunicação, e aqui
     # fica apenas a lembrança de que ele existiu.
     COMUNICADO = "comunicado", "Comunicado gerado"
+    # Uma atualização do acompanhamento: o que se soube sobre o andamento do
+    # serviço enquanto ele acontecia — o técnico chegou, a peça foi pedida. Não
+    # é decisão nem mudança de situação; é a memória curta de quem conduz.
+    ACOMPANHAMENTO = "acompanhamento", "Acompanhamento"

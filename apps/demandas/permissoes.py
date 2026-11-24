@@ -76,6 +76,21 @@ def condominios_para_criar(usuario) -> QuerySet[Condominio]:
     return _com_papel(usuario, PAPEIS_QUE_CRIAM)
 
 
+def condominios_para_gerenciar(usuario) -> QuerySet[Condominio]:
+    """Condomínios em que a pessoa responde pela gestão agora.
+
+    É o recorte de quem decide — administradora e síndica. A supervisão
+    acompanha e registra, mas não responde pelo condomínio; por isso não entra
+    aqui. As exceções que pedem decisão são lidas neste escopo.
+    """
+    return _com_papel(usuario, PAPEIS_QUE_GERENCIAM)
+
+
+def pode_gerenciar_em_algum_condominio(usuario) -> bool:
+    """Diz se a pessoa responde pela gestão em algum condomínio agora."""
+    return condominios_para_gerenciar(usuario).exists()
+
+
 def pode_ver_alguma_demanda(usuario) -> bool:
     """Diz se a pessoa enxerga o módulo em algum condomínio agora.
 

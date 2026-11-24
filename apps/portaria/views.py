@@ -26,7 +26,7 @@ from apps.condominios import logo
 from apps.core import audio
 from apps.core.paginacao import paginar_do_pedido
 
-from . import interpretacao
+from . import interpretacao, numero_falado
 from .constants import (
     HORA_DE_ABERTURA,
     HORA_DE_FECHAMENTO,
@@ -41,6 +41,7 @@ from .forms import (
     ChegadaNaoPrevistaForm,
     VerificarAutorizacaoForm,
 )
+from .fotos import ErroDeFoto, guardar_foto
 from .models import AcessoPortaria, AutorizacaoPortaria
 from .permissoes import condominios_para_ver, pode_operar_portaria
 from .services import (
@@ -69,11 +70,16 @@ def buscar_autorizador(request):
     """
     condominio = _condominio_para_operar(request)
     termo = (request.GET.get("q") or "").strip()
-    unidades, pessoas = _autorizadores(condominio, termo)
+    unidades, pessoas, sugestao = _autorizadores(condominio, termo)
     return render(
         request,
         "pages/portaria/_autorizador.html",
-        {"termo": termo, "unidades": unidades, "pessoas": pessoas},
+        {
+            "termo": termo,
+            "unidades": unidades,
+            "pessoas": pessoas,
+            "sugestao": sugestao,
+        },
     )
 
 
@@ -150,6 +156,13 @@ def criar_chegada_nao_prevista(request):
             modal="chegada",
             status=400,
         )
+    # A foto é evidência opcional da chegada, e a chegada já está registrada:
+    # uma foto que o armazenamento recusar não desfaz o acesso nem trava a
+    # portaria — a pessoa é avisada e o registro continua de pé.
+    try:
+        guardar_foto(acesso=acesso, arquivo=request.FILES.get("foto"))
+    except ErroDeFoto as erro:
+        messages.warning(request, str(erro))
     messages.success(request, _recado_do_resultado(autorizacao, acesso))
     return redirect(_destino("portaria:painel", condominio))
 
@@ -269,7 +282,13 @@ def confirmar_relato(request):
         )
 
     try:
-        recado = _executar_a_intencao(intencao, escolha, condominio, request.user)
+        recado = _executar_a_intencao(
+            intencao,
+            escolha,
+            condominio,
+            request.user,
+            relato=relato,
+        )
     except ErroDePortaria as erro:
         messages.error(request, str(erro))
         return _render_painel(
@@ -335,18 +354,20 @@ def _conteudo_do_audio(arquivo) -> bytes:
 # ---------------------------------------------------------------------------
 
 # O relato é texto livre; o espaço vazio dele convida a dizer o que aconteceu.
-PLACEHOLDER_DO_RELATO = "O que aconteceu? Ex.: Chegou Carlos, visita do 902."
+PLACEHOLDER_DO_RELATO = "Conte o que está acontecendo... Ex.: o elevador parou, há água na garagem ou chegou um visitante para o 902."
 
 # O que a proposta pode executar nesta rodada. Cada chave é a ação conceitual
 # que o núcleo de interpretação já devolve; nenhuma delas é inventada aqui.
 CHAVES_DE_ACAO = {
     "chegada": interpretacao.ACAO_DE_CHEGADA,
     "saida": interpretacao.ACAO_DE_SAIDA,
+    "ocorrencia": interpretacao.ACAO_DE_OCORRENCIA,
 }
 
 ROTULOS_DE_ACAO = {
-    "chegada": "Registrar entrada",
+    "chegada": "Registrar chegada",
     "saida": "Registrar saída",
+    "ocorrencia": "Criar demanda",
 }
 
 
@@ -410,6 +431,12 @@ def _escolha_executavel(intencao):
     executável quando a portaria consegue nomear quem chegou e dizer para onde
     ele vai; sem um dos dois, o registro seria um chute.
     """
+    if (
+        intencao.tipo == IntencaoPortaria.RELATO_DE_PROBLEMA
+        and interpretacao.ACAO_DE_OCORRENCIA in intencao.acoes
+    ):
+        return "ocorrencia"
+
     if interpretacao.ACAO_DE_SAIDA in intencao.acoes:
         acesso = intencao.entidade("acesso")
         if acesso is not None and acesso.confirmada and acesso.objeto is not None:
@@ -549,12 +576,83 @@ def _local_da_chegada(intencao):
     return None
 
 
-def _executar_a_intencao(intencao, escolha, condominio, usuario) -> str:
+def _executar_a_intencao(
+    intencao, escolha, condominio, usuario, *, relato=""
+) -> str:
     if escolha == "saida":
         return _recado_de_saida(
             registrar_saida(acesso=intencao.entidade("acesso").objeto, usuario=usuario)
         )
+    if escolha == "ocorrencia":
+        return _executar_demanda_da_portaria(
+            relato=relato,
+            condominio=condominio,
+            usuario=usuario,
+        )
     return _executar_chegada(intencao, condominio, usuario)
+
+
+def _executar_demanda_da_portaria(*, relato, condominio, usuario) -> str:
+    """Cria pelo domínio de Demandas o problema confirmado na Portaria.
+
+    A Portaria apenas reconhece que o relato é um problema. Título,
+    classificação, prioridade, local e equipamento continuam sendo lidos
+    pelo domínio canônico de Demandas.
+    """
+    from apps.demandas import interpretacao as interpretacao_demanda
+    from apps.demandas.constants import OrigemDemanda
+    from apps.demandas.services import criar_demanda
+
+    leitura = interpretacao_demanda.interpretar(
+        relato,
+        condominio=condominio,
+    )
+
+    titulo = (getattr(leitura, "assunto", "") or relato).strip()[:150]
+    if not titulo:
+        raise ErroDePortaria(
+            "Não consegui identificar o problema para criar a demanda."
+        )
+
+    local = getattr(leitura, "local", None)
+
+    equipamento = getattr(leitura, "equipamento", None)
+    if equipamento is not None and not getattr(equipamento, "pk", None):
+        equipamento = getattr(equipamento, "objeto", None)
+    if equipamento is not None and not getattr(equipamento, "pk", None):
+        equipamento = None
+
+    tipo_problema = getattr(
+        getattr(leitura, "tipo_problema", None), "valor", None
+    )
+    impacto = getattr(
+        getattr(leitura, "impacto", None), "valor", None
+    )
+    risco = getattr(
+        getattr(leitura, "risco", None), "valor", None
+    )
+
+    registro = getattr(leitura, "registro", None)
+    classificacao_sugerida = (
+        registro() if callable(registro) else None
+    )
+
+    demanda = criar_demanda(
+        condominio=condominio,
+        criado_por=usuario,
+        titulo=titulo,
+        descricao=relato,
+        origem=OrigemDemanda.PORTARIA,
+        prioridade=getattr(leitura, "prioridade", None) or "normal",
+        local=local,
+        equipamento=equipamento,
+        tipo_problema=tipo_problema,
+        impacto=impacto,
+        risco=risco,
+        classificacao_sugerida=classificacao_sugerida,
+    )
+
+    return f"Demanda criada pela Portaria: {demanda.titulo}."
 
 
 def _executar_chegada(intencao, condominio, usuario) -> str:
@@ -670,6 +768,7 @@ def _render_painel(
         "formulario_chegada": formulario_chegada
         or ChegadaNaoPrevistaForm(condominio=atual),
         "passo_chegada": _passo_da_chegada(formulario_chegada),
+        "passo_esperado": _passo_do_esperado(formulario_esperado),
         "formulario_verificacao": formulario_verificacao
         or (
             VerificarAutorizacaoForm(
@@ -681,10 +780,18 @@ def _render_painel(
         ),
         "item_verificacao": item_verificacao,
         "autorizador_unidade": _unidade_escolhida(formulario_chegada, atual),
+        "autorizador_unidade_esperado": _unidade_escolhida(formulario_esperado, atual),
         "empresas_conhecidas": empresas_conhecidas(atual),
         # A planta do condomínio para escolher o destino por clique. Sai do
         # cadastro de unidades que já existe e nunca atravessa condomínio.
         "estrutura_unidades": _estrutura_de_unidades(atual),
+        # Quem responde por cada unidade, para a autorização ser um toque no
+        # nome de quem atendeu o interfone. Mesma origem do cadastro real: sem
+        # morador vinculado, a unidade não oferece ninguém para autorizar.
+        "moradores_por_unidade": _moradores_por_unidade(atual),
+        # As áreas comuns que existem no condomínio. São destino de acesso, como
+        # a unidade — e nunca uma lista inventada pela tela.
+        "areas_comuns": _areas_comuns(atual),
         "modal_aberto": modal,
         "relato": relato,
         "proposta": proposta,
@@ -694,6 +801,18 @@ def _render_painel(
         # Voz é atalho, não caminho: sem serviço de transcrição configurado o
         # microfone nem aparece, e o relato por texto segue inteiro.
         "voz_disponivel": audio.disponivel(),
+        # Um endereço só de transcrição viaja com a tela: o relato, o destino
+        # da chegada e o nome de quem chegou ditam no mesmo serviço, pelo mesmo
+        # controlador. Não há um segundo motor de voz para a Portaria.
+        #
+        # O nome é "url_da_transcricao" e não "voz_url" de propósito: o campo
+        # compartilhado (``cadastros/_campo.html``) liga o microfone a partir de
+        # um ``voz_url`` recebido na inclusão. Como a inclusão herda o contexto
+        # da página, um ``voz_url`` solto aqui poria microfone em todo campo da
+        # tela. Com outro nome, só dita o campo que pedir a voz explicitamente.
+        "url_da_transcricao": reverse("portaria:transcrever")
+        if audio.disponivel()
+        else "",
     }
     if base["aba"] == "historico":
         contexto.update(_historico(request, atual))
@@ -715,12 +834,38 @@ def _chave_natural(valor):
     return (1, 0, texto.lower())
 
 
+def _chave_do_andar(valor):
+    """O prédio se lê de cima para baixo: 16º, 15º, …, 2º, 1º.
+
+    Andar sem número — o que o cadastro ainda não informou — vai para o fim e
+    sem rótulo próprio: o mapa não inventa andar nenhum nem escreve o que não
+    está no cadastro.
+    """
+    texto = (valor or "").strip()
+    if texto.isdigit():
+        return (0, -int(texto), "")
+    return (1, 0, texto.lower())
+
+
+def _rotulo_do_andar(valor):
+    """Como o andar aparece no prédio: "9º" — e nada quando não há andar."""
+    texto = (valor or "").strip()
+    if not texto:
+        return ""
+    return f"{texto}º" if texto.isdigit() else texto
+
+
 def _estrutura_de_unidades(condominio):
     """A planta do condomínio para escolher o destino por clique.
 
     Bloco/Torre → Andar → Unidade, montada do cadastro que já existe
-    (bloco_torre, andar, identificador). A unidade sem bloco ou sem andar entra
-    num grupo próprio, e só a unidade ativa do próprio condomínio aparece.
+    (bloco_torre, andar, identificador). É o prédio de pé: os andares reais na
+    ordem em que se sobe — 16º, 15º, …, 1º — e as unidades de cada andar lado a
+    lado, como as plantas as mostram. Só a unidade ativa do próprio condomínio
+    aparece.
+
+    Condomínio sem bloco/torre não ganha um agrupamento inventado: a lista sai
+    com um bloco só, sem nome, e a tela mostra direto os andares.
     """
     if condominio is None or not getattr(condominio, "pk", None):
         return []
@@ -736,10 +881,11 @@ def _estrutura_de_unidades(condominio):
         ).append(unidade)
     return [
         {
-            "nome": bloco or "Todo o condomínio",
+            "nome": bloco,
             "andares": [
                 {
-                    "nome": andar or "Sem andar informado",
+                    "nome": andar,
+                    "rotulo": _rotulo_do_andar(andar),
                     "unidades": [
                         {
                             "pk": str(unidade.pk),
@@ -750,7 +896,7 @@ def _estrutura_de_unidades(condominio):
                     ],
                 }
                 for andar, lista in sorted(
-                    andares.items(), key=lambda item: _chave_natural(item[0])
+                    andares.items(), key=lambda item: _chave_do_andar(item[0])
                 )
             ],
         }
@@ -760,55 +906,106 @@ def _estrutura_de_unidades(condominio):
     ]
 
 
-def _painel_operacional(condominio, agora):
-    """Resumo e movimentação operacional da Portaria.
+def _moradores_por_unidade(condominio):
+    """Quem responde por cada unidade hoje, indexado pela unidade.
 
-    A movimentação é sempre a operação real: o que a portaria procura sai na
-    busca do campo, e não esconde quem está dentro nem quem se espera.
+    A autorização da portaria acontece no interfone: quem atende é quem mora
+    ali. Esta é a lista que a tela oferece como "Autorizado por", e ela sai do
+    vínculo vigente — nunca de um cadastro paralelo. Unidade sem morador
+    vinculado simplesmente não oferece ninguém, e a portaria escreve o nome à
+    mão quando precisar.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return {}
+    vinculos = (
+        VinculoPessoaUnidade.objects.do_condominio(condominio)
+        .vigentes()
+        .filter(tipo_vinculo__in=TIPOS_DE_RESIDENTE)
+        .select_related("pessoa")
+        .order_by("pessoa__nome")
+    )
+    moradores: dict[str, list[dict]] = {}
+    vistos: set[tuple[str, str]] = set()
+    for vinculo in vinculos:
+        chave = (str(vinculo.unidade_id), str(vinculo.pessoa_id))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        moradores.setdefault(str(vinculo.unidade_id), []).append(
+            {"pk": str(vinculo.pessoa_id), "nome": str(vinculo.pessoa)}
+        )
+    return moradores
+
+
+def _areas_comuns(condominio):
+    """As áreas comuns do condomínio, como destino de um acesso.
+
+    Piscina, salão, academia, garagem: o que a gestão cadastrou como local
+    operacional. A tela mostra exatamente isto — nem um local a mais.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return []
+    return [
+        {"pk": str(local.pk), "nome": local.nome}
+        for local in LocalOperacional.objects.do_condominio(condominio)
+        .ativos()
+        .order_by("nome")
+    ]
+
+
+def _painel_operacional(condominio, agora):
+    """O que a portaria decide agora: quem chega e quem sai.
+
+    São duas decisões, e cada uma tem seu lugar: "Chegando" reúne quem ainda
+    não entrou e oferece o toque que registra a entrada; "Aqui agora" reúne a
+    presença aberta e oferece o toque que registra a saída. Nada mais compete
+    com isso — quem procura alguém usa a busca, e o que já aconteceu é assunto
+    do histórico.
     """
     autorizacoes = _autorizacoes_operacionais(condominio, agora)
-    acessos_abertos = _acessos_operacionais(condominio)
+    acessos_abertos = list(_acessos_operacionais(condominio).order_by("-entrada_em"))
+    inicio_do_turno = _inicio_do_turno(agora)
 
-    aguardando = autorizacoes.filter(status=StatusAutorizacaoPortaria.AGUARDANDO).count()
-    dentro_agora = acessos_abertos.count()
+    chegando = [
+        _linha_de_autorizacao(autorizacao, agora) for autorizacao in autorizacoes
+    ]
+    aqui_agora = []
+    for acesso in acessos_abertos:
+        # Quem entrou antes do turno de hoje continua dentro: a lista de saída
+        # precisa saber disso para a presença antiga não passar por chegada.
+        _descrever_presenca(acesso, agora, inicio_do_turno)
+        aqui_agora.append(_linha_de_acesso(acesso))
+
     acessos_do_dia = AcessoPortaria.objects.do_condominio(condominio).filter(
         entrada_em__date=agora.date()
     ).count()
-
-    movimentacao = _movimentacao_atual(
-        list(autorizacoes),
-        list(acessos_abertos.order_by("-entrada_em")),
-        agora,
-    )
-    # A lista de saída também precisa saber quem ficou de turno anterior: quem
-    # registra a saída vê a mesma informação que a movimentação.
-    presencas_abertas = list(acessos_abertos.order_by("entrada_em"))
-    inicio_do_turno = _inicio_do_turno(agora)
-    for acesso in presencas_abertas:
-        _descrever_presenca(acesso, agora, inicio_do_turno)
     return {
-        "indicadores": [
+        "chegando": chegando,
+        "aqui_agora": aqui_agora,
+        # Indicador é leitura de relance, não painel: os três números cabem em
+        # blocos compactos, com ícone e cor de apoio, sem disputar espaço com a
+        # operação. Chegando e Aqui agora usam o teal estrutural; Hoje fica no
+        # lilás de detalhe, como nas referências.
+        "resumo": [
             {
-                "icone": "bx-loader-circle",
-                "tom": "warning",
-                "valor": aguardando,
-                "rotulo": "Aguardando confirmação",
+                "rotulo": "Chegando",
+                "valor": len(chegando),
+                "icone": "bx-user-plus",
+                "tom": "teal",
             },
             {
+                "rotulo": "Aqui agora",
+                "valor": len(aqui_agora),
                 "icone": "bx-group",
-                "tom": "success",
-                "valor": dentro_agora,
-                "rotulo": "Dentro agora",
+                "tom": "teal",
             },
             {
-                "icone": "bx-calendar",
-                "tom": "primary",
+                "rotulo": "Hoje",
                 "valor": acessos_do_dia,
-                "rotulo": "Acessos do dia",
+                "icone": "bx-calendar",
+                "tom": "lilas",
             },
         ],
-        "movimentacao_atual": movimentacao,
-        "presencas_abertas": presencas_abertas,
     }
 
 
@@ -846,18 +1043,6 @@ def _acessos_operacionais(condominio):
         .abertas()
         .select_related("pessoa", "unidade", "local", "veiculo", "autorizacao")
     )
-
-
-def _movimentacao_atual(autorizacoes, acessos, agora):
-    """Linhas unificadas para a mesa de operação."""
-    inicio_do_turno = _inicio_do_turno(agora)
-    linhas = []
-    for autorizacao in autorizacoes:
-        linhas.append(_linha_de_autorizacao(autorizacao, agora))
-    for acesso in acessos:
-        _descrever_presenca(acesso, agora, inicio_do_turno)
-        linhas.append(_linha_de_acesso(acesso))
-    return sorted(linhas, key=lambda linha: linha["momento"], reverse=True)
 
 
 def _linha_de_autorizacao(autorizacao, agora):
@@ -1091,13 +1276,36 @@ def _autorizadores(condominio, termo):
     Uma busca, dois caminhos: quem digita "301" vê quem responde por aquela
     unidade; quem digita "Maria" vê a unidade de Maria. Nos dois casos o que
     sai é o mesmo par — quem autoriza e a unidade que é o destino.
+
+    Quando a fala traz um número — "902", "novecentos e dois", "nove zero
+    dois" —, ele é lido e comparado só com as unidades reais e ativas deste
+    condomínio. Havendo correspondência exata, é ela o destino. Não havendo, o
+    Eithra não assume nada: devolve a sugestão segura, se houver, e o resto
+    continua como sempre foi.
     """
     if not termo:
-        return [], []
+        return [], [], ""
 
-    unidades = list(
-        Unidade.objects.do_condominio(condominio).ativas().buscar(termo)
-    )
+    ativas = Unidade.objects.do_condominio(condominio).ativas()
+    numero = numero_falado.em_digitos(termo)
+
+    if numero:
+        unidades = [
+            unidade
+            for unidade in ativas
+            if numero in numero_falado.digitos(unidade.identificador)
+        ]
+        sugestao = (
+            ""
+            if unidades
+            else numero_falado.sugestao(
+                numero, [unidade.identificador for unidade in ativas]
+            )
+        )
+    else:
+        unidades = list(ativas.buscar(termo))
+        sugestao = ""
+
     unidades.sort(key=lambda unidade: _proximidade(unidade.identificador, termo))
     unidades = unidades[:QUANTOS_AUTORIZADORES]
 
@@ -1119,6 +1327,7 @@ def _autorizadores(condominio, termo):
             for pessoa in encontradas
             for opcao in por_pessoa.get(pessoa.pk, [])
         ],
+        sugestao,
     )
 
 
@@ -1200,10 +1409,15 @@ def _unidades_por_pessoa(condominio, pessoas):
 
 
 # Onde cada campo do registro de chegada é perguntado. Serve para reabrir o
-# wizard no passo em que o erro precisa ser visto.
+# fluxo no passo em que o erro precisa ser visto.
+#
+# Os passos são as decisões da portaria, nesta ordem: para onde vai, quem
+# chegou, quem autorizou. O campo "local" é destino, como a unidade, e por isso
+# mora no primeiro passo.
 CAMPOS_DO_PASSO_DA_CHEGADA = {
-    1: {"unidade", "autorizador_pessoa", "nome", "tipo_acesso", "empresa", "motivo", "local", "placa"},
-    2: {"status", "meio_autorizacao", "autorizador_nome", "observacao"},
+    1: {"unidade", "local"},
+    2: {"nome", "tipo_acesso", "empresa", "motivo", "placa", "natureza_objeto", "instrucao_entrega"},
+    3: {"status", "meio_autorizacao", "autorizador_pessoa", "autorizador_nome", "observacao"},
 }
 
 
@@ -1222,6 +1436,47 @@ def _passo_da_chegada(formulario) -> int:
     except (TypeError, ValueError):
         informado = 1
     for passo, campos in CAMPOS_DO_PASSO_DA_CHEGADA.items():
+        if campos & set(formulario.errors):
+            return passo
+    if NON_FIELD_ERRORS in formulario.errors:
+        return 1
+    return informado
+
+
+# Onde cada campo do registro de esperado é perguntado. É o mesmo fluxo de
+# decisões do registro de chegada — destino, quem é esperado, quem autorizou —
+# e por isso o mapa de reabertura é o mesmo, trocando só o que a chegada tem de
+# próprio (o resultado da autorização) pelo que o esperado tem (o autorizador).
+CAMPOS_DO_PASSO_DO_ESPERADO = {
+    1: {"unidade", "local"},
+    2: {
+        "nome",
+        "tipo_acesso",
+        "empresa",
+        "motivo",
+        "placa",
+        "natureza_objeto",
+        "instrucao_entrega",
+    },
+    3: {"autorizador_pessoa", "autorizador_nome", "observacao"},
+}
+
+
+def _passo_do_esperado(formulario) -> int:
+    """Em que passo o registro de esperado deve reabrir depois de um erro.
+
+    Mesma regra do registro de chegada: quem decide onde o modal reabre é o
+    erro, não o passo em que a pessoa parou. Sem isso, a correção apareceria
+    num passo sem explicação na tela.
+    """
+    informado = 1
+    if formulario is None or not formulario.is_bound:
+        return informado
+    try:
+        informado = min(max(int(formulario.data.get("passo") or 1), 1, 3), 3)
+    except (TypeError, ValueError):
+        informado = 1
+    for passo, campos in CAMPOS_DO_PASSO_DO_ESPERADO.items():
         if campos & set(formulario.errors):
             return passo
     if NON_FIELD_ERRORS in formulario.errors:

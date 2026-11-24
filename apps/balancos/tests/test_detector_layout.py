@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-import urllib.error
+import tempfile
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
@@ -16,7 +16,7 @@ from apps.balancos.detector import (
     detectar_layout_do_pdf,
 )
 from apps.balancos.models import BalancoMensal, ImportacaoBalanco
-from apps.balancos.storage import ErroDeStorage, TEMPO_LIMITE_SEGUNDOS
+from apps.balancos.storage import ErroDeStorage, obter_provider
 from apps.balancos.tests.apoio import PaginaDeImagem, criar_pessoa, gerar_pdf_textual
 from apps.condominios.models import Condominio
 
@@ -340,7 +340,11 @@ class DetectorDaImportacaoTests(TestCase):
 
 
 class DownloadPrivadoTests(TestCase):
-    """Garante que o acesso privado ao PDF continua curto e controlado."""
+    """Garante que o PDF privado e lido pela abstracao de storage.
+
+    O conteudo tem de vir do provedor — que sabe ler do disco no ambiente local
+    e baixar por HTTP no remoto —, e nunca de um endereco tratado como rede.
+    """
 
     def setUp(self):
         self.usuario = criar_pessoa("gestao.download@exemplo.com", "Gestao Download")
@@ -359,36 +363,83 @@ class DownloadPrivadoTests(TestCase):
             status=StatusImportacao.RECEBIDO,
         )
 
-    def test_download_privado_usa_timeout_explicito(self):
+    def test_le_o_conteudo_pelo_provedor(self):
         provider = MagicMock()
-        provider.url_assinada.return_value = "https://exemplo.invalido/assinada"
+        provider.baixar.return_value = pdf_desconhecido()
 
-        resposta = MagicMock()
-        resposta.read.return_value = pdf_desconhecido()
-        gerenciador = MagicMock()
-        gerenciador.__enter__.return_value = resposta
-        gerenciador.__exit__.return_value = False
-
-        with patch("urllib.request.urlopen", return_value=gerenciador) as urlopen:
-            conteudo, _ = _baixar_pdf_privado(self.importacao, provider=provider)
+        conteudo, _ = _baixar_pdf_privado(self.importacao, provider=provider)
 
         self.assertTrue(conteudo.startswith(b"%PDF-"))
-        self.assertEqual(urlopen.call_args.kwargs["timeout"], TEMPO_LIMITE_SEGUNDOS)
+        provider.baixar.assert_called_once_with(key=self.importacao.storage_key)
+        provider.url_assinada.assert_not_called()
 
-    def test_erro_http_nao_vaza_url_assinada(self):
+    def test_falha_do_provedor_nao_vaza_endereco_nem_token(self):
         provider = MagicMock()
-        provider.url_assinada.return_value = "https://exemplo.invalido/assinada?token=segredo"
-        erro = urllib.error.HTTPError(
-            provider.url_assinada.return_value,
-            403,
-            "forbidden",
-            hdrs=None,
-            fp=None,
+        provider.baixar.side_effect = ErroDeStorage(
+            "https://exemplo.invalido/assinada?token=segredo"
         )
 
-        with patch("urllib.request.urlopen", side_effect=erro):
-            with self.assertRaises(ErroDeDeteccaoDeLayout) as capturado:
-                _baixar_pdf_privado(self.importacao, provider=provider)
+        with self.assertRaises(ErroDeDeteccaoDeLayout) as capturado:
+            _baixar_pdf_privado(self.importacao, provider=provider)
 
-        self.assertNotIn("token", str(capturado.exception).lower())
-        self.assertNotIn("https://", str(capturado.exception).lower())
+        mensagem = str(capturado.exception).lower()
+        self.assertNotIn("token", mensagem)
+        self.assertNotIn("https://", mensagem)
+
+    def test_sem_chave_recusa_a_leitura(self):
+        self.importacao.storage_key = ""
+
+        with self.assertRaises(ErroDeDeteccaoDeLayout):
+            _baixar_pdf_privado(self.importacao, provider=MagicMock())
+
+
+class LeituraPeloStorageLocalTests(TestCase):
+    """Prova que o pipeline normal le o PDF quando o provedor e o local.
+
+    E o caso do ambiente de desenvolvimento: o arquivo esta sob ``MEDIA_ROOT``
+    e ``url_assinada`` devolve um caminho de midia, que nao e endereco de rede.
+    Tratar esse caminho como HTTP era o que deixava o layout em ``desconhecido``
+    mesmo com o arquivo presente no disco.
+    """
+
+    def setUp(self):
+        self.usuario = criar_pessoa("gestao.local@exemplo.com", "Gestao Local")
+        self.condominio = Condominio.objects.create(nome="Condominio Local")
+        conteudo = pdf_atual_canonico()
+        self.importacao = ImportacaoBalanco.objects.create(
+            condominio=self.condominio,
+            criado_por=self.usuario,
+            nome_original="documento.pdf",
+            mime_type="application/pdf",
+            tamanho_bytes=len(conteudo),
+            sha256=hashlib.sha256(conteudo).hexdigest(),
+            storage_provider="local",
+            storage_bucket="",
+            storage_key=f"balancos/{self.condominio.pk}/importacao/documento.pdf",
+            status=StatusImportacao.RECEBIDO,
+        )
+
+    def test_detecta_o_layout_lendo_o_arquivo_do_disco(self):
+        conteudo = pdf_atual_canonico()
+
+        with tempfile.TemporaryDirectory() as raiz:
+            with override_settings(
+                MEDIA_ROOT=raiz,
+                MEDIA_URL="/media/",
+                EITHRA_STORAGE_PROVIDER="local",
+            ):
+                obter_provider().enviar(
+                    key=self.importacao.storage_key,
+                    conteudo=conteudo,
+                    content_type="application/pdf",
+                )
+                resultado = detectar_layout_balanco(self.importacao)
+
+        self.importacao.refresh_from_db()
+        self.assertEqual(resultado.layout, LayoutBalanco.ATUAL_CANONICO)
+        self.assertEqual(
+            self.importacao.layout_detectado, LayoutBalanco.ATUAL_CANONICO
+        )
+        self.assertEqual(self.importacao.status, StatusImportacao.PRONTO)
+        self.assertEqual(self.importacao.erro_processamento, "")
+        self.assertEqual(BalancoMensal.objects.count(), 0)

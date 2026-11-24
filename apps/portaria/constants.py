@@ -73,6 +73,10 @@ class MeioAutorizacaoPortaria(models.TextChoices):
 class OrigemPortaria(models.TextChoices):
     PORTARIA_MANUAL = "portaria_manual", "Portaria manual"
     CHEGADA_NAO_PREVISTA = "chegada_nao_prevista", "Chegada não prevista"
+    # Uma autorização que chegou por e-mail não deixa de ser uma autorização
+    # registrada pela portaria: a origem só diz de onde veio o aviso, para que
+    # quem audita consiga separar o que foi digitado do que foi lido.
+    EMAIL = "email", "E-mail"
 
 
 class IntencaoPortaria(models.TextChoices):

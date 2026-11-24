@@ -5,10 +5,11 @@ e o que der para ler desse relato já vem preenchido: assunto, local,
 equipamento, tipo de problema, impacto e risco. O que não der continua sendo
 pergunta, com ajuste à mão.
 
-A prioridade é decisão de quem registra: ela aparece no fluxo como campo
-explícito, e o que a pessoa escolher é o que vale. A leitura do relato não
-escolhe mais o peso da demanda — ela continua identificando os demais
-elementos, mas nunca decide a prioridade operacional nem inventa prazo.
+A prioridade chega preenchida pelo motor: a regra estruturada lê o relato e
+sustenta o peso, sem exigir que quem registra o escolha. O campo continua
+disponível para a correção de quem tem permissão, e a escolha manual — quando
+existe — prevalece e fica no histórico. O prazo não é criado automaticamente:
+a regra de prazo segue configurável, mas fora do fluxo de registro.
 
 Duas coisas que a leitura produz **não** viram campo, porque não são dado da
 demanda: a área sai do tipo do local cadastrado, e a recorrência é uma leitura
@@ -114,6 +115,19 @@ ESCOLHAS_DE_TIPO_DE_PROBLEMA = (("", "Não identificado"),) + tuple(TipoProblema
 ESCOLHAS_DE_IMPACTO = (("", "Não avaliado"),) + tuple(ImpactoDemanda.choices)
 ESCOLHAS_DE_RISCO = (("", "Não avaliado"),) + tuple(RiscoDemanda.choices)
 
+# Sugestões para a próxima ação recorrente. Não é catálogo: o campo continua
+# aceitando texto livre — a lista só evita redigitar o que se repete. Quem
+# escolhe pela sugestão pode editá-la depois.
+SUGESTOES_DE_PROXIMA_ACAO = (
+    "Aguardar fornecedor",
+    "Cobrar orçamento",
+    "Cobrar fornecedor",
+    "Retornar ao morador",
+    "Executar serviço",
+    "Aguardar material",
+    "Encaminhar para manutenção",
+)
+
 
 # A ordem em que as situações aparecem para escolha, do começo ao fim do ciclo.
 ORDEM_DOS_STATUS = (
@@ -181,9 +195,8 @@ class DemandaForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
     )
-    # A prioridade operacional é escolha de quem registra, com o vocabulário que
-    # o domínio já tem. Sem escolha, responde o padrão do modelo — nunca uma
-    # derivação do relato.
+    # O peso chega calculado pela regra do domínio; o campo existe para a
+    # correção de quem tem permissão. Em branco, o motor responde.
     prioridade = forms.ChoiceField(
         label="Prioridade",
         choices=PrioridadeDemanda.choices,
@@ -406,25 +419,21 @@ class DemandaForm(forms.Form):
             )
             return dados
 
-        # A prioridade é decisão de quem registra — a leitura do relato não
-        # escolhe mais o peso da demanda. O que a tela manda vale; sem escolha,
-        # fica o padrão do domínio. Quando o envio não fala de prioridade alguma
-        # — a edição parcial de uma integração antiga —, a demanda mantém a que
-        # já tem, para que nenhum registro antigo mude de peso sozinho.
-        if "prioridade" in self.data:
-            dados["prioridade"] = dados.get("prioridade") or PrioridadeDemanda.NORMAL
+        # O peso chega preenchido pelo motor: quando quem registra não escolhe,
+        # vale a prioridade que a regra estruturada sustentou — nunca o peso
+        # antigo de uma demanda já existente, que uma edição parcial não deve
+        # reclassificar. A escolha explícita é uma correção e prevalece: é ela
+        # que entra no histórico antes e depois.
+        if self.cleaned_data.get("prioridade"):
+            dados["prioridade"] = self.cleaned_data["prioridade"]
         elif self._instancia is not None:
             dados["prioridade"] = self._instancia.prioridade
         else:
-            dados["prioridade"] = PrioridadeDemanda.NORMAL
+            dados["prioridade"] = self._leitura.prioridade
 
-        # O prazo é derivado pela política do sistema, e nunca pela leitura do
-        # relato: a regra configurada é quem define a data. O que a pessoa
-        # informou na tela vale mais do que a derivação — a correção humana
-        # prevalece —, e a edição de uma demanda existente não reclassifica.
-        if self._instancia is None and not dados.get("prazo"):
-            dados["prazo"] = self._leitura.prazo
-
+        # O prazo não é criado automaticamente: a regra de prazo continua
+        # configurável, mas fora do fluxo de registro. O que a pessoa informar
+        # na tela vale; sem informação, a demanda segue sem prazo.
         self._resolver_local(dados)
         self._classificar(dados)
         self._conciliar_local_e_equipamento(dados)
@@ -537,7 +546,7 @@ class AcaoDeStatusForm(forms.Form):
     """
 
     acao = forms.ChoiceField(
-        label="O que aconteceu?",
+        label="Situação agora",
         choices=(),
         required=False,
         widget=forms.Select(attrs={"class": "form-select"}),
@@ -614,6 +623,17 @@ class AcompanhamentoDaDemandaForm(forms.Form):
             }
         ),
     )
+    prazo_proxima_acao = forms.DateField(
+        label="Prazo da próxima ação",
+        required=False,
+        input_formats=["%Y-%m-%d", "%d/%m/%Y"],
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"},
+            format="%Y-%m-%d",
+        ),
+        help_text="Até quando a próxima ação precisa acontecer. É a urgência da "
+        "ação, não o prazo de solução da demanda.",
+    )
     previsao = forms.DateField(
         label="Previsão",
         required=False,
@@ -653,6 +673,12 @@ class AcompanhamentoDaDemandaForm(forms.Form):
         self.fields["responsavel_acompanhamento"].queryset = (
             usuarios_elegiveis_como_responsavel(getattr(demanda, "condominio", None))
         )
+        # A sugestão chega como ``<datalist>``: quem clica escolhe, quem escreve
+        # outra coisa continua sendo aceito. O campo não vira uma escolha
+        # fechada — a lista só evita redigitar o que se repete.
+        self.fields["proxima_acao"].widget.attrs["list"] = (
+            f"{self['proxima_acao'].id_for_label}_lista"
+        )
         if demanda is not None and not self.is_bound:
             self.initial = {**self.initial, **self._iniciais_da_demanda(demanda)}
 
@@ -663,6 +689,7 @@ class AcompanhamentoDaDemandaForm(forms.Form):
             "aguardando_tipo": demanda.aguardando_tipo or "",
             "aguardando_descricao": demanda.aguardando_descricao,
             "proxima_acao": demanda.proxima_acao,
+            "prazo_proxima_acao": demanda.prazo_proxima_acao,
             "previsao": demanda.previsao,
             "impedimento": demanda.impedimento,
             "responsavel_acompanhamento": demanda.responsavel_acompanhamento_id,
@@ -805,12 +832,12 @@ class FiltroDeDemandasForm(forms.Form):
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
     busca = forms.CharField(
-        label="Buscar",
+        label="Pesquisar demandas",
         required=False,
         widget=forms.TextInput(
             attrs={
                 "class": "form-control form-control-sm",
-                "placeholder": "Título, descrição ou local",
+                "placeholder": "Pesquisar demandas...",
                 "autocomplete": "off",
             }
         ),

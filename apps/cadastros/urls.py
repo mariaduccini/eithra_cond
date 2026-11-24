@@ -57,6 +57,7 @@ urlpatterns = [
     ),
     path("locais/", views.locais, name="locais"),
     path("locais/registrar/", views.criar_local, name="criar_local"),
+    path("locais/<uuid:pk>/", views.local, name="local"),
     path("locais/<uuid:pk>/editar/", views.editar_local, name="editar_local"),
     path("locais/<uuid:pk>/alternar/", views.alternar_local, name="alternar_local"),
     path("locais/tipos/", views.tipos_de_local, name="tipos_de_local"),
@@ -77,6 +78,7 @@ urlpatterns = [
     ),
     path("equipamentos/", views.equipamentos, name="equipamentos"),
     path("equipamentos/registrar/", views.criar_equipamento, name="criar_equipamento"),
+    path("equipamentos/<uuid:pk>/", views.equipamento, name="equipamento"),
     path(
         "equipamentos/<uuid:pk>/editar/",
         views.editar_equipamento,

@@ -41,3 +41,6 @@ Thumbs.db
 
 # Referências temporárias de template (não fazem parte do produto)
 .vendor_ref/
+
+# Artefatos de homologação visual (capturas temporárias, não fazem parte do produto)
+_screenshots_portaria/

@@ -1019,3 +1019,177 @@ class ItemExecucaoChecklist(models.Model):
         """Concluída ou não aplicável: a tarefa não depende mais de ninguém."""
         return self.status in STATUS_QUE_TRATAM_O_ITEM
 
+
+class ModeloAtividadeProgramadaQuerySet(models.QuerySet):
+    """Modelos que ainda podem ser sugeridos ou revisados."""
+
+    def ativos(self):
+        return self.filter(ativo=True)
+
+
+class ModeloAtividadeProgramada(models.Model):
+    """Sugestão global para criar uma atividade em um condomínio.
+
+    O modelo não é uma rotina nem gera ocorrências. Na confirmação humana,
+    seus valores e tarefas são copiados para os cadastros próprios do condomínio.
+    """
+
+    chave = models.SlugField(max_length=100, unique=True)
+    titulo = models.CharField(max_length=200)
+    descricao = models.TextField(blank=True, default="")
+    categoria = models.CharField(max_length=100)
+    periodicidade_sugerida = models.CharField(max_length=120)
+    periodicidade_tipo = models.CharField(
+        max_length=20, choices=Periodicidade.choices, blank=True, default=""
+    )
+    periodicidade_intervalo = models.PositiveIntegerField(
+        null=True, blank=True, default=1
+    )
+    unidade_periodicidade = models.CharField(max_length=30, blank=True, default="")
+    tipo = models.CharField(
+        max_length=20, choices=TipoRotina.choices, default=TipoRotina.PREVENTIVA
+    )
+    prioridade = models.CharField(
+        max_length=20, choices=Prioridade.choices, default=Prioridade.NORMAL
+    )
+    gatilhos_equipamento = models.JSONField(default=list, blank=True)
+    gatilhos_local = models.JSONField(default=list, blank=True)
+    titulos_equivalentes = models.JSONField(default=list, blank=True)
+    checklist_sugerido = models.JSONField(default=list, blank=True)
+    observacoes = models.TextField(blank=True, default="")
+    exige_fornecedor_especializado = models.BooleanField(default=False)
+    exige_validacao_tecnica = models.BooleanField(default=False)
+    condicional = models.BooleanField(default=False)
+    condicao_necessaria = models.CharField(max_length=200, blank=True, default="")
+    sugerir_sempre = models.BooleanField(default=False)
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    objects = ModeloAtividadeProgramadaQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Modelo de atividade programada"
+        verbose_name_plural = "Modelos de atividades programadas"
+        ordering = ["categoria", "titulo"]
+
+    def __str__(self):
+        return self.titulo
+
+    def clean(self):
+        erros = {}
+        if not self.chave.strip():
+            erros["chave"] = "O modelo precisa de uma chave estável."
+        if not self.titulo.strip():
+            erros["titulo"] = "Escreva o título do modelo."
+        if self.condicional and not self.condicao_necessaria.strip():
+            erros["condicao_necessaria"] = (
+                "Diga qual estrutura precisa ser confirmada."
+            )
+        if not isinstance(self.checklist_sugerido, list):
+            erros["checklist_sugerido"] = "O checklist precisa ser uma lista."
+        elif any(
+            not isinstance(item, str) or not item.strip()
+            for item in self.checklist_sugerido
+        ):
+            erros["checklist_sugerido"] = "Cada tarefa precisa ter uma descrição."
+        if erros:
+            raise ValidationError(erros)
+
+
+class EstadoModeloAtividade(models.TextChoices):
+    DISPONIVEL = "disponivel", "Disponível"
+    ATIVADA = "ativada", "Ativada"
+    NAO_APLICA = "nao_aplica", "Não se aplica"
+
+
+class DecisaoModeloAtividade(models.Model):
+    """A decisão humana sobre um modelo, isolada por condomínio."""
+
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.PROTECT,
+        related_name="decisoes_modelos_atividade",
+    )
+    modelo = models.ForeignKey(
+        ModeloAtividadeProgramada,
+        on_delete=models.PROTECT,
+        related_name="decisoes_condominio",
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=EstadoModeloAtividade.choices,
+        default=EstadoModeloAtividade.DISPONIVEL,
+    )
+    rotina = models.ForeignKey(
+        RotinaRecorrente,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="modelos_de_origem",
+    )
+    decidido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="decisoes_modelos_atividade",
+    )
+    observacao = models.TextField(blank=True, default="")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Decisão sobre modelo de atividade"
+        verbose_name_plural = "Decisões sobre modelos de atividades"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["condominio", "modelo"],
+                name="decisao_modelo_unica_por_condominio",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        estado=EstadoModeloAtividade.ATIVADA,
+                        rotina__isnull=False,
+                    )
+                    | (
+                        ~models.Q(estado=EstadoModeloAtividade.ATIVADA)
+                        & models.Q(rotina__isnull=True)
+                    )
+                ),
+                name="decisao_modelo_ativada_tem_rotina",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["condominio", "estado"],
+                name="decisao_modelo_cond_estado_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.modelo} · {self.condominio}"
+
+    def clean(self):
+        erros = {}
+        if (
+            self.modelo_id
+            and not self.modelo.ativo
+            and self.estado == EstadoModeloAtividade.ATIVADA
+        ):
+            erros["modelo"] = "Um modelo inativo não pode ser ativado novamente."
+        if (
+            self.rotina_id
+            and self.condominio_id
+            and self.rotina.condominio_id != self.condominio_id
+        ):
+            erros["rotina"] = "A atividade escolhida pertence a outro condomínio."
+        if self.estado == EstadoModeloAtividade.ATIVADA and not self.rotina_id:
+            erros["rotina"] = "A ativação precisa apontar para a atividade criada."
+        if self.estado != EstadoModeloAtividade.ATIVADA and self.rotina_id:
+            erros["rotina"] = (
+                "Somente um modelo ativado pode apontar para uma atividade."
+            )
+        if erros:
+            raise ValidationError(erros)

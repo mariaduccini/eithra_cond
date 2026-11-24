@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {# A compra como ela está hoje: de quem, quando, quanto e o que já movimentou.
    Enquanto é rascunho, as linhas podem ser montadas; ao confirmar, a compra
@@ -66,21 +67,62 @@
         <div class="card-body">
           <div class="d-flex justify-content-between gap-3 py-1">
             <span class="text-body-secondary">Fornecedor</span>
-            <span class="fw-medium text-end">{{ compra.fornecedor }}</span>
+            <span class="fw-medium text-end">
+              {% if compra.tem_fornecedor %}
+                {{ compra.fornecedor }}
+              {% elif sugestoes_compra.fornecedor %}
+                {{ sugestoes_compra.fornecedor }}
+                <span class="d-block small fw-normal text-body-secondary">Sugerido pela nota · aguarda confirmação</span>
+              {% else %}
+                <span class="fw-normal text-body-secondary">Sem fornecedor</span>
+              {% endif %}
+            </span>
           </div>
           <div class="d-flex justify-content-between gap-3 py-1">
             <span class="text-body-secondary">Data</span>
-            <span class="text-end">{{ compra.data }}</span>
+            <span class="text-end">
+              {% if compra.tem_data %}
+                {{ compra.data }}
+              {% elif sugestoes_compra.data_compra %}
+                {{ sugestoes_compra.data_compra|date:"d/m/Y" }}
+                <span class="d-block small text-body-secondary">Sugerida pela nota · aguarda confirmação</span>
+              {% else %}
+                <span class="text-body-secondary">Sem data</span>
+              {% endif %}
+            </span>
           </div>
           {% if compra.documento %}
             <div class="d-flex justify-content-between gap-3 py-1">
               <span class="text-body-secondary">Documento</span>
               <span class="text-end">{{ compra.documento }}</span>
             </div>
+          {% elif sugestoes_compra.numero_documento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Documento</span>
+              <span class="text-end">
+                {{ sugestoes_compra.numero_documento }}
+                <span class="d-block small text-body-secondary">Sugerido pela nota · aguarda confirmação</span>
+              </span>
+            </div>
+          {% endif %}
+          {% if compra.forma_pagamento %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Forma de pagamento</span>
+              <span class="text-end">{{ compra.forma_pagamento }}</span>
+            </div>
           {% endif %}
           <div class="d-flex justify-content-between gap-3 py-1">
             <span class="text-body-secondary">Total</span>
-            <span class="fw-medium text-end">{{ compra.total }}</span>
+            <span class="fw-medium text-end">
+              {% if compra.tem_total %}
+                {{ compra.total }}
+              {% elif sugestoes_compra.total_formatado %}
+                {{ sugestoes_compra.total_formatado }}
+                <span class="d-block small fw-normal text-body-secondary">Sugerido pela nota · aguarda confirmação</span>
+              {% else %}
+                {{ compra.total }}
+              {% endif %}
+            </span>
           </div>
           {% if compra.manutencao_origem %}
             <div class="d-flex justify-content-between gap-3 py-1">
@@ -184,11 +226,333 @@
             </table>
           </div>
         {% else %}
-          {% include "components/state.html" with state_icon="bx-cart" state_title="Nenhum item ainda" state_message="Registre o que foi comprado e para onde vai." %}
+          {% if sugestoes_compra.itens %}
+            <div class="card-body">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <div>
+                  <h3 class="h6 mb-0">Itens identificados</h3>
+                  <p class="text-body-secondary small mb-0">
+                    Ainda são sugestões da nota: revise antes de confirmar.
+                  </p>
+                </div>
+                {% if pode_editar and sugestoes_compra.documento %}
+                  <form
+                    method="post"
+                    action="{% url 'compras:trazer_itens_identificados' compra.pk sugestoes_compra.documento.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-label-primary btn-sm">
+                      <i class="bx bx-list-plus me-1" aria-hidden="true"></i>
+                      Trazer todos os itens identificados
+                    </button>
+                  </form>
+                {% endif %}
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                  <caption class="visually-hidden">Itens identificados no documento</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Item</th>
+                      <th scope="col" class="text-end">Qtd.</th>
+                      <th scope="col" class="text-end">Unitário</th>
+                      <th scope="col" class="text-end">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in sugestoes_compra.itens %}
+                      <tr>
+                        <td>
+                          <span class="fw-medium">{{ item.descricao|default:"Item sem descrição" }}</span>
+                          {% if item.ja_incluido %}
+                            <div class="text-body-secondary small">Já incluído na compra</div>
+                          {% endif %}
+                        </td>
+                        <td class="text-end">{{ item.quantidade|default:"1" }}{% if item.unidade %} {{ item.unidade }}{% endif %}</td>
+                        <td class="text-end">{% if item.valor_unitario %}R$ {{ item.valor_unitario }}{% else %}—{% endif %}</td>
+                        <td class="text-end fw-medium">{% if item.valor_total %}R$ {{ item.valor_total }}{% else %}—{% endif %}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {% else %}
+            {% include "components/state.html" with state_icon="bx-cart" state_title="Nenhum item ainda" state_message="Registre o que foi comprado e para onde vai." %}
+          {% endif %}
         {% endif %}
       </div>
     </div>
   </div>
+
+  {% if documentos_compra or pode_editar %}
+    <section class="card mt-4">
+      <div class="card-header">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h2 class="h5 mb-1">Documento e leitura da compra</h2>
+            <p class="text-body-secondary small mb-0">
+              Escolha o arquivo ou tire uma foto: o envio e a leitura começam sozinhos.
+              As sugestões ficam guardadas e separadas dos dados confirmados da compra.
+            </p>
+          </div>
+          {% if pode_editar %}
+            <form
+              method="post"
+              enctype="multipart/form-data"
+              action="{% url 'compras:adicionar_documento' compra.pk %}"
+              data-upload-documento
+              class="d-flex flex-wrap align-items-center gap-2">
+              {% csrf_token %}
+              {{ formulario_documento.condominio }}
+              {{ formulario_documento.tipo_documento }}
+              <input
+                type="file"
+                name="arquivo"
+                id="id_arquivo"
+                class="visually-hidden"
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                required>
+              <label
+                class="btn btn-label-primary btn-sm mb-0"
+                for="id_arquivo"
+                data-captura="imagem">
+                <i class="bx bx-camera me-1" aria-hidden="true"></i> Tirar foto
+              </label>
+              <label
+                class="btn btn-label-secondary btn-sm mb-0"
+                for="id_arquivo"
+                data-captura="arquivo">
+                <i class="bx bx-upload me-1" aria-hidden="true"></i> Escolher arquivo
+              </label>
+              <noscript>
+                <button type="submit" class="btn btn-label-primary btn-sm">
+                  Anexar PDF ou imagem
+                </button>
+              </noscript>
+            </form>
+          {% endif %}
+        </div>
+        {% if pode_editar %}
+          <div
+            class="small text-body-secondary mt-2"
+            data-upload-status
+            hidden
+            role="status"
+            aria-live="polite"></div>
+        {% endif %}
+      </div>
+
+      {% for documento in documentos_compra %}
+        <div class="card-body border-top">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+            <div>
+              <div class="fw-medium">{{ documento.registro.nome_original }}</div>
+              <div class="small text-body-secondary">
+                {{ documento.registro.get_tipo_documento_display }} ·
+                {{ documento.registro.get_status_leitura_display }} ·
+                {{ documento.registro.criado_em|date:"d/m/Y H:i" }}
+              </div>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <a
+                href="{% url 'compras:baixar_documento' compra.pk documento.registro.pk %}"
+                class="btn btn-sm btn-label-secondary">
+                <i class="bx bx-download me-1" aria-hidden="true"></i> Abrir documento
+              </a>
+              {% if pode_editar %}
+                <form
+                  method="post"
+                  action="{% url 'compras:reprocessar_documento' compra.pk documento.registro.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-label-secondary">
+                    <i class="bx bx-refresh me-1" aria-hidden="true"></i> Processar novamente
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if documento.erro %}
+            <div class="alert alert-warning py-2" role="status">{{ documento.erro }}</div>
+          {% elif documento.sugestoes.procedencia %}
+            <p class="small text-body-secondary">{{ documento.sugestoes.procedencia }}</p>
+          {% endif %}
+
+          {% if documento.sugestoes.aviso_itens %}
+            <div class="alert alert-warning py-2" role="status">{{ documento.sugestoes.aviso_itens }}</div>
+          {% endif %}
+
+          {% if documento.sugestoes.fornecedor or documento.sugestoes.cnpj or documento.sugestoes.data_compra or documento.total_sugerido or documento.sugestoes.forma_pagamento %}
+            <div class="row g-3 mb-4">
+              {% if documento.sugestoes.fornecedor or documento.sugestoes.cnpj %}
+                <div class="col-12 col-md-6">
+                  <div class="small text-body-secondary">Fornecedor sugerido</div>
+                  <div>{{ documento.sugestoes.fornecedor|default:"Não reconhecido" }}</div>
+                  {% if documento.sugestoes.cnpj %}<div class="small text-body-secondary">CNPJ {{ documento.sugestoes.cnpj }}</div>{% endif %}
+                </div>
+              {% endif %}
+              {% if documento.sugestoes.data_compra %}
+                <div class="col-6 col-md-3">
+                  <div class="small text-body-secondary">Data sugerida</div>
+                  <div>{{ documento.sugestoes.data_compra|date:"d/m/Y" }}</div>
+                </div>
+              {% endif %}
+              {% if documento.total_sugerido %}
+                <div class="col-6 col-md-3">
+                  <div class="small text-body-secondary">Total lido · conferir linhas</div>
+                  <div class="fw-medium">{{ documento.total_sugerido }}</div>
+                </div>
+              {% endif %}
+              {% if documento.sugestoes.forma_pagamento %}
+                <div class="col-12 col-md-6">
+                  <div class="small text-body-secondary">Forma de pagamento sugerida</div>
+                  <div>{{ documento.sugestoes.forma_pagamento }}</div>
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if documento.itens %}
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <h3 class="h6 mb-0">Itens identificados</h3>
+              {% if pode_editar and documento.pendentes %}
+                <form
+                  method="post"
+                  action="{% url 'compras:trazer_itens_identificados' compra.pk documento.registro.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm btn-label-primary">
+                    <i class="bx bx-list-plus me-1" aria-hidden="true"></i>
+                    Trazer todos os itens identificados
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+            <div class="d-grid gap-3">
+              {% for item in documento.itens %}
+                <article class="border rounded p-3">
+                  <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                    <div>
+                      <div class="fw-medium">{{ item.descricao|default:"Item sem descrição" }}</div>
+                      <div class="small text-body-secondary">
+                        Quantidade: {{ item.quantidade|default:"revisar" }}
+                        {% if item.unidade %}{{ item.unidade }}{% endif %}
+                        {% if item.valor_unitario %} · Unitário sugerido: R$ {{ item.valor_unitario }}{% endif %}
+                        {% if item.valor_total %} · Total sugerido: R$ {{ item.valor_total }}{% endif %}
+                      </div>
+                      {% if item.categoria_sugerida %}
+                        <div class="small text-body-secondary">Categoria sugerida: {{ item.categoria_sugerida }}</div>
+                      {% endif %}
+                      {% if item.revisar %}
+                        <div class="small text-warning">Confira esta linha: a descrição, a quantidade e os valores podem ter vindo de colunas trocadas.</div>
+                      {% endif %}
+                    </div>
+                    {% if item.ja_incluido %}
+                      <span class="badge bg-label-success align-self-start">Incluído na compra</span>
+                    {% elif item.item_escolhido %}
+                      <span class="badge bg-label-primary align-self-start">Item encontrado: {{ item.item_escolhido.nome }}</span>
+                    {% else %}
+                      <span class="badge bg-label-warning align-self-start">Item não encontrado</span>
+                    {% endif %}
+                  </div>
+
+                  {% if not item.ja_incluido and pode_editar %}
+                    {% if not item.item_escolhido %}
+                      <p class="small mb-2">Item não encontrado. Deseja cadastrar agora?</p>
+                      <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+                        <form
+                          method="post"
+                          action="{% url 'compras:cadastrar_item_extraido' compra.pk documento.registro.pk item.indice %}"
+                          class="row g-2 align-items-end">
+                          {% csrf_token %}
+                          <div class="col-12 col-md-4">
+                            <label class="form-label small mb-1" for="novo-item-nome-{{ documento.registro.pk }}-{{ item.indice }}">Nome do item</label>
+                            <input class="form-control form-control-sm" id="novo-item-nome-{{ documento.registro.pk }}-{{ item.indice }}" name="nome" value="{{ item.descricao }}" maxlength="150" required>
+                          </div>
+                          <div class="col-12 col-md-3">
+                            <label class="form-label small mb-1" for="novo-item-categoria-{{ documento.registro.pk }}-{{ item.indice }}">Categoria</label>
+                            <input class="form-control form-control-sm" id="novo-item-categoria-{{ documento.registro.pk }}-{{ item.indice }}" name="categoria_texto" value="{{ item.categoria_sugerida }}" maxlength="60">
+                          </div>
+                          <div class="col-auto">
+                            <button type="submit" class="btn btn-sm btn-primary">Cadastrar item</button>
+                          </div>
+                        </form>
+                        <form
+                          method="post"
+                          action="{% url 'compras:selecionar_item_extraido' compra.pk documento.registro.pk item.indice %}"
+                          class="d-flex flex-wrap align-items-end gap-2">
+                          {% csrf_token %}
+                          <div>
+                            <label class="form-label small mb-1" for="item-existente-{{ documento.registro.pk }}-{{ item.indice }}">Selecionar existente</label>
+                            <select
+                              class="form-select form-select-sm"
+                              id="item-existente-{{ documento.registro.pk }}-{{ item.indice }}"
+                              name="item_estoque"
+                              required>
+                              <option value="">Escolha no catálogo</option>
+                              {% for disponivel in itens_estoque_disponiveis %}
+                                <option value="{{ disponivel.pk }}">{{ disponivel.nome }}{% if disponivel.categoria_texto %} · {{ disponivel.categoria_texto }}{% endif %}</option>
+                              {% endfor %}
+                            </select>
+                          </div>
+                          <button type="submit" class="btn btn-sm btn-label-primary">Selecionar existente</button>
+                        </form>
+                      </div>
+                    {% else %}
+                      <form
+                        method="post"
+                        action="{% url 'compras:incluir_item_extraido' compra.pk documento.registro.pk item.indice %}">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                          {% for field in item.formulario_linha %}
+                            <div class="col-12 col-md-6">
+                              <label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                              {{ field }}
+                              {% for erro in field.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                            </div>
+                          {% endfor %}
+                        </div>
+                        <button type="submit" class="btn btn-sm btn-primary mt-3">Adicionar item revisado à compra</button>
+                      </form>
+                    {% endif %}
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% elif documento.registro.status_leitura != "lido" %}
+            <p class="small text-body-secondary mb-0">A leitura automática não está disponível para este conteúdo. Use o documento como referência e revise os dados manualmente.</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {% if compra.precisa_reembolso or pode_confirmar %}
+    <section class="card mt-4">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+          <h2 class="h5 mb-1">Reembolso</h2>
+          {% if compra.precisa_reembolso %}
+            <p class="text-body-secondary small mb-0">
+              {{ compra.status_reembolso }} para {{ compra.reembolso_para }} · {{ compra.valor_reembolso }}
+            </p>
+          {% else %}
+            <p class="text-body-secondary small mb-0">Defina a solicitação ao confirmar a compra, se aplicável.</p>
+          {% endif %}
+        </div>
+        {% if pode_registrar_reembolso %}
+          <form method="post" action="{% url 'compras:marcar_reembolso_realizado' compra.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary">Marcar como reembolsado</button>
+          </form>
+        {% elif compra.reembolsado_em %}
+          <span class="badge bg-label-success">Reembolsado em {{ compra.reembolsado_em }}</span>
+        {% endif %}
+      </div>
+      {% if compra.observacao_reembolso %}
+        <div class="card-body border-top">{{ compra.observacao_reembolso }}</div>
+      {% endif %}
+    </section>
+  {% endif %}
 
   {% if movimentos %}
     <div class="card mt-4">
@@ -230,6 +594,16 @@
               </label>
               {{ formulario_compra.data_compra }}
               {% for erro in formulario_compra.data_compra.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_compra.forma_pagamento.id_for_label }}">
+                {{ formulario_compra.forma_pagamento.label }}
+              </label>
+              {{ formulario_compra.forma_pagamento }}
+              {% for erro in formulario_compra.forma_pagamento.errors %}
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>
@@ -415,14 +789,20 @@
 
   {% if pode_confirmar %}
     <div
-      class="modal fade"
+      class="modal fade{% if modal_aberto == 'confirmar' %} show{% endif %}"
       id="confirmar-compra"
       tabindex="-1"
       role="dialog"
       aria-labelledby="confirmar-compra-titulo"
-      aria-hidden="true">
+      aria-hidden="{% if modal_aberto == 'confirmar' %}false{% else %}true{% endif %}"
+      {% if modal_aberto == 'confirmar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'compras:confirmar' compra.pk %}">
+        <form
+          class="modal-content"
+          method="post"
+          action="{% url 'compras:confirmar' compra.pk %}"
+          data-confirmar-compra
+          data-total-compra="{{ total_compra_bruto }}">
           {% csrf_token %}
           <div class="modal-header">
             <h5 class="modal-title" id="confirmar-compra-titulo">Confirmar compra</h5>
@@ -434,6 +814,78 @@
               Confirmar faz a compra valer: o que tem destino de estoque entra no
               estoque agora. Depois de confirmada, a compra não muda mais.
             </p>
+            {{ formulario_confirmacao.condominio }}
+            {% if sugestoes_compra.fornecedor_novo %}
+              <div class="alert alert-info mt-3" role="status">
+                <div class="fw-medium">Fornecedor identificado na nota</div>
+                <div>
+                  {{ sugestoes_compra.fornecedor_novo.nome }}
+                  {% if sugestoes_compra.cnpj %}· CNPJ {{ sugestoes_compra.cnpj }}{% endif %}
+                </div>
+                <div class="form-check mt-2">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="autorizar_fornecedor_novo"
+                    id="autorizar-fornecedor-novo"
+                    value="on">
+                  <label class="form-check-label" for="autorizar-fornecedor-novo">
+                    Cadastrar e vincular este fornecedor ao confirmar a compra
+                  </label>
+                </div>
+                <div class="small text-body-secondary mt-1">
+                  Sem esta autorização, a compra é confirmada sem fornecedor.
+                </div>
+              </div>
+            {% endif %}
+            <div class="row g-3 mt-2">
+              {% for field in formulario_confirmacao %}
+                {% if field.name != "condominio" %}
+                  <div class="col-12{% if field.name == 'observacao' %} col-lg-12{% else %} col-md-6{% endif %}">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for erro in field.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+
+            <hr>
+            <fieldset class="mb-3">
+              <legend class="h6">{{ formulario_reembolso.comprada_por_outra_pessoa.label }}</legend>
+              <div class="form-check">
+                {{ formulario_reembolso.comprada_por_outra_pessoa }}
+                <label class="form-check-label" for="{{ formulario_reembolso.comprada_por_outra_pessoa.id_for_label }}">Sim</label>
+              </div>
+              {% for erro in formulario_reembolso.comprada_por_outra_pessoa.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+            </fieldset>
+            <div data-reembolso-pessoa hidden>
+              <fieldset class="mb-3">
+                <legend class="h6">{{ formulario_reembolso.precisa_reembolso.label }}</legend>
+                <div class="form-check">
+                  {{ formulario_reembolso.precisa_reembolso }}
+                  <label class="form-check-label" for="{{ formulario_reembolso.precisa_reembolso.id_for_label }}">Sim</label>
+                </div>
+                {% for erro in formulario_reembolso.precisa_reembolso.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+              </fieldset>
+              <div class="row g-3" data-reembolso-campos hidden>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="{{ formulario_reembolso.reembolso_para.id_for_label }}">{{ formulario_reembolso.reembolso_para.label }}</label>
+                  {{ formulario_reembolso.reembolso_para }}
+                  {% for erro in formulario_reembolso.reembolso_para.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="{{ formulario_reembolso.valor_reembolso.id_for_label }}">{{ formulario_reembolso.valor_reembolso.label }}</label>
+                  {{ formulario_reembolso.valor_reembolso }}
+                  {% for erro in formulario_reembolso.valor_reembolso.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="{{ formulario_reembolso.observacao_reembolso.id_for_label }}">{{ formulario_reembolso.observacao_reembolso.label }}</label>
+                  {{ formulario_reembolso.observacao_reembolso }}
+                  {% for erro in formulario_reembolso.observacao_reembolso.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="modal-footer">
@@ -480,4 +932,6 @@
       </div>
     </div>
   {% endif %}
+  <script src="{% static 'js/eithra-compra-documento.js' %}"></script>
+  <script src="{% static 'js/eithra-compra-reembolso.js' %}"></script>
 {% endblock %}

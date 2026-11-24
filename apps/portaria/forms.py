@@ -95,13 +95,30 @@ def _veiculos_ativos(condominio):
 
 
 class AutorizacaoPortariaForm(forms.ModelForm):
+    """O esperado registrado pela portaria, no mesmo fluxo da chegada.
+
+    Quem avisa a portaria antes já está autorizando: o registro é a própria
+    autorização. O formulário pergunta o que a decisão da portaria precisa —
+    para onde vai quem é esperado, quem é, e quem autorizou — e o resto (situação
+    e janela de validade) continua sendo do domínio.
+
+    A estrutura acompanha o registro de chegada: o destino é escolhido no mapa
+    ou na busca e viaja escondido, e os dados administrativos (telefone,
+    documento) não viram pergunta. Os campos continuam existindo; o que muda é
+    que a tela não os pede.
+    """
+
+    passo = forms.CharField(required=False, widget=forms.HiddenInput)
+
     class Meta:
         model = AutorizacaoPortaria
         fields = (
             "tipo_acesso",
             "status",
             "pessoa",
+            "autorizador_pessoa",
             "nome",
+            "autorizador_nome",
             "telefone",
             "documento",
             "empresa",
@@ -117,16 +134,20 @@ class AutorizacaoPortariaForm(forms.ModelForm):
             "observacao",
         )
         widgets = {
-            "tipo_acesso": forms.Select(attrs=SELECAO),
+            "tipo_acesso": forms.RadioSelect(attrs={"class": "form-check-input"}),
             "status": forms.Select(attrs=SELECAO),
             "pessoa": forms.Select(attrs=SELECAO),
+            "autorizador_pessoa": forms.HiddenInput,
             "nome": forms.TextInput(
                 attrs={**TEXTO, "placeholder": "Nome de quem está esperado"}
+            ),
+            "autorizador_nome": forms.TextInput(
+                attrs={**TEXTO, "placeholder": "Nome de quem autorizou, quando houver"}
             ),
             "telefone": forms.TextInput(attrs={**TEXTO, "placeholder": "Telefone"}),
             "documento": forms.TextInput(attrs={**TEXTO, "placeholder": "Documento"}),
             "empresa": forms.TextInput(attrs=EMPRESA),
-            "unidade": forms.Select(attrs=SELECAO),
+            "unidade": forms.HiddenInput,
             "local": forms.Select(attrs=SELECAO),
             "veiculo": forms.Select(attrs=SELECAO),
             "placa": forms.TextInput(
@@ -145,10 +166,17 @@ class AutorizacaoPortariaForm(forms.ModelForm):
     def __init__(self, *args, condominio=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["pessoa"].queryset = _pessoas_ativas(condominio)
+        # Quem autorizou é quem responde pela unidade — o cadastro real do
+        # condomínio, como no registro de chegada. Sem morador vinculado, o nome
+        # é escrito à mão; a tela nunca inventa quem autorizou.
+        self.fields["autorizador_pessoa"].queryset = _do_condominio(Pessoa, condominio)
         self.fields["unidade"].queryset = _unidades_ativas(condominio)
         self.fields["local"].queryset = _locais_ativos(condominio)
+        self.fields["local"].empty_label = "Escolha o local"
         self.fields["veiculo"].queryset = _veiculos_ativos(condominio)
         self.fields["pessoa"].required = False
+        self.fields["autorizador_pessoa"].required = False
+        self.fields["autorizador_nome"].required = False
         self.fields["unidade"].required = False
         self.fields["local"].required = False
         self.fields["veiculo"].required = False
@@ -265,6 +293,10 @@ class ChegadaNaoPrevistaForm(forms.Form):
         label="Meio de autorização",
         required=False,
         choices=(("", "Escolha"), *MeioAutorizacaoPortaria.choices),
+        # A autorização do condomínio acontece no interfone, e é isso que a
+        # tela já traz escolhido: o porteiro confirma, em vez de responder mais
+        # uma pergunta. Trocar o meio continua sendo um toque.
+        initial=MeioAutorizacaoPortaria.INTERFONE,
         widget=forms.Select(attrs=SELECAO),
     )
     empresa = forms.CharField(
@@ -335,8 +367,10 @@ class ChegadaNaoPrevistaForm(forms.Form):
         meio = dados.get("meio_autorizacao") or ""
         dados["status"] = status
 
-        if tipo == TipoAcessoPortaria.VISITANTE and not unidade:
-            self.add_error("unidade", "Escolha a unidade que está recebendo a visita.")
+        if tipo == TipoAcessoPortaria.VISITANTE and not unidade and not local:
+            self.add_error(
+                "unidade", "Escolha a unidade ou a área comum que recebe esta visita."
+            )
         elif tipo != TipoAcessoPortaria.VISITANTE and not unidade and not local:
             self.add_error(
                 None, "Escolha a unidade de destino ou a área comum desta chegada."
@@ -354,7 +388,6 @@ class ChegadaNaoPrevistaForm(forms.Form):
         if tipo == TipoAcessoPortaria.VISITANTE:
             dados["empresa"] = ""
             dados["motivo"] = ""
-            dados["local"] = None
 
         # Natureza do objeto é assunto dos Correios e instrução de entrega é
         # assunto do Delivery. Fora do seu tipo, o valor não faz sentido e não

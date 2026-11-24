@@ -353,6 +353,17 @@ MANUTENCOES_ALERTA_ANTECEDENCIA_DIAS = env.int(
     "MANUTENCOES_ALERTA_ANTECEDENCIA_DIAS", default=3
 )
 
+# A foto de uma chegada registrada na portaria — evidência opcional do acesso —
+# fica em um bucket privado próprio, pelo mesmo motivo dos demais: o arquivo de
+# um domínio não se mistura com o de outro. O acesso é temporário e gerado na
+# hora, nunca uma URL pública guardada.
+PORTARIA_STORAGE_BUCKET = env("PORTARIA_STORAGE_BUCKET", default="")
+# 10 MB por foto. É uma imagem para comprovar quem chegou, não um arquivo de
+# trabalho: um limite que recusa cedo a imagem errada sem apertar a legítima.
+PORTARIA_MAX_FOTO_BYTES = env.int(
+    "PORTARIA_MAX_FOTO_BYTES", default=10 * 1024 * 1024
+)
+
 
 def _dias_por_prioridade(bruto: str) -> dict[str, int]:
     """A política de prazo no formato ``prioridade:dias``, separada por vírgula.

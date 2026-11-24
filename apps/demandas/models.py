@@ -50,6 +50,24 @@ _PESO_DA_PRIORIDADE = {
 }
 
 
+def peso_da_prioridade():
+    """A prioridade como número, do que mais pesa ao que menos pesa.
+
+    Crítica, Alta, Média, Baixa — a ordem do domínio, nunca o alfabeto. Mora
+    aqui porque é a mesma leitura em dois lugares: a lista põe o que pesa mais à
+    frente, e a coluna "Prioridade" ordena por este peso quando alguém clica no
+    cabeçalho. Uma fonte só, para as duas concordarem sempre.
+    """
+    return models.Case(
+        *[
+            models.When(prioridade=valor, then=models.Value(peso))
+            for valor, peso in _PESO_DA_PRIORIDADE.items()
+        ],
+        default=models.Value(len(_PESO_DA_PRIORIDADE)),
+        output_field=models.IntegerField(),
+    )
+
+
 class DemandaQuerySet(models.QuerySet):
     """Leituras reutilizáveis da demanda.
 
@@ -61,6 +79,16 @@ class DemandaQuerySet(models.QuerySet):
     def abertas(self):
         """Demandas que ainda dependem de uma ação."""
         return self.exclude(status__in=SITUACOES_ENCERRADAS)
+
+    def encerradas(self):
+        """Demandas que já saíram da operação: concluídas e canceladas.
+
+        É o complemento exato de `abertas()`: uma demanda ou ainda pede ação, ou
+        já foi fechada. As duas leituras saem da mesma fronteira, e é essa
+        fronteira que separa as abas da listagem — nada de listar situações à
+        mão na tela.
+        """
+        return self.filter(status__in=SITUACOES_ENCERRADAS)
 
     def vencidas(self, hoje=None):
         """Prazo já passou e a demanda continua em aberto."""
@@ -100,14 +128,7 @@ class DemandaQuerySet(models.QuerySet):
         de quem abre a lista para decidir o que fazer agora.
         """
         hoje = timezone.localdate()
-        peso = models.Case(
-            *[
-                models.When(prioridade=valor, then=models.Value(peso))
-                for valor, peso in _PESO_DA_PRIORIDADE.items()
-            ],
-            default=models.Value(len(_PESO_DA_PRIORIDADE)),
-            output_field=models.IntegerField(),
-        )
+        peso = peso_da_prioridade()
         return self.annotate(
             _urgente=models.Case(
                 models.When(prioridade=PrioridadeDemanda.URGENTE, then=0),
@@ -285,6 +306,14 @@ class Demanda(models.Model):
         blank=True,
         help_text="O próximo passo combinado, com as palavras da operação.",
     )
+    prazo_proxima_acao = models.DateField(
+        "Prazo da próxima ação",
+        null=True,
+        blank=True,
+        help_text="Até quando a próxima ação precisa acontecer. É a urgência da "
+        "ação, não o prazo de solução: vencê-la não é o mesmo que descumprir o "
+        "prazo formal da demanda.",
+    )
     previsao = models.DateField(
         "Previsão",
         null=True,
@@ -397,6 +426,7 @@ class Demanda(models.Model):
             self.aguardando_tipo
             or self.aguardando_descricao
             or self.proxima_acao
+            or self.prazo_proxima_acao
             or self.previsao
             or self.impedimento
             or self.responsavel_acompanhamento_id
@@ -421,10 +451,37 @@ class Demanda(models.Model):
 
         É um sinal para quem acompanha, não uma consequência: nada muda de
         situação por causa disso.
+
+        Esta é a previsão externa atrasada — o compromisso de terceiro que não
+        chegou. É diferente de um prazo formal vencido e de uma próxima ação
+        vencida, e não deve ser lida como descumprimento da operação interna.
         """
         if not self.previsao or self.esta_encerrada:
             return False
         return self.previsao < timezone.localdate()
+
+    @property
+    def prazo_formal_vencido(self) -> bool:
+        """O compromisso formal de conclusão passou e a demanda segue aberta.
+
+        Só existe quando há prazo preenchido — e prazo só existe com fundamento
+        (SLA contratual, obrigação formal ou decisão de quem registrou). Sem
+        prazo, a demanda não está vencida: está sem compromisso formal.
+        """
+        if not self.prazo or self.esta_encerrada:
+            return False
+        return self.prazo < timezone.localdate()
+
+    @property
+    def proxima_acao_vencida(self) -> bool:
+        """A data combinada para a próxima ação passou e nada foi feito.
+
+        É a urgência da ação — desempenho interno —, não o prazo de solução da
+        demanda. Marcar isto não vence a demanda nem antecipa a conclusão.
+        """
+        if not self.prazo_proxima_acao or self.esta_encerrada:
+            return False
+        return self.prazo_proxima_acao < timezone.localdate()
 
     @property
     def ultima_movimentacao(self):

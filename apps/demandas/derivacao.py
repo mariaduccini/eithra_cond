@@ -35,7 +35,6 @@ from django.utils import timezone
 from apps.cadastros.constants import TipoLocal
 from apps.cadastros.models import Equipamento, LocalOperacional
 
-from . import prazos
 from .constants import (
     ImpactoDemanda,
     PrioridadeDemanda,
@@ -432,10 +431,14 @@ class Leitura:
                 if self.local
                 else "",
             ),
+            # O peso é calculado pela regra estruturada e entra sempre, com o
+            # motivo que o sustenta. Isto é memória interna de auditoria — a
+            # procedência de como o motor chegou ao peso —, e não um rótulo que
+            # a tela exiba como "sugerida" ou "automática".
             "prioridade": Sugestao(
-                valor=self.prioridade if self.motivo else "",
+                valor=self.prioridade,
                 origem=OrigemSugestao.EITHRA,
-                confianca=Confianca.ALTA if self.motivo else Confianca.BAIXA,
+                confianca=Confianca.ALTA if self.motivo else Confianca.MEDIA,
                 motivo=self.motivo,
             ),
             "equipamento": Sugestao(
@@ -587,6 +590,11 @@ def prioridade_do_relato(texto: str | None) -> tuple[str, str]:
 
     Devolve ``Normal`` sem motivo quando não há regra que sustente outra coisa:
     o padrão da demanda é a resposta honesta para o que não se sabe ler.
+
+    Esta é a leitura textual isolada, e continua valendo para quem depende dela
+    — o registro de Manutenções usa a mesma régua. As Demandas não decidem o
+    peso por aqui: elas passam pela regra estruturada, em
+    ``prioridade_da_classificacao``, na qual o texto é um sinal entre vários.
     """
     lido = _normalizado(texto)
     if not lido:
@@ -607,6 +615,118 @@ def prioridade_do_relato(texto: str | None) -> tuple[str, str]:
         return PrioridadeDemanda.BAIXA, "Sem urgência declarada"
 
     return PrioridadeDemanda.NORMAL, ""
+
+
+# A escala do peso, do menor para o maior. O peso final é sempre um destes
+# degraus — nunca um que sinal nenhum sustente.
+ESCALA_DA_PRIORIDADE = (
+    PrioridadeDemanda.BAIXA,
+    PrioridadeDemanda.NORMAL,
+    PrioridadeDemanda.ALTA,
+    PrioridadeDemanda.URGENTE,
+)
+
+# O peso que cada risco sustenta por si. O que pode matar ou comprometer o
+# prédio já nasce crítico; o que ameaça a segurança ou a saúde sobe um degrau.
+# "Sem risco" não eleva nada — é uma resposta declarada, e não um risco.
+PESO_DO_RISCO = {
+    RiscoDemanda.INCENDIO: PrioridadeDemanda.URGENTE,
+    RiscoDemanda.ELETRICO: PrioridadeDemanda.URGENTE,
+    RiscoDemanda.ESTRUTURAL: PrioridadeDemanda.URGENTE,
+    RiscoDemanda.SEGURANCA: PrioridadeDemanda.ALTA,
+    RiscoDemanda.SAUDE: PrioridadeDemanda.ALTA,
+}
+
+# O motivo do risco, na frase que fica guardada para auditoria. É a mesma
+# leitura de ``RISCOS_DECLARADOS``, aqui indexada pelo valor.
+_MOTIVO_DO_RISCO = {
+    RiscoDemanda.INCENDIO: "Risco de incêndio ou explosão",
+    RiscoDemanda.ELETRICO: "Risco elétrico",
+    RiscoDemanda.ESTRUTURAL: "Risco estrutural",
+    RiscoDemanda.SEGURANCA: "Risco à segurança",
+    RiscoDemanda.SAUDE: "Risco à saúde",
+}
+
+# Quantos sinais de "Alta" reunidos já pesam como "Crítica": a soma dos sinais
+# de atenção é pior do que cada um sozinho.
+SINAIS_QUE_ESCALAM = 2
+
+
+def _equipamento_essencial(equipamento, texto_normalizado: str) -> str:
+    """O rótulo do equipamento essencial em jogo, do cadastro ou do relato.
+
+    O cadastro manda quando o equipamento foi confirmado; o nome dito no relato
+    responde quando não há cadastro. Fora da lista de essenciais — o portão, o
+    elevador, a bomba —, nenhum equipamento sobe o peso por si.
+    """
+    nome = getattr(equipamento, "nome", "") if equipamento is not None else ""
+    if nome:
+        normalizado = _normalizado(nome)
+        for rotulo, variantes in EQUIPAMENTOS_ESSENCIAIS:
+            if _contem(normalizado, variantes):
+                return rotulo
+    return _equipamento_mencionado(texto_normalizado)
+
+
+def prioridade_da_classificacao(
+    *, risco: str = "", impacto: str = "", recorrencia: str = "",
+    equipamento=None, texto: str | None = None,
+) -> tuple[str, str]:
+    """O peso da demanda pela regra estruturada e auditável.
+
+    O peso não sai de uma palavra solta no relato. Nasce dos sinais
+    estruturados — o risco identificado, a abrangência do impacto, a
+    reincidência e o equipamento essencial parado —, e a leitura textual apenas
+    alimenta esses sinais: reconhecer a falha de um portão ou a ausência de
+    pressa ajuda a montar o quadro, mas não é o quadro.
+
+    A regra é esta, e é a mesma para toda demanda:
+
+    * o padrão é **Média** — o peso que não pede leitura nenhuma;
+    * um **risco** sobe o peso: incêndio, elétrico ou estrutural vão a
+      **Crítica**; segurança e saúde, a **Alta**;
+    * a **abrangência coletiva** (o condomínio inteiro) e a **reincidência**
+      valem **Alta**;
+    * um **equipamento essencial fora de operação** — cadastro confirmado ou
+      nome dito no relato — vale **Alta**;
+    * dois ou mais sinais de **Alta** juntos sobem para **Crítica**;
+    * o único sinal de descida é a **ausência de pressa declarada**, que leva a
+      **Baixa** — e só quando nenhum outro sinal elevou o peso.
+
+    Texto com a palavra "urgente" ou "crítico" e nenhum sinal estruturado não
+    promove coisa alguma: continua **Média**. O motivo devolvido é o que fica
+    guardado para auditoria; a tela mostra só o rótulo do peso.
+    """
+    lido = _normalizado(texto)
+    elevacoes: list[tuple[str, str]] = []
+
+    peso_do_risco = PESO_DO_RISCO.get(risco)
+    if peso_do_risco:
+        elevacoes.append((peso_do_risco, _MOTIVO_DO_RISCO[risco]))
+
+    if impacto == ImpactoDemanda.COLETIVO:
+        elevacoes.append((PrioridadeDemanda.ALTA, "Alcança o condomínio inteiro"))
+
+    if recorrencia in (RecorrenciaDemanda.DECLARADA, RecorrenciaDemanda.OBSERVADA):
+        elevacoes.append((PrioridadeDemanda.ALTA, "O problema já aconteceu antes"))
+
+    rotulo = _equipamento_essencial(equipamento, lido)
+    if rotulo and _contem(lido, PALAVRAS_DE_FALHA):
+        elevacoes.append((PrioridadeDemanda.ALTA, f"{rotulo} fora de operação"))
+
+    if not elevacoes:
+        if _contem(lido, PALAVRAS_SEM_PRESSA):
+            return PrioridadeDemanda.BAIXA, "Sem urgência declarada"
+        return PrioridadeDemanda.NORMAL, ""
+
+    criticas = [motivo for peso, motivo in elevacoes if peso == PrioridadeDemanda.URGENTE]
+    if criticas:
+        return PrioridadeDemanda.URGENTE, criticas[0]
+
+    altas = [motivo for peso, motivo in elevacoes if peso == PrioridadeDemanda.ALTA]
+    if len(altas) >= SINAIS_QUE_ESCALAM:
+        return PrioridadeDemanda.URGENTE, "Dois sinais de atenção somados"
+    return PrioridadeDemanda.ALTA, altas[0]
 
 
 def local_do_relato(texto: str | None, condominio) -> LocalOperacional | None:
@@ -1022,10 +1142,14 @@ def interpretar(
 ) -> Leitura:
     """Lê o relato e devolve o que ele sustenta.
 
-    O prazo não sai do relato: ele sai da política configurada, aplicada ao
-    peso que o relato sustenta (ver ``.prazos``). Sem regra configurada, não há
-    data — o relato nunca inventa uma. O que a pessoa informar na tela vale
-    mais do que a derivação, e é o formulário que faz essa parte valer.
+    O peso sai da regra estruturada — risco, abrangência, reincidência e
+    equipamento essencial parado —, com a leitura textual alimentando esses
+    sinais. Não é uma palavra solta no relato que decide a prioridade.
+
+    O prazo não é criado aqui. A regra de prazo continua configurável, mas
+    fora do fluxo de registro: a leitura nunca inventa uma data, e a política
+    não a deriva automaticamente. O que a pessoa informar na tela vale, e é o
+    formulário que faz essa parte valer.
 
     ``ignorar`` é a demanda que já existe e está sendo revista: ela não conta
     como histórico dela mesma.
@@ -1034,30 +1158,37 @@ def interpretar(
     if not texto:
         return Leitura()
 
-    prioridade, motivo = prioridade_do_relato(texto)
     local = local_do_relato(texto, condominio)
     equipamento, _ = equipamento_do_relato(texto, condominio)
     tipo_problema = tipo_de_problema_do_relato(texto)
+    risco = risco_do_relato(texto)
+    impacto = impacto_do_contexto(texto, local, equipamento)
+    recorrencia = recorrencia_do_relato(
+        texto,
+        condominio,
+        local=local,
+        equipamento=equipamento,
+        hoje=hoje,
+        ignorar=ignorar,
+    )
+    prioridade, motivo = prioridade_da_classificacao(
+        risco=risco.valor,
+        impacto=impacto.valor,
+        recorrencia=recorrencia.valor,
+        equipamento=equipamento,
+        texto=texto,
+    )
     return Leitura(
         assunto=assunto_do_relato(texto),
         prioridade=prioridade,
         motivo=motivo,
-        prazo=prazos.prazo_do_registro(prioridade, base=hoje),
-        motivo_do_prazo=prazos.motivo_do_prazo(prioridade),
         local=local,
         equipamento=equipamento,
         area=area_do_contexto(local, equipamento),
         tipo_problema=tipo_problema,
-        impacto=impacto_do_contexto(texto, local, equipamento),
-        risco=risco_do_relato(texto),
-        recorrencia=recorrencia_do_relato(
-            texto,
-            condominio,
-            local=local,
-            equipamento=equipamento,
-            hoje=hoje,
-            ignorar=ignorar,
-        ),
+        impacto=impacto,
+        risco=risco,
+        recorrencia=recorrencia,
         pergunta=pergunta_do_relato(
             texto,
             condominio,

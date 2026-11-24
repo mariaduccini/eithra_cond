@@ -69,6 +69,7 @@
   var TEXTO_GRAVANDO = "Gravando…";
   var TEXTO_TRANSCREVENDO = "Transcrevendo…";
   var TEXTO_PRONTO = "Transcrição pronta. Revise antes de continuar.";
+  var TEXTO_SEM_CAMPO = "Não foi possível preencher este campo.";
   var TEXTO_FALHA =
     "Não foi possível transcrever o áudio. Tente novamente ou digite o relato.";
   var TEXTO_SEM_FORMATO =
@@ -115,10 +116,52 @@
     return atual ? atual + "\n" + novo : novo;
   }
 
+  // O campo se procura primeiro no formulário do próprio botão: uma tela com
+  // dois formulários — como a Portaria, com o esperado e o registro de chegada
+  // lado a lado — repete os mesmos nomes de campo, e o id do primeiro da página
+  // não é o do microfone que foi tocado. Só depois, e só se o formulário não
+  // tiver o campo, vale o documento.
+  //
+  // A busca é feita na hora de escrever, e não uma única vez: um formulário que
+  // se re-renderiza deixaria o microfone apontando para um nó já fora do
+  // documento, e a fala cairia no vazio. Campo fora do documento não é campo.
+  function acharCampo(botao) {
+    var seletor = botao.dataset.eithraDitarCampo || "";
+    if (!seletor) {
+      return null;
+    }
+    var formulario = botao.closest("form");
+    var achado = formulario ? formulario.querySelector(seletor) : null;
+    if (!achado) {
+      achado = document.querySelector(seletor);
+    }
+    return achado && achado.isConnected ? achado : null;
+  }
+
+  // O recado da voz aparece onde a pessoa está olhando. Numa tela com mais de
+  // um microfone — como a Portaria, que dita no relato e dentro do registro de
+  // chegada —, o recado do campo responde pelo campo dele; sem um recado
+  // próprio, vale o primeiro da tela, que é o de sempre.
+  function acharRecado(botao) {
+    var escopos = [
+      botao.closest("[data-eithra-campo-voz]"),
+      botao.closest("form"),
+    ];
+    for (var i = 0; i < escopos.length; i++) {
+      if (escopos[i]) {
+        var achado = escopos[i].querySelector("[data-eithra-ditar-recado]");
+        if (achado) {
+          return achado;
+        }
+      }
+    }
+    return document.querySelector("[data-eithra-ditar-recado]");
+  }
+
   function configurar(botao) {
     var formulario = botao.closest("form");
-    var campo = document.querySelector(botao.dataset.eithraDitarCampo || "");
-    var recado = document.querySelector("[data-eithra-ditar-recado]");
+    var campo = acharCampo(botao);
+    var recado = acharRecado(botao);
     if (!formulario || !campo) {
       return;
     }
@@ -240,10 +283,24 @@
         .then(function (leitura) {
           repousar();
           if (leitura && leitura.texto) {
+            // O campo é reencontrado agora, no formulário do próprio botão:
+            // escrever num alvo que já saiu do documento seria anunciar uma
+            // transcrição que ninguém vê.
+            var alvo = acharCampo(botao);
+            if (!alvo) {
+              avisar(TEXTO_SEM_CAMPO, "erro");
+              return;
+            }
             // Não substitui: acrescenta. O que a pessoa já tinha escrito é
             // dela, e a fala vem depois.
-            campo.value = juntar(campo.value, leitura.texto);
-            campo.focus();
+            alvo.value = juntar(alvo.value, leitura.texto);
+            // Quem escuta o campo precisa saber que ele mudou: há campo que
+            // procura sozinho enquanto se digita — o destino da chegada, por
+            // exemplo —, e a fala tem de acordar essa busca como a digitação
+            // acordaria.
+            alvo.dispatchEvent(new Event("input", { bubbles: true }));
+            alvo.dispatchEvent(new Event("change", { bubbles: true }));
+            alvo.focus();
             avisar(TEXTO_PRONTO, "pronto");
             // A fala bastou? Então o EITHRA já leu o relato e segue adiante: a
             // etapa das informações chega preenchida, e quem ditou só confere —

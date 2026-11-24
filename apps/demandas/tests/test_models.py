@@ -190,6 +190,73 @@ class DemandaQuerySetTests(TestCase):
         self.assertEqual(ordem, [urgente, vencida, normal])
 
 
+class VencimentosDaDemandaTests(TestCase):
+    """Os três vencimentos são conceitos diferentes e não se misturam (§10).
+
+    O prazo formal é o compromisso de conclusão; o prazo da próxima ação é a
+    urgência da ação; a previsão é a data prometida por terceiro. Um não vence o
+    outro, e a ausência de um não é escondida pela presença do outro.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio()
+        self.pessoa = criar_pessoa("gestao@exemplo.test", "Gestão")
+        self.hoje = timezone.localdate()
+
+    def _criar(self, **campos):
+        base = {
+            "condominio": self.condominio,
+            "titulo": "Demanda",
+            "criado_por": self.pessoa,
+        }
+        base.update(campos)
+        return Demanda.objects.create(**base)
+
+    def test_sem_data_nenhuma_nao_ha_vencimento(self):
+        demanda = self._criar()
+        self.assertFalse(demanda.prazo_formal_vencido)
+        self.assertFalse(demanda.proxima_acao_vencida)
+        self.assertFalse(demanda.previsao_vencida)
+
+    def test_prazo_formal_vencido_vem_so_do_prazo(self):
+        demanda = self._criar(
+            prazo=self.hoje - timedelta(days=1),
+            prazo_proxima_acao=self.hoje + timedelta(days=1),
+            previsao=self.hoje + timedelta(days=1),
+        )
+        self.assertTrue(demanda.prazo_formal_vencido)
+        self.assertFalse(demanda.proxima_acao_vencida)
+        self.assertFalse(demanda.previsao_vencida)
+
+    def test_proxima_acao_vencida_nao_e_prazo_formal(self):
+        demanda = self._criar(prazo_proxima_acao=self.hoje - timedelta(days=1))
+        self.assertTrue(demanda.proxima_acao_vencida)
+        self.assertFalse(demanda.prazo_formal_vencido)
+        self.assertFalse(demanda.previsao_vencida)
+
+    def test_previsao_atrasada_e_compromisso_externo(self):
+        demanda = self._criar(previsao=self.hoje - timedelta(days=1))
+        self.assertTrue(demanda.previsao_vencida)
+        self.assertFalse(demanda.prazo_formal_vencido)
+        self.assertFalse(demanda.proxima_acao_vencida)
+
+    def test_demanda_encerrada_nao_anuncia_vencimento(self):
+        demanda = self._criar(
+            prazo=self.hoje - timedelta(days=1),
+            prazo_proxima_acao=self.hoje - timedelta(days=1),
+            previsao=self.hoje - timedelta(days=1),
+            status=StatusDemanda.CONCLUIDA,
+            concluido_em=timezone.now(),
+        )
+        self.assertFalse(demanda.prazo_formal_vencido)
+        self.assertFalse(demanda.proxima_acao_vencida)
+        self.assertFalse(demanda.previsao_vencida)
+
+    def test_prazo_da_proxima_acao_conta_como_acompanhamento(self):
+        demanda = self._criar(prazo_proxima_acao=self.hoje + timedelta(days=2))
+        self.assertTrue(demanda.tem_acompanhamento)
+
+
 class HistoricoDemandaTests(TestCase):
     """O histórico é a memória da demanda e só cresce (§11)."""
 

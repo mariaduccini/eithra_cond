@@ -1,0 +1,139 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Revisar atividade · Modelos preventivos · Eithra{% endblock %}
+
+{% block content %}
+  <header class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'rotinas:biblioteca_preventiva' %}?condominio={{ condominio.pk }}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Modelos preventivos
+      </a>
+      <span class="eithra-eyebrow d-block">{{ modelo.categoria }} · Revisão antes de ativar</span>
+      <h1 class="h4 mb-1">{{ modelo.titulo }}</h1>
+      <p class="text-body-secondary mb-0">{{ condominio.nome }}</p>
+    </div>
+  </header>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-4">
+      <aside class="card h-100">
+        <div class="card-header">
+          <h2 class="h6 mb-0">Sobre este modelo</h2>
+        </div>
+        <div class="card-body">
+          {% if modelo.descricao %}
+            <p>{{ modelo.descricao|linebreaksbr }}</p>
+          {% endif %}
+          <p class="mb-2">
+            <span class="fw-medium">Frequência de referência:</span>
+            {{ modelo.periodicidade_sugerida }}
+          </p>
+          {% if evidencias %}
+            <div class="small text-body-secondary mb-3">
+              <span class="fw-medium">Evidências do cadastro:</span>
+              {% for evidencia in evidencias %}<div>{{ evidencia }}</div>{% endfor %}
+            </div>
+          {% endif %}
+          {% if modelo.condicional %}
+            <div class="alert alert-warning small mb-3">
+              <strong>Confirme a condição:</strong> {{ modelo.condicao_necessaria }}
+            </div>
+          {% endif %}
+          {% if modelo.observacoes %}
+            <p class="small text-body-secondary">{{ modelo.observacoes|linebreaksbr }}</p>
+          {% endif %}
+          {% if modelo.checklist_sugerido %}
+            <h3 class="h6 mt-3">Checklist que será copiado</h3>
+            <ul class="small mb-0 ps-3">
+              {% for tarefa in modelo.checklist_sugerido %}<li>{{ tarefa }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+        </div>
+      </aside>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <form method="post" class="card">
+        {% csrf_token %}
+        <input type="hidden" name="condominio" value="{{ condominio.pk }}">
+        <div class="card-header">
+          <h2 class="h5 mb-1">Revise os dados da atividade</h2>
+          <p class="text-body-secondary small mb-0">
+            Só será criada depois de confirmar este formulário. A primeira ocorrência também será preparada.
+          </p>
+        </div>
+        <div class="card-body">
+          {% if formulario.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+              {{ formulario.non_field_errors }}
+            </div>
+          {% endif %}
+
+          <div class="row g-3">
+            {% for campo in formulario %}
+              {% if campo.name != "condominio" and campo.field.widget.input_type != "checkbox" %}
+                <div class="{% if campo.name == 'descricao' %}col-12{% else %}col-12 col-md-6{% endif %}">
+                  <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                  {{ campo }}
+                  {% if campo.help_text %}<div class="form-text">{{ campo.help_text }}</div>{% endif %}
+                  {% for erro in campo.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+
+          <div class="mt-4">
+            <div class="form-check">
+              {{ formulario.execucao_unica }}
+              <label class="form-check-label" for="{{ formulario.execucao_unica.id_for_label }}">
+                {{ formulario.execucao_unica.label }}
+              </label>
+            </div>
+            {% for erro in formulario.execucao_unica.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}
+            <div class="form-text">
+              Use esta opção quando não quiser programar recorrência para a atividade.
+            </div>
+          </div>
+
+          <div class="form-check mt-3">
+            {{ formulario.gera_manutencao }}
+            <label class="form-check-label" for="{{ formulario.gera_manutencao.id_for_label }}">
+              {{ formulario.gera_manutencao.label }}
+            </label>
+          </div>
+          {% for erro in formulario.gera_manutencao.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}
+
+          <fieldset class="mt-4">
+            <legend class="h6">Confirmações necessárias</legend>
+            <div class="d-flex flex-column gap-3">
+              {% for campo in formulario %}
+                {% if campo.name == "confirmar_frequencia" or campo.name == "confirmar_condicao" or campo.name == "confirmar_fornecedor" or campo.name == "confirmar_validacao_tecnica" %}
+                  <div>
+                    <div class="form-check">
+                      {{ campo }}
+                      <label class="form-check-label" for="{{ campo.id_for_label }}">
+                        {{ campo.label }}{% if campo.field.required %} <span aria-hidden="true">*</span>{% endif %}
+                      </label>
+                    </div>
+                    {% for erro in campo.errors %}<div class="invalid-feedback d-block">{{ erro }}</div>{% endfor %}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <p class="form-text mt-2 mb-0">* Confirmação obrigatória para este modelo.</p>
+          </fieldset>
+        </div>
+        <div class="card-footer d-flex flex-column flex-sm-row justify-content-end gap-2">
+          <a
+            href="{% url 'rotinas:biblioteca_preventiva' %}?condominio={{ condominio.pk }}"
+            class="btn btn-label-secondary">Voltar sem ativar</a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bx bx-check me-1" aria-hidden="true"></i> Confirmar e criar atividade
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

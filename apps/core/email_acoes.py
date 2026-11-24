@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.condominios.acesso import tem_acesso_ativo
 from apps.core import gmail
@@ -53,6 +55,7 @@ ACOES_DESTA_FASE = frozenset(
         AcaoProposta.RELACIONAR_DEMANDA,
         AcaoProposta.RELACIONAR_MANUTENCAO,
         AcaoProposta.CRIAR_NOVA_DEMANDA,
+        AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA,
     }
 )
 
@@ -62,11 +65,21 @@ ROTULO_DA_ACAO = {
     AcaoProposta.RELACIONAR_DEMANDA: "Relacionar à demanda",
     AcaoProposta.RELACIONAR_MANUTENCAO: "Relacionar à manutenção",
     AcaoProposta.CRIAR_NOVA_DEMANDA: "Registrar demanda",
+    AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA: "Registrar autorização",
 }
 
 # Uma mensagem cria no máximo uma demanda nesta fase. A chave fixa é o que
 # permite reconhecer a segunda confirmação como a mesma consequência.
 CHAVE_DA_NOVA_DEMANDA = "criar_nova_demanda"
+
+# O mesmo vale para a autorização de acesso: uma mensagem vira uma autorização.
+CHAVE_DA_AUTORIZACAO = "criar_autorizacao_portaria"
+
+# Quanto tempo vale uma autorização lida de e-mail. A mensagem não traz uma
+# janela explícita, e sem prazo a portaria não teria como reconhecer a chegada:
+# o horizonte é o de um turno, contado do momento da mensagem. Quem precisa de
+# outro prazo registra a autorização no fluxo próprio da portaria.
+JANELA_DA_AUTORIZACAO = timedelta(hours=12)
 
 MENSAGEM_DE_CONTEXTO_MUDOU = "O contexto mudou desde a análise. Revise a nova proposta."
 MENSAGEM_DE_FALHA = "Não conseguimos concluir agora. Tente novamente em instantes."
@@ -77,6 +90,7 @@ MENSAGEM_SEM_ACAO = "Esta mensagem não pede ação. Nada foi criado."
 MENSAGEM_DA_DEMANDA = "Registramos uma demanda a partir desta mensagem."
 MENSAGEM_DA_DEMANDA_RELACIONADA = "Esta mensagem ficou ligada à demanda."
 MENSAGEM_DA_MANUTENCAO_RELACIONADA = "Esta mensagem ficou ligada à manutenção."
+MENSAGEM_DA_AUTORIZACAO = "Registramos uma autorização de acesso a partir desta mensagem."
 
 
 class ErroConfirmacaoEmail(Exception):
@@ -238,6 +252,8 @@ def confirmar_acao_email(
         return _relacionar_demanda(item, leitura, usuario)
     if acao == AcaoProposta.RELACIONAR_MANUTENCAO:
         return _relacionar_manutencao(item, leitura, usuario)
+    if acao == AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA:
+        return _criar_autorizacao_portaria(item, leitura, usuario)
     return _criar_nova_demanda(item, leitura, usuario)
 
 
@@ -402,6 +418,124 @@ def _criar_nova_demanda(item, leitura, usuario) -> ResultadoConfirmacaoEmail:
         leitura=leitura,
         mensagem=MENSAGEM_DA_DEMANDA,
     )
+
+
+def _criar_autorizacao_portaria(item, leitura, usuario) -> ResultadoConfirmacaoEmail:
+    """Registra a autorização de acesso pelos fatos da leitura — nunca pelo payload.
+
+    O que entra é só o que a mensagem sustenta: o nome que ela declarou e o
+    destino que o cadastro confirmou — a unidade de verdade ou o local de
+    verdade. Nada de pessoa nem de unidade inventadas: faltando o essencial, a
+    autorização não é criada pela metade e o item continua aguardando decisão.
+    E, em nenhum caso, esta ação cria uma demanda.
+    """
+    from apps.portaria.constants import OrigemPortaria
+    from apps.portaria.models import AutorizacaoPortaria
+    from apps.portaria.services import registrar_esperado
+
+    existente = _vinculo_existente(
+        item, EntidadeImportacaoHistorica.AUTORIZACAO_PORTARIA, CHAVE_DA_AUTORIZACAO
+    )
+    if existente is not None and existente.destino_id:
+        autorizacao = AutorizacaoPortaria.objects.filter(
+            pk=existente.destino_id, condominio_id=item.condominio_id
+        ).first()
+        if autorizacao is not None:
+            item = _concluir(item)
+            return ResultadoConfirmacaoEmail(
+                item=item,
+                estado_final=EstadoProcessamentoImportacao.PROCESSADO,
+                acao=AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA,
+                executado=True,
+                destino=autorizacao,
+                leitura=leitura,
+                mensagem=MENSAGEM_DA_AUTORIZACAO,
+            )
+
+    dados = _dados_da_autorizacao(leitura, item)
+    if dados is None:
+        return ResultadoConfirmacaoEmail(
+            item=item,
+            estado_final=item.estado_processamento,
+            acao=AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA,
+            leitura=leitura,
+            mensagem=MENSAGEM_DE_FALTA_DE_INFORMACAO,
+        )
+
+    with transaction.atomic():
+        autorizacao = registrar_esperado(
+            condominio=item.condominio,
+            usuario=usuario,
+            dados=dados,
+            origem=OrigemPortaria.EMAIL,
+        )
+        _registrar(
+            item=item,
+            entidade_destino=EntidadeImportacaoHistorica.AUTORIZACAO_PORTARIA,
+            destino=autorizacao,
+            usuario=usuario,
+            chave=CHAVE_DA_AUTORIZACAO,
+        )
+        item = _concluir(item)
+
+    return ResultadoConfirmacaoEmail(
+        item=item,
+        estado_final=EstadoProcessamentoImportacao.PROCESSADO,
+        acao=AcaoProposta.CRIAR_AUTORIZACAO_PORTARIA,
+        executado=True,
+        destino=autorizacao,
+        leitura=leitura,
+        mensagem=MENSAGEM_DA_AUTORIZACAO,
+    )
+
+
+def _dados_da_autorizacao(leitura, item) -> dict | None:
+    """O que a leitura sustenta para virar uma autorização da portaria.
+
+    Devolve ``None`` quando falta o essencial: o domínio exige quem entra e um
+    destino, e uma autorização sem isso não se sustenta. A unidade só entra se o
+    cadastro confirmar uma só; o nome é o que a mensagem declarou.
+    """
+    nome = _nome_declarado(leitura)
+    unidade = _unidade_confirmada(leitura, item)
+    local = _objeto_confirmado(leitura, "local", item)
+    if not nome or (unidade is None and local is None):
+        return None
+
+    inicio = item.momento_da_mensagem or timezone.now()
+    dados = {
+        "nome": nome[:180],
+        "unidade": unidade,
+        "local": local,
+        "inicio_previsto": inicio,
+        "fim_previsto": inicio + JANELA_DA_AUTORIZACAO,
+    }
+    placa = _placa_declarada(leitura)
+    if placa:
+        dados["placa"] = placa
+    return dados
+
+
+def _nome_declarado(leitura) -> str:
+    """O nome que a mensagem disse — nunca um cadastro inventado."""
+    fato = leitura.fato("nome")
+    return fato.texto if fato is not None and fato.existe else ""
+
+
+def _placa_declarada(leitura) -> str:
+    """A placa citada na mensagem, quando houver."""
+    fato = leitura.fato("placa")
+    return fato.valor if fato is not None and fato.existe else ""
+
+
+def _unidade_confirmada(leitura, item):
+    """A unidade que o cadastro confirma a partir do número citado, ou nenhuma."""
+    from apps.portaria.interpretacao import unidade_citada
+
+    fato = leitura.fato("unidade")
+    if fato is None or not fato.existe:
+        return None
+    return unidade_citada(fato.texto, item.condominio)
 
 
 # ---------------------------------------------------------------------------

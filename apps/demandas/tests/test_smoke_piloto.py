@@ -1,9 +1,10 @@
 """Smoke test ponta a ponta do módulo de Demandas, para o piloto (§9).
 
 Percorre o fluxo real que a gestão usa, da criação à conclusão, exercitando o
-wizard de três etapas, a escolha manual da prioridade, as ações do detalhe e a
-listagem. É um teste de integração: fala com as views de verdade, pelo mesmo
-caminho que o navegador falaria — nada de chamar serviços por baixo.
+wizard de três etapas, a prioridade calculada pelo motor e a correção manual, as
+ações do detalhe e a listagem. É um teste de integração: fala com as views de
+verdade, pelo mesmo caminho que o navegador falaria — nada de chamar serviços
+por baixo.
 
 Roda no banco de teste, que é criado e descartado a cada execução: nenhum dado
 real é tocado e nenhum resíduo sobra. Os títulos levam o prefixo ``[HML]``
@@ -28,9 +29,11 @@ from apps.demandas.tests.apoio import (
     png,
 )
 
-# O relato carrega palavras que, no desenho antigo, fariam a leitura escolher
-# prioridade alta/urgente. A escolha humana é "Baixa" — e é ela que deve valer.
-RELATO = "[HML] portão externo travando, situação urgente e crítica na garagem"
+# O relato carrega o portão — equipamento essencial — e a palavra de falha
+# "travou": pela regra estruturada, o motor sustenta "Alta" sozinho. As palavras
+# "urgente e crítica" não promovem nada por si (§2): quem decide o peso é o
+# sinal estruturado, não o adjetivo no texto.
+RELATO = "[HML] portão externo travou, situação urgente e crítica na garagem"
 
 
 class FluxoDePontaAPontaTests(TestCase):
@@ -81,7 +84,10 @@ class FluxoDePontaAPontaTests(TestCase):
         # A revisão mostra a prioridade antes de salvar (§2, etapa 3).
         self.assertIn("prioridade", segunda.context["revisao"])
 
-        # 2. A prioridade é informada à mão: "Baixa", apesar do relato urgente.
+        # 2. A prioridade NÃO é informada à mão: o motor calcula pela regra
+        # estruturada. O portão essencial travado sustenta "Alta" sem que
+        # ninguém escolha — as palavras "urgente e crítica" do relato não
+        # promovem nada por si.
         final = self.client.post(
             reverse("demandas:criar"),
             {
@@ -89,16 +95,15 @@ class FluxoDePontaAPontaTests(TestCase):
                 "relato": RELATO,
                 "titulo": "[HML] Portão externo travando",
                 "local": str(self.local.pk),
-                "prioridade": PrioridadeDemanda.BAIXA,
             },
         )
         self.assertEqual(final.status_code, 302)
 
         demanda = Demanda.objects.get()
-        # 3. A escolha do usuário venceu a leitura do relato.
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.BAIXA)
+        # 3. O peso veio do motor, sem escolha humana.
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
         self.assertEqual(demanda.status, StatusDemanda.ABERTA)
-        # E nenhum prazo foi inventado a partir da prioridade (§3).
+        # E nenhum prazo foi inventado a partir da prioridade (§7).
         self.assertIsNone(demanda.prazo)
 
         # O registro nasce com histórico (§8).
@@ -110,7 +115,7 @@ class FluxoDePontaAPontaTests(TestCase):
         detalhe = self.client.get(reverse("demandas:detalhe", args=[demanda.pk]))
         self.assertEqual(detalhe.status_code, 200)
         conteudo = detalhe.content.decode()
-        for secao in (">Demanda</h2>", ">Informações</h2>", ">Acompanhamento</h2>", ">Histórico</h2>"):
+        for secao in (">Resumo da demanda</h2>", ">Informações principais</h2>", ">Acompanhamento</h2>", ">Histórico</h2>"):
             self.assertIn(secao, conteudo)
 
         # 5. Registrar atualização — a demanda passa a "Em andamento".
@@ -150,19 +155,19 @@ class FluxoDePontaAPontaTests(TestCase):
         self.assertEqual(evidencia.status_code, 302)
         self.assertEqual(EvidenciaDemanda.objects.filter(demanda=demanda).count(), 1)
 
-        # 8. Ajustar a prioridade depois, conforme permissão (§1, §10).
+        # 8. Corrigir a prioridade depois, conforme permissão (§4).
         edicao = self.client.post(
             reverse("demandas:editar", args=[demanda.pk]),
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
                 "descricao": demanda.descricao,
-                "prioridade": PrioridadeDemanda.ALTA,
+                "prioridade": PrioridadeDemanda.BAIXA,
             },
         )
         self.assertEqual(edicao.status_code, 302)
         demanda.refresh_from_db()
-        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.BAIXA)
 
         # 9. Concluir a demanda.
         conclusao = self.client.post(
@@ -185,12 +190,12 @@ class FluxoDePontaAPontaTests(TestCase):
         self.assertIn(TipoEventoDemanda.EVIDENCIA, tipos)
         self.assertIn(TipoEventoDemanda.ACOMPANHAMENTO, tipos)
 
-        # A alteração de prioridade guarda o antes e o depois.
+        # A correção de prioridade guarda o antes e o depois.
         evento = demanda.historico.filter(
             tipo_evento=TipoEventoDemanda.PRIORIDADE
         ).latest("data_hora")
-        self.assertEqual(evento.dados_anteriores.get("prioridade"), PrioridadeDemanda.BAIXA)
-        self.assertEqual(evento.dados_novos.get("prioridade"), PrioridadeDemanda.ALTA)
+        self.assertEqual(evento.dados_anteriores.get("prioridade"), PrioridadeDemanda.ALTA)
+        self.assertEqual(evento.dados_novos.get("prioridade"), PrioridadeDemanda.BAIXA)
 
         # 11. A listagem e os indicadores refletem o estado final.
         listagem = self.client.get(reverse("demandas:listagem"))
@@ -200,5 +205,14 @@ class FluxoDePontaAPontaTests(TestCase):
         }
         self.assertEqual(indicadores["Concluídas no mês"], 1)
         self.assertEqual(indicadores["Em aberto"], 0)
-        titulos = [linha["titulo"] for linha in listagem.context["demandas"]]
-        self.assertIn("[HML] Portão externo travando", titulos)
+        # A lista separa o que ainda pede ação do que já foi encerrado (§5): a
+        # demanda concluída sai da aba Ativas e passa a viver na aba Concluídas.
+        ativas = [linha["titulo"] for linha in listagem.context["demandas"]]
+        self.assertNotIn("[HML] Portão externo travando", ativas)
+
+        concluidas = self.client.get(
+            reverse("demandas:listagem"), {"aba": "concluidas"}
+        )
+        self.assertEqual(concluidas.status_code, 200)
+        encerradas = [linha["titulo"] for linha in concluidas.context["demandas"]]
+        self.assertIn("[HML] Portão externo travando", encerradas)

@@ -1,0 +1,111 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Registrar compra · Eithra{% endblock %}
+
+{% block content %}
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <a href="{% url 'compras:listagem' %}" class="small text-body-secondary text-decoration-none">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Compras
+      </a>
+      <span class="eithra-eyebrow d-block mt-2">Nova compra</span>
+      <h1 class="eithra-pagina-titulo">Importar documento</h1>
+      <p class="eithra-pagina-sub">
+        Anexe a nota, recibo ou cupom. As informações reconhecidas serão sugestões para conferência.
+      </p>
+    </div>
+  </header>
+
+  <div class="row g-4 align-items-stretch">
+    <div class="col-12 col-lg-6">
+      <section class="card h-100">
+        <div class="card-header">
+          <h2 class="h5 mb-1">Enviar documento</h2>
+          <p class="text-body-secondary small mb-0">PDF, foto ou imagem da compra</p>
+        </div>
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          <div class="card-body">
+            {% if mostrar_condominio %}
+              <div class="mb-4">
+                <label class="form-label" for="{{ formulario_importacao.condominio.id_for_label }}">
+                  {{ formulario_importacao.condominio.label }}
+                </label>
+                {{ formulario_importacao.condominio }}
+                {% for erro in formulario_importacao.condominio.errors %}
+                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% endfor %}
+              </div>
+            {% else %}
+              {{ formulario_importacao.condominio }}
+            {% endif %}
+
+            <div class="mb-4">
+              <label class="form-label" for="{{ formulario_importacao.tipo_documento.id_for_label }}">
+                Tipo de documento
+              </label>
+              {{ formulario_importacao.tipo_documento }}
+              {% for erro in formulario_importacao.tipo_documento.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="border border-dashed rounded p-4 text-center">
+              <i class="bx bx-cloud-upload display-5 text-primary" aria-hidden="true"></i>
+              <label class="form-label d-block mt-2" for="{{ formulario_importacao.arquivo.id_for_label }}">
+                Enviar PDF ou imagem
+              </label>
+              {{ formulario_importacao.arquivo }}
+              {% for erro in formulario_importacao.arquivo.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+              <div class="form-text">No celular, o seletor também pode abrir a câmera.</div>
+            </div>
+          </div>
+          <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <a href="{% url 'compras:listagem' %}?abrir=criar" class="btn btn-label-secondary">
+              Cadastrar manualmente
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bx bx-receipt me-1" aria-hidden="true"></i> Enviar e revisar
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <section class="card h-100">
+        <div class="card-header">
+          <span class="badge bg-label-primary mb-2">Leitura da compra</span>
+          <h2 class="h5 mb-0">O que acontece depois?</h2>
+        </div>
+        <div class="card-body">
+          <ol class="list-unstyled d-grid gap-4 mb-0">
+            <li class="d-flex gap-3">
+              <span class="badge rounded-pill bg-label-primary align-self-start">1</span>
+              <div>
+                <div class="fw-medium">O documento fica anexado à compra</div>
+                <div class="small text-body-secondary">O arquivo é guardado no storage privado existente.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3">
+              <span class="badge rounded-pill bg-label-primary align-self-start">2</span>
+              <div>
+                <div class="fw-medium">Campos reconhecidos aparecem como sugestões</div>
+                <div class="small text-body-secondary">PDF pesquisável pode ser lido localmente. Imagens e PDFs sem texto ficam para revisão manual.</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3">
+              <span class="badge rounded-pill bg-label-primary align-self-start">3</span>
+              <div>
+                <div class="fw-medium">Você revisa antes de confirmar</div>
+                <div class="small text-body-secondary">Nenhuma leitura confirma a compra ou cadastra itens automaticamente.</div>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

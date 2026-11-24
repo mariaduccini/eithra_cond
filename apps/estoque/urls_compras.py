@@ -17,6 +17,41 @@ urlpatterns = [
     path("<uuid:pk>/editar/", views.editar_compra_view, name="editar"),
     path("<uuid:pk>/itens/adicionar/", views.adicionar_linha, name="adicionar_linha"),
     path(
+        "<uuid:pk>/documentos/adicionar/",
+        views.adicionar_documento_compra_view,
+        name="adicionar_documento",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/arquivo/",
+        views.baixar_documento_compra,
+        name="baixar_documento",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/itens/adicionar/",
+        views.trazer_itens_identificados_view,
+        name="trazer_itens_identificados",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/reprocessar/",
+        views.reprocessar_documento_view,
+        name="reprocessar_documento",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/itens/<int:indice>/selecionar/",
+        views.selecionar_item_extraido_view,
+        name="selecionar_item_extraido",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/itens/<int:indice>/cadastrar/",
+        views.cadastrar_item_extraido_view,
+        name="cadastrar_item_extraido",
+    ),
+    path(
+        "<uuid:pk>/documentos/<uuid:documento_pk>/itens/<int:indice>/adicionar/",
+        views.incluir_item_extraido_view,
+        name="incluir_item_extraido",
+    ),
+    path(
         "<uuid:pk>/itens/<uuid:linha_pk>/editar/",
         views.editar_linha,
         name="editar_linha",
@@ -27,5 +62,10 @@ urlpatterns = [
         name="remover_linha",
     ),
     path("<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),
+    path(
+        "<uuid:pk>/reembolso/realizado/",
+        views.marcar_reembolso_realizado_view,
+        name="marcar_reembolso_realizado",
+    ),
     path("<uuid:pk>/cancelar/", views.cancelar, name="cancelar"),
 ]

@@ -1,0 +1,122 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Modelos preventivos · Atividades programadas · Eithra{% endblock %}
+
+{% block content %}
+  <header class="eithra-pagina-topo mb-4">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Atividades programadas</span>
+      <h1 class="eithra-pagina-titulo">Prepare o plano preventivo do condomínio</h1>
+      <p class="eithra-pagina-sub">
+        Selecionamos atividades que podem ajudar a cuidar melhor do condomínio.
+        Revise e ative somente o que fizer sentido.
+      </p>
+    </div>
+    <a href="{% url 'rotinas:listagem' %}" class="btn btn-label-secondary">
+      <i class="bx bx-arrow-back me-1" aria-hidden="true"></i> Atividades programadas
+    </a>
+  </header>
+
+  <form method="get" class="card mb-4">
+    <div class="card-body d-flex flex-column flex-sm-row align-items-sm-end gap-3">
+      <div class="flex-grow-1">
+        <label class="form-label" for="biblioteca-condominio">Condomínio</label>
+        <select id="biblioteca-condominio" name="condominio" class="form-select" required>
+          <option value="">Escolha um condomínio</option>
+          {% for opcao in condominios %}
+            <option value="{{ opcao.pk }}"{% if condominio.pk == opcao.pk %} selected{% endif %}>
+              {{ opcao.nome }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Ver sugestões</button>
+    </div>
+  </form>
+
+  {% if condominio %}
+    <section class="card border-0 mb-4" style="background: linear-gradient(115deg, rgba(21, 63, 70, .08), rgba(126, 103, 166, .08));">
+      <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+        <div>
+          <span class="eithra-eyebrow">Revisão assistida</span>
+          <h2 class="h5 mb-1">{{ condominio.nome }}</h2>
+          <p class="text-body-secondary mb-0">
+            As sugestões usam equipamentos e locais cadastrados. Nenhuma atividade é criada até a confirmação.
+          </p>
+        </div>
+        <div class="d-flex gap-2">
+          <span class="badge bg-label-primary">{{ total_sugeridos }} sugerida{{ total_sugeridos|pluralize }}</span>
+          <span class="badge bg-label-secondary">Ativação individual</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-5" aria-labelledby="modelos-sugeridos-titulo">
+      <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+        <div>
+          <span class="eithra-eyebrow">Com base nos cadastros</span>
+          <h2 id="modelos-sugeridos-titulo" class="h4 mb-0">Sugeridas para revisar</h2>
+        </div>
+        <span class="text-body-secondary small">A compatibilidade é uma sugestão, não uma ativação.</span>
+      </div>
+
+      {% if categorias_sugeridas %}
+        {% for grupo in categorias_sugeridas %}
+          <div class="mb-4">
+            <h3 class="h6 text-body-secondary mb-2">{{ grupo.nome }}</h3>
+            <div class="row g-3">
+              {% for item in grupo.itens %}
+                {% include "pages/rotinas/_cartao_modelo_preventivo.html" with item=item %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="card">
+          <div class="card-body text-center py-5">
+            <i class="bx bx-search-alt-2 fs-1 text-body-secondary" aria-hidden="true"></i>
+            <h3 class="h5 mt-2">Ainda não encontramos estrutura cadastrada</h3>
+            <p class="text-body-secondary mb-0">
+              Você pode conferir os outros modelos abaixo. Sem evidência no cadastro, eles não são sugeridos automaticamente.
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    <section aria-labelledby="outros-modelos-titulo">
+      <div class="mb-3">
+        <span class="eithra-eyebrow">Revisão manual</span>
+        <h2 id="outros-modelos-titulo" class="h4 mb-1">Outros modelos disponíveis</h2>
+        <p class="text-body-secondary mb-0">
+          Confirme que a estrutura existe e escolha o que se aplica antes de criar uma atividade.
+        </p>
+      </div>
+      {% if categorias_demais %}
+        {% for grupo in categorias_demais %}
+          <details class="card mb-3">
+            <summary class="card-header d-flex justify-content-between align-items-center gap-2">
+              <span class="fw-semibold">{{ grupo.nome }}</span>
+              <span class="badge bg-label-secondary">{{ grupo.itens|length }}</span>
+            </summary>
+            <div class="card-body">
+              <div class="row g-3">
+                {% for item in grupo.itens %}
+                  {% include "pages/rotinas/_cartao_modelo_preventivo.html" with item=item %}
+                {% endfor %}
+              </div>
+            </div>
+          </details>
+        {% endfor %}
+      {% else %}
+        <div class="alert alert-label-secondary mb-0">
+          Todos os modelos ativos já foram sugeridos ou estão em revisão.
+        </div>
+      {% endif %}
+    </section>
+  {% else %}
+    <div class="alert alert-label-primary">
+      Escolha um condomínio para consultar os cadastros e receber sugestões compatíveis.
+    </div>
+  {% endif %}
+{% endblock %}

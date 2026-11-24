@@ -1,15 +1,17 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {# O cadastro das rotinas: o que precisa voltar a acontecer, com o ritmo e a
    próxima data. Cada linha leva à rotina; não há botão "visualizar". #}
 
-{% block title %}Rotinas · Eithra{% endblock %}
+{% block title %}Atividades programadas · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Rotinas</h1>
-      <p class="text-body-secondary mb-0">
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Atividades programadas</h1>
+      <p class="eithra-pagina-sub">
         O que precisa voltar a acontecer{% if total %} · {{ total }} em vista{% endif %}.
       </p>
     </div>
@@ -25,6 +27,9 @@
         <i class="bx bx-list-ul" aria-hidden="true"></i>
       </a>
       {% if pode_criar %}
+        <a href="{% url 'rotinas:biblioteca_preventiva' %}" class="btn btn-label-primary">
+          <i class="bx bx-library me-1" aria-hidden="true"></i> Modelos preventivos
+        </a>
         <button
           type="button"
           class="btn btn-primary"
@@ -34,63 +39,80 @@
         </button>
       {% endif %}
     </div>
-  </div>
+  </header>
 
-  <div class="card mb-4">
+  {% comment %}A busca fica à vista, porque é o que se usa no dia a dia. O resto dos
+  filtros só ocupa espaço quando serve: recolhe atrás de "Filtros" e abre sozinho
+  se já houver algum valendo. Mesmo padrão das Demandas e Manutenções.{% endcomment %}
+  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
     <div class="card-body">
-      <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
-        {% if mostrar_condominio %}
-          <div class="col-6 col-lg-3">
-            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
-              {{ filtros.condominio.label }}
-            </label>
-            {{ filtros.condominio }}
-          </div>
-        {% endif %}
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.situacao.id_for_label }}">
-            {{ filtros.situacao.label }}
-          </label>
-          {{ filtros.situacao }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.tipo.id_for_label }}">
-            {{ filtros.tipo.label }}
-          </label>
-          {{ filtros.tipo }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
-            {{ filtros.responsavel.label }}
-          </label>
-          {{ filtros.responsavel }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.local.id_for_label }}">
-            {{ filtros.local.label }}
-          </label>
-          {{ filtros.local }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.equipamento.id_for_label }}">
-            {{ filtros.equipamento.label }}
-          </label>
-          {{ filtros.equipamento }}
-        </div>
-        <div class="col-12 col-lg-4">
-          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
-            {{ filtros.busca.label }}
-          </label>
+      <div class="d-flex flex-column flex-lg-row align-items-stretch gap-2">
+        <div class="eithra-search-field flex-grow-1">
+          <i class="bx bx-search" aria-hidden="true"></i>
+          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
           {{ filtros.busca }}
         </div>
-        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
-          {% if filtros_ativos %}
-            <a href="{% url 'rotinas:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
+        <button
+          type="button"
+          class="btn btn-label-secondary eithra-filter-button"
+          data-bs-toggle="collapse"
+          data-bs-target="#rotinas-filtros"
+          aria-expanded="{% if filtros_ativos %}true{% else %}false{% endif %}"
+          aria-controls="rotinas-filtros">
+          <i class="bx bx-slider-alt me-1" aria-hidden="true"></i> Filtros
+        </button>
+      </div>
+
+      {# A faixa só ocupa espaço quando serve: abre sozinha se já há filtro valendo. #}
+      <div class="collapse{% if filtros_ativos %} show{% endif %}" id="rotinas-filtros">
+        <div class="row g-2 align-items-end mt-3">
+          {% if mostrar_condominio %}
+            <div class="col-6 col-lg-2">
+              <label class="form-label small text-body-secondary" for="{{ filtros.condominio.id_for_label }}">
+                {{ filtros.condominio.label }}
+              </label>
+              {{ filtros.condominio }}
+            </div>
           {% endif %}
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.situacao.id_for_label }}">
+              {{ filtros.situacao.label }}
+            </label>
+            {{ filtros.situacao }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.tipo.id_for_label }}">
+              {{ filtros.tipo.label }}
+            </label>
+            {{ filtros.tipo }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.responsavel.id_for_label }}">
+              {{ filtros.responsavel.label }}
+            </label>
+            {{ filtros.responsavel }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.local.id_for_label }}">
+              {{ filtros.local.label }}
+            </label>
+            {{ filtros.local }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.equipamento.id_for_label }}">
+              {{ filtros.equipamento.label }}
+            </label>
+            {{ filtros.equipamento }}
+          </div>
         </div>
-      </form>
+        {% if filtros_ativos %}
+          <div class="mt-2">
+            <a href="{% url 'rotinas:listagem' %}" class="btn btn-sm btn-text-secondary">Limpar filtros</a>
+          </div>
+        {% endif %}
+      </div>
     </div>
-  </div>
+  </form>
 
   <div class="card">
     {% if rotinas %}
@@ -183,220 +205,214 @@
       aria-labelledby="registrar-rotina-titulo"
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}style="display: block; background-color: rgba(0, 0, 0, 0.5);"{% endif %}>
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post" action="{% url 'rotinas:criar' %}" novalidate>
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg eithra-modal-wizard">
+        <form class="modal-content" method="post" action="{% url 'rotinas:criar' %}" novalidate data-rotina-wizard>
           {% csrf_token %}
-          <div class="modal-header">
-            <h5 class="modal-title" id="registrar-rotina-titulo">Registrar rotina</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+
+          <div class="eithra-modal-hero">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-3">
+                <span class="eithra-detalhe-icone"><i class="bx bx-calendar-check" aria-hidden="true"></i></span>
+                <div>
+                  <h5 class="eithra-modal-hero-titulo" id="registrar-rotina-titulo">Nova atividade programada</h5>
+                  <p class="eithra-modal-hero-subtitulo">Cadastre o que precisa voltar a acontecer e com que ritmo.</p>
+                </div>
+              </div>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="eithra-step-wizard mt-4">
+              <div class="eithra-step is-active" data-rotina-indicador="0"><span class="eithra-step-number">1</span><span class="eithra-step-label">Descrição</span></div>
+              <div class="eithra-step" data-rotina-indicador="1"><span class="eithra-step-number">2</span><span class="eithra-step-label">Classificação</span></div>
+              <div class="eithra-step" data-rotina-indicador="2"><span class="eithra-step-number">3</span><span class="eithra-step-label">Revisão</span></div>
+            </div>
           </div>
 
           <div class="modal-body">
             {% if formulario_rotina.condominio.is_hidden %}
               {{ formulario_rotina.condominio }}
-            {% else %}
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.condominio.id_for_label }}">
-                  {{ formulario_rotina.condominio.label }}
-                </label>
-                {{ formulario_rotina.condominio }}
-                {% for erro in formulario_rotina.condominio.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
             {% endif %}
 
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_rotina.titulo.id_for_label }}">
-                {{ formulario_rotina.titulo.label }}
-              </label>
-              {{ formulario_rotina.titulo }}
-              {% for erro in formulario_rotina.titulo.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
+            {% url 'demandas:transcrever' as url_da_transcricao %}
 
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_rotina.data_inicio.id_for_label }}">
-                {{ formulario_rotina.data_inicio.label }}
-              </label>
-              {{ formulario_rotina.data_inicio }}
-              {% for erro in formulario_rotina.data_inicio.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
+            <section data-rotina-etapa="0">
+              <h2 class="eithra-modal-pergunta">O que precisa acontecer?</h2>
+              <p class="eithra-modal-apoio">Descreva a atividade de forma natural, como você falaria no dia a dia. A gente te ajuda a classificar e organizar tudo direitinho.</p>
 
-            <div class="row g-3 mb-3">
-              <div class="col-12 col-sm-6">
-                <label class="form-label" for="{{ formulario_rotina.periodicidade_tipo.id_for_label }}">
-                  {{ formulario_rotina.periodicidade_tipo.label }}
+              {% if not formulario_rotina.condominio.is_hidden %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_rotina.condominio %}
+              {% endif %}
+
+              <div class="eithra-campo-hero-wrapper"{% if voz_disponivel %} data-eithra-campo-voz{% endif %}>
+                <label class="form-label" for="{{ formulario_rotina.titulo.id_for_label }}">
+                  {{ formulario_rotina.titulo.label }}
+                  {% if formulario_rotina.titulo.field.required %}<span class="text-danger ms-1" aria-hidden="true">*</span>{% endif %}
                 </label>
-                {{ formulario_rotina.periodicidade_tipo }}
-                {% for erro in formulario_rotina.periodicidade_tipo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
+                {% if voz_disponivel %}
+                  <div class="eithra-campo-voz">
+                    <textarea
+                      name="{{ formulario_rotina.titulo.name }}"
+                      id="{{ formulario_rotina.titulo.id_for_label }}"
+                      class="form-control"
+                      rows="4"
+                      maxlength="{{ formulario_rotina.titulo.field.max_length }}"
+                      placeholder="Ex.: Limpeza da caixa d'água, manutenção do elevador, revisão do portão da garagem..."
+                      autocomplete="off"
+                    >{% if formulario_rotina.titulo.value %}{{ formulario_rotina.titulo.value }}{% endif %}</textarea>
+                    <button type="button" class="eithra-ditar" data-eithra-ditar
+                      data-eithra-ditar-url="{{ url_da_transcricao }}"
+                      data-eithra-ditar-campo="#{{ formulario_rotina.titulo.id_for_label }}"
+                      aria-label="Gravar relato por voz" title="Gravar relato por voz"
+                      aria-pressed="false" hidden>
+                      <i class="bx bx-microphone" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                {% else %}
+                  <textarea
+                    name="{{ formulario_rotina.titulo.name }}"
+                    id="{{ formulario_rotina.titulo.id_for_label }}"
+                    class="form-control"
+                    rows="4"
+                    maxlength="{{ formulario_rotina.titulo.field.max_length }}"
+                    placeholder="Ex.: Limpeza da caixa d'água, manutenção do elevador, revisão do portão da garagem..."
+                    autocomplete="off"
+                  >{% if formulario_rotina.titulo.value %}{{ formulario_rotina.titulo.value }}{% endif %}</textarea>
+                {% endif %}
+                {% for erro in formulario_rotina.titulo.errors %}
+                  <div class="text-danger small mt-1" data-eithra-erro-de-campo>{{ erro }}</div>
                 {% endfor %}
               </div>
-              <div class="col-12 col-sm-6">
-                <label class="form-label" for="{{ formulario_rotina.intervalo.id_for_label }}">
-                  {{ formulario_rotina.intervalo.label }}
-                </label>
-                {{ formulario_rotina.intervalo }}
-                {% for erro in formulario_rotina.intervalo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-            </div>
+              {% if voz_disponivel %}
+                <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+              {% endif %}
 
-            <a
-              class="small text-decoration-none d-inline-block mt-2"
-              data-bs-toggle="collapse"
-              href="#mais-detalhes-rotina"
-              role="button"
-              aria-expanded="false"
-              aria-controls="mais-detalhes-rotina">
-              Mais detalhes
-            </a>
-            <div class="collapse mt-3" id="mais-detalhes-rotina">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.descricao.id_for_label }}">
-                  {{ formulario_rotina.descricao.label }}
-                </label>
-                {{ formulario_rotina.descricao }}
-                {% for erro in formulario_rotina.descricao.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
-
-              <div class="row g-3 mb-6">
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_rotina.tipo.id_for_label }}">
-                    {{ formulario_rotina.tipo.label }}
-                  </label>
-                  {{ formulario_rotina.tipo }}
-                  {% for erro in formulario_rotina.tipo.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
+              {% comment %}Classificações sugeridas: leitura rápida dos padrões iniciais. O
+              valor real é definido na etapa de classificação; aqui a pessoa vê o resumo.{% endcomment %}
+              <div class="mt-4">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                  <h3 class="h6 mb-0 fw-bold">Classificações sugeridas</h3>
+                  <span class="eithra-chip eithra-chip--lilas"><i class="bx bx-sparkles" aria-hidden="true"></i> Sugeridas pela sua descrição</span>
                 </div>
-                <div class="col-6">
-                  <label class="form-label" for="{{ formulario_rotina.prioridade.id_for_label }}">
-                    {{ formulario_rotina.prioridade.label }}
-                  </label>
-                  {{ formulario_rotina.prioridade }}
-                  {% for erro in formulario_rotina.prioridade.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
+                <div class="eithra-classificacao-grid">
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-calendar" aria-hidden="true"></i> Periodicidade</span>
+                    <div class="eithra-classificacao-valor" data-rotina-sugestao="periodicidade">Mensal</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-layer" aria-hidden="true"></i> Tipo</span>
+                    <div class="eithra-classificacao-valor" data-rotina-sugestao="tipo">Operacional</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-flag" aria-hidden="true"></i> Prioridade</span>
+                    <div class="eithra-classificacao-valor" data-rotina-sugestao="prioridade">Normal</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-map-pin" aria-hidden="true"></i> Local</span>
+                    <div class="eithra-classificacao-valor">Sem local</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-cog" aria-hidden="true"></i> Equipamento</span>
+                    <div class="eithra-classificacao-valor">Sem equipamento</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-user" aria-hidden="true"></i> Responsável</span>
+                    <div class="eithra-classificacao-valor">Sem responsável</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-truck" aria-hidden="true"></i> Fornecedor</span>
+                    <div class="eithra-classificacao-valor">Sem fornecedor</div>
+                  </div>
+                  <div class="eithra-classificacao-bloco">
+                    <span class="eithra-classificacao-rotulo"><i class="bx bx-check-square" aria-hidden="true"></i> Checklist</span>
+                    <div class="eithra-classificacao-valor">Sem checklist</div>
+                  </div>
                 </div>
               </div>
 
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.dia_semana.id_for_label }}">
-                    {{ formulario_rotina.dia_semana.label }}
-                  </label>
-                  {{ formulario_rotina.dia_semana }}
-                  {% for erro in formulario_rotina.dia_semana.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.dia_mes.id_for_label }}">
-                    {{ formulario_rotina.dia_mes.label }}
-                  </label>
-                  {{ formulario_rotina.dia_mes }}
-                  {% for erro in formulario_rotina.dia_mes.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
-                <div class="col-6 col-sm-4">
-                  <label class="form-label" for="{{ formulario_rotina.mes_ano.id_for_label }}">
-                    {{ formulario_rotina.mes_ano.label }}
-                  </label>
-                  {{ formulario_rotina.mes_ano }}
-                  {% for erro in formulario_rotina.mes_ano.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
+              {% comment %}Ajustes iniciais: só o essencial da recorrência fica visível aqui;
+              o restante (tipo, prioridade, responsável, etc.) fica na etapa de classificação.{% endcomment %}
+              <div class="mt-4">
+                <button type="button" class="btn btn-text-secondary p-0 d-flex align-items-center gap-2 fw-bold eithra-ajustes-toggle" data-bs-toggle="collapse" data-bs-target="#rotina-ajustes" aria-expanded="false" aria-controls="rotina-ajustes">
+                  Ajustes iniciais <span class="text-body-secondary fw-normal small">(opcional)</span>
+                  <i class="bx bx-chevron-down" aria-hidden="true"></i>
+                </button>
+                <div class="collapse mt-3" id="rotina-ajustes">
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <label class="form-label small text-body-secondary">Periodicidade</label>
+                      <div class="eithra-chips-exemplos" data-rotina-chips="periodicidade">
+                        {% for valor, rotulo in formulario_rotina.periodicidade_tipo.field.choices %}
+                          <button type="button" class="eithra-chip-opcao" data-rotina-chip-campo="periodicidade_tipo" data-rotina-chip-valor="{{ valor }}">{{ rotulo }}</button>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_rotina.data_inicio %}
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_rotina.intervalo %}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.responsavel.id_for_label }}">
-                  {{ formulario_rotina.responsavel.label }}
-                </label>
-                {{ formulario_rotina.responsavel }}
-                {% for erro in formulario_rotina.responsavel.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
+              <div class="mt-4">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_rotina.descricao %}
               </div>
+            </section>
 
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.local.id_for_label }}">
-                    {{ formulario_rotina.local.label }}
-                  </label>
-                  {{ formulario_rotina.local }}
-                  {% for erro in formulario_rotina.local.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
+            <section data-rotina-etapa="1" hidden>
+              <h2 class="eithra-modal-pergunta">Como classificar essa atividade?</h2>
+              <p class="eithra-modal-apoio">Defina o contexto operacional, a prioridade e os detalhes da recorrência.</p>
+              <div class="row g-3">
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.tipo %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.prioridade %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.periodicidade_tipo %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.intervalo %}</div>
+                <div class="col-12 col-sm-4">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.dia_semana %}</div>
+                <div class="col-6 col-sm-4">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.dia_mes %}</div>
+                <div class="col-6 col-sm-4">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.mes_ano %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.data_inicio %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.data_fim %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.responsavel %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.local %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.equipamento %}</div>
+                <div class="col-12 col-sm-6">{% include "pages/cadastros/_campo.html" with campo=formulario_rotina.fornecedor %}</div>
+                <div class="col-12">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_rotina.checklist_modelo %}
+                  <div class="form-text">A lista é copiada para cada ocorrência nova. Mudar depois não altera o que já foi feito.</div>
                 </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.equipamento.id_for_label }}">
-                    {{ formulario_rotina.equipamento.label }}
-                  </label>
-                  {{ formulario_rotina.equipamento }}
-                  {% for erro in formulario_rotina.equipamento.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
+                <div class="col-12">
+                  <div class="form-check">
+                    {{ formulario_rotina.gera_manutencao }}
+                    <label class="form-check-label" for="{{ formulario_rotina.gera_manutencao.id_for_label }}">{{ formulario_rotina.gera_manutencao.label }}</label>
+                    {% for erro in formulario_rotina.gera_manutencao.errors %}<div class="text-danger small mt-1">{{ erro }}</div>{% endfor %}
+                  </div>
                 </div>
               </div>
+            </section>
 
-              <div class="row g-3 mb-6">
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.fornecedor.id_for_label }}">
-                    {{ formulario_rotina.fornecedor.label }}
-                  </label>
-                  {{ formulario_rotina.fornecedor }}
-                  {% for erro in formulario_rotina.fornecedor.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
+            <section data-rotina-etapa="2" hidden>
+              <h2 class="eithra-modal-pergunta">Revisão</h2>
+              <p class="eithra-modal-apoio">Confira os dados antes de registrar. A primeira ocorrência será criada junto com a atividade.</p>
+              <div class="eithra-review-card">
+                <dl class="eithra-vg-info mb-0">
+                  {% for nome, rotulo in resumo_da_rotina %}
+                    <div class="eithra-vg-par" data-rotina-resumo-linha>
+                      <dt>{{ rotulo }}</dt>
+                      <dd data-rotina-resumo="{{ nome }}">Não informado</dd>
+                    </div>
                   {% endfor %}
-                </div>
-                <div class="col-12 col-sm-6">
-                  <label class="form-label" for="{{ formulario_rotina.data_fim.id_for_label }}">
-                    {{ formulario_rotina.data_fim.label }}
-                  </label>
-                  {{ formulario_rotina.data_fim }}
-                  {% for erro in formulario_rotina.data_fim.errors %}
-                    <div class="text-danger small mt-1">{{ erro }}</div>
-                  {% endfor %}
-                </div>
+                </dl>
               </div>
-
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_rotina.checklist_modelo.id_for_label }}">
-                  {{ formulario_rotina.checklist_modelo.label }}
-                </label>
-                {{ formulario_rotina.checklist_modelo }}
-                {% for erro in formulario_rotina.checklist_modelo.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-                <div class="form-text">
-                  A lista é copiada para cada ocorrência nova. Mudar depois não altera o que já foi feito.
-                </div>
-              </div>
-
-              <div class="form-check">
-                {{ formulario_rotina.gera_manutencao }}
-                <label class="form-check-label" for="{{ formulario_rotina.gera_manutencao.id_for_label }}">
-                  {{ formulario_rotina.gera_manutencao.label }}
-                </label>
-              </div>
-            </div>
+            </section>
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
-              Cancelar
-            </button>
-            <button type="submit" class="btn btn-primary">Registrar</button>
+            <span class="eithra-modal-rodape-aviso me-auto"><i class="bx bx-check-shield" aria-hidden="true"></i> Você pode revisar tudo antes de salvar.</span>
+            <button type="button" class="btn btn-label-secondary eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-label-secondary eithra-btn-secundario" data-rotina-voltar hidden>Voltar</button>
+            <button type="button" class="btn btn-primary eithra-btn-primario" data-rotina-avancar>Continuar</button>
+            <button type="submit" class="btn btn-primary eithra-btn-primario" data-rotina-enviar hidden>Registrar atividade</button>
           </div>
         </form>
       </div>
@@ -404,3 +420,81 @@
   {% endif %}
 {% endblock %}
 
+{% block scripts %}
+  {{ block.super }}
+  {% if pode_criar %}
+    <script src="{% static 'js/eithra-rotina-wizard.js' %}"></script>
+    {% if voz_disponivel %}<script src="{% static 'js/eithra-ditar.js' %}"></script>{% endif %}
+    <script>
+      (function () {
+        "use strict";
+        // Chips de periodicidade: clicando no chip, o campo real do formulário
+        // (que fica na etapa de classificação) é atualizado. Assim a submissão
+        // continua usando o select original, sem duplicar campos.
+        document.querySelectorAll("[data-rotina-chip-campo]").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            var form = chip.closest("form");
+            if (!form) return;
+            var nome = chip.dataset.rotinaChipCampo;
+            var valor = chip.dataset.rotinaChipValor;
+            var campo = form.elements.namedItem(nome);
+            if (!campo) return;
+            campo.value = valor;
+            campo.dispatchEvent(new Event("change", { bubbles: true }));
+            var grupo = chip.closest("[data-rotina-chips]");
+            if (grupo) {
+              grupo.querySelectorAll("[data-rotina-chip-campo]").forEach(function (c) {
+                c.classList.toggle("is-active", c === chip);
+              });
+            }
+          });
+        });
+
+        // Marca o chip ativo conforme o valor inicial do campo e sincroniza
+        // o bloco de "classificações sugeridas" com o valor real.
+        function sincronizarSugestoes() {
+          document.querySelectorAll("[data-rotina-chips]").forEach(function (grupo) {
+            var primeiroChip = grupo.querySelector("[data-rotina-chip-campo]");
+            if (!primeiroChip) return;
+            var form = grupo.closest("form");
+            if (!form) return;
+            var nome = primeiroChip.dataset.rotinaChipCampo;
+            var campo = form.elements.namedItem(nome);
+            if (!campo) return;
+            var valorAtual = campo.value;
+            grupo.querySelectorAll("[data-rotina-chip-campo]").forEach(function (chip) {
+              chip.classList.toggle("is-active", chip.dataset.rotinaChipValor === valorAtual);
+            });
+          });
+
+          // Atualiza os blocos de sugestão (Periodicidade / Tipo / Prioridade)
+          // a partir do valor selecionado nos campos da etapa de classificação.
+          document.querySelectorAll("[data-rotina-sugestao]").forEach(function (bloco) {
+            var nome = bloco.dataset.rotinaSugestao;
+            var form = bloco.closest("form");
+            if (!form) return;
+            var campo = form.elements.namedItem(nome);
+            if (!campo) return;
+            var atualizar = function () {
+              if (campo.tagName === "SELECT") {
+                var opcao = campo.selectedOptions[0];
+                bloco.textContent = opcao ? opcao.text.trim() : "Não informado";
+              } else {
+                bloco.textContent = campo.value || "Não informado";
+              }
+            };
+            atualizar();
+            campo.addEventListener("change", atualizar);
+            campo.addEventListener("input", atualizar);
+          });
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", sincronizarSugestoes);
+        } else {
+          sincronizarSugestoes();
+        }
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

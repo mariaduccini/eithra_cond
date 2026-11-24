@@ -5,6 +5,8 @@ histórico na mesma transação: ou a demanda e sua memória mudam juntas, ou na
 muda. Nenhuma regra de tela mora aqui — a view traduz o que a gestão decidiu, e
 o domínio decide e registra.
 """
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -30,6 +32,7 @@ ROTULOS_DO_ACOMPANHAMENTO = {
     "aguardando_tipo": "Aguardando",
     "aguardando_descricao": "O que se espera",
     "proxima_acao": "Próxima ação",
+    "prazo_proxima_acao": "Prazo da próxima ação",
     "previsao": "Previsão",
     "impedimento": "Impedimento",
     "responsavel_acompanhamento": "Quem acompanha",
@@ -507,7 +510,7 @@ def atualizar_acompanhamento(
 
 def _normalizar_do_acompanhamento(campo: str, valor):
     """O valor como ele deve ser guardado — vazio é ausência, nunca sujeira."""
-    if campo == "previsao":
+    if campo in ("previsao", "prazo_proxima_acao"):
         return valor or None
     if campo == "responsavel_acompanhamento":
         return valor or None
@@ -520,7 +523,7 @@ def _normalizar_do_acompanhamento(campo: str, valor):
 
 def _guardado_do_acompanhamento(campo: str, valor):
     """O que vai para o histórico: valor simples, sem objeto nem identificador."""
-    if campo == "previsao":
+    if campo in ("previsao", "prazo_proxima_acao"):
         return valor.isoformat() if valor else None
     if campo == "responsavel_acompanhamento":
         return str(valor.pk) if getattr(valor, "pk", None) else None
@@ -533,6 +536,8 @@ def _valor_do_acompanhamento(campo: str, valor) -> str:
         return _rotulo(AguardandoTipo, valor, vazio="ninguém")
     if campo == "previsao":
         return valor.strftime("%d/%m/%Y") if valor else "sem previsão"
+    if campo == "prazo_proxima_acao":
+        return valor.strftime("%d/%m/%Y") if valor else "sem data"
     if campo == "responsavel_acompanhamento":
         return _nome_de(valor) if valor is not None else "ninguém"
     return valor or "não informado"
@@ -544,81 +549,56 @@ def contexto_de_governanca(*, demanda: Demanda, usuario) -> dict:
     Contrato e garantia não são copiados para a demanda: quem responde por eles
     é a Governança, e a pergunta é feita na hora pelos vínculos que já existem —
     contrato que cobre o equipamento, contrato que cobre o local, garantia que
-    cobre o equipamento. Guardar um atalho aqui criaria duas respostas para a
-    mesma pergunta, e uma delas envelheceria.
-
-    O import acontece dentro da função porque nenhum domínio conhece a
-    Governança de antemão; é a demanda que pergunta, e só quando alguém abre a
-    tela naquele condomínio.
+    cobre o equipamento. A leitura é a mesma que a tela do ativo e a do local
+    usam: há uma só resposta para esta pergunta, e ela mora na Governança.
 
     Sem permissão de consultar contratos e garantias ali, a resposta é vazia:
     saber que existe um contrato não é informação de quem não responde por ele.
+
+    Sobre o contrato aplicável, esta leitura acrescenta o prazo contratual: o
+    SLA estruturado do contrato projetado a partir do marco da demanda. É a
+    única ponte entre contrato e prazo — sem SLA no contrato, não há data, e
+    nada é deduzido do texto do documento.
     """
-    from apps.governanca.constants import SituacaoVigencia
-    from apps.governanca.models import (
-        ContratoEquipamento,
-        ContratoFornecedor,
-        ContratoLocal,
-        Garantia,
-        GarantiaEquipamento,
+    from apps.governanca.consultas import vigencia_dos_vinculos
+
+    contexto = vigencia_dos_vinculos(
+        usuario=usuario,
+        condominio=getattr(demanda, "condominio", None),
+        equipamento_id=demanda.equipamento_id,
+        local_id=demanda.local_id,
     )
-    from apps.governanca.permissoes import pode_ver_governanca
 
-    resposta = {"pode_consultar": False, "contratos": [], "garantias": []}
-    if not pode_ver_governanca(usuario, getattr(demanda, "condominio", None)):
-        return resposta
-
-    resposta["pode_consultar"] = True
-
-    contratos_vinculados = set()
-    if demanda.equipamento_id:
-        contratos_vinculados.update(
-            ContratoEquipamento.objects.filter(
-                equipamento_id=demanda.equipamento_id
-            ).values_list("contrato_id", flat=True)
+    base = (
+        timezone.localdate(demanda.criado_em)
+        if demanda.criado_em
+        else timezone.localdate()
+    )
+    prazo_do_contrato = None
+    for contrato in contexto.get("contratos", []):
+        contrato["prazo_contratual"] = prazo_contratual_do_sla(
+            contrato.get("sla_dias"), base
         )
-    if demanda.local_id:
-        contratos_vinculados.update(
-            ContratoLocal.objects.filter(local_id=demanda.local_id).values_list(
-                "contrato_id", flat=True
-            )
-        )
-    resposta["contratos"] = [
-        {
-            "objeto": contrato.objeto,
-            "fornecedor": str(contrato.fornecedor),
-            "fim": contrato.data_fim,
-            "situacao": SituacaoVigencia(contrato.situacao).label,
-            "tom": contrato.tom,
-        }
-        for contrato in ContratoFornecedor.objects.ativos()
-        .filter(pk__in=contratos_vinculados)
-        .select_related("fornecedor")
-        .na_ordem_de_atencao()
-    ]
+        if prazo_do_contrato is None and contrato["prazo_contratual"] is not None:
+            prazo_do_contrato = contrato["prazo_contratual"]
 
-    garantias_vinculadas = set()
-    if demanda.equipamento_id:
-        garantias_vinculadas.update(
-            GarantiaEquipamento.objects.filter(
-                equipamento_id=demanda.equipamento_id
-            ).values_list("garantia_id", flat=True)
-        )
-    resposta["garantias"] = [
-        {
-            "descricao": garantia.descricao,
-            "fornecedor": str(garantia.fornecedor) if garantia.fornecedor_id else "",
-            "fim": garantia.data_fim,
-            "situacao": SituacaoVigencia(garantia.situacao).label,
-            "tom": garantia.tom,
-        }
-        for garantia in Garantia.objects.ativos()
-        .filter(pk__in=garantias_vinculadas)
-        .select_related("fornecedor")
-        .na_ordem_de_atencao()
-    ]
+    contexto["prazo_do_contrato"] = prazo_do_contrato
+    contexto["prazo_vem_do_contrato"] = bool(
+        demanda.prazo and prazo_do_contrato and demanda.prazo == prazo_do_contrato
+    )
+    return contexto
 
-    return resposta
+
+def prazo_contratual_do_sla(sla_dias, base):
+    """A data formal que o SLA do contrato projeta a partir do marco do chamado.
+
+    O prazo contratual nasce do SLA estruturado e de nada mais: sem número no
+    contrato, não há data. É a base formal de onde o prazo de uma demanda pode
+    vir — nunca uma data inventada pela prioridade.
+    """
+    if not sla_dias:
+        return None
+    return base + timedelta(days=sla_dias)
 
 
 @transaction.atomic

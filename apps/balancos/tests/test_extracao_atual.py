@@ -180,6 +180,50 @@ def pdf_sem_secoes() -> bytes:
     )
 
 
+def pdf_com_moldura_colada_ao_total() -> bytes:
+    """O rótulo de navegação do relatório chega colado ao total do mês.
+
+    É o caso do demonstrativo real: a camada textual junta na mesma linha o
+    total ("TOTAL DAS DESPESAS 3.450,00") e o rótulo de navegação que o gerador
+    repete em toda página ("ContasData"). Sem separar moldura de conteúdo, o
+    mês fica sem total declarado e o balanço não pode ser confirmado.
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Condominio Exemplo",
+                "Demonstrativo de Contas",
+                "Competencia: Agosto/2026",
+                "ContasData",
+            ]
+        ),
+        "\n".join(
+            [
+                "Receitas Detalhadas",
+                "Taxa Condominial 45.000,00",
+                "Total de Receitas 45.000,00",
+                "ContasData",
+            ]
+        ),
+        "\n".join(
+            [
+                "Despesas Detalhadas",
+                "Energia Eletrica 3.450,00",
+                "TOTAL DAS DESPESAS 3.450,00 ContasData",
+                "ContasData",
+            ]
+        ),
+        "\n".join(
+            [
+                "Resumo Financeiro",
+                "Saldo Anterior 10.000,00",
+                "Saldo Final 51.550,00",
+                "ContasData",
+            ]
+        ),
+    )
+
+
 def pdf_com_valor_em_qualquer_posicao() -> bytes:
     """O valor vem antes ou depois da descrição, às vezes com a data no meio."""
     return gerar_pdf_textual(
@@ -482,6 +526,53 @@ def pdf_com_resumo_e_demonstrativo_divergentes() -> bytes:
                 "Folha de Pagamento 12.000,00",
                 "Energia Eletrica 4.650,00",
                 "Total de Despesas 20.000,00",
+            ]
+        ),
+    )
+
+
+def pdf_com_demonstrativo_repetido() -> bytes:
+    """O mesmo demonstrativo aparece duas vezes, com outro bloco no meio.
+
+    É o que o RVE faz: o demonstrativo consolidado vem na abertura e é repetido
+    destacado mais adiante. Ler as duas cópias conta a mesma despesa duas vezes;
+    a leitura fica com a primeira e ignora a segunda.
+    """
+    bloco = "\n".join(
+        [
+            "Demonstrativo de Despesas",
+            "Folha de Pagamento 12.000,00",
+            "Energia Eletrica 4.650,00",
+            "Total de Despesas 16.650,00",
+        ]
+    )
+    return gerar_pdf_textual(
+        bloco,
+        "Resumo Financeiro\nSaldo Final 10.000,00",
+        bloco,
+    )
+
+
+def pdf_com_demonstrativo_em_varias_paginas() -> bytes:
+    """O demonstrativo se estende por mais de uma página.
+
+    O gerador repete o título "Demonstrativo de Despesas" no topo de cada página
+    do mesmo bloco. Esse cabeçalho não é um segundo demonstrativo: as páginas
+    seguintes continuam sendo a mesma lista, e todas as despesas valem.
+    """
+    return gerar_pdf_textual(
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Folha de Pagamento 12.000,00",
+                "Energia Eletrica 4.650,00",
+            ]
+        ),
+        "\n".join(
+            [
+                "Demonstrativo de Despesas",
+                "Manutencao do Elevador 1.200,00",
+                "Total de Despesas 17.850,00",
             ]
         ),
     )
@@ -993,6 +1084,28 @@ class PrecedenciaEntreResumoEDetalheTests(TestCase):
         self.assertEqual(balanco.despesas_total, "200.00")
         self.assertEqual(inconsistencias, ())
 
+    def test_demonstrativo_repetido_nao_conta_duas_vezes(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_demonstrativo_repetido()
+        )
+
+        self.assertEqual(len(balanco.despesas), 2)
+        self.assertEqual(balanco.soma_despesas_extraida, "16650.00")
+        self.assertEqual(balanco.despesas_total, "16650.00")
+        self.assertEqual(inconsistencias, ())
+
+    def test_cabecalho_repetido_por_pagina_nao_corta_o_demonstrativo(self):
+        balanco, inconsistencias = ler_balanco_atual(
+            pdf_com_demonstrativo_em_varias_paginas()
+        )
+
+        # O título repetido no topo da segunda página é o mesmo bloco: as
+        # despesas das duas páginas contam, e a leitura não para na primeira.
+        self.assertEqual(len(balanco.despesas), 3)
+        self.assertEqual(balanco.soma_despesas_extraida, "17850.00")
+        self.assertEqual(balanco.despesas_total, "17850.00")
+        self.assertEqual(inconsistencias, ())
+
     def test_valor_a_mais_no_resumo_nao_vira_lancamento(self):
         balanco, inconsistencias = ler_balanco_atual(
             pdf_com_resumo_e_demonstrativo_divergentes()
@@ -1132,6 +1245,32 @@ class AusenciaTests(TestCase):
     def test_nao_aponta_problema_onde_nao_ha_leitura(self):
         self.assertEqual(self.inconsistencias, ())
         self.assertEqual(self.balanco.confianca, "media")
+
+
+class MolduraDoRelatorioTests(TestCase):
+    """O rótulo de navegação colado à linha não pode esconder o dado do mês."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.balanco, cls.inconsistencias = ler_balanco_atual(
+            pdf_com_moldura_colada_ao_total()
+        )
+
+    def test_le_o_total_declarado_mesmo_com_moldura_colada(self):
+        self.assertEqual(self.balanco.receitas_total, "45000.00")
+        self.assertEqual(self.balanco.despesas_total, "3450.00")
+
+    def test_nao_deixa_a_moldura_no_texto_do_lancamento(self):
+        self.assertEqual(len(self.balanco.despesas), 1)
+        despesa = self.balanco.despesas[0]
+        self.assertEqual(despesa.descricao_original, "Energia Eletrica")
+        self.assertEqual(despesa.valor, "3450.00")
+
+    def test_documento_curto_nao_tem_moldura(self):
+        """Em poucas páginas, nada é tomado por moldura nem aparado."""
+        balanco, _ = ler_balanco_atual(pdf_com_agrupamento())
+
+        self.assertEqual(balanco.despesas[0].categoria_original, "Manutencao")
 
 
 class PontosDeAtencaoTests(TestCase):

@@ -118,11 +118,23 @@ def _dados_de_autorizacao(dados: dict) -> dict:
 
 
 @transaction.atomic
-def registrar_esperado(*, condominio, usuario, dados: dict) -> AutorizacaoPortaria:
+def registrar_esperado(
+    *,
+    condominio,
+    usuario,
+    dados: dict,
+    origem: str = OrigemPortaria.PORTARIA_MANUAL,
+) -> AutorizacaoPortaria:
+    """Registra uma autorização esperada — o que a portaria já sabia antes.
+
+    A origem diz de onde veio o aviso; quem digita na portaria não é o único
+    caminho, e uma autorização lida de e-mail continua sendo uma autorização
+    registrada pela portaria. O padrão segue sendo o registro manual.
+    """
     autorizacao = AutorizacaoPortaria(
         condominio=condominio,
         registrado_por=usuario,
-        origem=OrigemPortaria.PORTARIA_MANUAL,
+        origem=origem,
     )
     return _aplicar(autorizacao, dados)
 

@@ -10,8 +10,6 @@ concluída ou cancelada — e nada além disso.
 """
 from django.db import models
 
-from apps.core.constants import Prioridade
-
 
 class StatusDemanda(models.TextChoices):
     """Onde a demanda está agora.
@@ -44,10 +42,24 @@ ACOES_DE_STATUS = (
 ACAO_DE_REABERTURA = (StatusDemanda.ABERTA, "Reabrir")
 
 
-# O peso da demanda é o mesmo vocabulário usado por outros módulos do Eithra.
-# O nome antigo continua valendo para quem já o importa daqui, e os valores e
-# rótulos são exatamente os de sempre — nada muda no que já está gravado.
-PrioridadeDemanda = Prioridade
+class PrioridadeDemanda(models.TextChoices):
+    """O peso operacional da demanda, na taxonomia de Demandas.
+
+    Os valores gravados continuam os de sempre — ``baixa``, ``normal``,
+    ``alta`` e ``urgente`` —, para que nada do que já está no banco precise ser
+    reescrito nem o histórico já auditado mude de sentido. O que muda é a
+    leitura operacional: ``normal`` passa a ser lido como "Média" e ``urgente``
+    como "Crítica", como este domínio passou a nomear.
+
+    Manutenções e Rotinas continuam com o vocabulário compartilhado de
+    ``apps.core.constants.Prioridade``: alinhá-las à mesma taxonomia é uma etapa
+    à parte, e mexer nelas agora arrastaria um escopo que não é desta entrega.
+    """
+
+    BAIXA = "baixa", "Baixa"
+    NORMAL = "normal", "Média"
+    ALTA = "alta", "Alta"
+    URGENTE = "urgente", "Crítica"
 
 
 class OrigemDemanda(models.TextChoices):

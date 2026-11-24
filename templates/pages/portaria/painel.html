@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {% block title %}Portaria · Eithra{% endblock %}
 
@@ -79,257 +80,243 @@
         {% endif %}
       </div>
     {% else %}
-      <div class="eithra-portaria-superficie">
-        <div class="eithra-portaria-barra">
-          <div class="eithra-portaria-barra-busca">
-            <div class="eithra-busca" role="search">
-              <label class="visually-hidden" for="busca-portaria">Buscar na portaria</label>
-              <i class="bx bx-search eithra-busca-icone" aria-hidden="true"></i>
-              <input
-                type="search"
-                class="form-control"
-                id="busca-portaria"
-                name="q"
-                value="{{ termo }}"
-                placeholder="Buscar nome, apartamento, morador, placa ou empresa..."
-                autocomplete="off"
-                data-eithra-portaria-busca
-                data-url="{% url 'portaria:buscar_portaria' %}"
-                data-condominio="{{ condominio_atual.pk }}">
-            </div>
-            <div
-              class="eithra-autorizador-resultado eithra-portaria-busca-resultado"
-              data-eithra-portaria-resultado
-              aria-live="polite"></div>
-          </div>
-          <div class="eithra-portaria-barra-acoes">
-            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registro-chegada">
-              <i class="bx bx-log-in" aria-hidden="true"></i>Registrar chegada
-            </button>
-            <button type="button" class="btn btn-label-secondary" data-bs-toggle="modal" data-bs-target="#registro-saida">
-              <i class="bx bx-log-out" aria-hidden="true"></i>Registrar saída
-            </button>
-          </div>
-        </div>
-
-        <form method="post" action="{% url 'portaria:interpretar' %}" class="eithra-portaria-entrada" data-eithra-relato-form>
-          {% csrf_token %}
-          {% if condominio_atual %}
-            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-          {% endif %}
-          <input type="hidden" name="respondendo" value="{{ respondendo }}" data-eithra-respondendo>
-          <div class="eithra-busca{% if voz_disponivel %} eithra-portaria-relato-campo{% endif %}">
-            <label class="visually-hidden" for="relato-portaria">O que aconteceu?</label>
-            <i class="bx bx-message-square-detail eithra-busca-icone" aria-hidden="true"></i>
+      <div class="eithra-portaria-barra">
+        <div class="eithra-portaria-barra-busca">
+          <div class="eithra-busca" role="search">
+            <label class="visually-hidden" for="busca-portaria">Buscar na portaria</label>
+            <i class="bx bx-search eithra-busca-icone" aria-hidden="true"></i>
             <input
-              type="text"
+              type="search"
               class="form-control"
-              id="relato-portaria"
-              name="relato"
-              value="{{ campo_do_relato }}"
-              placeholder="{{ placeholder_do_relato }}"
+              id="busca-portaria"
+              name="q"
+              value="{{ termo }}"
+              placeholder="Buscar nome, apartamento, morador, placa ou empresa..."
               autocomplete="off"
-              data-eithra-campo
-              data-eithra-relato-original="{{ relato }}"
-              data-eithra-placeholder="{{ placeholder_do_relato }}">
-            {% if voz_disponivel %}
-              <button
-                type="button"
-                class="eithra-portaria-ditar"
-                data-eithra-ditar
-                data-eithra-ditar-url="{% url 'portaria:transcrever' %}"
-                aria-label="Ditar o que aconteceu"
-                title="Ditar o que aconteceu"
-                aria-pressed="false"
-                hidden>
-                <i class="bx bx-microphone" aria-hidden="true"></i>
-              </button>
-            {% endif %}
+              data-eithra-portaria-busca
+              data-url="{% url 'portaria:buscar_portaria' %}"
+              data-condominio="{{ condominio_atual.pk }}">
           </div>
-          <button type="submit" class="btn btn-primary">
-            <i class="bx bx-bolt-circle" aria-hidden="true"></i>Entender
+          <div
+            class="eithra-autorizador-resultado eithra-portaria-busca-resultado"
+            data-eithra-portaria-resultado
+            aria-live="polite"></div>
+        </div>
+        <div class="eithra-portaria-barra-acoes">
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registro-chegada">
+            <i class="bx bx-log-in" aria-hidden="true"></i>Registrar chegada
           </button>
-        </form>
+        </div>
+      </div>
 
+      <form method="post" action="{% url 'portaria:interpretar' %}" class="eithra-portaria-entrada" data-eithra-relato-form>
+        {% csrf_token %}
+        {% if condominio_atual %}
+          <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        {% endif %}
+        <input type="hidden" name="respondendo" value="{{ respondendo }}" data-eithra-respondendo>
+        <div class="eithra-busca{% if voz_disponivel %} eithra-portaria-relato-campo{% endif %}">
+          <label class="visually-hidden" for="relato-portaria">O que aconteceu?</label>
+          <i class="bx bx-message-square-detail eithra-busca-icone" aria-hidden="true"></i>
+          <input
+            type="text"
+            class="form-control"
+            id="relato-portaria"
+            name="relato"
+            value="{{ campo_do_relato }}"
+            placeholder="{{ placeholder_do_relato }}"
+            autocomplete="off"
+            data-eithra-campo
+            data-eithra-relato-original="{{ relato }}"
+            data-eithra-placeholder="{{ placeholder_do_relato }}">
+          {% if voz_disponivel %}
+            <button
+              type="button"
+              class="eithra-ditar"
+              data-eithra-ditar
+              data-eithra-ditar-url="{% url 'portaria:transcrever' %}"
+              data-eithra-ditar-campo="#relato-portaria"
+              aria-label="Ditar o que aconteceu"
+              title="Ditar o que aconteceu"
+              aria-pressed="false"
+              hidden>
+              <i class="bx bx-microphone" aria-hidden="true"></i>
+            </button>
+          {% endif %}
+        </div>
+        {% comment %}
+          A ação de interpretar não tem botão visível: o porteiro fala e a
+          transcrição entra no campo, depois envia com Enter (ou o próprio
+          controle de voz, quando a fala basta). O submit segue aqui para o
+          formulário continuar funcionando sem JavaScript.
+        {% endcomment %}
+        <button type="submit" class="visually-hidden">Entender</button>
         {% if voz_disponivel %}
           <p class="eithra-portaria-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
         {% endif %}
+      </form>
 
-        {% if proposta %}
-          <section class="eithra-portaria-leitura" aria-live="polite">
-            <span class="eithra-portaria-leitura-icone">
-              <i class="bx bx-brain" aria-hidden="true"></i>
-            </span>
-            <div class="eithra-portaria-leitura-corpo">
-              <div class="eithra-portaria-leitura-titulo">{{ proposta.titulo }}</div>
-              {% if proposta.contexto %}
-                <div class="eithra-portaria-leitura-contexto">{{ proposta.contexto }}</div>
+      {% if proposta %}
+        <section class="eithra-portaria-leitura" aria-live="polite">
+          <span class="eithra-portaria-leitura-icone">
+            <i class="bx bx-brain" aria-hidden="true"></i>
+          </span>
+          <div class="eithra-portaria-leitura-corpo">
+            <div class="eithra-portaria-leitura-titulo">{{ proposta.titulo }}</div>
+            {% if proposta.contexto %}
+              <div class="eithra-portaria-leitura-contexto">{{ proposta.contexto }}</div>
+            {% endif %}
+            {% if proposta.detalhe %}
+              <div class="eithra-portaria-leitura-detalhe">{{ proposta.detalhe }}</div>
+            {% endif %}
+            {% if proposta.pergunta %}
+              <p class="eithra-portaria-leitura-pergunta">{{ proposta.pergunta }}</p>
+            {% endif %}
+            {% if proposta.aviso %}
+              <p class="eithra-portaria-leitura-aviso">{{ proposta.aviso }}</p>
+            {% endif %}
+            {% if proposta.nota %}
+              <p class="eithra-portaria-leitura-nota">{{ proposta.nota }}</p>
+            {% endif %}
+            <div class="eithra-portaria-leitura-acoes">
+              {% if proposta.acao %}
+                <form method="post" action="{% url 'portaria:confirmar' %}">
+                  {% csrf_token %}
+                  {% if condominio_atual %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                  {% endif %}
+                  <input type="hidden" name="relato" value="{{ relato }}">
+                  <input type="hidden" name="acao" value="{{ proposta.acao.chave }}">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="bx bx-check-circle" aria-hidden="true"></i>{{ proposta.acao.rotulo }}
+                  </button>
+                </form>
               {% endif %}
-              {% if proposta.detalhe %}
-                <div class="eithra-portaria-leitura-detalhe">{{ proposta.detalhe }}</div>
-              {% endif %}
-              {% if proposta.pergunta %}
-                <p class="eithra-portaria-leitura-pergunta">{{ proposta.pergunta }}</p>
-              {% endif %}
-              {% if proposta.aviso %}
-                <p class="eithra-portaria-leitura-aviso">{{ proposta.aviso }}</p>
-              {% endif %}
-              {% if proposta.nota %}
-                <p class="eithra-portaria-leitura-nota">{{ proposta.nota }}</p>
-              {% endif %}
-              <div class="eithra-portaria-leitura-acoes">
-                {% if proposta.acao %}
-                  <form method="post" action="{% url 'portaria:confirmar' %}">
-                    {% csrf_token %}
-                    {% if condominio_atual %}
-                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-                    {% endif %}
-                    <input type="hidden" name="relato" value="{{ relato }}">
-                    <input type="hidden" name="acao" value="{{ proposta.acao.chave }}">
-                    <button type="submit" class="btn btn-primary">
-                      <i class="bx bx-check-circle" aria-hidden="true"></i>{{ proposta.acao.rotulo }}
-                    </button>
-                  </form>
-                {% endif %}
-                <button type="button" class="btn btn-label-secondary" data-eithra-corrigir>
-                  <i class="bx bx-pencil" aria-hidden="true"></i>Corrigir
-                </button>
-              </div>
-            </div>
-          </section>
-        {% endif %}
-
-        <div class="eithra-portaria-indicadores">
-          {% for indicador in indicadores %}
-            <div class="eithra-portaria-indicador">
-              <span class="eithra-portaria-indicador-icone text-{{ indicador.tom }}">
-                <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
-              </span>
-              <div>
-                <div class="eithra-portaria-indicador-valor">{{ indicador.valor }}</div>
-                <div class="eithra-portaria-indicador-rotulo">{{ indicador.rotulo }}</div>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-
-        <section class="eithra-portaria-superficie-interna">
-          <div class="eithra-portaria-cabecalho-secao">
-            <div>
-              <h2 class="eithra-portaria-secao-titulo-grande mb-0">Movimentação atual</h2>
-            </div>
-            <div class="d-flex flex-wrap gap-2">
-              <button type="button" class="btn btn-sm btn-label-secondary" data-bs-toggle="modal" data-bs-target="#novo-esperado">
-                Registrar esperado
+              <button type="button" class="btn btn-label-secondary" data-eithra-corrigir>
+                <i class="bx bx-pencil" aria-hidden="true"></i>Corrigir
               </button>
-              <a class="eithra-portaria-link" href="{% querystring aba='historico' page=None de=None ate=None %}">
-                Ver histórico <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
-              </a>
             </div>
           </div>
+        </section>
+      {% endif %}
 
-          {% if movimentacao_atual %}
-            <div class="table-responsive d-none d-lg-block">
-              <table class="table align-middle mb-0 eithra-movimento-tabela">
-                <thead>
-                  <tr>
-                    <th scope="col">Nome</th>
-                    <th scope="col">Tipo</th>
-                    <th scope="col">Unidade / destino</th>
-                    <th scope="col">Horário</th>
-                    <th scope="col">Situação</th>
-                    <th scope="col" class="text-end">Ação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for item in movimentacao_atual %}
-                    <tr>
-                      <td>
-                        <div class="d-flex align-items-center gap-2">
-                          <span class="eithra-avatar" aria-hidden="true">{{ item.iniciais }}</span>
-                          <div>
-                            <div class="fw-medium">{{ item.nome }}</div>
-                            <div class="text-body-secondary small">{{ item.contexto_secundario }}</div>
-                            {% if item.turno_anterior %}
-                              <span class="badge bg-label-warning mt-1">Turno anterior</span>
-                            {% endif %}
-                          </div>
-                        </div>
-                      </td>
-                      <td>{{ item.tipo }}</td>
-                      <td>{{ item.destino }}</td>
-                      <td>{{ item.horario }}</td>
-                      <td><span class="badge bg-label-{{ item.tom }}">{{ item.situacao }}</span></td>
-                      <td class="text-end">
-                        <div class="d-inline-flex align-items-center gap-2">
-                          {% if item.acao_post %}
-                            <form method="post" action="{{ item.acao_url }}">
-                              {% csrf_token %}
-                              <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-                              <button type="submit" class="btn btn-sm {% if item.acao_label == 'Chegou' %}btn-success{% else %}btn-label-primary{% endif %}">{{ item.acao_label }}</button>
-                            </form>
-                          {% else %}
-                            <a href="{{ item.acao_url }}" class="btn btn-sm btn-label-secondary">{{ item.acao_label }}</a>
-                          {% endif %}
-                          <div class="dropdown">
-                            <button type="button" class="btn btn-sm btn-icon btn-text-secondary" data-bs-toggle="dropdown" aria-label="Mais ações de {{ item.nome }}">
-                              <i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>
-                            </button>
-                            <div class="dropdown-menu dropdown-menu-end">
-                              <a class="dropdown-item" href="{% querystring aba='historico' q=item.nome page=None de=None ate=None %}">Ver histórico</a>
-                              {% if item.kind == 'autorizacao' and not item.acao_post %}
-                                <a class="dropdown-item" href="{{ item.acao_url }}">Revisar autorização</a>
-                              {% endif %}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+      {% comment %}
+        Três leituras de relance da operação: quem chega, quem está dentro e o
+        que passou hoje. Cada uma é um bloco compacto com ícone, título e
+        número — superfície clara, pouco relevo, sem borda pesada. Não é um
+        dashboard: é a visão do porteiro de um relance.
+      {% endcomment %}
+      <div class="eithra-portaria-indicadores">
+        {% for indicador in resumo %}
+          <div class="eithra-portaria-indicador eithra-portaria-indicador--{{ indicador.tom }}">
+            <span class="eithra-portaria-indicador-icone" aria-hidden="true">
+              <i class="bx {{ indicador.icone }}"></i>
+            </span>
+            <div class="eithra-portaria-indicador-texto">
+              <span class="eithra-portaria-indicador-rotulo">{{ indicador.rotulo }}</span>
+              <span class="eithra-portaria-indicador-valor">{{ indicador.valor }}</span>
             </div>
+          </div>
+        {% endfor %}
+      </div>
 
-            <div class="d-lg-none eithra-portaria-mobile-lista">
-              {% for item in movimentacao_atual %}
-                <div class="eithra-portaria-mobile-card">
-                  <div class="d-flex align-items-start gap-2">
-                    <span class="eithra-avatar" aria-hidden="true">{{ item.iniciais }}</span>
-                    <div class="flex-grow-1">
-                      <div class="d-flex justify-content-between gap-2">
-                        <div class="fw-medium">{{ item.nome }}</div>
-                        <span class="badge bg-label-{{ item.tom }}">{{ item.situacao }}</span>
-                      </div>
-                      <div class="text-body-secondary small">{{ item.tipo }} · {{ item.destino }}</div>
-                      <div class="text-body-secondary small">{{ item.horario }} · {{ item.contexto_secundario }}</div>
-                      {% if item.turno_anterior %}
-                        <span class="badge bg-label-warning mt-1">Turno anterior</span>
-                      {% endif %}
-                    </div>
-                  </div>
-                  <div class="d-flex justify-content-end gap-2 mt-3">
-                    {% if item.acao_post %}
-                      <form method="post" action="{{ item.acao_url }}">
-                        {% csrf_token %}
-                        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-                        <button type="submit" class="btn btn-sm {% if item.acao_label == 'Chegou' %}btn-success{% else %}btn-label-primary{% endif %}">{{ item.acao_label }}</button>
-                      </form>
-                    {% else %}
-                      <a href="{{ item.acao_url }}" class="btn btn-sm btn-label-secondary">{{ item.acao_label }}</a>
-                    {% endif %}
-                    <a class="btn btn-sm btn-text-secondary" href="{% querystring aba='historico' q=item.nome page=None de=None ate=None %}">Histórico</a>
+      <section class="eithra-portaria-superficie-interna">
+        <div class="eithra-portaria-cabecalho-secao">
+          <h2 class="eithra-portaria-secao-titulo-grande mb-0">
+            <i class="bx bx-time-five eithra-portaria-secao-icone" aria-hidden="true"></i>Chegando
+          </h2>
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <button type="button" class="btn btn-sm btn-label-secondary" data-bs-toggle="modal" data-bs-target="#novo-esperado">
+              <i class="bx bx-user-plus" aria-hidden="true"></i>Adicionar esperado
+            </button>
+            <a class="eithra-portaria-link" href="{% querystring aba='historico' page=None de=None ate=None %}">
+              <i class="bx bx-history" aria-hidden="true"></i>Ver histórico
+            </a>
+          </div>
+        </div>
+
+        {% if chegando %}
+          <ul class="eithra-lista eithra-portaria-lista">
+            {% for item in chegando %}
+              <li class="eithra-linha eithra-portaria-linha">
+                <span class="eithra-avatar eithra-avatar--{{ item.tom }}" aria-hidden="true">
+                  <i class="bx bx-briefcase" aria-hidden="true"></i>
+                </span>
+                <div class="eithra-linha-corpo">
+                  <div class="eithra-linha-nome">{{ item.nome }}</div>
+                  <div class="eithra-linha-contexto">{{ item.horario }} · {{ item.contexto_secundario|default:item.contexto }}</div>
+                </div>
+                <div class="eithra-linha-acao">
+                  {% if item.acao_post %}
+                    <form method="post" action="{{ item.acao_url }}">
+                      {% csrf_token %}
+                      <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                      <button type="submit" class="btn btn-sm btn-success">{{ item.acao_label }}</button>
+                    </form>
+                  {% else %}
+                    <a href="{{ item.acao_url }}" class="btn btn-sm btn-label-secondary">{{ item.acao_label }}</a>
+                  {% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="eithra-portaria-vazio">Nenhuma chegada prevista.</p>
+        {% endif %}
+      </section>
+
+      <section class="eithra-portaria-superficie-interna">
+        <div class="eithra-portaria-cabecalho-secao">
+          <h2 class="eithra-portaria-secao-titulo-grande mb-0">
+            <i class="bx bx-group eithra-portaria-secao-icone" aria-hidden="true"></i>Aqui agora
+          </h2>
+          <a class="eithra-portaria-link" href="{% querystring aba='historico' page=None de=None ate=None %}">
+            <i class="bx bx-history" aria-hidden="true"></i>Ver histórico
+          </a>
+        </div>
+
+        {% if aqui_agora %}
+          <ul class="eithra-lista eithra-portaria-lista">
+            {% for item in aqui_agora %}
+              <li class="eithra-linha eithra-portaria-linha">
+                <span class="eithra-avatar" aria-hidden="true">{{ item.iniciais }}</span>
+                <div class="eithra-linha-corpo">
+                  <div class="eithra-linha-nome">{{ item.nome }}</div>
+                  <div class="eithra-linha-contexto">
+                    {{ item.tipo }} · {{ item.destino }}
+                    {% if item.turno_anterior %}<span class="eithra-portaria-turno-anterior">Turno anterior</span>{% endif %}
                   </div>
                 </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="eithra-vazio"><i class="bx bx-door-open" aria-hidden="true"></i>Nenhuma movimentação operacional agora.</p>
-          {% endif %}
-        </section>
-      </div>
+                <span class="eithra-portaria-horario">
+                  <i class="bx bxs-circle" aria-hidden="true"></i>Entrada: {{ item.horario }}
+                </span>
+                <div class="eithra-linha-acao">
+                  <form method="post" action="{{ item.acao_url }}">
+                    {% csrf_token %}
+                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+                    <button type="submit" class="btn btn-sm btn-outline-{{ item.tom }}">
+                      <i class="bx bx-log-out" aria-hidden="true"></i>Saiu
+                    </button>
+                  </form>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="eithra-portaria-vazio">Ninguém dentro agora.</p>
+        {% endif %}
+      </section>
     {% endif %}
   </div>
 
+  {% comment %}
+    Adicionar esperado é o mesmo registro de chegada, com uma diferença de
+    tempo: quem chega depois já foi avisado antes. Por isso o fluxo é o mesmo
+    de três decisões — para onde vai, quem é esperado, quem autorizou — e não
+    um formulário à parte. O que muda é onde ele termina: aqui nasce uma
+    autorização esperada, que aparece em "Chegando" e só vira presença no toque
+    de "Chegou".
+  {% endcomment %}
   <div
     class="modal fade{% if modal_aberto == 'novo-esperado' or modal_aberto == 'esperado' %} show eithra-modal-reaberto{% endif %}"
     id="novo-esperado"
@@ -337,35 +324,254 @@
     role="dialog"
     aria-labelledby="novo-esperado-titulo"
     aria-hidden="{% if modal_aberto == 'novo-esperado' or modal_aberto == 'esperado' %}false{% else %}true{% endif %}">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-      <form class="modal-content" method="post" action="{% url 'portaria:criar_esperado' %}" novalidate>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable eithra-portaria-modal">
+      <form class="modal-content" method="post" action="{% url 'portaria:criar_esperado' %}" novalidate data-eithra-wizard="esperado">
         {% csrf_token %}
         <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        {{ formulario_esperado.unidade }}
+        {{ formulario_esperado.autorizador_pessoa }}
+        {% comment %}O passo de reabertura vem do erro, não de onde a pessoa parou.{% endcomment %}
+        <input type="hidden" name="passo" value="{{ passo_esperado }}">
         <div class="modal-header">
-          <h5 class="modal-title" id="novo-esperado-titulo">Registrar esperado</h5>
+          <div>
+            <h5 class="modal-title" id="novo-esperado-titulo">Adicionar esperado</h5>
+            <p class="eithra-portaria-legenda mb-0" data-eithra-passo-rotulo>Passo 1 de 3</p>
+          </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
-          {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.tipo_acesso %}
-          {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.nome %}
-          {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.unidade %}
-          {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.local %}
-          <div class="d-none" data-eithra-contexto-servico>
-            {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.empresa classe="eithra-empresa" %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.motivo classe="mb-0" %}
-          </div>
+          <section data-eithra-step-panel="1">
+            <h6 class="eithra-portaria-secao-titulo-grande mb-3">Quem recebe / para onde vai?</h6>
+
+            <div class="eithra-autorizador-busca">
+              <i class="bx bx-search" aria-hidden="true"></i>
+              <input
+                type="search"
+                class="form-control"
+                id="esperado-autorizador"
+                placeholder="Digite o nome do morador ou apartamento"
+                autocomplete="off"
+                data-eithra-autorizador-busca
+                data-url="{% url 'portaria:buscar_autorizador' %}"
+                data-condominio="{{ condominio_atual.pk }}">
+              {% if url_da_transcricao %}
+                <button
+                  type="button"
+                  class="eithra-ditar"
+                  data-eithra-ditar
+                  data-eithra-ditar-url="{{ url_da_transcricao }}"
+                  data-eithra-ditar-campo="#esperado-autorizador"
+                  aria-label="Ditar o destino"
+                  title="Ditar o destino"
+                  aria-pressed="false"
+                  hidden>
+                  <i class="bx bx-microphone" aria-hidden="true"></i>
+                </button>
+              {% endif %}
+            </div>
+            <div class="eithra-autorizador-resultado" data-eithra-autorizador-resultado aria-live="polite"></div>
+            {% for erro in formulario_esperado.non_field_errors %}
+              <div class="text-danger small mt-2">{{ erro }}</div>
+            {% endfor %}
+            {% for erro in formulario_esperado.unidade.errors %}
+              <div class="text-danger small mt-2">{{ erro }}</div>
+            {% endfor %}
+            <p class="eithra-autorizador-escolhido" data-eithra-autorizador-escolhido{% if not autorizador_unidade_esperado %} hidden{% endif %}>
+              <i class="bx bx-home" aria-hidden="true"></i>
+              <span data-eithra-autorizador-destino>{% if autorizador_unidade_esperado %}{{ autorizador_unidade_esperado.rotulo }}{% endif %}</span>
+              <button type="button" class="eithra-autorizador-trocar" data-eithra-autorizador-trocar>Trocar</button>
+            </p>
+
+            {% comment %}
+              Sem saber o nome de quem recebe, a portaria escolhe pela lista do
+              edifício — a mesma planta do registro de chegada: bloco/torre,
+              andar e unidade, do cadastro que já existe.
+            {% endcomment %}
+            {% if estrutura_unidades %}
+              <div class="eithra-mapa-unidades mt-3" data-eithra-mapa-unidade>
+                {% for bloco in estrutura_unidades %}
+                  <div class="eithra-mapa-bloco">
+                    {% if bloco.nome %}
+                      <div class="eithra-mapa-bloco-nome"><i class="bx bx-building-house" aria-hidden="true"></i>{{ bloco.nome }}</div>
+                    {% endif %}
+                    <div class="eithra-mapa-andares">
+                      {% for andar in bloco.andares %}
+                        <div class="eithra-mapa-andar">
+                          <span class="eithra-mapa-andar-nome">{{ andar.rotulo }}</span>
+                          <div class="eithra-mapa-chips">
+                            {% for unidade in andar.unidades %}
+                              <button
+                                type="button"
+                                class="eithra-mapa-chip"
+                                data-eithra-unidade-chip
+                                data-unidade="{{ unidade.pk }}"
+                                data-rotulo="{{ unidade.rotulo }}">{{ unidade.identificador }}</button>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="eithra-vazio mt-3 mb-0">Nenhuma unidade cadastrada neste condomínio.</p>
+            {% endif %}
+
+            <div class="{% if not formulario_esperado.local.value %}d-none {% endif %}mt-3" data-eithra-revelado="local">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.local classe="mb-0" %}
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-3">
+              <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="local" {% if formulario_esperado.local.value %}hidden{% endif %}>Vai para uma área comum?</button>
+            </div>
+          </section>
+
+          <section data-eithra-step-panel="2" hidden>
+            <div class="eithra-portaria-contexto" data-eithra-contexto-destino hidden>
+              <i class="bx bx-home" aria-hidden="true"></i>
+              <span class="eithra-portaria-contexto-valor" data-eithra-contexto-destino-rotulo></span>
+              <button type="button" class="eithra-portaria-contexto-trocar" data-eithra-ir-para="1">Trocar</button>
+            </div>
+
+            <h6 class="eithra-portaria-secao-titulo-grande mb-1">Quem é esperado?</h6>
+            <label class="form-label">Tipo de acesso</label>
+            <div class="eithra-opcoes-cards" data-eithra-tipo-acesso>
+              {% for opcao in formulario_esperado.tipo_acesso %}
+                {% if opcao.data.value == "tecnico" or opcao.data.value == "correios" %}
+                  <label
+                    class="eithra-opcao-card eithra-opcao-card-raro{% if opcao.data.selected %} is-selected{% else %} d-none{% endif %}"
+                    data-eithra-tipo-raro>
+                    {{ opcao.tag }}
+                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-package{% endif %}" aria-hidden="true"></i>
+                    <span>{{ opcao.choice_label }}</span>
+                  </label>
+                {% else %}
+                  <label class="eithra-opcao-card{% if opcao.data.selected %} is-selected{% endif %}">
+                    {{ opcao.tag }}
+                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-scooter{% else %}bx-user{% endif %}" aria-hidden="true"></i>
+                    <span>{{ opcao.choice_label }}</span>
+                  </label>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar-tipos>Mais tipos</button>
+
+            {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.nome classe="mt-4 mb-6" voz_url=url_da_transcricao %}
+
+            {% comment %}
+              Empresa é do prestador, do fornecedor e do técnico; o motivo só
+              entra quando faz diferença, atrás de um toque. Nada de formulário
+              longo à vista.
+            {% endcomment %}
+            <div class="d-none" data-eithra-contexto-servico>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.empresa classe="eithra-empresa" voz_url=url_da_transcricao %}
+              <div class="{% if not formulario_esperado.motivo.value %}d-none {% endif %}mt-3" data-eithra-revelado="motivo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.motivo classe="mb-0" %}
+              </div>
+              <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="motivo" {% if formulario_esperado.motivo.value %}hidden{% endif %}>Adicionar motivo (opcional)</button>
+            </div>
+
+            {% comment %}
+              Delivery e Correios trazem um dado próprio cada um. Mostrar só o
+              campo do tipo escolhido evita pedir informação que não se aplica.
+            {% endcomment %}
+            <div class="d-none" data-eithra-contexto-entrega>
+              <div data-eithra-entrega="correios">
+                <div class="{% if not formulario_esperado.natureza_objeto.value %}d-none {% endif %}" data-eithra-revelado="natureza-objeto">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.natureza_objeto classe="mb-0" %}
+                </div>
+                <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="natureza-objeto" {% if formulario_esperado.natureza_objeto.value %}hidden{% endif %}>Tipo de objeto (opcional)</button>
+              </div>
+              <div data-eithra-entrega="delivery">
+                <div class="{% if not formulario_esperado.instrucao_entrega.value %}d-none {% endif %}" data-eithra-revelado="instrucao-entrega">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.instrucao_entrega classe="mb-0" %}
+                </div>
+                <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="instrucao-entrega" {% if formulario_esperado.instrucao_entrega.value %}hidden{% endif %}>Instrução de entrega (opcional)</button>
+              </div>
+            </div>
+
+            <div class="mt-4" data-eithra-veiculo>
+              <label class="form-label">Chega de veículo?</label>
+              <div class="eithra-opcoes-cards">
+                <button
+                  type="button"
+                  class="eithra-opcao-card eithra-opcao-card-status{% if formulario_esperado.placa.value %} is-selected{% endif %}"
+                  data-eithra-veiculo-sim>Sim</button>
+                <button
+                  type="button"
+                  class="eithra-opcao-card eithra-opcao-card-status{% if not formulario_esperado.placa.value %} is-selected{% endif %}"
+                  data-eithra-veiculo-nao>Não</button>
+              </div>
+            </div>
+            <div class="{% if not formulario_esperado.placa.value %}d-none {% endif %}mt-3" data-eithra-revelado="placa">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.placa classe="mb-0" %}
+            </div>
+          </section>
+
+          <section data-eithra-step-panel="3" hidden>
+            <div class="eithra-portaria-contexto" data-eithra-contexto-destino hidden>
+              <span class="eithra-portaria-contexto-item">
+                <i class="bx bx-home" aria-hidden="true"></i>
+                <span class="eithra-portaria-contexto-rotulo">Destino</span>
+                <span class="eithra-portaria-contexto-valor" data-eithra-contexto-destino-rotulo></span>
+              </span>
+              <span class="eithra-portaria-contexto-item" data-eithra-contexto-tipo></span>
+              <span class="eithra-portaria-contexto-item eithra-portaria-contexto-pessoa" data-eithra-contexto-nome hidden></span>
+              <button type="button" class="eithra-portaria-contexto-trocar" data-eithra-ir-para="1">Trocar</button>
+            </div>
+
+            <h6 class="eithra-portaria-secao-titulo-grande mb-3">Quem autorizou?</h6>
+
+            <div class="mb-4" data-eithra-autorizadores>
+              <label class="form-label">Autorizado por</label>
+              <div class="eithra-opcoes-cards" data-eithra-autorizador-lista></div>
+              <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-autorizador-outro>Outro nome</button>
+              <p class="eithra-portaria-legenda mb-0" data-eithra-autorizador-vazio hidden>
+                Sem moradores vinculados a esta unidade. Escreva o nome de quem autorizou.
+              </p>
+            </div>
+
+            <div class="{% if not formulario_esperado.autorizador_nome.value %}d-none {% endif %}" data-eithra-revelado="autorizador-nome">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.autorizador_nome %}
+            </div>
+
+            {% comment %}
+              O conteúdo livre entra pelos mecanismos que a Portaria já usa —
+              texto digitado ou ditado pelo mesmo controlador de voz. Nada de um
+              segundo motor só para o esperado.
+            {% endcomment %}
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar-observacao>
+                <i class="bx bx-microphone" aria-hidden="true"></i>Adicionar observação por voz (opcional)
+              </button>
+              <div class="mt-2" data-eithra-observacao-campo hidden>
+                {% include "pages/cadastros/_campo.html" with campo=formulario_esperado.observacao classe="mb-0" voz_url=url_da_transcricao %}
+              </div>
+            </div>
+          </section>
+
           {% for erro in formulario_esperado.non_field_errors %}
-            <div class="text-danger small mt-2">{{ erro }}</div>
+            <div class="text-danger small mt-3">{{ erro }}</div>
           {% endfor %}
+          {% if url_da_transcricao %}
+            <p class="eithra-portaria-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+          {% endif %}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="submit" class="btn btn-primary">Salvar esperado</button>
+          <button type="button" class="btn btn-label-secondary" data-eithra-step-voltar hidden>Voltar</button>
+          <button type="button" class="btn btn-primary" data-eithra-step-avancar>Continuar</button>
+          <button type="submit" class="btn btn-primary" data-eithra-step-enviar hidden>Adicionar esperado</button>
         </div>
       </form>
     </div>
   </div>
 
+  {% comment %}
+    Registrar chegada em três decisões, e nenhuma delas é um formulário:
+    para onde vai, quem chegou, quem autorizou. Cada decisão ocupa a tela
+    sozinha, com o toque no lugar da digitação sempre que houver o que tocar.
+  {% endcomment %}
   <div
     class="modal fade{% if modal_aberto == 'chegada' %} show eithra-modal-reaberto{% endif %}"
     id="registro-chegada"
@@ -373,135 +579,268 @@
     role="dialog"
     aria-labelledby="registro-chegada-titulo"
     aria-hidden="{% if modal_aberto == 'chegada' %}false{% else %}true{% endif %}">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-      <form class="modal-content" method="post" action="{% url 'portaria:criar_chegada_nao_prevista' %}" novalidate data-eithra-wizard="chegada">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable eithra-portaria-modal">
+      <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'portaria:criar_chegada_nao_prevista' %}" novalidate data-eithra-wizard="chegada">
         {% csrf_token %}
         <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
         {{ formulario_chegada.unidade }}
         {{ formulario_chegada.autorizador_pessoa }}
-        {# O passo de reabertura vem do erro, não de onde a pessoa parou. #}
+        {% comment %}O passo de reabertura vem do erro, não de onde a pessoa parou.{% endcomment %}
         <input type="hidden" name="passo" value="{{ passo_chegada }}">
         <div class="modal-header">
           <div>
             <h5 class="modal-title" id="registro-chegada-titulo">Registrar chegada</h5>
-            <div class="eithra-step-wizard mt-2" data-eithra-steps>
-              <span class="eithra-step is-active" data-step="1"><span class="eithra-step-number">1</span><span class="eithra-step-label">Identificação</span></span>
-              <span class="eithra-step" data-step="2"><span class="eithra-step-number">2</span><span class="eithra-step-label">Autorização</span></span>
-              <span class="eithra-step" data-step="3"><span class="eithra-step-number">3</span><span class="eithra-step-label">Registro</span></span>
-            </div>
+            <p class="eithra-portaria-legenda mb-0" data-eithra-passo-rotulo>Passo 1 de 3</p>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
         </div>
         <div class="modal-body">
           <section data-eithra-step-panel="1">
-            <div class="eithra-portaria-responsavel mb-4">
-              <div class="eithra-portaria-responsavel-topo">
-                <span class="text-body-secondary small">Quem recebe / qual contexto?</span>
-              </div>
-              <div class="eithra-autorizador-busca mt-3">
-                <i class="bx bx-search" aria-hidden="true"></i>
-                <input
-                  type="search"
-                  class="form-control"
-                  id="chegada-autorizador"
-                  placeholder="Digite o nome do morador ou apartamento"
-                  autocomplete="off"
-                  data-eithra-autorizador-busca
-                  data-url="{% url 'portaria:buscar_autorizador' %}"
-                  data-condominio="{{ condominio_atual.pk }}">
-              </div>
-              <div class="eithra-autorizador-resultado" data-eithra-autorizador-resultado aria-live="polite"></div>
-              {% for erro in formulario_chegada.unidade.errors %}
-                <div class="text-danger small mt-2">{{ erro }}</div>
-              {% endfor %}
-              {% for erro in formulario_chegada.autorizador_pessoa.errors %}
-                <div class="text-danger small mt-2">{{ erro }}</div>
-              {% endfor %}
-              <p class="eithra-autorizador-escolhido" data-eithra-autorizador-escolhido{% if not autorizador_unidade %} hidden{% endif %}>
-                <i class="bx bx-home" aria-hidden="true"></i>
-                <span data-eithra-autorizador-destino>{% if autorizador_unidade %}{{ autorizador_unidade.rotulo }}{% endif %}</span>
-                <button type="button" class="eithra-autorizador-trocar" data-eithra-autorizador-trocar>Trocar</button>
-              </p>
-              {# Sem saber o nome de quem recebe, a portaria escolhe pelo mapa:
-                 bloco/torre, andar e unidade — do cadastro que já existe. #}
-              <div class="d-flex flex-wrap gap-3 mt-3">
-                <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="mapa">Escolher pelo condomínio</button>
-              </div>
-              <div class="d-none mt-3" data-eithra-revelado="mapa">
-                {% if estrutura_unidades %}
-                  <div class="eithra-mapa-unidades" data-eithra-mapa-unidade>
-                    {% for bloco in estrutura_unidades %}
-                      <div class="eithra-mapa-bloco">
-                        <div class="eithra-mapa-bloco-nome">{{ bloco.nome }}</div>
-                        {% for andar in bloco.andares %}
-                          <div class="eithra-mapa-andar">
-                            <span class="eithra-mapa-andar-nome">{{ andar.nome }}</span>
-                            <div class="eithra-mapa-chips">
-                              {% for unidade in andar.unidades %}
-                                <button
-                                  type="button"
-                                  class="eithra-mapa-chip"
-                                  data-eithra-unidade-chip
-                                  data-unidade="{{ unidade.pk }}"
-                                  data-rotulo="{{ unidade.rotulo }}">{{ unidade.identificador }}</button>
-                              {% endfor %}
-                            </div>
-                          </div>
-                        {% endfor %}
-                      </div>
-                    {% endfor %}
-                  </div>
-                {% else %}
-                  <p class="eithra-vazio mb-0">Nenhuma unidade cadastrada neste condomínio.</p>
-                {% endif %}
-              </div>
-              <div class="{% if not formulario_chegada.local.value %}d-none {% endif %}mt-4" data-eithra-revelado="local">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.local classe="mb-0" %}
-              </div>
-              <div class="d-flex flex-wrap gap-3 mt-3">
-                <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="local" {% if formulario_chegada.local.value %}hidden{% endif %}>Vai para uma área comum?</button>
-              </div>
+            <h6 class="eithra-portaria-secao-titulo-grande mb-3">Quem recebe / para onde vai?</h6>
+
+            <div class="eithra-autorizador-busca">
+              <i class="bx bx-search" aria-hidden="true"></i>
+              <input
+                type="search"
+                class="form-control"
+                id="chegada-autorizador"
+                placeholder="Digite o nome do morador ou apartamento"
+                autocomplete="off"
+                data-eithra-autorizador-busca
+                data-url="{% url 'portaria:buscar_autorizador' %}"
+                data-condominio="{{ condominio_atual.pk }}">
+              {% if url_da_transcricao %}
+                <button
+                  type="button"
+                  class="eithra-ditar"
+                  data-eithra-ditar
+                  data-eithra-ditar-url="{{ url_da_transcricao }}"
+                  data-eithra-ditar-campo="#chegada-autorizador"
+                  aria-label="Ditar o destino"
+                  title="Ditar o destino"
+                  aria-pressed="false"
+                  hidden>
+                  <i class="bx bx-microphone" aria-hidden="true"></i>
+                </button>
+              {% endif %}
             </div>
+            <div class="eithra-autorizador-resultado" data-eithra-autorizador-resultado aria-live="polite"></div>
+            {% for erro in formulario_chegada.unidade.errors %}
+              <div class="text-danger small mt-2">{{ erro }}</div>
+            {% endfor %}
+            {% for erro in formulario_chegada.autorizador_pessoa.errors %}
+              <div class="text-danger small mt-2">{{ erro }}</div>
+            {% endfor %}
+            <p class="eithra-autorizador-escolhido" data-eithra-autorizador-escolhido{% if not autorizador_unidade %} hidden{% endif %}>
+              <i class="bx bx-home" aria-hidden="true"></i>
+              <span data-eithra-autorizador-destino>{% if autorizador_unidade %}{{ autorizador_unidade.rotulo }}{% endif %}</span>
+              <button type="button" class="eithra-autorizador-trocar" data-eithra-autorizador-trocar>Trocar</button>
+            </p>
 
-            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.nome %}
-
-            <div class="mb-4">
-              <label class="form-label">Tipo de acesso</label>
-              <div class="eithra-opcoes-cards" data-eithra-tipo-acesso>
-                {% for opcao in formulario_chegada.tipo_acesso %}
-                  <label class="eithra-opcao-card{% if opcao.data.selected %} is-selected{% endif %}">
-                    {{ opcao.tag }}
-                    <span>{{ opcao.choice_label }}</span>
-                  </label>
+            {% comment %}
+              Sem saber o nome de quem recebe, a portaria escolhe pela lista do
+              edifício: bloco/torre, andar e unidade — do cadastro que já existe.
+              Cada andar é uma linha simples, com o rótulo à esquerda e as
+              unidades reais ao lado, de cima para baixo. É o caminho mais curto
+              do toque ao destino, sem fachada nem desenho ao lado.
+            {% endcomment %}
+            {% if estrutura_unidades %}
+              <div class="eithra-mapa-unidades mt-3" data-eithra-mapa-unidade>
+                {% for bloco in estrutura_unidades %}
+                  <div class="eithra-mapa-bloco">
+                    {% if bloco.nome %}
+                      <div class="eithra-mapa-bloco-nome"><i class="bx bx-building-house" aria-hidden="true"></i>{{ bloco.nome }}</div>
+                    {% endif %}
+                    <div class="eithra-mapa-andares">
+                      {% for andar in bloco.andares %}
+                        <div class="eithra-mapa-andar">
+                          <span class="eithra-mapa-andar-nome">{{ andar.rotulo }}</span>
+                          <div class="eithra-mapa-chips">
+                            {% for unidade in andar.unidades %}
+                              <button
+                                type="button"
+                                class="eithra-mapa-chip"
+                                data-eithra-unidade-chip
+                                data-unidade="{{ unidade.pk }}"
+                                data-rotulo="{{ unidade.rotulo }}">{{ unidade.identificador }}</button>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
                 {% endfor %}
               </div>
-            </div>
+            {% else %}
+              <p class="eithra-vazio mt-3 mb-0">Nenhuma unidade cadastrada neste condomínio.</p>
+            {% endif %}
 
-            <div class="d-none" data-eithra-contexto-servico>
-              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.empresa classe="eithra-empresa" %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.motivo %}
-            </div>
-
-            {# Delivery e Correios não são pessoas: trazem um destino e o que
-               fazer com a entrega. O campo certo aparece conforme o tipo. #}
-            <div class="d-none" data-eithra-contexto-entrega>
-              <div class="d-none" data-eithra-entrega="correios">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.natureza_objeto classe="mb-0" %}
-              </div>
-              <div class="d-none" data-eithra-entrega="delivery">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.instrucao_entrega classe="mb-0" %}
-              </div>
-            </div>
-
-            <div class="{% if not formulario_chegada.placa.value %}d-none {% endif %}" data-eithra-revelado="placa">
-              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.placa classe="mb-0" %}
+            <div class="{% if not formulario_chegada.local.value %}d-none {% endif %}mt-3" data-eithra-revelado="local">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.local classe="mb-0" %}
             </div>
             <div class="d-flex flex-wrap gap-3 mt-3">
-              <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="placa" {% if formulario_chegada.placa.value %}hidden{% endif %}>Chegou de veículo?</button>
+              <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar="local" {% if formulario_chegada.local.value %}hidden{% endif %}>Vai para uma área comum?</button>
             </div>
           </section>
 
           <section data-eithra-step-panel="2" hidden>
+            <div class="eithra-portaria-contexto" data-eithra-contexto-destino hidden>
+              <i class="bx bx-home" aria-hidden="true"></i>
+              <span class="eithra-portaria-contexto-valor" data-eithra-contexto-destino-rotulo></span>
+              <button type="button" class="eithra-portaria-contexto-trocar" data-eithra-ir-para="1">Trocar</button>
+            </div>
+
+            <h6 class="eithra-portaria-secao-titulo-grande mb-1">Quem chegou?</h6>
+            <label class="form-label">Tipo de acesso</label>
+            <div class="eithra-opcoes-cards" data-eithra-tipo-acesso>
+              {% for opcao in formulario_chegada.tipo_acesso %}
+                {% if opcao.data.value == "tecnico" or opcao.data.value == "correios" %}
+                  <label
+                    class="eithra-opcao-card eithra-opcao-card-raro{% if opcao.data.selected %} is-selected{% else %} d-none{% endif %}"
+                    data-eithra-tipo-raro>
+                    {{ opcao.tag }}
+                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-package{% endif %}" aria-hidden="true"></i>
+                    <span>{{ opcao.choice_label }}</span>
+                  </label>
+                {% else %}
+                  <label class="eithra-opcao-card{% if opcao.data.selected %} is-selected{% endif %}">
+                    {{ opcao.tag }}
+                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-scooter{% else %}bx-user{% endif %}" aria-hidden="true"></i>
+                    <span>{{ opcao.choice_label }}</span>
+                  </label>
+                {% endif %}
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar-tipos>Mais tipos</button>
+
+            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.nome classe="mt-4 mb-6" voz_url=url_da_transcricao %}
+
+            {% comment %}
+              Empresa é do prestador e do fornecedor; o motivo só entra quando
+              faz diferença, atrás de um toque. Nada de formulário longo à vista.
+            {% endcomment %}
+            <div class="d-none" data-eithra-contexto-servico>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.empresa classe="eithra-empresa" voz_url=url_da_transcricao %}
+              <div class="{% if not formulario_chegada.motivo.value %}d-none {% endif %}mt-3" data-eithra-revelado="motivo">
+                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.motivo classe="mb-0" %}
+              </div>
+              <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="motivo" {% if formulario_chegada.motivo.value %}hidden{% endif %}>Adicionar motivo (opcional)</button>
+            </div>
+
+            {% comment %}
+              Delivery e Correios não são pessoas: trazem um destino e, quando
+              faz diferença, o que fazer com a entrega. O detalhe fica a um
+              toque; o fluxo mínimo continua sendo o destino.
+            {% endcomment %}
+            <div class="d-none" data-eithra-contexto-entrega>
+              <div data-eithra-entrega="correios">
+                <div class="{% if not formulario_chegada.natureza_objeto.value %}d-none {% endif %}" data-eithra-revelado="natureza-objeto">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.natureza_objeto classe="mb-0" %}
+                </div>
+                <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="natureza-objeto" {% if formulario_chegada.natureza_objeto.value %}hidden{% endif %}>Tipo de objeto (opcional)</button>
+              </div>
+              <div data-eithra-entrega="delivery">
+                <div class="{% if not formulario_chegada.instrucao_entrega.value %}d-none {% endif %}" data-eithra-revelado="instrucao-entrega">
+                  {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.instrucao_entrega classe="mb-0" %}
+                </div>
+                <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar="instrucao-entrega" {% if formulario_chegada.instrucao_entrega.value %}hidden{% endif %}>Instrução de entrega (opcional)</button>
+              </div>
+            </div>
+
+            {% comment %}
+              Veículo é uma pergunta de sim ou não: só quando a resposta é sim o
+              campo da placa passa a valer. Quem responde não vê um campo que
+              não se aplica.
+            {% endcomment %}
+            <div class="mt-4" data-eithra-veiculo>
+              <label class="form-label">Chegou de veículo?</label>
+              <div class="eithra-opcoes-cards">
+                <button
+                  type="button"
+                  class="eithra-opcao-card eithra-opcao-card-status{% if formulario_chegada.placa.value %} is-selected{% endif %}"
+                  data-eithra-veiculo-sim>Sim</button>
+                <button
+                  type="button"
+                  class="eithra-opcao-card eithra-opcao-card-status{% if not formulario_chegada.placa.value %} is-selected{% endif %}"
+                  data-eithra-veiculo-nao>Não</button>
+              </div>
+            </div>
+            <div class="{% if not formulario_chegada.placa.value %}d-none {% endif %}mt-3" data-eithra-revelado="placa">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.placa classe="mb-0" %}
+            </div>
+
+            {% comment %}
+              A foto é evidência opcional da chegada: tira-se uma quando ajuda a
+              conferir quem entrou, e a imagem não decide nada no acesso. No
+              celular abre a câmera; no computador, escolhe-se o arquivo. Fica
+              opcional e some sem deixar rastro quando não há foto.
+            {% endcomment %}
+            <div class="mt-4" data-eithra-foto>
+              <label class="form-label" for="chegada-foto">Foto</label>
+              <input
+                type="file"
+                class="visually-hidden"
+                id="chegada-foto"
+                name="foto"
+                accept="image/*"
+                capture="environment"
+                data-eithra-foto-entrada>
+              <div class="d-flex flex-wrap align-items-center gap-3">
+                <button type="button" class="btn btn-label-secondary" data-eithra-foto-tirar>
+                  <i class="bx bx-camera" aria-hidden="true"></i>Tirar foto
+                </button>
+                <button type="button" class="btn btn-sm btn-text-primary" data-eithra-foto-remover hidden>Remover</button>
+              </div>
+              <img class="eithra-foto-previa mt-3" data-eithra-foto-previa alt="Prévia da foto" hidden>
+            </div>
+          </section>
+
+          <section data-eithra-step-panel="3" hidden>
+            <div class="eithra-portaria-contexto" data-eithra-contexto-destino hidden>
+              <span class="eithra-portaria-contexto-item">
+                <i class="bx bx-home" aria-hidden="true"></i>
+                <span class="eithra-portaria-contexto-rotulo">Destino</span>
+                <span class="eithra-portaria-contexto-valor" data-eithra-contexto-destino-rotulo></span>
+              </span>
+              <span class="eithra-portaria-contexto-item" data-eithra-contexto-tipo></span>
+              <span class="eithra-portaria-contexto-item eithra-portaria-contexto-pessoa" data-eithra-contexto-nome hidden></span>
+              <button type="button" class="eithra-portaria-contexto-trocar" data-eithra-ir-para="1">Trocar</button>
+            </div>
+
+            <h6 class="eithra-portaria-secao-titulo-grande mb-3">Quem autorizou?</h6>
+
+            {% comment %}
+              O interfone é o meio com que o morador responde, e já vem definido:
+              a pergunta desta decisão é quem autorizou, não como. O campo viaja
+              escondido, com o valor de sempre, e a tela só o mostra por escrito.
+            {% endcomment %}
+            <p class="eithra-portaria-meio mb-4">
+              <span class="eithra-portaria-meio-rotulo">Meio:</span>
+              <span class="eithra-portaria-meio-valor">{% for valor, rotulo in formulario_chegada.meio_autorizacao.field.choices %}{% if valor == formulario_chegada.meio_autorizacao.value %}{{ rotulo }}{% endif %}{% endfor %}</span>
+            </p>
+            <div class="d-none">{{ formulario_chegada.meio_autorizacao }}</div>
+            {% comment %}
+              O campo do meio viaja escondido: a tela mostra o interfone por
+              escrito, mas quem recusa o valor ainda precisa ler o motivo. Sem
+              esta linha o domínio reprovaria o envio em silêncio.
+            {% endcomment %}
+            {% for erro in formulario_chegada.meio_autorizacao.errors %}
+              <div class="text-danger small mb-3">{{ erro }}</div>
+            {% endfor %}
+
+            <div class="mb-4" data-eithra-autorizadores>
+              <label class="form-label">Autorizado por</label>
+              <div class="eithra-opcoes-cards" data-eithra-autorizador-lista></div>
+              <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-autorizador-outro>Outro nome</button>
+              <p class="eithra-portaria-legenda mb-0" data-eithra-autorizador-vazio hidden>
+                Sem moradores vinculados a esta unidade. Escreva o nome de quem autorizou.
+              </p>
+            </div>
+
+            <div class="{% if not formulario_chegada.autorizador_nome.value %}d-none {% endif %}" data-eithra-revelado="autorizador-nome">
+              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.autorizador_nome %}
+            </div>
+
             <div class="mb-4">
               <label class="form-label">Resultado da autorização</label>
               <div class="eithra-opcoes-cards" data-eithra-status-autorizacao>
@@ -514,31 +853,38 @@
               </div>
             </div>
 
-            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.meio_autorizacao %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.autorizador_nome %}
-            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.observacao classe="mb-0" %}
-          </section>
+            {% comment %}
+              A observação é opcional e fica discreta: um link que revela o
+              campo, em vez de um textarea sempre visível. O microfone continua
+              disponível dentro do campo quando o navegador suporta gravação.
+            {% endcomment %}
+            <div class="mt-3">
+              <button type="button" class="btn btn-sm btn-text-primary" data-eithra-revelar-observacao>
+                <i class="bx bx-microphone" aria-hidden="true"></i>Adicionar observação por voz (opcional)
+              </button>
+              <div class="mt-2" data-eithra-observacao-campo hidden>
+                {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.observacao classe="mb-0" voz_url=url_da_transcricao %}
+              </div>
+            </div>
 
-          <section data-eithra-step-panel="3" hidden>
-            <div class="eithra-review-card">
-              <div class="eithra-resumo-linha"><span>Quem chegou</span><strong data-eithra-resumo="nome">—</strong></div>
-              <div class="eithra-resumo-linha"><span>Tipo</span><strong data-eithra-resumo="tipo">—</strong></div>
-              <div class="eithra-resumo-linha"><span>Destino</span><strong data-eithra-resumo="destino">—</strong></div>
-              <div class="eithra-resumo-linha"><span>Resultado</span><strong data-eithra-resumo="status">—</strong></div>
-              <div class="eithra-resumo-linha"><span>Meio</span><strong data-eithra-resumo="meio">—</strong></div>
-              <div class="eithra-resumo-linha"><span>Autorizador</span><strong data-eithra-resumo="autorizador">—</strong></div>
+            <div class="eithra-portaria-resumo-chegada mt-4" data-eithra-resumo-chegada hidden>
+              <div class="eithra-portaria-resumo-linha"><span data-eithra-resumo-tipo></span>: <strong data-eithra-resumo-nome></strong></div>
+              <div class="eithra-portaria-resumo-linha">Entrada para <span data-eithra-resumo-destino></span></div>
             </div>
           </section>
 
           {% for erro in formulario_chegada.non_field_errors %}
             <div class="text-danger small mt-3">{{ erro }}</div>
           {% endfor %}
+          {% if url_da_transcricao %}
+            <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+          {% endif %}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="button" class="btn btn-label-secondary" data-eithra-step-voltar hidden>Voltar</button>
           <button type="button" class="btn btn-primary" data-eithra-step-avancar>Continuar</button>
-          <button type="submit" class="btn btn-primary" data-eithra-step-enviar hidden>Registrar resultado</button>
+          <button type="submit" class="btn btn-primary" data-eithra-step-enviar hidden>Registrar chegada</button>
         </div>
       </form>
     </div>
@@ -591,46 +937,8 @@
     </div>
   {% endif %}
 
-  <div class="modal fade" id="registro-saida" tabindex="-1" role="dialog" aria-labelledby="registro-saida-titulo" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="registro-saida-titulo">Registrar saída</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-        </div>
-        <div class="modal-body">
-          <div class="eithra-autorizador-busca mb-4">
-            <i class="bx bx-search" aria-hidden="true"></i>
-            <input type="search" class="form-control" placeholder="Buscar quem está dentro agora" data-eithra-busca-saida>
-          </div>
-          {% if presencas_abertas %}
-            <div class="eithra-portaria-saidas" data-eithra-lista-saida>
-              {% for acesso in presencas_abertas %}
-                <div class="eithra-portaria-saida-item" data-eithra-saida-item="{{ acesso.nome_para_exibir|lower }} {{ acesso.destino_para_exibir|lower }}">
-                  <div>
-                    <div class="fw-medium">{{ acesso.nome_para_exibir }}</div>
-                    <div class="text-body-secondary small">{{ acesso.destino_para_exibir }} · entrou às {{ acesso.entrada_em|date:"H:i" }}</div>
-                    {% if acesso.do_turno_anterior %}
-                      <span class="badge bg-label-warning mt-1">Turno anterior</span>
-                    {% endif %}
-                  </div>
-                  <form method="post" action="{% url 'portaria:saiu' acesso.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
-                    <button type="submit" class="btn btn-sm btn-label-primary">Saiu</button>
-                  </form>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="eithra-vazio"><i class="bx bx-check-circle" aria-hidden="true"></i>Ninguém está dentro agora.</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
   {{ empresas_conhecidas|json_script:"empresas-conhecidas" }}
+  {{ moradores_por_unidade|json_script:"moradores-por-unidade" }}
 {% endblock %}
 
 {% block scripts %}
@@ -643,13 +951,22 @@
         .toLowerCase();
     }
 
-    function textoDaOpcaoMarcada(grupo) {
-      var marcada = grupo.querySelector("input:checked");
-      if (!marcada) {
-        return "";
+    // Redesenha a lista de "Autorizado por" de um modal. Quem muda o destino
+    // chama isto: a lista é sempre a dos moradores da unidade em vista.
+    function atualizarAutorizadoresDoModal(modal) {
+      if (!modal) {
+        return;
       }
-      var rotulo = marcada.closest("label");
-      return rotulo ? rotulo.textContent.trim() : marcada.value;
+      modal.querySelectorAll("[data-eithra-autorizadores]").forEach(function (bloco) {
+        if (typeof bloco.eithraDesenharAutorizadores === "function") {
+          bloco.eithraDesenharAutorizadores();
+        }
+      });
+      // O destino é um só em toda a tela: mudá-lo no passo 1 muda também o
+      // contexto dos passos seguintes e o resumo que fecha o registro.
+      if (typeof modal.eithraAtualizarDestino === "function") {
+        modal.eithraAtualizarDestino();
+      }
     }
 
     document.querySelectorAll("[data-eithra-contexto-servico]").forEach(function (bloco) {
@@ -666,7 +983,11 @@
             card.classList.toggle("is-selected", radio.checked);
           }
         });
-        bloco.classList.toggle("d-none", valor === "visitante" || !valor);
+        // Empresa e motivo são de quem presta serviço: prestador, fornecedor e
+        // técnico. Visita, delivery e correios não pedem esse bloco.
+        var deServico =
+          valor === "prestador" || valor === "fornecedor" || valor === "tecnico";
+        bloco.classList.toggle("d-none", !deServico);
       }
       radios.forEach(function (radio) {
         radio.addEventListener("change", ajustar);
@@ -686,6 +1007,10 @@
             valor = radio.value;
           }
         });
+        // Delivery e Correios são as entradas que não são visita de pessoa: o
+        // bloco só existe para esses dois tipos.
+        var deEntrega = valor === "delivery" || valor === "correios";
+        bloco.classList.toggle("d-none", !deEntrega);
         bloco.querySelectorAll("[data-eithra-entrega]").forEach(function (campo) {
           campo.classList.toggle("d-none", campo.dataset.eithraEntrega !== valor);
         });
@@ -721,6 +1046,25 @@
           campo.focus();
         }
       });
+    });
+
+    // Os tipos menos frequentes não disputam a tela: ficam a um toque. Um tipo
+    // raro já escolhido precisa estar à vista quando o modal reabre por erro.
+    document.querySelectorAll("[data-eithra-revelar-tipos]").forEach(function (botao) {
+      var modal = botao.closest(".modal");
+      if (!modal) {
+        return;
+      }
+      function revelar() {
+        modal.querySelectorAll("[data-eithra-tipo-raro]").forEach(function (card) {
+          card.classList.remove("d-none");
+        });
+        botao.hidden = true;
+      }
+      botao.addEventListener("click", revelar);
+      if (modal.querySelector("[data-eithra-tipo-raro] input:checked")) {
+        revelar();
+      }
     });
 
     // A busca principal usa o mesmo padrão do modal de chegada: digita,
@@ -806,6 +1150,7 @@
         if (escolhido) {
           escolhido.hidden = true;
         }
+        atualizarAutorizadoresDoModal(modal);
       }
 
       function escolher(opcao) {
@@ -826,6 +1171,7 @@
         }
         resultado.innerHTML = "";
         campo.value = destino ? destino.textContent : "";
+        atualizarAutorizadoresDoModal(modal);
       }
 
       function procurar() {
@@ -928,7 +1274,111 @@
         mapa.querySelectorAll("[data-eithra-unidade-chip]").forEach(function (item) {
           item.classList.toggle("is-selected", item === chip);
         });
+        atualizarAutorizadoresDoModal(modal);
       });
+
+      // Uma nova chegada começa sempre no topo: a primeira linha em vista é o
+      // 16º, nunca o andar em que a escolha anterior parou.
+      function voltarAoTopo() {
+        mapa.scrollTop = 0;
+      }
+      modal.addEventListener("shown.bs.modal", voltarAoTopo);
+      if (modal.classList.contains("show")) {
+        voltarAoTopo();
+      }
+    });
+
+    // "Autorizado por": quem responde pela unidade escolhida, do cadastro real.
+    // Sem morador vinculado a lista fica vazia e o nome é escrito à mão — a
+    // tela nunca inventa quem mora onde. Quando o cadastro real tiver os
+    // moradores, eles aparecem aqui sem nenhuma mudança de tela.
+    var moradoresPorUnidade = {};
+    var memoriaDeMoradores = document.getElementById("moradores-por-unidade");
+    if (memoriaDeMoradores) {
+      try {
+        moradoresPorUnidade = JSON.parse(memoriaDeMoradores.textContent) || {};
+      } catch (erro) {
+        moradoresPorUnidade = {};
+      }
+    }
+
+    document.querySelectorAll("[data-eithra-autorizadores]").forEach(function (bloco) {
+      var modal = bloco.closest(".modal");
+      if (!modal) {
+        return;
+      }
+      var campoUnidade = modal.querySelector("[name='unidade']");
+      var campoPessoa = modal.querySelector("[name='autorizador_pessoa']");
+      var campoNome = modal.querySelector("[name='autorizador_nome']");
+      var lista = bloco.querySelector("[data-eithra-autorizador-lista]");
+      var vazio = bloco.querySelector("[data-eithra-autorizador-vazio]");
+      if (!campoUnidade || !lista) {
+        return;
+      }
+
+      function marcarEscolhido() {
+        lista.querySelectorAll("[data-eithra-autorizador-chip]").forEach(function (chip) {
+          var marcado = Boolean(campoPessoa && campoPessoa.value === chip.dataset.pessoa);
+          chip.classList.toggle("is-selected", marcado);
+          var caixa = chip.querySelector("input");
+          if (caixa) {
+            caixa.checked = marcado;
+          }
+        });
+      }
+
+      function desenhar() {
+        var pessoas = moradoresPorUnidade[campoUnidade.value] || [];
+        lista.innerHTML = "";
+        pessoas.forEach(function (pessoa) {
+          var chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "eithra-opcao-card";
+          chip.dataset.eithraAutorizadorChip = "";
+          chip.dataset.pessoa = pessoa.pk;
+          chip.dataset.nome = pessoa.nome;
+          var caixa = document.createElement("input");
+          caixa.type = "radio";
+          caixa.className = "form-check-input";
+          caixa.name = "autorizador-rotulo";
+          caixa.tabIndex = -1;
+          chip.appendChild(caixa);
+          var texto = document.createElement("span");
+          texto.textContent = pessoa.nome;
+          chip.appendChild(texto);
+          lista.appendChild(chip);
+        });
+        if (vazio) {
+          vazio.hidden = pessoas.length > 0;
+        }
+        marcarEscolhido();
+      }
+
+      bloco.addEventListener("click", function (evento) {
+        var chip = evento.target.closest("[data-eithra-autorizador-chip]");
+        if (chip) {
+          if (campoPessoa) {
+            campoPessoa.value = chip.dataset.pessoa || "";
+          }
+          if (campoNome && chip.dataset.nome) {
+            campoNome.value = chip.dataset.nome;
+          }
+          marcarEscolhido();
+          return;
+        }
+        if (evento.target.closest("[data-eithra-autorizador-outro]")) {
+          if (campoPessoa) {
+            campoPessoa.value = "";
+          }
+          marcarEscolhido();
+          if (campoNome) {
+            campoNome.focus();
+          }
+        }
+      });
+
+      bloco.eithraDesenharAutorizadores = desenhar;
+      desenhar();
     });
 
     var empresasConhecidas = [];
@@ -1052,36 +1502,98 @@
       });
     });
 
-    document.querySelectorAll("[data-eithra-wizard='chegada']").forEach(function (formulario) {
+    // O registro em três decisões, sem trilha de passos: o rodapé diz onde se
+    // está e qual é o próximo toque. O mesmo controlador serve o registro de
+    // chegada e o de esperado — a estrutura é a mesma, e o passo do erro
+    // continua vindo do servidor para o modal reabrir onde a correção precisa
+    // ser vista.
+    document.querySelectorAll("[data-eithra-wizard]").forEach(function (formulario) {
       var paineis = formulario.querySelectorAll("[data-eithra-step-panel]");
-      var passos = formulario.querySelectorAll("[data-eithra-steps] [data-step]");
       var avancar = formulario.querySelector("[data-eithra-step-avancar]");
       var voltar = formulario.querySelector("[data-eithra-step-voltar]");
       var enviar = formulario.querySelector("[data-eithra-step-enviar]");
+      var rotulo = formulario.querySelector("[data-eithra-passo-rotulo]");
       var campoPasso = formulario.querySelector("[name='passo']");
+      var campoUnidade = formulario.querySelector("[name='unidade']");
+      var campoNome = formulario.querySelector("[name='nome']");
+      var destinoNaTela = formulario.querySelector("[data-eithra-autorizador-destino]");
+      var escolhidoNaTela = formulario.querySelector("[data-eithra-autorizador-escolhido]");
       var atual = parseInt((campoPasso && campoPasso.value) || "1", 10);
 
-      function atualizarResumo() {
-        var nome = formulario.querySelector("[name='nome']");
-        var destino = formulario.querySelector("[data-eithra-autorizador-destino]");
-        var tipo = formulario.querySelector("[data-eithra-tipo-acesso]");
-        var status = formulario.querySelector("[data-eithra-status-autorizacao]");
-        var meio = formulario.querySelector("[name='meio_autorizacao']");
-        var autorizador = formulario.querySelector("[name='autorizador_nome']");
-        var resumo = {
-          nome: nome ? nome.value.trim() : "",
-          tipo: tipo ? textoDaOpcaoMarcada(tipo) : "",
-          destino: destino && !destino.closest("[hidden]") ? destino.textContent.trim() : "",
-          status: status ? textoDaOpcaoMarcada(status) : "",
-          meio: meio && meio.selectedIndex >= 0 ? meio.options[meio.selectedIndex].text : "",
-          autorizador: autorizador ? autorizador.value.trim() : ""
-        };
-        formulario.querySelectorAll("[data-eithra-resumo]").forEach(function (campo) {
-          campo.textContent = resumo[campo.dataset.eithraResumo] || "—";
-        });
-        if (enviar) {
-          enviar.textContent = resumo.status === "Autorizado" ? "Registrar entrada" : "Registrar resultado";
+      // O destino escolhido, dito em uma palavra: a unidade do cadastro quando
+      // ela existe (o mesmo rótulo do mapa e da busca), ou o rótulo que a busca
+      // escreveu na tela.
+      function textoDoDestino() {
+        if (escolhidoNaTela && escolhidoNaTela.hidden) {
+          return "";
         }
+        if (campoUnidade && campoUnidade.value) {
+          var chip = formulario.querySelector(
+            '[data-eithra-unidade-chip][data-unidade="' + campoUnidade.value + '"]'
+          );
+          if (chip) {
+            return chip.dataset.rotulo || chip.textContent.trim();
+          }
+        }
+        var selecionado = formulario.querySelector("[data-eithra-unidade-chip].is-selected");
+        if (selecionado) {
+          return selecionado.dataset.rotulo || selecionado.textContent.trim();
+        }
+        return destinoNaTela ? destinoNaTela.textContent.trim() : "";
+      }
+
+      // O tipo de acesso escolhido, como está escrito no cartão que o porteiro
+      // tocou — é o mesmo texto que o contexto e o resumo repetem.
+      function textoDoTipo() {
+        var tipo = formulario.querySelector("input[name$='tipo_acesso']:checked");
+        var cartao = tipo ? tipo.closest(".eithra-opcao-card") : null;
+        return cartao ? cartao.textContent.trim() : "";
+      }
+
+      // Os passos 2 e 3 mostram para onde a chegada vai: quem já escolheu não
+      // precisa lembrar de cabeça, e troca de destino sem recomeçar.
+      function atualizarContexto() {
+        var texto = textoDoDestino();
+        formulario.querySelectorAll("[data-eithra-contexto-destino]").forEach(function (bloco) {
+          bloco.hidden = !texto;
+        });
+        formulario.querySelectorAll("[data-eithra-contexto-destino-rotulo]").forEach(function (alvo) {
+          alvo.textContent = texto;
+        });
+        formulario.querySelectorAll("[data-eithra-contexto-tipo]").forEach(function (alvo) {
+          alvo.textContent = textoDoTipo();
+        });
+        // Quem chegou acompanha o contexto do passo 3: a decisão de quem
+        // autorizou se toma sabendo para quem e de quem é a visita.
+        var nome = campoNome ? campoNome.value.trim() : "";
+        formulario.querySelectorAll("[data-eithra-contexto-nome]").forEach(function (alvo) {
+          alvo.textContent = nome;
+          alvo.hidden = !nome;
+        });
+      }
+
+      // O passo 3 fecha com o que será registrado, em duas linhas: tipo e nome
+      // de quem chegou, e a unidade de entrada.
+      function atualizarResumo() {
+        var resumo = formulario.querySelector("[data-eithra-resumo-chegada]");
+        if (!resumo) {
+          return;
+        }
+        var nome = campoNome ? campoNome.value.trim() : "";
+        var texto = textoDoDestino();
+        var alvoTipo = resumo.querySelector("[data-eithra-resumo-tipo]");
+        var alvoNome = resumo.querySelector("[data-eithra-resumo-nome]");
+        var alvoDestino = resumo.querySelector("[data-eithra-resumo-destino]");
+        if (alvoTipo) {
+          alvoTipo.textContent = textoDoTipo() || "Chegada";
+        }
+        if (alvoNome) {
+          alvoNome.textContent = nome;
+        }
+        if (alvoDestino) {
+          alvoDestino.textContent = texto;
+        }
+        resumo.hidden = !nome || !texto;
       }
 
       function mostrar(passo) {
@@ -1092,41 +1604,176 @@
         paineis.forEach(function (painel) {
           painel.hidden = painel.dataset.eithraStepPanel !== String(passo);
         });
-        passos.forEach(function (item) {
-          var numero = parseInt(item.dataset.step, 10);
-          item.classList.toggle("is-active", numero === passo);
-          item.classList.toggle("is-complete", numero < passo);
+        if (rotulo) {
+          rotulo.textContent = "Passo " + passo + " de 3";
+        }
+        if (voltar) {
+          voltar.hidden = passo === 1;
+        }
+        if (avancar) {
+          avancar.hidden = passo === 3;
+        }
+        if (enviar) {
+          enviar.hidden = passo !== 3;
+        }
+        atualizarContexto();
+        atualizarResumo();
+      }
+
+      if (avancar) {
+        avancar.addEventListener("click", function () {
+          if (atual < 3) {
+            mostrar(atual + 1);
+          }
         });
-        voltar.hidden = passo === 1;
-        avancar.hidden = passo === 3;
-        enviar.hidden = passo !== 3;
-        if (passo === 3) {
-          atualizarResumo();
+      }
+      if (voltar) {
+        voltar.addEventListener("click", function () {
+          if (atual > 1) {
+            mostrar(atual - 1);
+          }
+        });
+      }
+
+      // "Trocar", no topo dos passos 2 e 3, devolve à escolha do destino. O que
+      // já foi dito continua dito: o passo 1 reabre com o destino em vista.
+      formulario.querySelectorAll("[data-eithra-ir-para]").forEach(function (botao) {
+        botao.addEventListener("click", function () {
+          var alvo = parseInt(botao.dataset.eithraIrPara, 10);
+          if (!isNaN(alvo)) {
+            mostrar(alvo);
+          }
+        });
+      });
+
+      // "Chegou de veículo?" é uma pergunta de sim ou não: a placa só existe
+      // para quem respondeu sim, e sai da tela — e do campo — ao responder não.
+      var campoPlaca = formulario.querySelector("[name='placa']");
+      var blocoPlaca = formulario.querySelector('[data-eithra-revelado="placa"]');
+      var veiculoSim = formulario.querySelector("[data-eithra-veiculo-sim]");
+      var veiculoNao = formulario.querySelector("[data-eithra-veiculo-nao]");
+
+      function marcarVeiculo(comVeiculo) {
+        if (veiculoSim) {
+          veiculoSim.classList.toggle("is-selected", comVeiculo);
+        }
+        if (veiculoNao) {
+          veiculoNao.classList.toggle("is-selected", !comVeiculo);
+        }
+        if (blocoPlaca) {
+          blocoPlaca.classList.toggle("d-none", !comVeiculo);
+        }
+        if (!comVeiculo && campoPlaca) {
+          campoPlaca.value = "";
         }
       }
 
-      avancar.addEventListener("click", function () {
-        if (atual < 3) {
-          mostrar(atual + 1);
-        }
-      });
-      voltar.addEventListener("click", function () {
-        if (atual > 1) {
-          mostrar(atual - 1);
-        }
-      });
-      mostrar(isNaN(atual) ? 1 : atual);
-    });
+      if (veiculoSim) {
+        veiculoSim.addEventListener("click", function () {
+          marcarVeiculo(true);
+          if (campoPlaca) {
+            campoPlaca.focus();
+          }
+        });
+      }
+      if (veiculoNao) {
+        veiculoNao.addEventListener("click", function () {
+          marcarVeiculo(false);
+        });
+      }
 
-    document.querySelectorAll("[data-eithra-busca-saida]").forEach(function (campo) {
-      var modal = campo.closest(".modal");
-      var itens = modal ? modal.querySelectorAll("[data-eithra-saida-item]") : [];
-      campo.addEventListener("input", function () {
-        var termo = semAcento(campo.value);
-        itens.forEach(function (item) {
-          item.hidden = termo && semAcento(item.dataset.eithraSaidaItem).indexOf(termo) === -1;
+      // A foto é tirada ou escolhida, e não pedida: a prévia mostra o que
+      // seguiria com a chegada, e ela pode ser removida antes de confirmar.
+      var campoFoto = formulario.querySelector("[data-eithra-foto-entrada]");
+      var abrirFoto = formulario.querySelector("[data-eithra-foto-tirar]");
+      var removerFoto = formulario.querySelector("[data-eithra-foto-remover]");
+      var previaFoto = formulario.querySelector("[data-eithra-foto-previa]");
+      var urlDaPrevia = null;
+
+      function limparPrevia() {
+        if (urlDaPrevia) {
+          URL.revokeObjectURL(urlDaPrevia);
+          urlDaPrevia = null;
+        }
+        if (previaFoto) {
+          previaFoto.removeAttribute("src");
+          previaFoto.hidden = true;
+        }
+        if (removerFoto) {
+          removerFoto.hidden = true;
+        }
+      }
+
+      if (abrirFoto && campoFoto) {
+        abrirFoto.addEventListener("click", function () {
+          campoFoto.click();
+        });
+      }
+      if (campoFoto) {
+        campoFoto.addEventListener("change", function () {
+          var arquivo = campoFoto.files && campoFoto.files[0];
+          if (!arquivo) {
+            limparPrevia();
+            return;
+          }
+          if (urlDaPrevia) {
+            URL.revokeObjectURL(urlDaPrevia);
+          }
+          urlDaPrevia = URL.createObjectURL(arquivo);
+          if (previaFoto) {
+            previaFoto.src = urlDaPrevia;
+            previaFoto.hidden = false;
+          }
+          if (removerFoto) {
+            removerFoto.hidden = false;
+          }
+        });
+      }
+      if (removerFoto && campoFoto) {
+        removerFoto.addEventListener("click", function () {
+          campoFoto.value = "";
+          limparPrevia();
+        });
+      }
+
+      formulario.querySelectorAll("input[name$='tipo_acesso']").forEach(function (radio) {
+        radio.addEventListener("change", function () {
+          atualizarContexto();
+          atualizarResumo();
         });
       });
+      if (campoNome) {
+        campoNome.addEventListener("input", function () {
+          atualizarContexto();
+          atualizarResumo();
+        });
+      }
+
+      // Trocar o destino pelo mapa ou pela busca também atualiza o que os
+      // passos seguintes mostram: o destino é um só na tela inteira.
+      var modal = formulario.closest(".modal") || formulario;
+      modal.eithraAtualizarDestino = function () {
+        atualizarContexto();
+        atualizarResumo();
+      };
+
+      // A observação é opcional: o link revela o campo, e pode ser recolhido
+      // de novo sem apagar o que já foi escrito.
+      var revelarObservacao = formulario.querySelector("[data-eithra-revelar-observacao]");
+      var campoObservacao = formulario.querySelector("[data-eithra-observacao-campo]");
+      if (revelarObservacao && campoObservacao) {
+        revelarObservacao.addEventListener("click", function () {
+          campoObservacao.hidden = !campoObservacao.hidden;
+          if (!campoObservacao.hidden) {
+            var textarea = campoObservacao.querySelector("textarea");
+            if (textarea) {
+              textarea.focus();
+            }
+          }
+        });
+      }
+
+      mostrar(isNaN(atual) ? 1 : atual);
     });
 
     // Corrigir devolve ao campo o relato que originou a leitura, para ser
@@ -1150,201 +1797,10 @@
       });
     }
 
-    // Ditar o que aconteceu: a voz só produz texto. Terminada a transcrição, o
-    // relato cai no mesmo campo e o caminho daqui para a frente é o de sempre —
-    // a pessoa revisa e toca em "Entender". O áudio não interpreta nem registra
-    // nada: ele vira texto e é descartado.
-    var botaoDitar = document.querySelector("[data-eithra-ditar]");
-    var recadoDitar = document.querySelector("[data-eithra-ditar-recado]");
-    if (botaoDitar && relatoForm && recadoDitar) {
-      var campoDitar = relatoForm.querySelector("[data-eithra-campo]");
-      var tokenDitar = relatoForm.querySelector("input[name='csrfmiddlewaretoken']");
-      var condominioDitar = relatoForm.querySelector("input[name='condominio']");
-      var gravadorDitar = null;
-      var fluxoDitar = null;
-      var pedacosDitar = [];
-
-      function avisar(texto, tom) {
-        recadoDitar.textContent = texto || "";
-        recadoDitar.hidden = !texto;
-        recadoDitar.classList.toggle("text-danger", tom === "erro");
-        recadoDitar.classList.toggle("text-success", tom === "pronto");
-      }
-
-      function repousar() {
-        botaoDitar.disabled = false;
-        botaoDitar.classList.remove("eithra-portaria-ditar--ouvindo");
-        botaoDitar.setAttribute("aria-pressed", "false");
-        botaoDitar.setAttribute("aria-label", "Ditar o que aconteceu");
-        botaoDitar.setAttribute("title", "Ditar o que aconteceu");
-        botaoDitar.querySelector("i").className = "bx bx-microphone";
-      }
-
-      // O microfone é liberado assim que a gravação acaba — nada fica aberto
-      // enquanto a transcrição acontece.
-      function liberarMicrofone() {
-        if (!fluxoDitar) {
-          return;
-        }
-        fluxoDitar.getTracks().forEach(function (faixa) {
-          faixa.stop();
-        });
-        fluxoDitar = null;
-      }
-
-      // Só os formatos que o backend conhece, na ordem de preferência: o
-      // primeiro que este navegador souber gravar é o que vai.
-      function formatoEscolhido() {
-        var opcoes = [
-          "audio/webm;codecs=opus",
-          "audio/webm",
-          "audio/ogg;codecs=opus",
-          "audio/ogg",
-          "audio/mp4"
-        ];
-        if (typeof window.MediaRecorder.isTypeSupported !== "function") {
-          return "";
-        }
-        for (var i = 0; i < opcoes.length; i++) {
-          if (window.MediaRecorder.isTypeSupported(opcoes[i])) {
-            return opcoes[i];
-          }
-        }
-        return "";
-      }
-
-      function extensaoDo(tipo) {
-        if (tipo.indexOf("ogg") !== -1) {
-          return "ogg";
-        }
-        if (tipo.indexOf("mp4") !== -1) {
-          return "m4a";
-        }
-        return "webm";
-      }
-
-      function transcrever(blob) {
-        var dados = new FormData();
-        dados.append("audio", blob, "relato." + extensaoDo(blob.type || ""));
-        if (condominioDitar) {
-          dados.append("condominio", condominioDitar.value);
-        }
-        botaoDitar.disabled = true;
-        botaoDitar.classList.remove("eithra-portaria-ditar--ouvindo");
-        botaoDitar.querySelector("i").className = "bx bx-loader-alt bx-spin";
-        avisar("Transcrevendo…", "");
-        fetch(botaoDitar.dataset.eithraDitarUrl, {
-          method: "POST",
-          body: dados,
-          headers: tokenDitar ? { "X-CSRFToken": tokenDitar.value } : {}
-        })
-          .then(function (resposta) {
-            return resposta.json();
-          })
-          .then(function (leitura) {
-            repousar();
-            if (leitura && leitura.texto) {
-              campoDitar.value = leitura.texto;
-              campoDitar.focus();
-              avisar("Transcrição pronta. Revise e toque em Entender.", "pronto");
-              return;
-            }
-            avisar(
-              (leitura && leitura.mensagem) ||
-                "Não foi possível entender o áudio agora. Tente de novo ou escreva.",
-              "erro"
-            );
-          })
-          .catch(function () {
-            repousar();
-            avisar("Não foi possível entender o áudio agora. Tente de novo ou escreva.", "erro");
-          });
-      }
-
-      function comecar(formato) {
-        botaoDitar.disabled = false;
-        try {
-          gravadorDitar = new window.MediaRecorder(
-            fluxoDitar,
-            formato ? { mimeType: formato } : undefined
-          );
-        } catch (erro) {
-          liberarMicrofone();
-          repousar();
-          avisar("Não foi possível gravar neste navegador. Escreva o que aconteceu.", "erro");
-          return;
-        }
-        pedacosDitar = [];
-        gravadorDitar.addEventListener("dataavailable", function (evento) {
-          if (evento.data && evento.data.size) {
-            pedacosDitar.push(evento.data);
-          }
-        });
-        gravadorDitar.addEventListener("stop", function () {
-          var tipo = gravadorDitar ? gravadorDitar.mimeType || formato : formato;
-          gravadorDitar = null;
-          liberarMicrofone();
-          transcrever(new Blob(pedacosDitar, tipo ? { type: tipo } : undefined));
-        });
-        gravadorDitar.start();
-        botaoDitar.classList.add("eithra-portaria-ditar--ouvindo");
-        botaoDitar.setAttribute("aria-pressed", "true");
-        botaoDitar.setAttribute("aria-label", "Parar a gravação");
-        botaoDitar.setAttribute("title", "Parar a gravação");
-        botaoDitar.querySelector("i").className = "bx bx-stop-circle";
-        avisar("Ouvindo… fale o que aconteceu e toque para parar.", "");
-      }
-
-      function pararGravacao() {
-        if (gravadorDitar && gravadorDitar.state === "recording") {
-          gravadorDitar.stop();
-          return;
-        }
-        liberarMicrofone();
-        repousar();
-      }
-
-      if (
-        typeof window.MediaRecorder !== "undefined" &&
-        window.navigator.mediaDevices &&
-        typeof window.navigator.mediaDevices.getUserMedia === "function"
-      ) {
-        // Só agora o microfone se oferece: se o navegador não grava, ele
-        // continua escondido e o relato por texto não muda em nada.
-        botaoDitar.hidden = false;
-      }
-
-      botaoDitar.addEventListener("click", function () {
-        if (gravadorDitar && gravadorDitar.state === "recording") {
-          pararGravacao();
-          return;
-        }
-        // A permissão só é pedida aqui, depois do clique — nunca ao abrir a tela.
-        botaoDitar.disabled = true;
-        window.navigator.mediaDevices
-          .getUserMedia({ audio: true })
-          .then(function (fluxo) {
-            fluxoDitar = fluxo;
-            var formato = formatoEscolhido();
-            if (!formato) {
-              liberarMicrofone();
-              repousar();
-              avisar("Este navegador não grava num formato que o Eithra entende. Escreva o que aconteceu.", "erro");
-              return;
-            }
-            comecar(formato);
-          })
-          .catch(function (erro) {
-            liberarMicrofone();
-            repousar();
-            avisar(
-              erro && erro.name === "NotAllowedError"
-                ? "O microfone não foi liberado. Você pode escrever o que aconteceu."
-                : "Não foi possível usar o microfone. Você pode escrever o que aconteceu.",
-              "erro"
-            );
-          });
-      });
-    }
+    // Ditar o que aconteceu usa o controlador compartilhado de voz
+    // (static/js/eithra-ditar.js): a tela principal, o destino e o nome de quem
+    // chegou ditam pelo mesmo mecanismo, sem um segundo motor de gravação só
+    // para a Portaria.
   </script>
+  <script src="{% static 'js/eithra-ditar.js' %}"></script>
 {% endblock %}

@@ -1,6 +1,6 @@
 """A janela do acompanhamento: mais larga, mais baixa, os mesmos campos.
 
-O acompanhamento é uma ação curta — seis campos que se leem dois a dois — e a
+O acompanhamento é uma ação curta — sete campos que se leem dois a dois — e a
 janela que o corrige é só composição sobre o que já existia. Estes testes travam
 esse contrato: a janela continua abrindo pela mesma ação, com os mesmos campos,
 no mesmo endereço, com o corpo rolando em vez da página inteira, e sem inventar
@@ -78,10 +78,10 @@ class ModalDeAcompanhamentoTests(TestCase):
         """Uma coluna no celular, duas no desktop — o par vem do próprio tema."""
         janela = self._janela()
         self.assertIn("row g-3", janela)
-        self.assertEqual(janela.count("col-12 col-lg-6"), 6)
+        self.assertEqual(janela.count("col-12 col-lg-6"), 7)
         # O respiro entre os campos vem do vão da grade, não de margem em cada um.
         self.assertNotIn("mb-6", janela)
-        self.assertEqual(janela.count("mb-0"), 6)
+        self.assertEqual(janela.count("mb-0"), 7)
 
     def test_a_janela_nao_cria_card_interno(self):
         janela = self._janela()
@@ -102,7 +102,7 @@ class ModalDeAcompanhamentoTests(TestCase):
 
     # -- nada foi removido -----------------------------------------------------
 
-    def test_os_seis_campos_continuam_na_janela(self):
+    def test_os_campos_do_formulario_continuam_na_janela(self):
         janela = self._janela()
         for campo in AcompanhamentoDaDemandaForm().fields:
             self.assertIn(f'name="{campo}"', janela)

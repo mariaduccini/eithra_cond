@@ -1,16 +1,19 @@
 """Registro inteligente: quem relata o fato não classifica a demanda.
 
 O princípio é um só, e este arquivo o prende por partes: a pessoa conta o que
-aconteceu; o EITHRA lê, propõe a classificação e aplica a política de prazo; a
-tela mostra o que foi identificado, para conferência. A pessoa só intervém
-quando há ambiguidade real, quando falta informação ou quando quer corrigir.
+aconteceu; o EITHRA lê, calcula a prioridade pela regra estruturada e propõe a
+classificação; a tela mostra o que foi identificado, para conferência. A pessoa
+só intervém quando há ambiguidade real, quando falta informação ou quando quer
+corrigir — inclusive a prioridade.
 
 Nenhuma regra crítica vive no navegador. A decisão de avançar depois da fala, a
-classificação, a prioridade e o prazo são do domínio: o JavaScript, quando
-existe, apenas aperta o mesmo Continuar que a pessoa apertaria.
+classificação e a prioridade são do domínio: o JavaScript, quando existe, apenas
+aperta o mesmo Continuar que a pessoa apertaria. O prazo não é criado
+automaticamente: a leitura nunca inventa uma data, e a política de prazo segue
+sem uso automático no fluxo.
 """
 import json
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -321,7 +324,7 @@ class ClassificacaoAutomaticaTests(TestCase):
 
 
 class PrioridadeEscolhidaPeloUsuarioTests(TestCase):
-    """§1 e §10: o peso é escolha de quem registra, não leitura do relato."""
+    """§1 e §4: o peso chega do motor; a correção humana prevalece."""
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
@@ -341,26 +344,33 @@ class PrioridadeEscolhidaPeloUsuarioTests(TestCase):
 
         self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.BAIXA)
 
-    def test_o_relato_urgente_nao_sobrepoe_a_escolha_humana(self):
+    def test_a_correcao_humana_sobrepoe_o_peso_do_motor(self):
         criar_equipamento(self.condominio, "Portão social")
 
-        # O mesmo relato, sozinho, antes derivaria "Alta". Com a escolha
-        # explícita de "Normal", é "Normal" que fica gravado: a leitura do
-        # relato deixou de decidir o peso da demanda.
+        # O motor sustenta "Alta" para o portão essencial parado; a correção
+        # explícita de "Média" prevalece, e é ela que fica gravada.
         self._registrar("O portão social parou.", prioridade=PrioridadeDemanda.NORMAL)
 
         self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.NORMAL)
 
-    def test_sem_escolha_o_peso_fica_no_padrao_do_dominio(self):
+    def test_sem_escolha_o_peso_vem_do_motor(self):
         criar_equipamento(self.condominio, "Portão social")
 
+        # Portão essencial parado: a regra estruturada sustenta "Alta" sem que
+        # ninguém precise escolher a prioridade.
         self._registrar("O portão social parou.")
 
-        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.NORMAL)
+        self.assertEqual(Demanda.objects.get().prioridade, PrioridadeDemanda.ALTA)
 
 
-class PrazoPelaPoliticaTests(TestCase):
-    """§7, §8 e §9: o prazo é da política determinística — a IA não inventa data."""
+class PrazoNaoAutomaticoTests(TestCase):
+    """§7 e §8-E: o prazo não é criado automaticamente — nem pela prioridade.
+
+    A regra de prazo continua configurável, mas fora do fluxo de registro: a
+    leitura nunca inventa uma data, e a política não a deriva. O que a pessoa
+    informar na tela vale; sem informação, a demanda segue sem prazo, mesmo com
+    a configuração preenchida.
+    """
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
@@ -383,46 +393,31 @@ class PrazoPelaPoliticaTests(TestCase):
         dados.update(extra)
         return self.client.post(reverse("demandas:criar"), dados)
 
-    def test_sem_regra_configurada_o_prazo_nao_e_inventado(self):
+    def test_a_leitura_nao_inventa_prazo(self):
         leitura = derivacao.interpretar(
             RELATO_COM_SAUDACAO, condominio=self.condominio, hoje=self.hoje
         )
 
         self.assertIsNone(leitura.prazo)
         self.assertEqual(leitura.motivo_do_prazo, "")
+        self.assertEqual(
+            self._descricao(RELATO_COM_SAUDACAO).context["sugestoes"]["prazo"]["valor"],
+            "",
+        )
 
-        sugestoes = self._descricao(RELATO_COM_SAUDACAO).context["sugestoes"]
-        self.assertEqual(sugestoes["prazo"]["valor"], "")
-
+    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 15, "alta": 5})
+    def test_a_configuracao_de_prazo_nao_cria_data_no_registro(self):
+        # Mesmo com a política configurada, o registro não deriva data: o
+        # EITHRA_DEMANDAS_PRAZO_DIAS segue sem uso automático no fluxo.
         self._registrar(RELATO_COM_SAUDACAO)
+
         self.assertIsNone(Demanda.objects.get().prazo)
 
-    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 15, "alta": 5})
-    def test_o_prazo_vem_dos_dias_configurados_para_a_prioridade(self):
-        leitura = derivacao.interpretar(
-            RELATO_COM_SAUDACAO, condominio=self.condominio, hoje=self.hoje
-        )
-
-        self.assertEqual(leitura.prioridade, PrioridadeDemanda.NORMAL)
-        self.assertEqual(leitura.prazo, self.hoje + timedelta(days=15))
-        self.assertIn("15 dias", leitura.motivo_do_prazo)
-
-    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 15, "alta": 5})
-    def test_a_data_do_registro_mais_a_regra_viram_o_prazo_da_demanda(self):
-        self._registrar(RELATO_COM_SAUDACAO)
-
-        self.assertEqual(
-            Demanda.objects.get().prazo, self.hoje + timedelta(days=15)
-        )
-
-    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 15})
-    def test_a_tela_diz_que_o_prazo_veio_da_regra(self):
-        esperado = (self.hoje + timedelta(days=15)).strftime("%d/%m/%Y")
-
+    def test_a_tela_diz_a_ausencia_de_prazo_em_linguagem_humana(self):
         sugestoes = self._descricao(RELATO_COM_SAUDACAO).context["sugestoes"]
 
-        self.assertEqual(sugestoes["prazo"]["valor"], esperado)
-        self.assertEqual(sugestoes["prazo"]["origem"], "Derivado por regra")
+        self.assertEqual(sugestoes["prazo"]["texto"], "Sem prazo definido")
+        self.assertNotEqual(sugestoes["prazo"]["origem"], "Derivado por regra")
 
     def test_a_leitura_semantica_nao_opina_sobre_data_nem_peso(self):
         """A IA entende o relato; ela não define SLA nem prioridade (§8)."""
@@ -476,8 +471,9 @@ class CorrecaoHumanaTests(TestCase):
         self.assertEqual(corrigida.tipo_problema, TipoProblema.ELETRICA)
         self.assertEqual(seguinte.tipo_problema, TipoProblema.VAZAMENTO)
 
-    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 15})
-    def test_o_prazo_corrigido_prevalece_sobre_a_regra(self):
+    def test_o_prazo_informado_pela_pessoa_e_o_que_vale(self):
+        # O prazo não é criado automaticamente, mas o que a pessoa informa na
+        # tela vale: a data escolhida é a que fica gravada.
         escolhido = date(2026, 12, 1)
 
         self._registrar("O portão externo está fazendo barulho quando abre.",
@@ -526,9 +522,10 @@ class SinteseDaEtapaDeInformacoesTests(TestCase):
     """§6, §8, §9 e §11: a etapa apresenta o resultado — não abre um formulário.
 
     O relato da lâmpada queimada é o exemplo de aceite: o EITHRA lê o lugar e o
-    tipo, calcula o peso e o prazo pela política, e o equipamento — que o
+    tipo, calcula o peso pela regra estruturada, e o equipamento — que o
     cadastro não tem — simplesmente não aparece. Nada disso é perguntado; a
-    correção fica atrás de uma ação discreta.
+    correção fica atrás de uma ação discreta. O prazo não é derivado: a etapa
+    diz a ausência, em linguagem humana.
     """
 
     LAMPADA = "Uma das lâmpadas da Garagem G2 está queimada."
@@ -548,10 +545,8 @@ class SinteseDaEtapaDeInformacoesTests(TestCase):
         dados.update(extra)
         return self.client.post(reverse("demandas:criar"), dados)
 
-    @override_settings(EITHRA_DEMANDAS_PRAZO_DIAS={"normal": 20})
     def test_a_sintese_do_exemplo_de_aceite(self):
         criar_local(self.condominio, "Garagem G2")
-        hoje = timezone.localdate()
 
         resposta = self._descricao(self.LAMPADA)
         sugestoes = resposta.context["sugestoes"]
@@ -560,10 +555,11 @@ class SinteseDaEtapaDeInformacoesTests(TestCase):
         self.assertEqual(
             sugestoes["tipo_problema"]["valor"], TipoProblema.ILUMINACAO.label
         )
+        # O peso é calculado pelo motor: a lâmpada queimada não eleva nada, e
+        # sai "Média" sem que ninguém precise escolher.
         self.assertEqual(sugestoes["prioridade"]["valor"], PrioridadeDemanda.NORMAL.label)
-        prazo = (hoje + timedelta(days=20)).strftime("%d/%m/%Y")
-        self.assertEqual(sugestoes["prazo"]["texto"], f"Prazo 20 dias · {prazo}")
-        self.assertEqual(sugestoes["prazo"]["origem"], "Derivado por regra")
+        # Nenhum prazo é derivado: a etapa diz a ausência, em linguagem humana.
+        self.assertEqual(sugestoes["prazo"]["texto"], "Sem prazo definido")
         self.assertEqual(sugestoes["responsavel"]["valor"], "Maria Fernanda Duccini")
 
         # A síntese é resultado, não formulário: nada de classificar.
@@ -571,8 +567,8 @@ class SinteseDaEtapaDeInformacoesTests(TestCase):
         self.assertContains(resposta, "Revise apenas se algo precisar ser corrigido.")
         self.assertContains(resposta, "Ajustar informações")
 
-        # A prioridade é a exceção: a tela pergunta, e o campo já abre com o
-        # padrão do domínio selecionado — é essa escolha que segue adiante.
+        # O peso chega preenchido e já selecionado; o campo segue disponível
+        # para a correção de quem tem permissão.
         wizard = resposta.content.decode().split('id="registrar-demanda"', 1)[1]
         self.assertIn('name="prioridade"', wizard)
         self.assertIn('value="normal" selected', wizard)

@@ -1,0 +1,317 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Transparência financeira · Eithra{% endblock %}
+
+{% block content %}
+  <div class="eithra-transparencia">
+    <nav class="eithra-breadcrumb" aria-label="Caminho">
+      <a href="{% url 'core:home' %}">Início</a>
+      <i class="bx bx-chevron-right" aria-hidden="true"></i>
+      <span>Transparência financeira</span>
+    </nav>
+
+    <header class="eithra-pagina-topo">
+      <div class="eithra-pagina-topo-texto">
+        <span class="eithra-eyebrow">{{ balanco.condominio.nome }}</span>
+        <h1 class="eithra-pagina-titulo">Transparência financeira</h1>
+        <p class="eithra-pagina-sub">
+          Entenda, de forma simples, como foi o mês de {{ competencia }}.
+        </p>
+      </div>
+    </header>
+
+    <form class="eithra-filtros-financeiros" method="get">
+      <label for="eithra-periodo">Período</label>
+      <select id="eithra-periodo" name="periodo">
+        {% for periodo in periodos %}
+          <option value="{{ periodo.pk }}"{% if periodo.pk == balanco.pk %} selected{% endif %}>
+            {{ periodo.competencia|date:"F Y" }}
+          </option>
+        {% endfor %}
+      </select>
+      <button type="submit">Ver período</button>
+    </form>
+
+    <div class="eithra-financeiro-valores eithra-financeiro-valores--detalhe">
+      <div class="eithra-financeiro-valor eithra-financeiro-valor--teal">
+        <span>Quanto entrou</span>
+        <strong>{% if receitas %}{{ receitas }}{% else %}Não informado{% endif %}</strong>
+      </div>
+      <div class="eithra-financeiro-valor eithra-financeiro-valor--lilas">
+        <span>Quanto foi gasto</span>
+        <strong>{% if despesas %}{{ despesas }}{% else %}Não informado{% endif %}</strong>
+      </div>
+      <div class="eithra-financeiro-valor eithra-financeiro-valor--menta">
+        <span>Saldo do período</span>
+        <strong>{% if saldo_periodo %}{{ saldo_periodo }}{% else %}Não informado{% endif %}</strong>
+      </div>
+      <div class="eithra-financeiro-valor eithra-financeiro-valor--neutro">
+        <span>Já comprometido</span>
+        <strong>{% if compromisso.valor %}{{ compromisso.valor }}{% else %}Não informado{% endif %}</strong>
+      </div>
+    </div>
+    <p class="eithra-financeiro-explicacao">
+      Valores transcritos do balanço mensal confirmado. O saldo do período é a diferença entre o que entrou e o que foi gasto. "Já comprometido" reúne contratos com cobrança mensal em vigor — valores que o condomínio já assumiu e ainda precisará pagar; não indica parcelas já pagas e não entra no saldo.
+    </p>
+    {% if compromisso.quantidade %}
+      <p class="eithra-transparencia-nota">
+        <strong>{{ compromisso.quantidade }} contrato{{ compromisso.quantidade|pluralize }} com cobrança mensal em vigor.</strong>
+        A existência do contrato mostra a obrigação assumida, e não o pagamento de cada parcela.
+      </p>
+    {% endif %}
+    {% if gasto_por_unidade %}
+      <p class="eithra-transparencia-nota">
+        Os gastos do período equivalem a aproximadamente <strong>{{ gasto_por_unidade }}</strong> por unidade.
+        <strong>Média simples.</strong> Não representa necessariamente o valor da cota condominial de cada unidade.
+      </p>
+    {% endif %}
+
+    <div class="eithra-transparencia-grade">
+      <section class="eithra-transparencia-secao" aria-labelledby="eithra-categorias-titulo">
+        <div class="eithra-transparencia-secao-topo">
+          <span class="eithra-financeiro-icone" aria-hidden="true"><i class="bx bx-pie-chart-alt-2"></i></span>
+          <div>
+            <h2 id="eithra-categorias-titulo">Para onde foi o dinheiro</h2>
+            <p>Despesas agrupadas por categoria neste balanço.</p>
+          </div>
+        </div>
+
+        {% if categorias %}
+          <ul class="eithra-categorias-lista">
+            {% for categoria in categorias %}
+              <li>
+                {% if pode_ver_lancamentos %}
+                  <a href="?categoria={{ categoria.codigo|urlencode }}#gastos-detalhados">{{ categoria.nome }}</a>
+                {% else %}
+                  <span>{{ categoria.nome }}</span>
+                {% endif %}
+                <strong>{{ categoria.valor }}</strong>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="eithra-financeiro-vazio">
+            Este balanço não traz despesas classificadas por categoria.
+          </p>
+        {% endif %}
+      </section>
+
+      <section class="eithra-transparencia-secao" aria-labelledby="eithra-comparacao-titulo">
+        <div class="eithra-transparencia-secao-topo">
+          <span class="eithra-financeiro-icone eithra-financeiro-icone--lilas" aria-hidden="true"><i class="bx bx-trending-up"></i></span>
+          <div>
+            <h2 id="eithra-comparacao-titulo">Comparando com o mês anterior</h2>
+            <p>Consideramos apenas balanços confirmados para comparação.</p>
+          </div>
+        </div>
+
+        {% if balanco_anterior %}
+          <div class="eithra-comparacao">
+            <span>{{ competencia_anterior }}</span>
+            {% if despesas_anteriores %}
+              <strong>{{ despesas_anteriores }}</strong>
+            {% else %}
+              <strong>Despesas não informadas</strong>
+            {% endif %}
+            {% if variacao %}
+              <p>
+                As despesas {{ variacao.direcao }}{% if variacao.percentual %} {{ variacao.percentual }}%{% endif %}.
+                {% if variacao.diferenca != "R$ 0,00" %}Diferença de {{ variacao.diferenca }} em relação ao mês anterior.{% endif %}
+              </p>
+            {% else %}
+              <p>Não há valores suficientes nos dois balanços para calcular a variação.</p>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="eithra-financeiro-vazio">
+            Ainda não há um balanço confirmado do mês anterior para comparar.
+          </p>
+        {% endif %}
+      </section>
+    </div>
+
+    <div class="eithra-transparencia-grade">
+      <section class="eithra-transparencia-secao" aria-labelledby="eithra-naturezas-titulo">
+        <div class="eithra-transparencia-secao-topo">
+          <span class="eithra-financeiro-icone" aria-hidden="true"><i class="bx bx-category"></i></span>
+          <div>
+            <h2 id="eithra-naturezas-titulo">Despesas do dia a dia e gastos extraordinários</h2>
+            <p>A separação que o próprio demonstrativo já traz, sem reclassificar nada.</p>
+          </div>
+        </div>
+
+        {% if naturezas %}
+          <ul class="eithra-categorias-lista">
+            {% for item in naturezas %}
+              <li>
+                <span>{{ item.rotulo }}</span>
+                <strong>{{ item.valor }}</strong>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="eithra-financeiro-vazio">
+            Este balanço ainda não separa as despesas entre as do dia a dia e as extraordinárias.
+          </p>
+        {% endif %}
+      </section>
+
+      <section class="eithra-transparencia-secao" aria-labelledby="eithra-receitas-titulo">
+        <div class="eithra-transparencia-secao-topo">
+          <span class="eithra-financeiro-icone eithra-financeiro-icone--lilas" aria-hidden="true"><i class="bx bx-wallet"></i></span>
+          <div>
+            <h2 id="eithra-receitas-titulo">De onde veio o dinheiro</h2>
+            <p>Entradas agrupadas como o demonstrativo as apresenta.</p>
+          </div>
+        </div>
+
+        {% if receitas_por_tipo %}
+          <ul class="eithra-categorias-lista">
+            {% for item in receitas_por_tipo %}
+              <li>
+                <span>{{ item.nome }}</span>
+                <strong>{{ item.valor }}</strong>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="eithra-financeiro-vazio">
+            Ainda não há receitas classificadas neste balanço.
+          </p>
+        {% endif %}
+      </section>
+    </div>
+
+    <section class="eithra-transparencia-secao eithra-evolucao" aria-labelledby="eithra-evolucao-titulo">
+      <div class="eithra-transparencia-secao-topo">
+        <span class="eithra-financeiro-icone" aria-hidden="true"><i class="bx bx-line-chart"></i></span>
+        <div>
+          <h2 id="eithra-evolucao-titulo">Evolução dos períodos disponíveis</h2>
+          <p>Mostramos somente meses com balanço confirmado, sem completar meses ausentes.</p>
+        </div>
+      </div>
+      {% if evolucao|length > 1 %}
+        <div class="eithra-evolucao-legenda">
+          <span><i class="eithra-evolucao-ponto eithra-evolucao-ponto--entrada"></i>Entrou</span>
+          <span><i class="eithra-evolucao-ponto eithra-evolucao-ponto--saida"></i>Foi gasto</span>
+        </div>
+        <div class="eithra-evolucao-lista">
+          {% for mes in evolucao %}
+            <div class="eithra-evolucao-mes">
+              <span class="eithra-evolucao-mes-nome">{{ mes.competencia }}</span>
+              <div class="eithra-evolucao-barras">
+                <span class="eithra-evolucao-barra eithra-evolucao-barra--entrada" style="width: {{ mes.largura_receitas }}%" title="Entrou: {{ mes.receitas }}"></span>
+                <span class="eithra-evolucao-barra eithra-evolucao-barra--saida" style="width: {{ mes.largura_despesas }}%" title="Foi gasto: {{ mes.despesas }}"></span>
+              </div>
+              <span class="eithra-evolucao-valores">{{ mes.receitas }} / {{ mes.despesas }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="eithra-financeiro-vazio">
+          Ainda não há períodos confirmados suficientes para mostrar uma evolução.
+        </p>
+      {% endif %}
+    </section>
+
+    <section class="eithra-transparencia-secao eithra-gastos" id="gastos-detalhados" aria-labelledby="eithra-gastos-titulo">
+      <div class="eithra-transparencia-secao-topo">
+        <span class="eithra-financeiro-icone eithra-financeiro-icone--lilas" aria-hidden="true"><i class="bx bx-receipt"></i></span>
+        <div>
+          <h2 id="eithra-gastos-titulo">{% if pode_ver_lancamentos %}Principais gastos identificados{% else %}Detalhamento dos gastos{% endif %}</h2>
+          <p>{% if pode_ver_lancamentos %}Itens lidos no demonstrativo. O total oficial continua sendo o valor do balanço acima.{% else %}Para proteger dados pessoais, compartilhamos os valores por categoria, sem descrições ou fornecedores por lançamento.{% endif %}</p>
+        </div>
+      </div>
+
+      {% if pode_ver_lancamentos %}
+      <form class="eithra-filtros-financeiros eithra-filtros-financeiros--itens" method="get">
+        <label for="eithra-filtro-categoria">Categoria</label>
+        <select id="eithra-filtro-categoria" name="categoria">
+          <option value="">Todas</option>
+          {% for categoria in categorias_disponiveis %}
+            <option value="{{ categoria.0 }}"{% if categoria_selecionada == categoria.0 %} selected{% endif %}>
+              {{ categoria.1 }}
+            </option>
+          {% endfor %}
+        </select>
+        <label for="eithra-filtro-fornecedor">Fornecedor informado</label>
+        <input id="eithra-filtro-fornecedor" type="search" name="fornecedor" value="{{ fornecedor_busca }}" maxlength="80">
+        <button type="submit">Filtrar</button>
+        {% if categoria_selecionada or fornecedor_busca %}
+          <a href="{% url 'core:transparencia' balanco.pk %}#gastos-detalhados">Limpar</a>
+        {% endif %}
+      </form>
+
+      {% if detalhamento_incompleto %}
+        <p class="eithra-detalhamento-nota">
+          {% if detalhamento_excede_total %}
+            As linhas identificadas excedem o total oficial em {{ diferenca_detalhamento }}. A gestão precisa conferir essa diferença.
+          {% else %}
+            O demonstrativo informa {{ despesas }}, e as linhas identificadas somam {{ total_detalhado }}. Restam {{ diferenca_detalhamento }} sem associação a um item detalhado.
+          {% endif %}
+        </p>
+      {% endif %}
+
+      {% if principais_gastos %}
+        <h3 class="eithra-gastos-subtitulo">Maiores valores identificados</h3>
+        <ol class="eithra-principais-gastos">
+          {% for gasto in principais_gastos %}
+            <li>
+              <span><strong>{{ gasto.descricao }}</strong><small>{{ gasto.categoria_nome }}{% if gasto.fornecedor %} · fornecedor informado: {{ gasto.fornecedor }}{% endif %}</small></span>
+              <strong>{{ gasto.valor }}</strong>
+            </li>
+          {% endfor %}
+        </ol>
+      {% endif %}
+
+      {% if fornecedores %}
+        <h3 class="eithra-gastos-subtitulo">Com quem mais gastamos</h3>
+        <p class="eithra-financeiro-explicacao">A mesma despesa vista pelo fornecedor informado no demonstrativo. É outra perspectiva sobre o mesmo valor, não um novo total.</p>
+        <ul class="eithra-categorias-lista">
+          {% for fornecedor in fornecedores %}
+            <li>
+              <span>{{ fornecedor.nome }}</span>
+              <strong>{{ fornecedor.valor }}</strong>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if lancamentos %}
+        <div class="eithra-gastos-lista">
+          {% for gasto in lancamentos %}
+            <article class="eithra-gasto-item">
+              <div class="eithra-gasto-item-principal">
+                <strong>{{ gasto.descricao }}</strong>
+                <span>{{ gasto.valor }}</span>
+              </div>
+              <div class="eithra-gasto-item-meta">
+                <span>{{ gasto.categoria_nome }}</span>
+                {% if gasto.data %}<span>{{ gasto.data }}</span>{% endif %}
+                {% if gasto.fornecedor %}<span>Fornecedor informado: {{ gasto.fornecedor }}</span>{% endif %}
+                <span>{{ gasto.origem }}{% if gasto.pagina %} · página {{ gasto.pagina }}{% endif %}</span>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="eithra-financeiro-vazio">
+          {% if categoria_selecionada or fornecedor_busca %}
+            Nenhum item identificado corresponde a esses filtros.
+          {% else %}
+            Este balanço não tem despesas detalhadas por lançamento.
+          {% endif %}
+        </p>
+      {% endif %}
+      {% else %}
+        <p class="eithra-financeiro-vazio">
+          A gestão autorizada pode consultar as linhas originais do demonstrativo. Nesta visão residencial, os dados aparecem apenas de forma agregada.
+        </p>
+      {% endif %}
+    </section>
+
+    <p class="eithra-transparencia-fonte">
+      Fonte: balanço mensal confirmado pela gestão · {{ competencia }}. O demonstrativo não confirma, por si só, o pagamento de cada item.
+    </p>
+  </div>
+{% endblock %}

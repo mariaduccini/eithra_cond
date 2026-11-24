@@ -17,6 +17,7 @@ import tempfile
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -342,7 +343,57 @@ class PortariaVozIndisponivelTests(TestCase):
 
         self.assertContains(resposta, "data-eithra-ditar-url")
         self.assertRegex(pagina, r"data-eithra-ditar[\s\S]{0,400}?hidden>")
-        self.assertIn("MediaRecorder", pagina)
+        # A gravação mora no controlador compartilhado de voz, e não num
+        # segundo motor escrito dentro da Portaria: a página só o carrega.
+        self.assertIn("js/eithra-ditar.js", pagina)
+        self.assertNotIn("MediaRecorder", pagina)
+
+    @override_settings(**CONFIGURADO)
+    def test_a_portaria_inteira_dita_pelo_mesmo_controle(self):
+        """Falar é um caminho só, não um por campo.
+
+        A tela principal, o destino do passo 1, o nome e a empresa do passo 2 e
+        a observação do passo 3 ditam no mesmo serviço, pelo mesmo controlador —
+        tanto no registro de chegada quanto no de esperado: o que muda é o campo
+        que recebe a transcrição — e cada microfone escreve no campo do próprio
+        formulário, mesmo com dois formulários na página.
+        """
+        pagina = self.client.get(reverse("portaria:painel")).content.decode()
+
+        for campo in (
+            "#relato-portaria",
+            "#chegada-autorizador",
+            "#esperado-autorizador",
+            "#id_nome",
+            "#id_empresa",
+            "#id_observacao",
+        ):
+            self.assertIn(f'data-eithra-ditar-campo="{campo}"', pagina)
+
+        self.assertEqual(pagina.count("data-eithra-ditar-url"), 9)
+        # O controlador é carregado uma vez só: o comentário que cita o caminho
+        # do arquivo não é um segundo carregamento, então a conta é a da tag.
+        self.assertEqual(pagina.count(static("js/eithra-ditar.js")), 1)
+
+    @override_settings(**CONFIGURADO)
+    def test_nome_e_empresa_do_mesmo_formulario_nao_se_sobrescrevem(self):
+        """Dois conteúdos, dois campos: "Carlos Mendes" não vira empresa.
+
+        Cada microfone aponta para o seu campo, e o alvo é procurado dentro do
+        formulário do próprio botão — e não no documento inteiro —, porque a
+        Portaria tem dois formulários com o mesmo nome de campo.
+        """
+        pagina = self.client.get(reverse("portaria:painel")).content.decode()
+
+        # O par nome/empresa existe uma vez em cada wizard: chegada e esperado.
+        self.assertEqual(pagina.count('data-eithra-ditar-campo="#id_nome"'), 2)
+        self.assertEqual(pagina.count('data-eithra-ditar-campo="#id_empresa"'), 2)
+        self.assertLess(
+            pagina.index('data-eithra-ditar-campo="#id_nome"'),
+            pagina.index('data-eithra-ditar-campo="#id_empresa"'),
+        )
+        # O mesmo serviço atende os dois campos: reutilização, não segundo motor.
+        self.assertEqual(pagina.count('data-eithra-ditar-url="/portaria/transcrever/"'), 9)
 
     @override_settings(**CONFIGURADO)
     def test_permissao_negada_deixa_o_relato_por_texto_funcionando(self):

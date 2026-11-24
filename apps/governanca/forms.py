@@ -177,6 +177,7 @@ class ContratoForm(forms.ModelForm):
             "renovacao_automatica",
             "antecedencia_alerta_dias",
             "prazo_aviso_rescisao_dias",
+            "sla_dias",
             "data_proximo_reajuste",
             "indice_reajuste_texto",
             "responsavel_interno",
@@ -201,6 +202,7 @@ class ContratoForm(forms.ModelForm):
             "renovacao_automatica": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "antecedencia_alerta_dias": forms.NumberInput(attrs=INTEIRO),
             "prazo_aviso_rescisao_dias": forms.NumberInput(attrs=INTEIRO),
+            "sla_dias": forms.NumberInput(attrs=INTEIRO),
             "data_proximo_reajuste": forms.DateInput(attrs=DATA),
             "indice_reajuste_texto": forms.TextInput(
                 attrs={**TEXTO, "placeholder": "IGP-M, IPCA…", "autocomplete": "off"}
@@ -237,6 +239,7 @@ class ContratoForm(forms.ModelForm):
             "data_fim",
             "valor",
             "prazo_aviso_rescisao_dias",
+            "sla_dias",
             "data_proximo_reajuste",
             "responsavel_interno",
         ):

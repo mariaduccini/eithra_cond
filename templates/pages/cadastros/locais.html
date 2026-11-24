@@ -44,7 +44,7 @@
             {% for local in locais %}
               <tr>
                 <td>
-                  <span class="fw-medium">{{ local.nome }}</span>
+                  <a class="fw-medium text-decoration-none" href="{% url 'cadastros:local' local.pk %}?condominio={{ condominio_atual.pk }}">{{ local.nome }}</a>
                   {% if local.descricao %}
                     <div class="text-body-secondary small">{{ local.descricao }}</div>
                   {% endif %}
@@ -87,7 +87,7 @@
         {% for local in locais %}
           <div class="list-group-item">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <span class="fw-medium">{{ local.nome }}</span>
+              <a class="fw-medium text-decoration-none" href="{% url 'cadastros:local' local.pk %}?condominio={{ condominio_atual.pk }}">{{ local.nome }}</a>
               <span class="badge bg-label-{{ local.tom }} flex-shrink-0">{{ local.texto }}</span>
             </div>
             {% if local.descricao %}

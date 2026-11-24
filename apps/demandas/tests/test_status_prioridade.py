@@ -2,17 +2,21 @@
 
 A situação continua sendo consequência, não escolha: não existe campo para
 escolhê-la, e ela só se move por uma ação que a pessoa alcança. O peso, ao
-contrário, passou a ser escolha explícita de quem registra — a tela pergunta, e
-o que a pessoa responde é o que vale. A leitura do relato não decide a
-prioridade operacional: mesmo um relato que antes seria lido como urgente não
-sobrepõe a escolha humana.
+contrário, chega calculado pelo motor — a regra estruturada lê risco,
+abrangência, reincidência e equipamento essencial parado —, e já vem preenchido
+no registro. Quem tem permissão pode corrigi-lo, e a correção prevalece: é ela
+que entra no histórico antes e depois. Sem correção, vale o que a regra
+sustentou. A tela mostra só o valor operacional, nunca a procedência.
 """
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.condominios.constants import Papel
-from apps.core.constants import Prioridade
-from apps.demandas.constants import StatusDemanda, TipoEventoDemanda
+from apps.demandas.constants import (
+    PrioridadeDemanda,
+    StatusDemanda,
+    TipoEventoDemanda,
+)
 from apps.demandas.forms import AcaoDeStatusForm, DemandaForm
 from apps.demandas.models import Demanda
 from apps.demandas.permissoes import status_permitidos_para
@@ -58,27 +62,33 @@ class SemCampoDeSituacaoTests(BaseDeEstado):
 
 
 class PrioridadeEscolhidaTests(BaseDeEstado):
-    """A prioridade gravada é a escolha de quem registra (§1, §10)."""
+    """O peso chega calculado pelo motor; a correção humana o sobrepõe (§1, §4)."""
 
     def test_registro_grava_a_prioridade_escolhida(self):
-        resposta = self._registrar(prioridade=Prioridade.ALTA)
+        resposta = self._registrar(prioridade=PrioridadeDemanda.ALTA)
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
-        self.assertEqual(demanda.prioridade, Prioridade.ALTA)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
 
-    def test_escolha_do_usuario_vence_a_leitura_do_relato(self):
-        # Sozinho, o relato antes derivaria urgência; a escolha humana manda, e
-        # é essa a regressão que fecha o escopo: a leitura não decide o peso.
-        resposta = self._registrar(relato=RELATO_URGENTE, prioridade=Prioridade.BAIXA)
+    def test_escolha_do_usuario_vence_o_peso_inicial_do_motor(self):
+        # Sozinho, o relato sustenta "Crítica" pelo risco; a correção humana
+        # manda, e é essa a regressão que fecha o escopo: a escolha de quem
+        # registra sobrepõe o peso inicial do motor.
+        resposta = self._registrar(
+            relato=RELATO_URGENTE, prioridade=PrioridadeDemanda.BAIXA
+        )
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
-        self.assertEqual(demanda.prioridade, Prioridade.BAIXA)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.BAIXA)
 
-    def test_relato_urgente_sem_escolha_fica_no_padrao_do_dominio(self):
+    def test_relato_com_risco_sem_escolha_recebe_o_peso_do_motor(self):
+        # Sem escolha humana, o peso vem da regra estruturada: o risco de
+        # explosão declarado no relato sustenta "Crítica", e o registro não
+        # precisa que ninguém decida a prioridade para acontecer.
         resposta = self._registrar(relato=RELATO_URGENTE)
         self.assertEqual(resposta.status_code, 302)
         demanda = Demanda.objects.get()
-        self.assertEqual(demanda.prioridade, Prioridade.NORMAL)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.URGENTE)
 
     def test_edicao_muda_a_prioridade_quando_ha_permissao(self):
         demanda = self._demanda()
@@ -88,15 +98,15 @@ class PrioridadeEscolhidaTests(BaseDeEstado):
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
                 "descricao": demanda.descricao,
-                "prioridade": Prioridade.URGENTE,
+                "prioridade": PrioridadeDemanda.URGENTE,
             },
         )
         self.assertEqual(resposta.status_code, 302)
         demanda.refresh_from_db()
-        self.assertEqual(demanda.prioridade, Prioridade.URGENTE)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.URGENTE)
 
     def test_edicao_sem_prioridade_no_envio_preserva_a_escolha_existente(self):
-        demanda = self._demanda(prioridade=Prioridade.ALTA)
+        demanda = self._demanda(prioridade=PrioridadeDemanda.ALTA)
         resposta = self.client.post(
             reverse("demandas:editar", args=[demanda.pk]),
             {
@@ -109,12 +119,12 @@ class PrioridadeEscolhidaTests(BaseDeEstado):
         demanda.refresh_from_db()
         # A edição que não fala de peso não mexe no peso: o registro antigo
         # mantém a prioridade que já tinha.
-        self.assertEqual(demanda.prioridade, Prioridade.ALTA)
+        self.assertEqual(demanda.prioridade, PrioridadeDemanda.ALTA)
 
     def test_registro_criado_com_prioridade_preserva_o_valor(self):
-        demanda = self._demanda(prioridade=Prioridade.URGENTE)
+        demanda = self._demanda(prioridade=PrioridadeDemanda.URGENTE)
         self.assertEqual(
-            Demanda.objects.get(pk=demanda.pk).prioridade, Prioridade.URGENTE
+            Demanda.objects.get(pk=demanda.pk).prioridade, PrioridadeDemanda.URGENTE
         )
 
 
@@ -214,19 +224,19 @@ class PrioridadeNoHistoricoTests(BaseDeEstado):
     """A prioridade muda com registro no histórico, sem reescrever o passado (§8)."""
 
     def test_mudar_a_prioridade_registra_o_antes_e_o_depois(self):
-        demanda = self._demanda(prioridade=Prioridade.BAIXA)
+        demanda = self._demanda(prioridade=PrioridadeDemanda.BAIXA)
         self.client.post(
             reverse("demandas:editar", args=[demanda.pk]),
             {
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
                 "descricao": demanda.descricao,
-                "prioridade": Prioridade.URGENTE,
+                "prioridade": PrioridadeDemanda.URGENTE,
             },
         )
         evento = demanda.historico.get(tipo_evento=TipoEventoDemanda.PRIORIDADE)
-        self.assertEqual(evento.dados_anteriores, {"prioridade": Prioridade.BAIXA})
-        self.assertEqual(evento.dados_novos, {"prioridade": Prioridade.URGENTE})
+        self.assertEqual(evento.dados_anteriores, {"prioridade": PrioridadeDemanda.BAIXA})
+        self.assertEqual(evento.dados_novos, {"prioridade": PrioridadeDemanda.URGENTE})
 
     def test_o_evento_de_criacao_nao_e_reescrito_pela_edicao(self):
         demanda = self._demanda()
@@ -239,7 +249,7 @@ class PrioridadeNoHistoricoTests(BaseDeEstado):
                 "condominio": str(self.condominio.pk),
                 "titulo": demanda.titulo,
                 "descricao": demanda.descricao,
-                "prioridade": Prioridade.ALTA,
+                "prioridade": PrioridadeDemanda.ALTA,
             },
         )
 

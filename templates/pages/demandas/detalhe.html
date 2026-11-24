@@ -4,61 +4,55 @@
 {% block title %}{{ demanda.titulo }} · Demandas · Eithra{% endblock %}
 
 {% block content %}
-  <div class="eithra-detail-header mb-3">
-    <a href="{% url 'demandas:listagem' %}" class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
-      <i class="bx bx-chevron-left" aria-hidden="true"></i> Demandas
-    </a>
-    <div class="text-body-secondary small">Detalhe da demanda{% if demanda.referencia %} <span aria-hidden="true">·</span> {{ demanda.referencia }}{% endif %}</div>
-    {% comment %}
-      O assunto curto é o que a tela mostra; o guardado aparece por inteiro no
-      título da aba e ao passar o mouse, sem que nada seja reescrito.
-    {% endcomment %}
-    <h1 class="h4 mb-1"{% if demanda.assunto_curto != demanda.titulo %} title="{{ demanda.titulo }}"{% endif %}>{{ demanda.assunto_curto }}</h1>
-    <div class="d-flex flex-wrap align-items-center gap-2">
-      <span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span>
-      <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
-      <span class="text-body-secondary small">Prazo: {{ demanda.prazo }}{% if demanda.prazo_destaque %} <span aria-hidden="true">·</span> <span class="text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</span>{% endif %}</span>
-      <span class="text-body-secondary small" aria-hidden="true">·</span>
-      <span class="text-body-secondary small">Responsável: {{ demanda.responsavel }}</span>
+  {# Cabeçalho: identidade forte, chips discretos e ações do dia a dia à vista. #}
+  <div class="eithra-detalhe-topo">
+    <div class="d-flex align-items-start gap-3">
+      <span class="eithra-detalhe-icone" aria-hidden="true"><i class="bx bx-file"></i></span>
+      <div class="eithra-detalhe-identidade">
+        <a href="{% url 'demandas:listagem' %}" class="eithra-detalhe-voltar">
+          <i class="bx bx-chevron-left" aria-hidden="true"></i> Demandas
+        </a>
+        <h1 class="eithra-detalhe-titulo"{% if demanda.assunto_curto != demanda.titulo %} title="{{ demanda.titulo }}"{% endif %}>{{ demanda.assunto_curto }}</h1>
+        {% if demanda.referencia %}<span class="eithra-detalhe-codigo">Cód. {{ demanda.referencia }}</span>{% endif %}
+        <div class="eithra-chips">
+          <span class="eithra-chip eithra-chip--{% if demanda.status_tom == 'success' %}sucesso{% elif demanda.status_tom == 'warning' or demanda.status_tom == 'danger' %}alerta{% elif demanda.status_tom == 'info' %}teal{% else %}neutro{% endif %}">
+            <i class="bx bx-circle" aria-hidden="true"></i>{{ demanda.status }}
+          </span>
+          <span class="eithra-chip eithra-chip--{% if demanda.prioridade_tom == 'warning' or demanda.prioridade_tom == 'danger' %}alerta{% elif demanda.prioridade_tom == 'info' %}teal{% else %}neutro{% endif %}">
+            <i class="bx bx-flag" aria-hidden="true"></i>Prioridade: {{ demanda.prioridade }}
+          </span>
+          <span class="eithra-chip eithra-chip--{% if demanda.prazo_tom == 'warning' or demanda.prazo_tom == 'danger' %}alerta{% elif demanda.prazo_tom == 'success' %}sucesso{% else %}neutro{% endif %}">
+            <i class="bx bx-calendar" aria-hidden="true"></i>{{ demanda.prazo }}
+          </span>
+          {% if demanda.local_detalhe %}
+            <span class="eithra-chip eithra-chip--neutro"><i class="bx bx-map-pin" aria-hidden="true"></i>{{ demanda.local_detalhe }}</span>
+          {% endif %}
+          {% if demanda.equipamento %}
+            <span class="eithra-chip eithra-chip--neutro"><i class="bx bx-cog" aria-hidden="true"></i>{{ demanda.equipamento }}</span>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    {% comment %}
-      A ação principal vive no cabeçalho, junto do estado que a explica —
-      concluir, criar manutenção ou registrar o que aconteceu. As demais ficam
-      ao lado, discretas, e só aparecem quando a pessoa pode alcançá-las.
-    {% endcomment %}
-    <div class="d-flex flex-wrap gap-2 mt-3">
+    <div class="eithra-detalhe-acoes">
       {% if proximo_passo %}
-        <a href="{{ proximo_passo.url }}" class="btn btn-primary"{% if proximo_passo.detalhe %} title="{{ proximo_passo.detalhe }}"{% endif %}>
+        <a href="{{ proximo_passo.url }}" class="btn eithra-btn-primario"{% if proximo_passo.detalhe %} title="{{ proximo_passo.detalhe }}"{% endif %}>
           <i class="bx {{ proximo_passo.icon }} me-1" aria-hidden="true"></i>{{ proximo_passo.label }}
         </a>
       {% endif %}
-
-      {% comment %}Registrar o que aconteceu é a ação do dia a dia desta tela: ela
-      fica sempre à vista, e não escondida atrás de um menu.{% endcomment %}
       {% if pode_atualizar %}
-        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn {% if proximo_passo %}btn-label-primary{% else %}btn-primary{% endif %}">
+        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn {% if proximo_passo %}eithra-btn-secundario{% else %}eithra-btn-primario{% endif %}">
           <i class="bx bx-refresh me-1" aria-hidden="true"></i>Registrar atualização
         </a>
       {% endif %}
-
-      {% comment %}Guardar a prova é outra coisa que contar o que aconteceu: acontece
-      sem mexer na situação da demanda, e por isso tem porta própria.{% endcomment %}
       {% if pode_adicionar_evidencia %}
-        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=evidencia&aba=historico" class="btn btn-label-secondary">
+        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=evidencia&aba=historico" class="btn eithra-btn-secundario">
           <i class="bx bx-image-add me-1" aria-hidden="true"></i>Adicionar evidência
         </a>
       {% endif %}
-
-      {% if pode_concluir %}
-        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn btn-label-success">
-          <i class="bx bx-check-circle me-1" aria-hidden="true"></i>Concluir demanda
-        </a>
-      {% endif %}
-
       {% if mais_acoes %}
         <div class="dropdown">
-          <button class="btn btn-label-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <button class="btn eithra-btn-secundario dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             Mais ações
           </button>
           <ul class="dropdown-menu dropdown-menu-end">
@@ -71,253 +65,277 @@
     </div>
   </div>
 
-  {% comment %}
-    O corpo é uma leitura só, de cima para baixo: o que aconteceu, o que
-    qualifica o problema, quem cuida dele, o que já passou e o que se liga a
-    ele. Nada vive atrás de aba — quem separa uma seção da outra é o fio
-    discreto entre elas, não uma superfície com moldura própria.
-  {% endcomment %}
+  {# Corpo em duas colunas: narrativa à esquerda, linha do tempo à direita. #}
+  <div class="eithra-detalhe-grade">
+    <div class="eithra-detalhe-coluna">
 
-  <section class="eithra-detail-section">
-    <h2 class="h6 mb-2">Demanda</h2>
-    <p class="eithra-detail-leitura mb-0">{{ demanda.descricao|linebreaksbr }}</p>
-  </section>
+      <section class="eithra-cartao">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-file" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Resumo da demanda</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          <p class="mb-0">{{ demanda.descricao|linebreaksbr }}</p>
+        </div>
+      </section>
 
-  <section class="eithra-detail-section">
-    <h2 class="h6 mb-2">Informações</h2>
-          {% comment %}
-            Só o que existe vira par: campo sem resposta não aparece vazio. O que
-            já vive no cabeçalho — situação, prioridade, prazo e responsável —
-            não se repete aqui: repeti-lo seria eco, não informação. A área é
-            leitura do lugar, não campo, e vem acompanhada do que a explica.
-          {% endcomment %}
-          <dl class="eithra-vg-info">
-            <div class="eithra-vg-par">
-              <dt>Local</dt>
-              <dd>{{ demanda.local }}</dd>
+      <section class="eithra-cartao">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-info-circle" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Informações principais</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          <div class="eithra-info-grid">
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-map-pin" aria-hidden="true"></i>Local</span>
+              <div class="eithra-info-valor">{{ demanda.local }}</div>
             </div>
-            <div class="eithra-vg-par">
-              <dt>Registrado por</dt>
-              <dd>{{ demanda.criado_por }}</dd>
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-user" aria-hidden="true"></i>Responsável</span>
+              <div class="eithra-info-valor">{{ demanda.responsavel }}</div>
             </div>
-            <div class="eithra-vg-par">
-              <dt>Data de registro</dt>
-              <dd>{{ demanda.criada_em }}</dd>
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-calendar" aria-hidden="true"></i>Data de registro</span>
+              <div class="eithra-info-valor">{{ demanda.criada_em }}</div>
+            </div>
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-hourglass" aria-hidden="true"></i>Prazo</span>
+              <div class="eithra-info-valor">{{ demanda.prazo }}</div>
+            </div>
+            <div class="eithra-info-item">
+              <span class="eithra-info-rotulo"><i class="bx bx-flag" aria-hidden="true"></i>Prioridade</span>
+              <div class="eithra-info-valor">
+                <span class="eithra-chip eithra-chip--{% if demanda.prioridade_tom == 'warning' or demanda.prioridade_tom == 'danger' %}alerta{% else %}neutro{% endif %}">{{ demanda.prioridade }}</span>
+              </div>
             </div>
             {% if demanda.area %}
-              <div class="eithra-vg-par">
-                <dt>Área</dt>
-                <dd>
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-layer" aria-hidden="true"></i>Área</span>
+                <div class="eithra-info-valor">
                   {{ demanda.area }}
-                  {% if demanda.area_motivo %}
-                    <div class="small text-body-secondary">{{ demanda.area_motivo }}</div>
-                  {% endif %}
-                </dd>
+                  {% if demanda.area_motivo %}<div class="small text-body-secondary mt-1">{{ demanda.area_motivo }}</div>{% endif %}
+                </div>
               </div>
             {% endif %}
             {% if demanda.equipamento %}
-              <div class="eithra-vg-par">
-                <dt>Equipamento</dt>
-                <dd>{{ demanda.equipamento }}</dd>
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-cog" aria-hidden="true"></i>Equipamento</span>
+                <div class="eithra-info-valor">{{ demanda.equipamento }}</div>
               </div>
             {% endif %}
             {% if demanda.tipo_problema %}
-              <div class="eithra-vg-par">
-                <dt>Tipo de problema</dt>
-                <dd>{{ demanda.tipo_problema }}</dd>
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-tag" aria-hidden="true"></i>Tipo</span>
+                <div class="eithra-info-valor">{{ demanda.tipo_problema }}</div>
               </div>
             {% endif %}
             {% if demanda.impacto %}
-              <div class="eithra-vg-par">
-                <dt>Impacto</dt>
-                <dd>{{ demanda.impacto }}</dd>
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-trending-up" aria-hidden="true"></i>Impacto</span>
+                <div class="eithra-info-valor">{{ demanda.impacto }}</div>
               </div>
             {% endif %}
             {% if demanda.risco %}
-              <div class="eithra-vg-par">
-                <dt>Risco</dt>
-                <dd>{{ demanda.risco }}</dd>
+              <div class="eithra-info-item">
+                <span class="eithra-info-rotulo"><i class="bx bx-shield-quarter" aria-hidden="true"></i>Risco</span>
+                <div class="eithra-info-valor">{{ demanda.risco }}</div>
               </div>
             {% endif %}
-          </dl>
-        </section>
+          </div>
+        </div>
+      </section>
 
-        {% comment %}
-          O que a Governança já sabe sobre este lugar e este equipamento. Só
-          aparece quando existe algo a dizer: sem contrato nem garantia, o bloco
-          não ocupa espaço. Nada é copiado para a demanda — a pergunta é feita
-          na hora.
-        {% endcomment %}
-        {% if contexto_governanca.pode_consultar %}{% if contexto_governanca.contratos or contexto_governanca.garantias %}
-          <section class="eithra-detail-section">
-            <h2 class="h6 mb-2">Contratos e garantias</h2>
-            <ul class="eithra-lista">
+      {% comment %}O próximo passo é o que move a demanda: quando existe, ele ganha
+      destaque. O acompanhamento também entra aqui, porque ambos respondem "por
+      quem a demanda espera agora".{% endcomment %}
+      {% if proximo_passo %}
+        <div class="eithra-proximo-passo">
+          <span class="eithra-proximo-passo-icone" aria-hidden="true"><i class="bx bx-target-lock"></i></span>
+          <div class="eithra-proximo-passo-texto">
+            <p class="eithra-proximo-passo-titulo">Próximo passo</p>
+            <p class="eithra-proximo-passo-valor">{{ proximo_passo.label }}{% if proximo_passo.detalhe %} — {{ proximo_passo.detalhe }}{% endif %}</p>
+          </div>
+        </div>
+      {% endif %}
+
+      {% if demanda.acompanhamento or demanda.ultima_movimentacao or demanda.retorno.estado != "sem_espera" %}
+        <section class="eithra-cartao">
+          <div class="eithra-cartao-cabecalho">
+            <i class="bx bx-user-check" aria-hidden="true"></i>
+            <h2 class="eithra-cartao-titulo">Acompanhamento</h2>
+          </div>
+          <div class="eithra-cartao-corpo">
+            {% if demanda.acompanhamento %}
+              <dl class="eithra-vg-info mb-0">
+                {% for linha in demanda.acompanhamento %}
+                  <div class="eithra-vg-par">
+                    <dt>{{ linha.rotulo }}</dt>
+                    <dd>
+                      {% if linha.tom %}<span class="text-{{ linha.tom }}-emphasis">{{ linha.valor }}</span>{% else %}{{ linha.valor }}{% endif %}
+                      {% if linha.nota %} <span class="text-body-secondary" aria-hidden="true">·</span> <span class="text-{{ linha.tom }}-emphasis">{{ linha.nota }}</span>{% endif %}
+                    </dd>
+                  </div>
+                {% endfor %}
+              </dl>
+            {% else %}
+              <p class="text-body-secondary mb-0">Nenhum acompanhamento definido.</p>
+            {% endif %}
+            {% if demanda.ultima_movimentacao %}
+              <p class="small text-body-secondary mt-3 mb-0">Última movimentação: {{ demanda.ultima_movimentacao }}</p>
+            {% endif %}
+            {% if demanda.retorno.estado == "pendente" %}
+              <p class="small mt-2 mb-0">Retorno à parte interessada: <span class="text-warning-emphasis">Pendente</span> — aguardando {{ demanda.retorno.quem }}</p>
+            {% elif demanda.retorno.estado == "enviado" %}
+              <p class="small mt-2 mb-0">Retorno à parte interessada: <span class="text-success-emphasis">Enviado</span>{% if demanda.retorno.retorno %} — {{ demanda.retorno.retorno.quando }}, por {{ demanda.retorno.retorno.quem }}{% endif %}</p>
+            {% endif %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% comment %}O que a Governança já sabe sobre este lugar e este equipamento.
+      Só aparece quando existe algo a dizer.{% endcomment %}
+      {% if contexto_governanca.pode_consultar %}{% if contexto_governanca.contratos or contexto_governanca.garantias %}
+        <section class="eithra-cartao">
+          <div class="eithra-cartao-cabecalho">
+            <i class="bx bx-file-blank" aria-hidden="true"></i>
+            <h2 class="eithra-cartao-titulo">Contratos e garantias</h2>
+          </div>
+          <div class="eithra-cartao-corpo eithra-cartao-corpo--sem-padding">
+            <ul class="list-unstyled mb-0">
               {% for contrato in contexto_governanca.contratos %}
-                <li class="eithra-linha">
-                  <div class="eithra-linha-corpo">
-                    <div class="eithra-linha-nome">{{ contrato.objeto }}</div>
-                    <div class="eithra-linha-contexto">
-                      {% if contrato.fornecedor %}{{ contrato.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Contrato{% if contrato.fim %} até {{ contrato.fim|date:"d/m/Y" }}{% endif %}
+                <li class="d-flex align-items-center justify-content-between gap-3 px-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
+                  <div class="min-w-0">
+                    <div class="fw-medium">{{ contrato.objeto }}</div>
+                    <div class="small text-body-secondary">{% if contrato.fornecedor %}{{ contrato.fornecedor }} · {% endif %}Contrato{% if contrato.fim %} até {{ contrato.fim|date:"d/m/Y" }}{% endif %}</div>
+                    <div class="small text-body-secondary mt-1">
+                      {% if contrato.sla_dias %}
+                        SLA: {{ contrato.sla_dias }} dia{{ contrato.sla_dias|pluralize }}{% if contrato.prazo_contratual %} · Prazo contratual: {{ contrato.prazo_contratual|date:"d/m/Y" }}{% endif %}
+                      {% else %}
+                        Sem SLA registrado — não gera prazo
+                      {% endif %}
                     </div>
                   </div>
-                  <div class="eithra-linha-acao">
-                    <span class="badge bg-label-{{ contrato.tom }}">{{ contrato.situacao }}</span>
-                  </div>
+                  <span class="badge bg-label-{{ contrato.tom }} flex-shrink-0">{{ contrato.situacao }}</span>
                 </li>
               {% endfor %}
               {% for garantia in contexto_governanca.garantias %}
-                <li class="eithra-linha">
-                  <div class="eithra-linha-corpo">
-                    <div class="eithra-linha-nome">{{ garantia.descricao }}</div>
-                    <div class="eithra-linha-contexto">
-                      {% if garantia.fornecedor %}{{ garantia.fornecedor }} <span aria-hidden="true">·</span> {% endif %}Garantia{% if garantia.fim %} até {{ garantia.fim|date:"d/m/Y" }}{% endif %}
-                    </div>
+                <li class="d-flex align-items-center justify-content-between gap-3 px-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
+                  <div class="min-w-0">
+                    <div class="fw-medium">{{ garantia.descricao }}</div>
+                    <div class="small text-body-secondary">{% if garantia.fornecedor %}{{ garantia.fornecedor }} · {% endif %}Garantia{% if garantia.fim %} até {{ garantia.fim|date:"d/m/Y" }}{% endif %}</div>
                   </div>
-                  <div class="eithra-linha-acao">
-                    <span class="badge bg-label-{{ garantia.tom }}">{{ garantia.situacao }}</span>
+                  <span class="badge bg-label-{{ garantia.tom }} flex-shrink-0">{{ garantia.situacao }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+      {% endif %}{% endif %}
+
+      {% if relacionadas %}
+        <section class="eithra-cartao">
+          <div class="eithra-cartao-cabecalho">
+            <i class="bx bx-link-alt" aria-hidden="true"></i>
+            <h2 class="eithra-cartao-titulo">Relacionadas</h2>
+          </div>
+          <div class="eithra-cartao-corpo eithra-cartao-corpo--sem-padding">
+            <ul class="list-unstyled mb-0">
+              {% for item in relacionadas %}
+                <li class="d-flex align-items-center justify-content-between gap-3 px-4 py-3{% if not forloop.last %} border-bottom{% endif %}">
+                  <div class="min-w-0">
+                    <div class="fw-medium text-truncate">{{ item.titulo }}</div>
+                    <div class="small text-body-secondary">{{ item.tipo }} · {{ item.status }}</div>
+                  </div>
+                  <a class="btn btn-sm eithra-btn-secundario flex-shrink-0" href="{{ item.url }}">Abrir</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+      {% endif %}
+
+    </div>
+
+    <div class="eithra-detalhe-coluna">
+
+      <section class="eithra-cartao">
+        <div class="eithra-cartao-cabecalho">
+          <i class="bx bx-history" aria-hidden="true"></i>
+          <h2 class="eithra-cartao-titulo">Histórico</h2>
+        </div>
+        <div class="eithra-cartao-corpo">
+          {% if historico %}
+            <ul class="eithra-timeline">
+              {% for evento in historico %}
+                <li class="eithra-timeline-item">
+                  <span class="eithra-timeline-marcador eithra-timeline-marcador--{% if forloop.first %}sucesso{% else %}neutro{% endif %}" aria-hidden="true"></span>
+                  <div class="eithra-timeline-corpo">
+                    <div class="eithra-timeline-topo">
+                      <h3 class="eithra-timeline-titulo">{{ evento.tipo }}</h3>
+                      <span class="eithra-timeline-momento">{{ evento.momento }}</span>
+                    </div>
+                    {% if evento.descricao %}
+                      <p class="eithra-timeline-descricao">{{ evento.descricao }}</p>
+                    {% endif %}
+                    {% if evento.quem %}
+                      <p class="eithra-timeline-autor">{{ evento.quem }}</p>
+                    {% endif %}
+                    {% if evento.mudancas %}
+                      <ul class="list-unstyled small text-body-secondary mb-0 mt-1">
+                        {% for mudanca in evento.mudancas %}
+                          <li>{{ mudanca.rotulo }}: {{ mudanca.antes }} <span aria-hidden="true">→</span> {{ mudanca.depois }}</li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                    {% if evento.evidencias %}
+                      <div class="eithra-evidencias mt-2">
+                        {% for evidencia in evento.evidencias %}
+                          {% if evidencia.eh_video %}
+                            <button
+                              type="button"
+                              class="eithra-thumb eithra-thumb-video"
+                              data-bs-toggle="modal"
+                              data-bs-target="#ver-evidencia"
+                              data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                              data-evidencia-video="1"
+                              data-evidencia-tipo="{{ evidencia.tipo }}"
+                              data-evidencia-nome="{{ evidencia.nome }}"
+                              title="{{ evidencia.nome|default:'Vídeo' }} — assistir">
+                              <i class="bx bx-play" aria-hidden="true"></i>
+                              <span class="visually-hidden">Assistir ao vídeo anexado</span>
+                            </button>
+                          {% else %}
+                            <button
+                              type="button"
+                              class="eithra-thumb"
+                              data-bs-toggle="modal"
+                              data-bs-target="#ver-evidencia"
+                              data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                              data-evidencia-video="0"
+                              data-evidencia-tipo="{{ evidencia.tipo }}"
+                              data-evidencia-nome="{{ evidencia.nome }}"
+                              title="{{ evidencia.nome|default:'Foto' }}">
+                              <img
+                                src="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                                alt="{{ evidencia.nome|default:'Foto anexada à demanda' }}"
+                                loading="lazy">
+                            </button>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
                 </li>
               {% endfor %}
             </ul>
-          </section>
-        {% endif %}{% endif %}
+          {% else %}
+            <p class="text-body-secondary mb-0"><i class="bx bx-history me-1" aria-hidden="true"></i>O que acontecer com esta demanda aparece aqui.</p>
+          {% endif %}
+        </div>
+      </section>
 
-  {% comment %}
-    Acompanhamento responde "quem cuida" e "por quem a demanda espera agora": o
-    que a trava e quem a segue de perto. Nada aqui move o ciclo dela. Quando não
-    há nada, a tela diz isso em uma linha e oferece a porta para preencher, sem
-    um vazio alto ocupando o lugar da informação.
-  {% endcomment %}
-  <section class="eithra-detail-section">
-    <div class="d-flex align-items-center justify-content-between mb-2">
-      <h2 class="h6 mb-0">Acompanhamento</h2>
-      {% if pode_acompanhar %}
-        <a class="eithra-vg-icone" href="{% url 'demandas:detalhe' demanda.pk %}?abrir=acompanhamento&aba=visao_geral" title="Atualizar acompanhamento" aria-label="Atualizar acompanhamento">
-          <i class="bx bx-pencil" aria-hidden="true"></i>
-        </a>
-      {% endif %}
     </div>
-    {% if demanda.acompanhamento %}
-      <dl class="eithra-detail-meta eithra-vg-acompanhamento">
-        {% for linha in demanda.acompanhamento %}
-          <dt>{{ linha.rotulo }}</dt>
-          <dd>
-            {% if linha.tom %}<span class="text-{{ linha.tom }}-emphasis">{{ linha.valor }}</span>{% else %}{{ linha.valor }}{% endif %}
-            {% if linha.nota %} <span class="text-body-secondary" aria-hidden="true">·</span> <span class="text-{{ linha.tom }}-emphasis">{{ linha.nota }}</span>{% endif %}
-          </dd>
-        {% endfor %}
-      </dl>
-    {% else %}
-      <p class="eithra-vg-vazio">Nenhum acompanhamento definido.</p>
-      {% if pode_acompanhar %}
-        <a class="eithra-vg-link" href="{% url 'demandas:detalhe' demanda.pk %}?abrir=acompanhamento&aba=visao_geral">Atualizar acompanhamento</a>
-      {% endif %}
-    {% endif %}
-    {% comment %}Quando a demanda se moveu pela última vez vem do histórico — a
-    memória do que mudou —, nunca do carimbo de atualização.{% endcomment %}
-    {% if demanda.ultima_movimentacao %}
-      <p class="eithra-vg-movimento">Última movimentação: {{ demanda.ultima_movimentacao }}</p>
-    {% endif %}
-  </section>
-
-  {% comment %}
-    Histórico é leitura da mesma demanda, não um bloco à parte: entra na mesma
-    superfície contínua da página, separado por um fio. Cada prova fica presa à
-    movimentação que a trouxe — a foto vive onde o relato viveu.
-  {% endcomment %}
-  <section class="eithra-detail-section">
-    <h2 class="h6 mb-3">Histórico</h2>
-      {% if historico %}
-        <ul class="eithra-lista">
-          {% for evento in historico %}
-            <li class="eithra-linha">
-              <div class="eithra-linha-corpo">
-                <div class="eithra-linha-nome">{{ evento.tipo }}</div>
-                <div class="eithra-linha-contexto">{{ evento.momento }} · {{ evento.quem }}</div>
-                {% if evento.descricao %}
-                  <div class="eithra-linha-contexto text-body-secondary">{{ evento.descricao }}</div>
-                {% endif %}
-                {% comment %}O que mudou, com o antes e o depois ao lado: quem lê não
-                precisa deduzir a mudança a partir da frase do evento.{% endcomment %}
-                {% if evento.mudancas %}
-                  <ul class="list-unstyled small text-body-secondary mb-0 mt-1">
-                    {% for mudanca in evento.mudancas %}
-                      <li>{{ mudanca.rotulo }}: {{ mudanca.antes }} <span aria-hidden="true">→</span> {{ mudanca.depois }}</li>
-                    {% endfor %}
-                  </ul>
-                {% endif %}
-                {% comment %}A prova fica onde o relato ficou, presa à movimentação que a
-                trouxe. A miniatura é discreta de propósito: o histórico conta o
-                que aconteceu, e a imagem só se abre quando alguém a procura.{% endcomment %}
-                {% if evento.evidencias %}
-                  <div class="eithra-evidencias mt-2">
-                    {% for evidencia in evento.evidencias %}
-                      {% if evidencia.eh_video %}
-                        <button
-                          type="button"
-                          class="eithra-thumb eithra-thumb-video"
-                          data-bs-toggle="modal"
-                          data-bs-target="#ver-evidencia"
-                          data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
-                          data-evidencia-video="1"
-                          data-evidencia-tipo="{{ evidencia.tipo }}"
-                          data-evidencia-nome="{{ evidencia.nome }}"
-                          title="{{ evidencia.nome|default:'Vídeo' }} — assistir">
-                          <i class="bx bx-play" aria-hidden="true"></i>
-                          <span class="visually-hidden">Assistir ao vídeo anexado</span>
-                        </button>
-                      {% else %}
-                        <button
-                          type="button"
-                          class="eithra-thumb"
-                          data-bs-toggle="modal"
-                          data-bs-target="#ver-evidencia"
-                          data-evidencia-url="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
-                          data-evidencia-video="0"
-                          data-evidencia-tipo="{{ evidencia.tipo }}"
-                          data-evidencia-nome="{{ evidencia.nome }}"
-                          title="{{ evidencia.nome|default:'Foto' }}">
-                          <img
-                            src="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
-                            alt="{{ evidencia.nome|default:'Foto anexada à demanda' }}"
-                            loading="lazy">
-                        </button>
-                      {% endif %}
-                    {% endfor %}
-                  </div>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="eithra-vazio mb-0"><i class="bx bx-history" aria-hidden="true"></i>O que acontecer com esta demanda aparece aqui.</p>
-      {% endif %}
-  </section>
-
-  {% comment %}
-    Relacionadas só existe quando há ligação operacional de verdade — uma
-    manutenção em andamento, por exemplo. Sem nada a ligar, a seção não ocupa
-    espaço na leitura.
-  {% endcomment %}
-  {% if relacionadas %}
-    <section class="eithra-detail-section">
-      <h2 class="h6 mb-3">Relacionadas</h2>
-      <ul class="eithra-lista">
-        {% for item in relacionadas %}
-          <li class="eithra-linha">
-            <div class="eithra-linha-corpo">
-              <div class="eithra-linha-nome">{{ item.titulo }}</div>
-              <div class="eithra-linha-contexto">{{ item.tipo }} · {{ item.status }}</div>
-            </div>
-            <div class="eithra-linha-acao">
-              <a class="btn btn-sm btn-label-secondary" href="{{ item.url }}">Abrir</a>
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
-    </section>
-  {% endif %}
+  </div>
 
   {% if pode_editar %}
     <div
@@ -393,80 +411,117 @@
           {% comment %}A marca que acompanha este formulário até a confirmação. É ela que
           impede o mesmo envio de virar duas movimentações.{% endcomment %}
           {% if confirmacao %}<input type="hidden" name="confirmacao" value="{{ confirmacao }}">{% endif %}
-          <div class="modal-header">
-            <div>
-              <h5 class="modal-title" id="atualizar-demanda-titulo">Registrar atualização</h5>
-              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
-              <div class="eithra-step-wizard mt-2">
-                {% for etapa in etapas_da_atualizacao %}
-                  <div class="eithra-step{% if etapa.ativa %} is-active{% elif etapa.concluida %} is-complete{% endif %}">
-                    <span class="eithra-step-number">{{ etapa.numero }}</span>
-                    <span class="eithra-step-label">{{ etapa.titulo }}</span>
-                  </div>
-                {% endfor %}
+          <div class="eithra-modal-hero">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+              <div>
+                <h5 class="eithra-modal-hero-titulo" id="atualizar-demanda-titulo">Registrar atualização</h5>
+                <p class="eithra-modal-hero-subtitulo">{{ demanda.referencia }} — {{ demanda.assunto_curto }}</p>
+                <div class="eithra-step-wizard mt-3">
+                  {% for etapa in etapas_da_atualizacao %}
+                    <div class="eithra-step{% if etapa.ativa %} is-active{% elif etapa.concluida %} is-complete{% endif %}">
+                      <span class="eithra-step-number">{{ etapa.numero }}</span>
+                      <span class="eithra-step-label">{{ etapa.titulo }}</span>
+                    </div>
+                  {% endfor %}
+                </div>
               </div>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
           </div>
 
           {% if etapa_atualizacao == "informacoes" %}
             <div class="modal-body">
               {% if pode_observar %}
-                {% comment %}Um relato é a entrada: escrever e falar são a mesma coisa dita
-                de dois jeitos — a fala só produz texto para este campo.{% endcomment %}
-                <p class="text-body-secondary small eithra-modal-nota">
-                  {% if voz_disponivel %}Escreva o que aconteceu com esta demanda — ou fale, se for mais rápido.{% else %}Escreva o que aconteceu com esta demanda.{% endif %}
-                </p>
-              {% endif %}
-              {% comment %}O relato é o que a pessoa veio escrever, então vem primeiro e ocupa
-              a linha inteira; o que aconteceu com a demanda é o complemento, e se
-              lê logo abaixo, ao lado do aviso das provas. O respiro entre um e
-              outro é o vão da grade — não uma margem repetida em cada campo.{% endcomment %}
-              <div class="row g-3">
-                {% if pode_observar %}
-                  <div class="col-12">
-                    {% comment %}Falar é a outra forma de escrever a atualização: o microfone
-                    mora dentro do próprio campo, e a fala vira o texto daqui. No pedido
-                    de transcrição vai a demanda, porque é ela que diz quem pode
-                    escrever nela.{% endcomment %}
-                    {% if voz_disponivel %}
-                      {% url 'demandas:transcrever' as url_da_transcricao %}
-                      {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto voz_url=url_da_transcricao voz_demanda=demanda.pk classe="mb-0" %}
-                    {% else %}
-                      {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto classe="mb-0" %}
-                    {% endif %}
-                  </div>
-                  {% comment %}O que a fala produziu fica logo abaixo do campo: quem ditou
-                  confere aqui antes de seguir.{% endcomment %}
+                <p class="eithra-modal-apoio">Conte o que aconteceu, informe a situação atual e, se quiser, indique o próximo passo.</p>
+                <h3 class="eithra-modal-pergunta">Conte o que aconteceu</h3>
+                <div class="eithra-campo-hero-wrapper">
                   {% if voz_disponivel %}
-                    <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+                    {% url 'demandas:transcrever' as url_da_transcricao %}
+                    {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto voz_url=url_da_transcricao voz_demanda=demanda.pk classe="mb-0" %}
+                  {% else %}
+                    {% include "pages/cadastros/_campo.html" with campo=formulario_observacao.texto classe="mb-0" %}
                   {% endif %}
+                </div>
+                {% if voz_disponivel %}
+                  <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
                 {% endif %}
+                <p class="form-text mt-2 mb-0">Descreva de forma simples o que foi feito, identificado ou qualquer novidade sobre esta demanda.</p>
+              {% endif %}
+
+              <div class="row g-3 mt-1">
                 {% if formulario_status.fields.acao.choices %}
                   <div class="col-12{% if pode_adicionar_evidencia %} col-lg-6{% endif %}">
                     {% include "pages/cadastros/_campo.html" with campo=formulario_status.acao classe="mb-0" %}
                   </div>
                 {% endif %}
-                {% comment %}As provas entram na tela da confirmação, que é onde o envio
-                acontece de verdade: um arquivo escolhido aqui não atravessaria a
-                troca de etapa, e pedir duas vezes o mesmo arquivo seria pior do
-                que dizer, desde já, onde ele será anexado.{% endcomment %}
+                {% if pode_observar %}
+                  <div class="col-12{% if formulario_status.fields.acao.choices %} col-lg-6{% endif %}">
+                    {% if voz_disponivel %}
+                      {% url 'demandas:transcrever' as url_da_transcricao_2 %}
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao voz_url=url_da_transcricao_2 voz_demanda=demanda.pk classe="mb-0" %}
+                    {% else %}
+                      {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao classe="mb-0" %}
+                    {% endif %}
+                    <datalist id="{{ formulario_acompanhamento.proxima_acao.id_for_label }}_lista">
+                      {% for sugestao in sugestoes_de_proxima_acao %}
+                        <option value="{{ sugestao }}"></option>
+                      {% endfor %}
+                    </datalist>
+                  </div>
+                {% endif %}
                 {% if pode_adicionar_evidencia %}
-                  <div class="col-12 col-lg-6">
-                    <p class="text-body-secondary small mb-0">
-                      Na próxima etapa você pode anexar fotos ou um vídeo curto ao que contou.
-                    </p>
+                  <div class="col-12">
+                    <div class="eithra-evidencia-drop">
+                      <i class="bx bx-cloud-upload eithra-evidencia-drop-icone" aria-hidden="true"></i>
+                      <div>
+                        <div class="fw-medium">Evidências</div>
+                        <div class="small text-body-secondary">Na próxima etapa você pode anexar fotos, vídeos ou PDF ao que contou.</div>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+                {% if pode_observar %}
+                  <div class="col-12">
+                    <details class="border rounded p-3">
+                      <summary class="fw-medium">Mais informações de acompanhamento</summary>
+                      <p class="form-text mt-2">Estas informações são opcionais e não alteram a situação da demanda.</p>
+                      <div class="row g-3 mt-1">
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_tipo classe="mb-0" %}
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.responsavel_acompanhamento classe="mb-0" %}
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_descricao classe="mb-0" %}
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.prazo_proxima_acao classe="mb-0" %}
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.previsao classe="mb-0" %}
+                        </div>
+                        <div class="col-12 col-lg-6">
+                          {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.impedimento classe="mb-0" %}
+                        </div>
+                      </div>
+                    </details>
                   </div>
                 {% endif %}
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-              <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn btn-primary">Continuar</button>
+              <button type="button" class="btn eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn eithra-btn-primario">Continuar</button>
             </div>
           {% else %}
             {% if formulario_status.fields.acao.choices %}{{ formulario_status.acao.as_hidden }}{% endif %}
             {% if pode_observar %}{{ formulario_observacao.texto.as_hidden }}{% endif %}
+            {% if pode_observar %}
+              {% for campo in formulario_acompanhamento %}
+                <input type="hidden" name="{{ campo.html_name }}" value="{{ campo.value|default_if_none:'' }}">
+              {% endfor %}
+            {% endif %}
             <div class="modal-body">
               <div class="eithra-review-card">
                 <div class="row g-3">
@@ -498,6 +553,23 @@
                   <span class="badge bg-label-{{ resumo_atualizacao.consequencia_tom }}">{{ resumo_atualizacao.consequencia }}</span>
                 </p>
               </div>
+              {% if pode_observar %}
+                <div class="eithra-review-card mt-3">
+                  <h6 class="mb-2">Acompanhamento</h6>
+                  {% if resumo_atualizacao.acompanhamento %}
+                    <dl class="eithra-vg-info mb-0">
+                      {% for item in resumo_atualizacao.acompanhamento %}
+                        <div class="eithra-vg-par">
+                          <dt>{{ item.rotulo }}</dt>
+                          <dd>{{ item.valor }}</dd>
+                        </div>
+                      {% endfor %}
+                    </dl>
+                  {% else %}
+                    <p class="text-body-secondary small mb-0">Nenhuma alteração no acompanhamento.</p>
+                  {% endif %}
+                </div>
+              {% endif %}
 
               {% comment %}A prova do relato entra aqui, no mesmo envio que confirma: é
               esta a tela em que os arquivos podem viajar junto com o resto, e o
@@ -526,11 +598,11 @@
               {% endif %}
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="button" class="btn eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
               {% comment %}Corrigir volta ao relato sem perder o que foi escrito; Confirmar é o
               que autoriza a movimentação pelo serviço oficial do domínio.{% endcomment %}
-              <button type="submit" name="etapa_atualizacao" value="corrigir" class="btn btn-label-secondary">Corrigir</button>
-              <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn btn-primary">Confirmar</button>
+              <button type="submit" name="etapa_atualizacao" value="corrigir" class="btn eithra-btn-secundario">Corrigir</button>
+              <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn eithra-btn-primario">Confirmar</button>
             </div>
           {% endif %}
         </form>
@@ -573,63 +645,6 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="submit" class="btn btn-primary">Anexar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  {% endif %}
-
-  {% comment %}A janela do acompanhamento é onde o que se sabe sobre a espera, o próximo
-  passo, a previsão, o impedimento e quem segue a demanda é corrigido à mão. Salvar
-  aqui não move a situação: acompanhamento e ciclo são perguntas diferentes. Os
-  campos se leem dois a dois, e é essa vizinhança que mantém a janela baixa no
-  desktop — sem empurrar o rodapé para fora da tela.{% endcomment %}
-  {% if pode_acompanhar %}
-    <div
-      class="modal fade{% if modal_aberto == 'acompanhamento' %} show eithra-modal-reaberto{% endif %}"
-      id="atualizar-acompanhamento"
-      tabindex="-1"
-      role="dialog"
-      aria-labelledby="atualizar-acompanhamento-titulo"
-      aria-hidden="{% if modal_aberto == 'acompanhamento' %}false{% else %}true{% endif %}">
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl eithra-modal-operacional">
-        <form class="modal-content" method="post" action="{% url 'demandas:acompanhar' demanda.pk %}?aba={{ aba }}" novalidate>
-          {% csrf_token %}
-          <div class="modal-header">
-            <div>
-              <h5 class="modal-title" id="atualizar-acompanhamento-titulo">Atualizar acompanhamento</h5>
-              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
-            </div>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-          <div class="modal-body">
-            {% comment %}Uma linha basta: o que a pessoa precisa saber antes de escrever é que
-            isto não mexe no ciclo da demanda. O resto o rótulo de cada campo diz.{% endcomment %}
-            <p class="text-body-secondary small eithra-modal-nota">Isto não muda a situação da demanda.</p>
-            <div class="row g-3">
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_tipo classe="mb-0" %}
-              </div>
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.responsavel_acompanhamento classe="mb-0" %}
-              </div>
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.aguardando_descricao classe="mb-0" %}
-              </div>
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.proxima_acao classe="mb-0" %}
-              </div>
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.previsao classe="mb-0" %}
-              </div>
-              <div class="col-12 col-lg-6">
-                {% include "pages/cadastros/_campo.html" with campo=formulario_acompanhamento.impedimento classe="mb-0" %}
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-primary">Salvar acompanhamento</button>
           </div>
         </form>
       </div>

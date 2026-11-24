@@ -20,22 +20,22 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.utils import timezone
 
-from apps.balancos.services import (
+from apps.core.arquivos import (
+    ASSINATURAS_DE_ARQUIVO,
+    FORMATOS_DE_ARQUIVO_ACEITOS,
+    ErroDeArquivo,
     calcular_hash,
     formatar_tamanho,
-    ler_conteudo,
-    sanitizar_nome,
+    montar_chave_documento,
+    tipo_de_arquivo,
+    validar_arquivo,
 )
 from apps.core.storage import ErroDeStorage, obter_provider
 
 from .models import ArquivoDocumento, DocumentoOperacional
 
 # Assinatura real de cada formato aceito. O que vale é o começo do arquivo.
-ASSINATURAS = (
-    ("application/pdf", b"%PDF-", "pdf"),
-    ("image/jpeg", b"\xff\xd8\xff", "jpg"),
-    ("image/png", b"\x89PNG\r\n\x1a\n", "png"),
-)
+ASSINATURAS = ASSINATURAS_DE_ARQUIVO
 
 # Como a tela nomeia cada formato aceito. Tipo desconhecido não vira sigla.
 ROTULO_POR_MIME = {
@@ -45,11 +45,7 @@ ROTULO_POR_MIME = {
 }
 
 # O que a recusa diz quando o conteúdo não é nenhum dos formatos aceitos.
-FORMATOS_ACEITOS = "PDF, JPG ou PNG"
-
-
-class ErroDeArquivo(Exception):
-    """O arquivo não pode ser guardado. A mensagem é para a gestão."""
+FORMATOS_ACEITOS = FORMATOS_DE_ARQUIVO_ACEITOS
 
 
 # -- O arquivo ------------------------------------------------------------------
@@ -72,55 +68,7 @@ def limite_legivel() -> str:
 
 def tipo_do_arquivo(conteudo: bytes) -> tuple[str, str] | None:
     """O tipo e a extensão do arquivo, lidos do próprio conteúdo."""
-    for mime, assinatura, extensao in ASSINATURAS:
-        if conteudo.startswith(assinatura):
-            return mime, extensao
-
-    return None
-
-
-def validar_arquivo(arquivo) -> tuple[bytes, str, str, str]:
-    """Confere o arquivo e devolve o que dele precisa ser guardado.
-
-    Devolve o conteúdo, o tipo real, a extensão e o nome já tratado. Um arquivo
-    que não passa daqui não vira nem registro: não houve anexo, então não há o
-    que guardar.
-    """
-    if arquivo is None:
-        raise ErroDeArquivo("Escolha o arquivo que acompanha este documento.")
-
-    tamanho = int(getattr(arquivo, "size", 0) or 0)
-    if tamanho <= 0:
-        raise ErroDeArquivo("O arquivo está vazio.")
-
-    limite = limite_de_arquivo()
-    if limite and tamanho > limite:
-        raise ErroDeArquivo(
-            f"O arquivo tem {formatar_tamanho(tamanho)} e passa do limite de "
-            f"{formatar_tamanho(limite)}."
-        )
-
-    conteudo = ler_conteudo(arquivo)
-    detectado = tipo_do_arquivo(conteudo)
-    if detectado is None:
-        raise ErroDeArquivo(
-            f"O arquivo não é de um formato aceito. Envie em {FORMATOS_ACEITOS}."
-        )
-    mime, extensao = detectado
-
-    informado = (
-        (getattr(arquivo, "content_type", "") or "").split(";")[0].strip().lower()
-    )
-    if informado and informado != mime:
-        # O navegador disse uma coisa e o arquivo é outra. Recusar é a única
-        # resposta honesta: repassar o tipo informado seria guardar um arquivo
-        # com um tipo que ele não tem.
-        raise ErroDeArquivo(
-            f"O arquivo enviado não corresponde a um formato aceito. Envie em "
-            f"{FORMATOS_ACEITOS}."
-        )
-
-    return conteudo, mime, extensao, sanitizar_nome(getattr(arquivo, "name", ""))
+    return tipo_de_arquivo(conteudo)
 
 
 def montar_chave(*, condominio, documento, arquivo, extensao: str) -> str:
@@ -129,7 +77,12 @@ def montar_chave(*, condominio, documento, arquivo, extensao: str) -> str:
     Só identificadores: o nome que a pessoa deu ao arquivo não entra aqui. O
     caminho não carrega dado pessoal e não depende do que o navegador enviou.
     """
-    return f"documentos/{condominio.pk}/{documento.pk}/{arquivo.pk}.{extensao}"
+    return montar_chave_documento(
+        condominio=condominio,
+        documento=documento,
+        arquivo=arquivo,
+        extensao=extensao,
+    )
 
 
 def provedor_dos_documentos():

@@ -37,11 +37,18 @@ from django.utils import timezone
 from apps.cadastros.models import Equipamento, Fornecedor, LocalOperacional
 from apps.condominios.models import Condominio
 from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
+from apps.demandas.models import Demanda
 from apps.estoque.models import ItemCompra
 from apps.manutencoes.models import Manutencao
 from apps.rotinas.models import RotinaRecorrente
 
-from .constants import TOM_POR_SITUACAO, PeriodicidadeCobranca, SituacaoVigencia
+from .constants import (
+    TOM_POR_SITUACAO,
+    PeriodicidadeCobranca,
+    SituacaoVigencia,
+    StatusProjeto,
+    TipoItemProjeto,
+)
 
 
 def _texto(valor: str | None) -> str:
@@ -528,6 +535,18 @@ class ContratoFornecedor(models.Model):
         null=True,
         blank=True,
         help_text="Quantos dias antes do fim o condomínio precisa avisar que não renova.",
+    )
+    # O SLA é a regra contratual de atendimento — o que o contrato promete para
+    # responder e resolver. É diferente do fim do contrato e diferente do prazo
+    # de uma demanda: é a base formal de onde o prazo de uma demanda pode sair.
+    # Sem SLA estruturado, o contrato continua vigente e simplesmente não gera
+    # prazo — nada é deduzido do texto do documento.
+    sla_dias = models.PositiveSmallIntegerField(
+        "SLA (dias)",
+        null=True,
+        blank=True,
+        help_text="Prazo de atendimento previsto em contrato, em dias. Sem este "
+        "número, o contrato não origina prazo de demanda.",
     )
     data_proximo_reajuste = models.DateField(
         "Próximo reajuste",
@@ -1827,6 +1846,305 @@ class DocumentoGarantia(models.Model):
             getattr(self, "garantia", None),
             getattr(self, "documento", None) and self.documento.condominio_id,
             "A garantia escolhida não é deste condomínio.",
+        )
+        if erros:
+            raise ValidationError(erros)
+
+
+class ProjetoQuerySet(models.QuerySet):
+    """Leituras reutilizáveis do projeto."""
+
+    def ativos(self):
+        """Projetos em uso."""
+        return self.filter(ativo=True)
+
+    def do_condominio(self, condominio):
+        """Projetos deste condomínio. Sem condomínio resolvido, conjunto vazio."""
+        if condominio is None or not getattr(condominio, "pk", None):
+            return self.none()
+        return self.filter(condominio_id=condominio.pk)
+
+
+class Projeto(models.Model):
+    """O esforço que o condomínio decidiu tocar, com começo e fim.
+
+    O projeto é o guarda-chuva de um trabalho: a regularização do AVCB, a troca
+    de bombas, a reforma do hall. Ele se abre em etapas e entregas — que ficam
+    em ``ProjetoItem``, apontando para si mesmas — e se liga às demandas que o
+    movem, em ``ProjetoDemanda``.
+
+    O dinheiro não mora aqui: valor de projeto é assunto do balanço mensal, não
+    deste cadastro.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.PROTECT,
+        related_name="projetos",
+        verbose_name="Condomínio",
+    )
+    nome = models.CharField(
+        "Nome",
+        max_length=200,
+        help_text="O que este projeto é, em uma linha.",
+    )
+    identificacao = models.CharField(
+        "Identificação",
+        max_length=60,
+        blank=True,
+        default="",
+        help_text="Como o projeto é referenciado em documento ou planilha, quando houver.",
+    )
+    descricao = models.TextField(
+        "Descrição",
+        blank=True,
+        default="",
+        help_text="O que mais importa saber sobre este projeto.",
+    )
+    status = models.CharField(
+        "Situação",
+        max_length=20,
+        choices=StatusProjeto.choices,
+        default=StatusProjeto.EM_ESTUDO,
+        help_text="O ponto do andamento, declarado pela gestão.",
+    )
+    data_inicio = models.DateField(
+        "Início",
+        null=True,
+        blank=True,
+        help_text="Quando o projeto começou, se já começou.",
+    )
+    data_prevista_fim = models.DateField(
+        "Previsão de conclusão",
+        null=True,
+        blank=True,
+        help_text="Quando o projeto deve terminar, se houver previsão.",
+    )
+    responsavel_interno = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="projetos_sob_responsabilidade",
+        verbose_name="Responsável",
+        help_text="Quem acompanha este projeto. O projeto permanece se a pessoa sair.",
+    )
+    observacao = models.TextField(
+        "Observação",
+        blank=True,
+        default="",
+        help_text="O que se sabe sobre este projeto e não cabe nos outros campos.",
+    )
+    ativo = models.BooleanField(
+        "Ativo",
+        default=True,
+        help_text="Desativar retira o projeto de circulação sem apagar o histórico.",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="projetos_cadastrados",
+        verbose_name="Cadastrado por",
+        help_text="Quem cadastrou. Preservado para rastreabilidade.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+
+    objects = ProjetoQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Projeto"
+        verbose_name_plural = "Projetos"
+        ordering = ["nome"]
+        indexes = [
+            models.Index(fields=["condominio", "ativo"], name="projeto_cond_ativo_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.nome
+
+    def save(self, *args, **kwargs):
+        """Guarda o projeto já normalizado, venha ele do formulário ou não."""
+        self.nome = _texto(self.nome)
+        self.identificacao = _texto(self.identificacao)
+        self.descricao = _texto_longo(self.descricao)
+        self.observacao = _texto_longo(self.observacao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um projeto sem nome ou com prazo incoerente."""
+        erros = {}
+        if not _texto(self.nome):
+            erros["nome"] = "Dê um nome ao projeto."
+        if (
+            self.data_inicio is not None
+            and self.data_prevista_fim is not None
+            and self.data_prevista_fim < self.data_inicio
+        ):
+            erros["data_prevista_fim"] = (
+                "A previsão de conclusão não pode ser anterior ao início."
+            )
+        if erros:
+            raise ValidationError(erros)
+
+
+class ProjetoItem(models.Model):
+    """Uma etapa do projeto, ou uma entrega dentro de uma etapa.
+
+    A hierarquia é a mesma tabela apontando para si mesma: uma etapa não tem
+    pai, uma entrega tem a etapa como pai. O ``tipo`` diz o nível. Assim os três
+    níveis do RVE — projeto, etapa, entrega — cabem em uma tabela só.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    projeto = models.ForeignKey(
+        Projeto,
+        on_delete=models.CASCADE,
+        related_name="itens",
+        verbose_name="Projeto",
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="filhos",
+        verbose_name="Item superior",
+        help_text="A etapa à qual esta entrega pertence. Em branco, é uma etapa.",
+    )
+    tipo = models.CharField(
+        "Tipo",
+        max_length=20,
+        choices=TipoItemProjeto.choices,
+        default=TipoItemProjeto.ETAPA,
+        help_text="O nível deste item: etapa ou entrega.",
+    )
+    nome = models.CharField("Nome", max_length=200)
+    descricao = models.TextField(
+        "Descrição",
+        blank=True,
+        default="",
+        help_text="O que este item compreende.",
+    )
+    status = models.CharField(
+        "Situação",
+        max_length=20,
+        choices=StatusProjeto.choices,
+        default=StatusProjeto.EM_ESTUDO,
+        help_text="O ponto do andamento deste item.",
+    )
+    ordem = models.PositiveIntegerField(
+        "Ordem",
+        default=0,
+        help_text="Posição do item dentro do nível, para ler na sequência certa.",
+    )
+    observacao = models.TextField(
+        "Observação",
+        blank=True,
+        default="",
+        help_text="O que se sabe sobre este item e não cabe nos outros campos.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+    atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)
+
+    class Meta:
+        verbose_name = "Item de projeto"
+        verbose_name_plural = "Itens de projeto"
+        ordering = ["projeto", "ordem", "nome"]
+        indexes = [
+            models.Index(
+                fields=["projeto", "tipo"], name="projetoitem_proj_tipo_idx"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.projeto} · {self.nome}"
+
+    def save(self, *args, **kwargs):
+        """Guarda o item já normalizado."""
+        self.nome = _texto(self.nome)
+        self.descricao = _texto_longo(self.descricao)
+        self.observacao = _texto_longo(self.observacao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa um item sem nome ou com item superior de outro projeto."""
+        erros = {}
+        if not _texto(self.nome):
+            erros["nome"] = "Dê um nome ao item."
+        if self.parent_id is not None and self.parent_id == self.id:
+            erros["parent"] = "Um item não pode ser superior de si mesmo."
+        elif (
+            self.parent is not None
+            and self.projeto_id
+            and self.parent.projeto_id != self.projeto_id
+        ):
+            erros["parent"] = "O item superior pertence a outro projeto."
+        if erros:
+            raise ValidationError(erros)
+
+
+class ProjetoDemanda(models.Model):
+    """Uma demanda que move um projeto.
+
+    Vínculo explícito: a mesma demanda pode servir a mais de um projeto, e um
+    projeto costuma reunir várias demandas. A demanda é o que acontece no dia;
+    o projeto é o esforço que ela alimenta.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    projeto = models.ForeignKey(
+        Projeto,
+        on_delete=models.CASCADE,
+        related_name="demandas_vinculadas",
+        verbose_name="Projeto",
+    )
+    demanda = models.ForeignKey(
+        Demanda,
+        on_delete=models.PROTECT,
+        related_name="projetos_vinculados",
+        verbose_name="Demanda",
+    )
+    observacao = models.CharField(
+        "Observação",
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="O que varia nesta demanda dentro deste projeto.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Demanda do projeto"
+        verbose_name_plural = "Demandas do projeto"
+        ordering = ["-criado_em"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["projeto", "demanda"],
+                name="projeto_demanda_unico",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.projeto} · {self.demanda}"
+
+    def save(self, *args, **kwargs):
+        """Guarda o vínculo já normalizado."""
+        self.observacao = _texto(self.observacao)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Recusa uma demanda de outro condomínio."""
+        erros = {}
+        _recusa_outro_condominio(
+            erros,
+            "demanda",
+            getattr(self, "demanda", None),
+            getattr(self, "projeto", None) and self.projeto.condominio_id,
+            "A demanda escolhida não é deste condomínio.",
         )
         if erros:
             raise ValidationError(erros)

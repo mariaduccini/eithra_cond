@@ -7,7 +7,13 @@ desativa em vez de sumir; o movimento não se apaga, porque é a trilha do saldo
 """
 from django.contrib import admin
 
-from apps.estoque.models import Compra, ItemCompra, ItemEstoque, MovimentacaoEstoque
+from apps.estoque.models import (
+    Compra,
+    DocumentoCompra,
+    ItemCompra,
+    ItemEstoque,
+    MovimentacaoEstoque,
+)
 
 
 @admin.register(ItemEstoque)
@@ -64,6 +70,36 @@ class CompraAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         """A compra é um fato do condomínio; cancela-se, não se apaga pela tela."""
+        return False
+
+
+@admin.register(DocumentoCompra)
+class DocumentoCompraAdmin(admin.ModelAdmin):
+    list_display = (
+        "nome_original",
+        "compra",
+        "tipo_documento",
+        "status_leitura",
+        "criado_por",
+        "criado_em",
+    )
+    list_filter = ("tipo_documento", "status_leitura")
+    search_fields = ("nome_original", "compra__numero_documento")
+    autocomplete_fields = ("compra", "criado_por")
+    readonly_fields = (
+        "id",
+        "storage_provider",
+        "storage_bucket",
+        "storage_key",
+        "mime_type",
+        "tamanho_bytes",
+        "sha256",
+        "criado_em",
+    )
+    ordering = ("-criado_em",)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        """O documento integra a trilha da compra e não é apagado pelo Admin."""
         return False
 
 

@@ -12,6 +12,7 @@ da linha vem da quantidade vezes o valor unitário, e o destino da linha decide
 quanto vai para o estoque e quanto é consumido no ato.
 """
 from django import forms
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 
 from apps.cadastros.models import Fornecedor, LocalOperacional
@@ -21,6 +22,7 @@ from apps.manutencoes.models import Manutencao
 from .constants import (
     TIPOS_DE_MOVIMENTO_MANUAL,
     DestinoDoItem,
+    TipoDocumentoCompra,
     StatusCompra,
     TipoMovimentacaoEstoque,
     UnidadeMedida,
@@ -382,6 +384,18 @@ class CompraForm(forms.Form):
         empty_label="Sem fornecedor",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    forma_pagamento = forms.CharField(
+        label="Forma de pagamento",
+        required=False,
+        max_length=60,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Ex.: Pix, cartão ou transferência",
+                "autocomplete": "off",
+            }
+        ),
+    )
     numero_documento = forms.CharField(
         label="Documento",
         required=False,
@@ -437,6 +451,8 @@ class CompraForm(forms.Form):
         self.fields["manutencao_origem"].queryset = _manutencoes_do_condominio(
             atual, getattr(compra, "manutencao_origem", None)
         )
+        if compra is not None and compra.data_compra is None:
+            self.fields["data_compra"].required = False
 
     def _condominio_escolhido(self, permitidos):
         """Qual condomínio vale para montar as listas de escolha."""
@@ -452,8 +468,155 @@ class CompraForm(forms.Form):
     def clean_numero_documento(self):
         return " ".join((self.cleaned_data["numero_documento"] or "").split())
 
+    def clean_forma_pagamento(self):
+        return " ".join((self.cleaned_data["forma_pagamento"] or "").split())
+
     def clean_observacao(self):
         return (self.cleaned_data["observacao"] or "").strip()
+
+
+class ImportarCompraForm(forms.Form):
+    """Recebe o primeiro documento antes de sugerir qualquer dado da compra."""
+
+    condominio = forms.ModelChoiceField(
+        label="Condomínio",
+        queryset=Condominio.objects.none(),
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    tipo_documento = forms.ChoiceField(
+        label="Tipo de documento",
+        choices=TipoDocumentoCompra.choices,
+        initial=TipoDocumentoCompra.NOTA_FISCAL,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    arquivo = forms.FileField(
+        label="Nota fiscal, recibo ou cupom",
+        widget=forms.FileInput(
+            attrs={
+                "class": "form-control",
+                "accept": ".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png",
+                "capture": "environment",
+            }
+        ),
+    )
+
+    def __init__(self, *args, condominios=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        permitidos = (
+            condominios
+            if condominios is not None
+            else Condominio.objects.none()
+        )
+        self.fields["condominio"].queryset = permitidos
+        elegiveis = list(permitidos)
+        if len(elegiveis) == 1:
+            self.fields["condominio"].initial = elegiveis[0].pk
+            self.fields["condominio"].widget = forms.HiddenInput()
+
+
+class ReembolsoCompraForm(forms.Form):
+    """Captura o pedido de reembolso sem abrir uma conta financeira paralela."""
+
+    comprada_por_outra_pessoa = forms.BooleanField(
+        label="Compra feita por outra pessoa?",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    precisa_reembolso = forms.BooleanField(
+        label="Precisa de reembolso?",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    reembolso_para = forms.ModelChoiceField(
+        label="Reembolsar para",
+        queryset=get_user_model().objects.none(),
+        required=False,
+        empty_label="Selecione um usuário",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    valor_reembolso = forms.DecimalField(
+        label="Valor do reembolso",
+        required=False,
+        min_value=0,
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "min": "0.01", "step": "0.01"}
+        ),
+    )
+    observacao_reembolso = forms.CharField(
+        label="Observação do reembolso",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 2}
+        ),
+    )
+
+    def __init__(self, *args, condominio=None, total=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if condominio is not None:
+            self.fields["reembolso_para"].queryset = (
+                get_user_model()
+                .objects.filter(
+                    is_active=True,
+                    acessos_condominio__condominio=condominio,
+                    acessos_condominio__ativo=True,
+                )
+                .distinct()
+                .order_by("full_name", "email")
+            )
+        self.total_compra = total
+
+    def clean(self):
+        dados = super().clean()
+        outra_pessoa = dados.get("comprada_por_outra_pessoa")
+        precisa = dados.get("precisa_reembolso")
+        usuario = dados.get("reembolso_para")
+        valor = dados.get("valor_reembolso")
+
+        if precisa and not outra_pessoa:
+            self.add_error(
+                "precisa_reembolso",
+                "Marque que a compra foi feita por outra pessoa.",
+            )
+        if precisa:
+            if usuario is None:
+                self.add_error("reembolso_para", "Escolha um usuário do condomínio.")
+            if valor is None:
+                self.add_error("valor_reembolso", "Informe o valor do reembolso.")
+            elif valor <= 0:
+                self.add_error(
+                    "valor_reembolso", "O valor precisa ser maior que zero."
+                )
+            elif self.total_compra is not None and valor > self.total_compra:
+                self.add_error(
+                    "valor_reembolso",
+                    "O reembolso não pode superar o total da compra.",
+                )
+        elif usuario is not None or valor is not None:
+            self.add_error(
+                "precisa_reembolso",
+                "Os campos de reembolso só se aplicam quando ele é solicitado.",
+            )
+        return dados
+
+
+class CadastrarItemExtraidoForm(forms.Form):
+    """Revisa nome e categoria antes de criar um item no catálogo canônico."""
+
+    nome = forms.CharField(
+        label="Nome do item",
+        max_length=150,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    categoria_texto = forms.CharField(
+        label="Categoria",
+        max_length=60,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
 
 
 class ItemCompraForm(forms.Form):

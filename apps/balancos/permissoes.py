@@ -32,8 +32,13 @@ PAPEIS_QUE_LEEM = frozenset(
 
 # Anexar uma foto que explica uma despesa é a mesma responsabilidade de corrigir
 # o que ela explica: quem responde pelo detalhamento responde pelo que o ilustra.
-# A supervisão vê as fotos, mas não as acrescenta nem decide exibi-las.
+# A supervisão vê as fotos, mas não as acrescenta nem decide exibi-las aos moradores.
 PAPEIS_QUE_GERENCIAM_EVIDENCIAS = PAPEIS_QUE_CORRIGEM
+
+# A transparência residencial é uma leitura separada do detalhe administrativo:
+# moradores só recebem balanços publicados e apenas em condomínios onde têm
+# vínculo ativo como morador.
+PAPEIS_QUE_LEEM_PUBLICADOS = frozenset({Papel.MORADOR})
 
 
 def _com_papel(usuario, papeis: frozenset[str]) -> QuerySet[Condominio]:
@@ -59,6 +64,11 @@ def condominios_para_importar(usuario) -> QuerySet[Condominio]:
 def condominios_para_ler(usuario) -> QuerySet[Condominio]:
     """Condomínios cujo balanço confirmado a pessoa pode ler agora."""
     return _com_papel(usuario, PAPEIS_QUE_LEEM)
+
+
+def condominios_para_ler_publicados(usuario) -> QuerySet[Condominio]:
+    """Condomínios em que a pessoa pode ler apenas balanços publicados."""
+    return _com_papel(usuario, PAPEIS_QUE_LEEM_PUBLICADOS)
 
 
 def condominios_para_corrigir(usuario) -> QuerySet[Condominio]:

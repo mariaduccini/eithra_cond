@@ -59,6 +59,9 @@ class EntidadeImportacaoHistorica(models.TextChoices):
     ROTINA = "rotina", "Rotina"
     MANUTENCAO = "manutencao", "Manutenção"
     DEMANDA = "demanda", "Demanda"
+    PROJETO = "projeto", "Projeto"
+    PROJETO_ITEM = "projeto_item", "Item de projeto"
+    AUTORIZACAO_PORTARIA = "autorizacao_portaria", "Autorização de portaria"
 
 
 class ResultadoImportacaoHistorica(models.TextChoices):

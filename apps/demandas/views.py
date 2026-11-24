@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -27,7 +27,7 @@ from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
-from . import movimentacao, prazos
+from . import movimentacao
 from .constants import (
     AguardandoTipo,
     ImpactoDemanda,
@@ -35,6 +35,7 @@ from .constants import (
     PrioridadeDemanda,
     RiscoDemanda,
     StatusDemanda,
+    TipoEventoDemanda,
     TipoMidiaEvidencia,
     TipoProblema,
 )
@@ -58,8 +59,11 @@ from .forms import (
     EvidenciaDaDemandaForm,
     FiltroDeDemandasForm,
     ObservacaoDaDemandaForm,
+    ORDEM_DOS_STATUS,
+    SUGESTOES_DE_PROXIMA_ACAO,
+    acoes_de_status,
 )
-from .models import Demanda, EvidenciaDemanda
+from .models import Demanda, EvidenciaDemanda, peso_da_prioridade
 from .permissoes import (
     condominios_para_criar,
     condominios_para_ver,
@@ -110,6 +114,42 @@ ETAPAS_DA_ATUALIZACAO = (
     ("informacoes", "Informações", False),
     ("conclusao", "Conclusão", False),
 )
+
+# As abas da listagem. A operação corrente e o histórico encerrado não se
+# misturam: cada aba é um recorte, e o padrão é o que está pedindo ação agora.
+ABAS_DA_LISTAGEM = ("ativas", "concluidas")
+ABA_PADRAO = "ativas"
+
+# As colunas da grade que aceitam ordenação. A chave viaja no endereço, no
+# parâmetro `ordenar`; fora desta lista não há ordenação manual.
+COLUNAS_ORDENAVEIS = (
+    ("titulo", "Título"),
+    ("local", "Local"),
+    ("prioridade", "Prioridade"),
+    ("criado_em", "Registrada em"),
+    ("prazo", "Prazo"),
+    ("status", "Situação"),
+)
+
+# Cada chave ordenável e a expressão ORM que ela vale. Nada além do que está
+# aqui chega ao `order_by`: o endereço carrega uma chave desta lista, nunca a
+# expressão em si — é a whitelist que impede qualquer valor de virar consulta.
+EXPRESSAO_DA_ORDEM = {
+    "titulo": "titulo",
+    "local": "local__nome",
+    "prioridade": "_peso_da_prioridade",
+    "criado_em": "criado_em",
+    "prazo": "prazo",
+    "status": "_ordem_da_situacao",
+}
+
+# Colunas que podem vir sem valor. O vazio vai ao fim nas duas direções: uma
+# lista que abre por "sem data" ou "sem local" não ajuda a decidir nada.
+COLUNAS_QUE_ADMITEM_VAZIO = frozenset({"local__nome", "prazo"})
+
+# A direção do primeiro clique de cada coluna. A data de registro lê melhor do
+# mais recente para o mais antigo; o resto, do começo para o fim.
+PRIMEIRA_DIRECAO_DESCE = {"criado_em": True}
 
 # Onde a sessão guarda as confirmações que já produziram movimentação. Existe
 # para uma coisa só: o mesmo formulário não escrever duas vezes no histórico.
@@ -190,7 +230,10 @@ def criar(request):
         classificacao_sugerida=dados.get("classificacao_sugerida"),
     )
     messages.success(request, "Demanda registrada.")
-    return redirect("demandas:detalhe", pk=demanda.pk)
+    # A demanda recém-criada é uma demanda ativa: quem acabou de registrá-la
+    # volta para o recorte operacional, onde ela aparece — sem filtros herdados
+    # de um endereço antigo que poderiam escondê-la logo depois de criada.
+    return redirect("demandas:listagem")
 
 
 @login_required
@@ -360,6 +403,16 @@ def atualizar(request, pk):
     formulario_status = AcaoDeStatusForm(
         request.POST, permitidos=permitidos, demanda=demanda
     )
+    campos_acompanhamento = AcompanhamentoDaDemandaForm.base_fields
+    acompanhamento_enviado = any(
+        campo in request.POST for campo in campos_acompanhamento
+    )
+    if acompanhamento_enviado and not pode_observar:
+        raise PermissionDenied("Esta pessoa não pode atualizar o acompanhamento.")
+    formulario_acompanhamento = AcompanhamentoDaDemandaForm(
+        request.POST if acompanhamento_enviado else None,
+        demanda=demanda,
+    )
     texto = " ".join((request.POST.get("texto") or "").split())
     # A foto e o vídeo acompanham o relato: são a prova do que ele diz. Vêm
     # como arquivos, e não como campo do formulário, porque um envio pode
@@ -378,12 +431,16 @@ def atualizar(request, pk):
 
     invalido = bool(permitidos) and not formulario_status.is_valid()
     invalido = invalido or (bool(texto) and not formulario_observacao.is_valid())
+    invalido = invalido or (
+        acompanhamento_enviado and not formulario_acompanhamento.is_valid()
+    )
     if invalido:
         return _render_detalhe(
             request,
             demanda,
             formulario_status=formulario_status,
             formulario_observacao=formulario_observacao,
+            formulario_acompanhamento=formulario_acompanhamento,
             modal="atualizar",
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="informacoes",
@@ -406,7 +463,20 @@ def atualizar(request, pk):
         and StatusDemanda.CONCLUIDA in permitidos
     ):
         proximo_status = StatusDemanda.CONCLUIDA
+    proposta_acompanhamento = (
+        _proposta_de_acompanhamento(
+            demanda,
+            leitura,
+            formulario_acompanhamento,
+            enviado=acompanhamento_enviado,
+        )
+        if pode_observar
+        else {}
+    )
     resumo = _resumo_da_atualizacao(demanda, proximo_status, texto, leitura=leitura)
+    resumo["acompanhamento"] = _resumo_acompanhamento_para_tela(
+        demanda, proposta_acompanhamento
+    )
 
     if etapa == "informacoes":
         return _render_detalhe(
@@ -414,6 +484,7 @@ def atualizar(request, pk):
             demanda,
             formulario_status=formulario_status,
             formulario_observacao=formulario_observacao,
+            formulario_acompanhamento=formulario_acompanhamento,
             modal="atualizar",
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="conclusao",
@@ -427,6 +498,7 @@ def atualizar(request, pk):
             demanda,
             formulario_status=formulario_status,
             formulario_observacao=formulario_observacao,
+            formulario_acompanhamento=formulario_acompanhamento,
             modal="atualizar",
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="informacoes",
@@ -441,6 +513,7 @@ def atualizar(request, pk):
             demanda,
             formulario_status=formulario_status,
             formulario_observacao=formulario_observacao,
+            formulario_acompanhamento=formulario_acompanhamento,
             modal="atualizar",
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="informacoes",
@@ -472,10 +545,11 @@ def atualizar(request, pk):
             # que vem depois e o que deixou de travar. Só o que ele sustenta é
             # proposto — e só agora, depois da confirmação, isso é aplicado ao
             # acompanhamento. Nada aqui move a situação da demanda.
-            proposta = leitura.acompanhamento_proposto()
-            if proposta:
+            if proposta_acompanhamento:
                 atualizar_acompanhamento(
-                    demanda=demanda, usuario=request.user, **proposta
+                    demanda=demanda,
+                    usuario=request.user,
+                    **proposta_acompanhamento,
                 )
             if tem_arquivos:
                 # Sem relato, a evidência precisa de um lugar próprio na linha
@@ -507,6 +581,7 @@ def atualizar(request, pk):
             formulario_status=formulario_status,
             formulario_observacao=formulario_observacao,
             formulario_evidencia=formulario_evidencia,
+            formulario_acompanhamento=formulario_acompanhamento,
             modal="atualizar",
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="conclusao",
@@ -796,8 +871,11 @@ def _render_listagem(
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
+    aba = _aba_da_listagem(request)
+    chave, desce = _ordenacao_pedida(request)
     pagina_demandas = paginar_do_pedido(
-        _demandas_filtradas(request, condominios, filtros), request.GET
+        _demandas_filtradas(request, condominios, filtros, aba, chave, desce),
+        request.GET,
     )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
@@ -811,6 +889,16 @@ def _render_listagem(
         "filtros": filtros,
         "filtros_ativos": tem_filtros(filtros),
         "total": pagina_demandas.paginator.count,
+        # O recorte em vigor e a ordenação — o que a tela precisa para marcar a
+        # aba certa e desenhar o sinal no cabeçalho da coluna que está ordenando.
+        "aba": aba,
+        "abas": ABAS_DA_LISTAGEM,
+        "ordenacao": {
+            "chave": chave,
+            "valor": f"-{chave}" if desce else chave,
+            "desc": desce,
+            "colunas": _cabecalhos_ordenaveis(request, chave, desce),
+        },
         "pode_criar": pode_criar,
         "formulario_demanda": formulario
         or (DemandaForm(condominios=pode_criar_condominios) if pode_criar else None),
@@ -893,17 +981,26 @@ def _render_detalhe(
         # Anexar uma prova é observar a demanda, não movê-la: quem acompanha
         # pode guardar a foto ou o vídeo sem mexer na situação.
         "pode_adicionar_evidencia": pode_observar,
-        "pode_concluir": StatusDemanda.CONCLUIDA in permitidos and not demanda.esta_encerrada,
+        # A ação principal é contextual: acompanhar a manutenção em curso quando
+        # ela existe; sem manutenção, o que sustenta o próximo passo é a própria
+        # demanda — o próximo passo combinado ou registrar o que aconteceu.
         "proximo_passo": _proximo_passo(demanda, request.user, manutencao),
-        "mais_acoes": _mais_acoes_da_demanda(demanda, request.user),
+        "mais_acoes": _mais_acoes_da_demanda(
+            demanda, request.user, permitidos, manutencao
+        ),
         "formulario_demanda": formulario
         or DemandaForm(condominio=demanda.condominio, initial=_iniciais_da_demanda(demanda)),
         "formulario_status": formulario_status
-        or AcaoDeStatusForm(permitidos=permitidos, demanda=demanda),
+        or AcaoDeStatusForm(
+            permitidos=permitidos, demanda=demanda, initial=_acao_pedida(request)
+        ),
         "formulario_observacao": formulario_observacao or ObservacaoDaDemandaForm(),
         "formulario_evidencia": formulario_evidencia or EvidenciaDaDemandaForm(),
         "formulario_acompanhamento": formulario_acompanhamento
         or AcompanhamentoDaDemandaForm(demanda=demanda),
+        # As sugestões de próxima ação que a janela do acompanhamento oferece.
+        # São atalho de digitação, não catálogo: o campo aceita qualquer texto.
+        "sugestoes_de_proxima_acao": SUGESTOES_DE_PROXIMA_ACAO,
         # O que a tela pode dizer sobre o arquivo sem expor bytes nem termos
         # técnicos: os formatos aceitos e o tamanho que cada um pode ter.
         "limites_evidencia": limites_legiveis(),
@@ -921,8 +1018,14 @@ def _render_detalhe(
     return render(request, "pages/demandas/detalhe.html", contexto, status=status)
 
 
-def _demandas_filtradas(request, condominios, filtros):
-    """Aplica os filtros essenciais e devolve a lista na ordem de atenção."""
+def _demandas_filtradas(request, condominios, filtros, aba=ABA_PADRAO, chave="", desce=False):
+    """Aplica os filtros essenciais e devolve a lista já no recorte e na ordem.
+
+    O recorte da aba é a fronteira do domínio — ativas ou encerradas — e vem
+    depois dos filtros, para os dois valerem juntos. A ordenação, por fim: quem
+    não pediu nenhuma recebe a ordem operacional, que é a leitura natural de
+    quem abre a lista para decidir o que fazer agora.
+    """
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
     ).select_related("condominio", "responsavel", "local", "equipamento")
@@ -973,7 +1076,113 @@ def _demandas_filtradas(request, condominios, filtros):
         if dados["minhas"]:
             queryset = queryset.minhas(request.user)
 
-    return queryset.na_ordem_de_atencao()
+    queryset = queryset.encerradas() if aba == "concluidas" else queryset.abertas()
+    return _ordenar(queryset, aba, chave, desce)
+
+
+# -- Recorte, ordenação e endereços da listagem --------------------------------
+
+
+def _aba_da_listagem(request) -> str:
+    """A aba pedida, validada — ou a operacional, quando não dá para ler."""
+    aba = (request.GET.get("aba") or "").strip().lower()
+    return aba if aba in ABAS_DA_LISTAGEM else ABA_PADRAO
+
+
+def _ordenacao_pedida(request):
+    """A coluna e a direção pedidas no endereço, já passadas pela whitelist.
+
+    Só uma chave conhecida vira ordenação. Qualquer outra coisa — nome
+    inventado, tentativa de escrever expressão — é ignorada, e a lista volta à
+    ordem padrão. O valor bruto do endereço nunca chega ao `order_by`.
+    """
+    bruto = (request.GET.get("ordenar") or "").strip()
+    if not bruto:
+        return "", False
+    desce = bruto.startswith("-")
+    chave = bruto[1:] if desce else bruto
+    if chave not in EXPRESSAO_DA_ORDEM:
+        return "", False
+    return chave, desce
+
+
+def _expressao_da_situacao():
+    """A situação na ordem do ciclo, para a coluna ordenar como a operação lê."""
+    return Case(
+        *[
+            When(status=valor, then=Value(indice))
+            for indice, valor in enumerate(ORDEM_DOS_STATUS)
+        ],
+        default=Value(len(ORDEM_DOS_STATUS)),
+        output_field=IntegerField(),
+    )
+
+
+def _ordenar(queryset, aba, chave, desce):
+    """Devolve o queryset na ordem pedida — ou na padrão, quando não há pedido."""
+    if not chave:
+        if aba == "concluidas":
+            # O que fechou por último vem primeiro. Canceladas não têm data de
+            # conclusão: entram depois, pela data em que foram canceladas, e o
+            # registro antigo ainda desempata pela criação — nunca uma ordem
+            # indefinida.
+            return queryset.order_by(
+                F("concluido_em").desc(nulls_last=True),
+                F("cancelado_em").desc(nulls_last=True),
+                "-criado_em",
+            )
+        return queryset.na_ordem_de_atencao()
+
+    if chave == "prioridade":
+        queryset = queryset.annotate(_peso_da_prioridade=peso_da_prioridade())
+    elif chave == "status":
+        queryset = queryset.annotate(_ordem_da_situacao=_expressao_da_situacao())
+
+    campo = EXPRESSAO_DA_ORDEM[chave]
+    expressao = F(campo)
+    if campo in COLUNAS_QUE_ADMITEM_VAZIO:
+        ordem = expressao.desc(nulls_last=True) if desce else expressao.asc(nulls_last=True)
+    else:
+        ordem = expressao.desc() if desce else expressao.asc()
+    return queryset.order_by(ordem, "-criado_em")
+
+
+def _url_com(request, **trocas) -> str:
+    """O endereço atual com alguns parâmetros trocados, o resto preservado.
+
+    É o que mantém busca, aba e ordenação juntas: mexer em uma não apaga as
+    outras. Um valor `None` remove o parâmetro — é assim que voltar à primeira
+    página não deixa `page` para trás.
+    """
+    parametros = request.GET.copy()
+    for chave, valor in trocas.items():
+        if valor is None:
+            parametros.pop(chave, None)
+        else:
+            parametros[chave] = valor
+    consulta = parametros.urlencode()
+    return f"{request.path}?{consulta}" if consulta else request.path
+
+
+def _cabecalhos_ordenaveis(request, chave, desce):
+    """Cada coluna ordenável com o endereço do próximo clique e o sinal atual.
+
+    O sinal só aparece na coluna que está ordenando. Clicar de novo nela inverte
+    a direção; clicar em outra começa pela direção natural daquela coluna. O
+    endereço de cada clique preserva busca e aba, e volta para a primeira página.
+    """
+    cabecalhos = {}
+    for campo, _rotulo in COLUNAS_ORDENAVEIS:
+        ativo = campo == chave
+        proximo_desce = (not desce) if ativo else PRIMEIRA_DIRECAO_DESCE.get(campo, False)
+        proximo = f"-{campo}" if proximo_desce else campo
+        cabecalhos[campo] = {
+            "url": _url_com(request, ordenar=proximo, page=None),
+            "indicador": ("↓" if desce else "↑") if ativo else "",
+            "aria": ("descending" if desce else "ascending") if ativo else "none",
+            "ativo": ativo,
+        }
+    return cabecalhos
 
 
 # -- Tradução para a tela -------------------------------------------------------
@@ -1023,10 +1232,10 @@ def _formulario_da_informacao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados["titulo"],
             "descricao": dados.get("descricao") or "",
-            # A prioridade é escolha de quem registra. A etapa já abre com o que
-            # estiver selecionado — o padrão do domínio quando ninguém escolheu
-            # ainda —, e é ela que segue adiante se a pessoa não tocar no campo.
-            "prioridade": dados.get("prioridade") or PrioridadeDemanda.NORMAL,
+            # O peso chega calculado pela regra do domínio. A etapa já abre com
+            # ele selecionado — a correção de quem tem permissão é o que muda
+            # esse valor —, e é ele que segue adiante se ninguém tocar no campo.
+            "prioridade": dados.get("prioridade") or leitura.prioridade,
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -1062,10 +1271,10 @@ def _formulario_da_revisao(formulario, condominios, usuario):
             "relato": dados.get("relato") or "",
             "titulo": dados.get("titulo") or leitura.assunto,
             "descricao": dados.get("descricao") or "",
-            # O peso escolhido na etapa anterior atravessa a revisão sem ser
+            # O peso calculado na etapa anterior atravessa a revisão sem ser
             # reaberto: a tela mostra o que será gravado, e o campo segue oculto
             # para chegar inteiro ao registro.
-            "prioridade": dados.get("prioridade") or PrioridadeDemanda.NORMAL,
+            "prioridade": dados.get("prioridade") or leitura.prioridade,
             "responsavel": getattr(responsavel, "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
@@ -1150,11 +1359,11 @@ def _sugestoes_para_tela(formulario, usuario):
 
     A etapa existe para revisar e corrigir, não para classificar: por isso ela
     traz o resultado da leitura montado — assunto, lugar e tipo de problema,
-    prazo e responsável —, e o ajuste fica atrás de uma ação discreta. A
-    prioridade não vem da leitura: é a escolha de quem registra, e a tela mostra
-    o que está selecionado no campo. Cada campo guarda o motivo do domínio,
-    para quem quiser saber de onde aquilo veio; a tela mostra o motivo onde ele
-    ajuda, e não em cada linha.
+    prazo e responsável —, e o ajuste fica atrás de uma ação discreta. O peso
+    também é calculado pelo motor e aparece como valor, sem rótulo de
+    procedência. Cada campo guarda o motivo do domínio, para quem quiser saber
+    de onde aquilo veio; a tela mostra o motivo onde ele ajuda, e não em cada
+    linha.
     """
     leitura = formulario.leitura
     dados = formulario.cleaned_data
@@ -1173,12 +1382,13 @@ def _sugestoes_para_tela(formulario, usuario):
         "tipo_problema": _proposta_para_tela(propostas["tipo_problema"], TipoProblema),
         "impacto": _proposta_para_tela(propostas["impacto"], ImpactoDemanda),
         "risco": _proposta_para_tela(propostas["risco"], RiscoDemanda),
-        # O peso é decisão de quem registra: a tela mostra o que está escolhido
-        # — o padrão do domínio quando ninguém tocou no campo —, e nunca um
-        # motivo que faria parecer que a leitura do relato o decidiu.
+        # O peso é calculado pelo motor e a tela mostra o valor operacional — o
+        # que foi escolhido, quando há correção, e o que a regra sustentou
+        # quando não há. Nada aqui diz de onde veio: a procedência fica guardada
+        # para auditoria e não vira rótulo na tela.
         "prioridade": {
             "valor": PrioridadeDemanda(
-                prioridade or PrioridadeDemanda.NORMAL
+                prioridade or leitura.prioridade
             ).label,
         },
         "prazo": {
@@ -1207,14 +1417,13 @@ def _resumo_do_registro(formulario, usuario):
         "assunto": dados.get("titulo") or leitura.assunto,
         "descricao_original": dados.get("descricao") or dados.get("relato") or "",
         "local": dados.get("local").nome if dados.get("local") else dados.get("local_texto") or "Sem local definido",
-        # A prioridade é a escolha de quem registra, levada adiante da etapa
-        # anterior. A origem diz isso sem rodeio: o peso não é lido do relato,
-        # então não há "sugerida pelo EITHRA" a exibir.
+        # O peso chega calculado pelo motor — ou corrigido por quem registra.
+        # A revisão mostra o valor operacional e só ele: a procedência fica
+        # guardada para auditoria e não vira rótulo na tela.
         "prioridade": {
             "valor": PrioridadeDemanda(
-                prioridade or PrioridadeDemanda.NORMAL
+                prioridade or leitura.prioridade
             ).label,
-            "origem": "Definida no registro",
         },
         "prazo": {
             "valor": _prazo_por_extenso(dados.get("prazo")),
@@ -1249,9 +1458,12 @@ def _proximo_passo(demanda, usuario, manutencao):
     """A próxima ação que faz sentido para esta demanda, uma só.
 
     Quando já existe manutenção em andamento, o passo é acompanhar o que foi
-    criado. Quando não existe e esta pessoa pode registrar manutenção, o passo é
-    criá-la — pela mesma porta que o domínio de manutenções já oferece. Encerrada
-    ou sem passo possível, não há o que oferecer.
+    criado — é o desdobramento real da necessidade, e o único caso em que a
+    tela empurra para frente. Sem manutenção, não há um passo único que sirva a
+    toda demanda: a ação principal é o que a operação está fazendo agora (o
+    ``next_action``) ou registrar o que aconteceu. Criar manutenção deixa de ser
+    caminho universal e passa às demais ações, oferecida só quando o fluxo a
+    sustenta.
     """
     if demanda.esta_encerrada:
         return None
@@ -1264,25 +1476,52 @@ def _proximo_passo(demanda, usuario, manutencao):
             "url": reverse("manutencoes:detalhe", args=[manutencao.pk]),
         }
 
-    if pode_criar_manutencao(usuario, demanda.condominio):
-        return {
-            "label": "Criar manutenção",
-            "detalhe": "Leva o problema para quem executa o serviço.",
-            "icon": "bx-wrench",
-            "url": f"{reverse('manutencoes:listagem')}?demanda={demanda.pk}",
-        }
-
     return None
 
 
-def _mais_acoes_da_demanda(demanda, usuario):
+# O verbo da ação de ciclo como o menu do detalhe o oferece. Ao lado de editar e
+# de criar, "Concluir" precisa dizer o objeto — a mesma ação, com o nome inteiro.
+ROTULO_DO_MENU_DE_STATUS = {"Concluir": "Concluir demanda"}
+
+
+def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
     """Ações secundárias do detalhe, preservando permissões do backend.
 
-    Registrar uma atualização não entra aqui: ela é a ação principal da tela e
-    já aparece à vista. Repetir no menu o mesmo destino não é atalho — é ruído.
+    Registrar uma atualização e adicionar evidência são as ações do dia a dia e
+    já aparecem à vista — repeti-las aqui seria ruído. O que vive neste menu é o
+    que se faz de vez em quando: mover a situação (Aguardar, Concluir, Cancelar),
+    editar o conteúdo, criar a manutenção que leva o problema para quem executa e
+    avisar os moradores. Cada item abre a janela que a tela já oferece: mover a
+    situação é o mesmo formulário de atualização, aberto já na ação escolhida.
     """
     acoes = []
     destino = reverse("demandas:detalhe", args=[demanda.pk])
+
+    # Mover a situação pelas mesmas ações que a pessoa alcança — a lista é a do
+    # domínio, não uma segunda régua escrita aqui. O item só abre o formulário
+    # na ação pedida; a escolha continua sendo confirmada no envio.
+    for situacao, verbo in acoes_de_status(permitidos, demanda):
+        acoes.append(
+            {
+                "label": ROTULO_DO_MENU_DE_STATUS.get(verbo, verbo),
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral&acao={situacao}",
+            }
+        )
+
+    # Criar manutenção não é o caminho universal da demanda: aparece aqui quando
+    # o fluxo a sustenta — pessoa autorizada e nenhuma manutenção já em curso.
+    if (
+        not demanda.esta_encerrada
+        and manutencao is None
+        and pode_criar_manutencao(usuario, demanda.condominio)
+    ):
+        acoes.append(
+            {
+                "label": "Criar manutenção",
+                "url": f"{reverse('manutencoes:listagem')}?demanda={demanda.pk}",
+            }
+        )
+
     if pode_editar_demanda(usuario, demanda):
         acoes.append({"label": "Editar demanda", "url": f"{destino}?abrir=editar"})
     # Comunicar aos moradores é uma capacidade transversal: a demanda é a origem,
@@ -1298,6 +1537,17 @@ def _mais_acoes_da_demanda(demanda, usuario):
     return acoes
 
 
+def _acao_pedida(request) -> dict:
+    """A ação de ciclo que a tela pediu para abrir já escolhida.
+
+    O menu do detalhe abre a mesma janela de atualização em cada ação, e dizer
+    qual delas é o que evita a escolha repetida. Nada é decidido aqui: o
+    formulário confere a escolha contra o que a pessoa alcança antes de aceitar.
+    """
+    acao = (request.GET.get("acao") or "").strip()
+    return {"acao": acao} if acao else {}
+
+
 def _sinal_do_acompanhamento(demanda):
     """O sinal compacto do acompanhamento na lista, ou nada quando não há.
 
@@ -1308,6 +1558,11 @@ def _sinal_do_acompanhamento(demanda):
     """
     if demanda.esta_encerrada or not demanda.tem_acompanhamento:
         return "", ""
+    # Três vencimentos diferentes, três leituras: a ação combinada que passou
+    # (interna), a data prometida por terceiro que não chegou (externa) e a
+    # espera em curso. Nenhum deles é o prazo formal da demanda.
+    if demanda.proxima_acao_vencida:
+        return "Próxima ação vencida", "danger"
     if demanda.previsao_vencida:
         return "Previsão vencida", "danger"
     if demanda.aguardando_tipo:
@@ -1330,7 +1585,25 @@ def _acompanhamento_para_tela(demanda):
             {"rotulo": "Aguardando", "valor": demanda.aguardando_para_exibir, "tom": ""}
         )
     if demanda.proxima_acao:
-        linhas.append({"rotulo": "Próxima ação", "valor": demanda.proxima_acao, "tom": ""})
+        # O próximo passo combinado é o que a demanda tem a dizer sobre o agora:
+        # ele vem destacado, porque é por ele que quem lê sabe o que sustenta a
+        # demanda hoje — e não só o que já aconteceu com ela.
+        linhas.append(
+            {"rotulo": "Próxima ação", "valor": demanda.proxima_acao, "tom": "primary"}
+        )
+    # A urgência da ação tem data própria e é diferente do prazo de solução: a
+    # linha só existe quando alguém combinou uma data para o próximo passo, e
+    # vencê-la é um sinal de operação interna — não de descumprimento de prazo.
+    if demanda.prazo_proxima_acao:
+        vencida = demanda.proxima_acao_vencida
+        linhas.append(
+            {
+                "rotulo": "Prazo da próxima ação",
+                "valor": _prazo_por_extenso(demanda.prazo_proxima_acao),
+                "nota": "Vencida" if vencida else "",
+                "tom": "danger" if vencida else "",
+            }
+        )
     if demanda.previsao:
         vencida = demanda.previsao_vencida
         linhas.append(
@@ -1356,6 +1629,74 @@ def _acompanhamento_para_tela(demanda):
     return linhas
 
 
+def _inicio_da_espera(demanda):
+    """Quando a demanda passou a esperar quem ela espera agora, se o histórico souber.
+
+    A espera pode ter nascido com a demanda — aí não há evento que a marque, e o
+    marco é a ausência dele. Se alguém a redefiniu depois, o marco é o último
+    acompanhamento que mexeu em quem se espera: é o que separa um aviso novo de
+    um comunicado antigo.
+    """
+    evento = (
+        demanda.historico.filter(
+            tipo_evento=TipoEventoDemanda.ACOMPANHAMENTO,
+            dados_novos__has_any_keys=["aguardando_tipo", "aguardando_descricao"],
+        )
+        .order_by("-data_hora")
+        .first()
+    )
+    return evento.data_hora if evento is not None else None
+
+
+def _retorno_para_tela(demanda):
+    """A leitura do retorno à parte interessada, derivada do que a demanda já tem.
+
+    Quem espera está em ``aguardando_tipo``/``aguardando_descricao``; o retorno é
+    o comunicado que a demanda já registra no próprio histórico — o único aviso
+    que existe hoje. Nada é gravado por causa desta leitura: não necessário,
+    pendente e enviado são calculados na hora, do mesmo jeito que a exceção da
+    Home. "Canal de envio" e "dispensado" ainda não têm sinal no domínio e por
+    isso não aparecem aqui — inventá-los seria prometer o que o sistema não sabe.
+    """
+    if not (demanda.aguardando_tipo or demanda.aguardando_descricao):
+        return {
+            "estado": "nao_necessario",
+            "rotulo": "Não necessário",
+            "tom": "",
+            "quem": "",
+            "retorno": None,
+        }
+
+    quem = demanda.aguardando_para_exibir
+    ultimo = (
+        demanda.historico.filter(tipo_evento=TipoEventoDemanda.COMUNICADO)
+        .select_related("usuario")
+        .order_by("-data_hora")
+        .first()
+    )
+    inicio = _inicio_da_espera(demanda)
+    if ultimo is not None and (inicio is None or ultimo.data_hora >= inicio):
+        return {
+            "estado": "enviado",
+            "rotulo": "Enviado",
+            "tom": "success",
+            "quem": quem,
+            "retorno": {
+                "quando": _momento_por_extenso(
+                    ultimo.data_hora, timezone.localdate()
+                ),
+                "quem": _nome_de(ultimo.usuario),
+            },
+        }
+    return {
+        "estado": "pendente",
+        "rotulo": "Pendente",
+        "tom": "warning",
+        "quem": quem,
+        "retorno": None,
+    }
+
+
 def _nome_de(usuario) -> str:
     """O nome pelo qual a pessoa é reconhecida na tela."""
     return (
@@ -1369,26 +1710,22 @@ def _prazo_por_extenso(prazo) -> str:
     return prazo.strftime("%d/%m/%Y") if prazo else "Sem prazo"
 
 
+def _data_curta(momento) -> str:
+    """A data como a lista a lê: dia, mês e ano — sem hora, que aqui só pesa."""
+    return timezone.localtime(momento).strftime("%d/%m/%Y") if momento else ""
+
+
 def _prazo_da_sintese(prazo, leitura) -> str:
     """O prazo como a síntese do registro o diz.
 
-    Quando a data vem da política, ela aparece com os dias que a regra
-    concedeu e o dia em que vence — é o que quem registra precisa saber, e o
-    número sai da própria política, não de uma cópia. Quando não há data
-    nenhuma, a resposta é a ausência dita em linguagem humana: o registro
-    segue sem prazo, e ninguém precisa escolher uma data para continuar.
+    A data só existe quando quem registra a informa: não há prazo derivado por
+    regra no fluxo atual. Sem data, a resposta é a ausência dita em linguagem
+    humana — o registro segue sem prazo, e ninguém precisa escolher uma data
+    para continuar.
     """
     if not prazo:
         return "Sem prazo definido"
-
-    data = _prazo_por_extenso(prazo)
-    if prazo != leitura.prazo:
-        return f"Prazo {data}"
-
-    dias = prazos.dias_do_prazo(leitura.prioridade)
-    if not dias:
-        return f"Prazo {data}"
-    return f"Prazo {'1 dia' if dias == 1 else f'{dias} dias'} · {data}"
+    return f"Prazo {_prazo_por_extenso(prazo)}"
 
 
 def _situacao_do_prazo(prazo, encerrada: bool, hoje):
@@ -1443,6 +1780,10 @@ def _demanda_para_tela(demanda, usuario=None):
         "pk": demanda.pk,
         "referencia": _referencia_curta(demanda),
         "titulo": demanda.titulo,
+        # A data em que a demanda entrou no sistema, como a lista a mostra: sem
+        # hora, que ali não decide nada. O mesmo campo que a coluna "Registrada
+        # em" ordena.
+        "registrada_em": _data_curta(demanda.criado_em),
         "descricao_curta": _contexto_curto(demanda.descricao),
         # O corte acima é de exibição: a lista mostra uma linha, e o texto
         # completo fica disponível no title. O que está guardado não muda.
@@ -1478,31 +1819,35 @@ def _demanda_para_tela(demanda, usuario=None):
 def _acoes_da_linha(demanda, usuario):
     """As ações oferecidas no menu da linha, já decididas pelo domínio.
 
-    Abrir a demanda não é ação: a linha inteira leva até ela. O que sobra vai
-    para o menu de três pontos, e cada entrada abre a mesma janela que o
-    detalhe já oferece — a lista não inventa caminho novo, só encurta o que
-    existe. As permissões são as do detalhe: quem acompanha pode registrar
-    atualização, atualizar o acompanhamento e anexar evidência; editar o
-    conteúdo continua sendo de quem responde pelo condomínio.
+    A linha inteira continua levando ao detalhe, e o menu abre com o mesmo
+    caminho: quem chega pelo teclado ou pelo toque não adivinha que a linha é
+    clicável, e aí o destino precisa estar escrito. As demais entradas abrem a
+    mesma janela que o detalhe já oferece — a lista não inventa caminho novo,
+    só encurta o que existe.
+
+    O acompanhamento não tem entrada própria: ele passou a fazer parte do fluxo
+    de registrar atualização, e oferecer os dois lado a lado fazia parecer que
+    eram decisões diferentes. As permissões são as do detalhe: quem acompanha
+    pode registrar atualização e anexar evidência; editar o conteúdo continua
+    sendo de quem responde pelo condomínio.
     """
     if usuario is None:
         return []
 
     destino = reverse("demandas:detalhe", args=[demanda.pk])
-    acoes = []
+    acoes = [
+        {
+            "label": "Ver detalhes",
+            "icon": "bx-show",
+            "url": destino,
+        }
+    ]
     if pode_adicionar_observacao(usuario, demanda):
         acoes.append(
             {
                 "label": "Registrar atualização",
                 "icon": "bx-refresh",
                 "url": f"{destino}?abrir=atualizar&aba=visao_geral",
-            }
-        )
-        acoes.append(
-            {
-                "label": "Atualizar acompanhamento",
-                "icon": "bx-time-five",
-                "url": f"{destino}?abrir=acompanhamento&aba=visao_geral",
             }
         )
         acoes.append(
@@ -1543,6 +1888,10 @@ def _demanda_para_detalhe(demanda):
             # quando só o equipamento se sabe, do lugar onde ele fica.
             "area": area.valor if area.existe else "",
             "area_motivo": area.motivo if area.existe else "",
+            # No cabeçalho o local só aparece quando existe: ali ele identifica a
+            # ocorrência, ao lado do equipamento, e "sem local" não acrescenta. O
+            # rótulo "Sem local" continua tendo valor na lista, não aqui.
+            "local_detalhe": demanda.local_para_exibir or "",
             "equipamento": demanda.equipamento.nome if demanda.equipamento_id else "",
             "tipo_problema": _rotulo_de(TipoProblema, demanda.tipo_problema),
             "impacto": _rotulo_de(ImpactoDemanda, demanda.impacto),
@@ -1550,6 +1899,10 @@ def _demanda_para_detalhe(demanda):
             # O acompanhamento operacional: outra pergunta que não a situação.
             # Só o que existe vira linha no bloco compacto da tela.
             "acompanhamento": _acompanhamento_para_tela(demanda),
+            # O retorno à parte interessada: quem espera, se já foi avisado e
+            # por quem. Derivado do aguardando e do histórico — nada novo é
+            # guardado, e nada é perguntado de novo a quem já registrou.
+            "retorno": _retorno_para_tela(demanda),
             "ultima_movimentacao": _momento_da_ultima_movimentacao(demanda),
         }
     )
@@ -1581,6 +1934,7 @@ ROTULOS_DO_HISTORICO = (
     ("aguardando_tipo", "Aguardando"),
     ("aguardando_descricao", "O que se espera"),
     ("proxima_acao", "Próxima ação"),
+    ("prazo_proxima_acao", "Prazo da próxima ação"),
     ("previsao", "Previsão"),
     ("impedimento", "Impedimento"),
 )
@@ -1601,7 +1955,7 @@ def _valor_do_historico(campo, valor) -> str:
         return _rotulo_de(AguardandoTipo, valor) or "ninguém"
     if not valor:
         return "não informado"
-    if campo in ("prazo", "previsao"):
+    if campo in ("prazo", "previsao", "prazo_proxima_acao"):
         try:
             return _prazo_por_extenso(date.fromisoformat(valor))
         except (TypeError, ValueError):
@@ -1673,28 +2027,55 @@ def _evidencia_para_tela(evidencia):
 
 
 def _indicadores_da_listagem(condominios):
-    """Indicadores estáveis do universo visível na operação."""
+    """Indicadores do universo visível, separados por quem controla o resultado.
+
+    A separação existe para não penalizar a operação interna pelo atraso de quem
+    ela não controla. Desempenho interno é o que a equipe decide: o volume em
+    aberto, o que anda, o que segue sem acompanhamento e a ação combinada que
+    venceu. Desempenho externo é o que depende de terceiros: o compromisso
+    formal de conclusão e a data prometida por quem está sendo aguardado. Cada
+    indicador carrega o grupo a que pertence, e é o grupo que a tela agrupa.
+    """
     hoje = timezone.localdate()
     base = Demanda.objects.filter(condominio__in=condominios, ativo=True)
     inicio_mes = hoje.replace(day=1)
+    sem_acompanhamento = base.abertas().filter(
+        aguardando_tipo="",
+        aguardando_descricao="",
+        proxima_acao="",
+        prazo_proxima_acao__isnull=True,
+        previsao__isnull=True,
+        impedimento="",
+        responsavel_acompanhamento__isnull=True,
+    )
     return [
         {
             "titulo": "Em aberto",
             "valor": base.abertas().count(),
             "icone": "bx-folder-open",
             "tom": "primary",
-        },
-        {
-            "titulo": "Vencidas",
-            "valor": base.vencidas(hoje).count(),
-            "icone": "bx-error-circle",
-            "tom": "danger",
+            "grupo": "Desempenho interno",
         },
         {
             "titulo": "Em andamento",
             "valor": base.filter(status=StatusDemanda.EM_ANDAMENTO).count(),
             "icone": "bx-time-five",
             "tom": "warning",
+            "grupo": "Desempenho interno",
+        },
+        {
+            "titulo": "Sem acompanhamento",
+            "valor": sem_acompanhamento.count(),
+            "icone": "bx-pause-circle",
+            "tom": "primary",
+            "grupo": "Desempenho interno",
+        },
+        {
+            "titulo": "Próxima ação vencida",
+            "valor": base.abertas().filter(prazo_proxima_acao__lt=hoje).count(),
+            "icone": "bx-error-circle",
+            "tom": "danger",
+            "grupo": "Desempenho interno",
         },
         {
             "titulo": "Concluídas no mês",
@@ -1705,6 +2086,25 @@ def _indicadores_da_listagem(condominios):
             ).count(),
             "icone": "bx-check-circle",
             "tom": "success",
+            "grupo": "Desempenho interno",
+        },
+        {
+            # O prazo formal costuma nascer de contrato ou SLA — compromisso
+            # assumido com terceiro —, e por isso vive no desempenho externo.
+            "titulo": "Vencidas",
+            "valor": base.vencidas(hoje).count(),
+            "icone": "bx-calendar-x",
+            "tom": "danger",
+            "grupo": "Desempenho externo",
+        },
+        {
+            # A data prometida por quem está sendo aguardado. É atraso de
+            # terceiro, e não descumprimento da operação interna.
+            "titulo": "Previsão atrasada",
+            "valor": base.abertas().filter(previsao__lt=hoje).count(),
+            "icone": "bx-time",
+            "tom": "warning",
+            "grupo": "Desempenho externo",
         },
     ]
 
@@ -1775,6 +2175,56 @@ def _resumo_da_atualizacao(demanda, proximo_status, texto, *, leitura=None):
         "consequencia_tom": tom,
         "propoe_conclusao": conclui,
     }
+
+
+def _proposta_de_acompanhamento(
+    demanda, leitura, formulario_acompanhamento, *, enviado
+):
+    """Combina o que o relato sustenta com as correções explícitas da pessoa."""
+    proposta = dict(leitura.acompanhamento_proposto())
+    if enviado:
+        for campo, valor in formulario_acompanhamento.cleaned_data.items():
+            atual = getattr(demanda, campo)
+            if campo == "responsavel_acompanhamento":
+                atual = getattr(atual, "pk", None)
+                valor = getattr(valor, "pk", None)
+            if valor != atual:
+                proposta[campo] = formulario_acompanhamento.cleaned_data[campo]
+    return proposta
+
+
+def _resumo_acompanhamento_para_tela(demanda, proposta):
+    """Traduz só as mudanças efetivas de acompanhamento para a revisão."""
+    rotulos = {
+        "aguardando_tipo": "Aguardando",
+        "aguardando_descricao": "O que se espera",
+        "proxima_acao": "Próxima ação",
+        "prazo_proxima_acao": "Prazo da próxima ação",
+        "previsao": "Previsão",
+        "impedimento": "Impedimento",
+        "responsavel_acompanhamento": "Quem acompanha",
+    }
+    tipos_aguardados = dict(AguardandoTipo.choices)
+    linhas = []
+    for campo, valor in proposta.items():
+        atual = getattr(demanda, campo)
+        atual_comparavel = getattr(atual, "pk", atual)
+        valor_comparavel = getattr(valor, "pk", valor)
+        if atual_comparavel == valor_comparavel:
+            continue
+
+        if campo == "aguardando_tipo":
+            exibicao = tipos_aguardados.get(valor, valor) if valor else "Remover definição"
+        elif campo in {"prazo_proxima_acao", "previsao"}:
+            exibicao = valor.strftime("%d/%m/%Y") if valor else "Remover data"
+        elif campo == "responsavel_acompanhamento":
+            exibicao = str(valor) if valor else "Remover definição"
+        elif campo == "impedimento" and not valor:
+            exibicao = "Sem impedimento"
+        else:
+            exibicao = valor or "Remover definição"
+        linhas.append({"rotulo": rotulos[campo], "valor": exibicao})
+    return linhas
 
 
 def _assunto_do_cabecalho(titulo):

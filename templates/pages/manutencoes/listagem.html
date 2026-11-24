@@ -1,4 +1,5 @@
 {% extends "layouts/app.html" %}
+{% load static %}
 
 {# A lista é de trabalho, não de arquivo: o que está por fazer, na ordem em que
    merece atenção. Cada linha leva à manutenção; não há botão "visualizar". #}
@@ -6,10 +7,11 @@
 {% block title %}Manutenções · Eithra{% endblock %}
 
 {% block content %}
-  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
-    <div>
-      <h1 class="h4 mb-1">Manutenções</h1>
-      <p class="text-body-secondary mb-0">
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Manutenções</h1>
+      <p class="eithra-pagina-sub">
         O que precisa ser feito{% if total %} · {{ total }} em vista{% endif %}.
       </p>
     </div>
@@ -27,7 +29,7 @@
         </button>
       {% endif %}
     </div>
-  </div>
+  </header>
 
   {% if demanda_origem %}
     <div class="alert alert-primary d-flex align-items-start gap-2" role="alert">
@@ -41,85 +43,88 @@
     </div>
   {% endif %}
 
-  <div class="card mb-4">
+  {% comment %}A busca fica à vista, porque é o que se usa no dia a dia. O resto dos
+  filtros só ocupa espaço quando serve: recolhe atrás de "Filtros" e abre sozinho
+  se já houver algum valendo. Nada foi removido — mudou só onde mora.{% endcomment %}
+  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
     <div class="card-body">
-      <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
-        {% if mostrar_condominio %}
-          <div class="col-6 col-lg-3">
-            <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
-              {{ filtros.condominio.label }}
-            </label>
-            {{ filtros.condominio }}
-          </div>
-        {% endif %}
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.status.id_for_label }}">
-            {{ filtros.status.label }}
-          </label>
-          {{ filtros.status }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.tipo.id_for_label }}">
-            {{ filtros.tipo.label }}
-          </label>
-          {{ filtros.tipo }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.prioridade.id_for_label }}">
-            {{ filtros.prioridade.label }}
-          </label>
-          {{ filtros.prioridade }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.previsao.id_for_label }}">
-            {{ filtros.previsao.label }}
-          </label>
-          {{ filtros.previsao }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.responsavel.id_for_label }}">
-            {{ filtros.responsavel.label }}
-          </label>
-          {{ filtros.responsavel }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.local.id_for_label }}">
-            {{ filtros.local.label }}
-          </label>
-          {{ filtros.local }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.equipamento.id_for_label }}">
-            {{ filtros.equipamento.label }}
-          </label>
-          {{ filtros.equipamento }}
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small" for="{{ filtros.fornecedor.id_for_label }}">
-            {{ filtros.fornecedor.label }}
-          </label>
-          {{ filtros.fornecedor }}
-        </div>
-        <div class="col-12 col-lg-4">
-          <label class="form-label small" for="{{ filtros.busca.id_for_label }}">
-            {{ filtros.busca.label }}
-          </label>
+      <div class="d-flex flex-column flex-lg-row align-items-stretch gap-2">
+        <div class="eithra-search-field flex-grow-1">
+          <i class="bx bx-search" aria-hidden="true"></i>
+          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
           {{ filtros.busca }}
         </div>
-        <div class="col-12 col-lg-auto d-flex align-items-center gap-3">
-          <div class="form-check mb-0">
-            {{ filtros.minhas }}
-            <label class="form-check-label small" for="{{ filtros.minhas.id_for_label }}">
-              {{ filtros.minhas.label }}
-            </label>
-          </div>
-          {% if filtros_ativos %}
-            <a href="{% url 'manutencoes:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
+        <button
+          type="button"
+          class="btn btn-label-secondary eithra-filter-button"
+          data-bs-toggle="collapse"
+          data-bs-target="#manutencoes-filtros"
+          aria-expanded="{% if filtros_ativos %}true{% else %}false{% endif %}"
+          aria-controls="manutencoes-filtros">
+          <i class="bx bx-slider-alt me-1" aria-hidden="true"></i> Filtros
+        </button>
+      </div>
+
+      <div class="collapse{% if filtros_ativos %} show{% endif %}" id="manutencoes-filtros">
+        <div class="row g-2 align-items-end mt-3">
+          {% if mostrar_condominio %}
+            <div class="col-6 col-lg-2">
+              <label class="form-label small text-body-secondary" for="{{ filtros.condominio.id_for_label }}">Condomínio</label>
+              {{ filtros.condominio }}
+            </div>
           {% endif %}
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.status.id_for_label }}">Situação</label>
+            {{ filtros.status }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.tipo.id_for_label }}">Tipo</label>
+            {{ filtros.tipo }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.prioridade.id_for_label }}">Prioridade</label>
+            {{ filtros.prioridade }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.previsao.id_for_label }}">Previsão</label>
+            {{ filtros.previsao }}
+          </div>
+          <div class="col-6 col-lg-2">
+            <label class="form-label small text-body-secondary" for="{{ filtros.responsavel.id_for_label }}">Responsável</label>
+            {{ filtros.responsavel }}
+          </div>
         </div>
-      </form>
+
+        {% comment %}A lente fina: o que só interessa quando já se sabe o que se
+        procura. Fica na linha de baixo para não apertar os filtros do dia a dia.{% endcomment %}
+        <div class="row g-2 align-items-end mt-2">
+          <div class="col-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="{{ filtros.local.id_for_label }}">Local</label>
+            {{ filtros.local }}
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="{{ filtros.equipamento.id_for_label }}">Equipamento</label>
+            {{ filtros.equipamento }}
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small text-body-secondary" for="{{ filtros.fornecedor.id_for_label }}">Fornecedor</label>
+            {{ filtros.fornecedor }}
+          </div>
+          <div class="col-6 col-lg-3 d-flex align-items-center gap-3">
+            <div class="form-check mb-0">
+              {{ filtros.minhas }}
+              <label class="form-check-label small" for="{{ filtros.minhas.id_for_label }}">
+                {{ filtros.minhas.label }}
+              </label>
+            </div>
+            {% if filtros_ativos %}
+              <a href="{% url 'manutencoes:listagem' %}" class="btn btn-text-secondary btn-sm">Limpar filtros</a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  </form>
 
   <div class="card">
     {% if manutencoes %}
@@ -297,15 +302,16 @@
               Mais detalhes
             </a>
             <div class="collapse mt-3" id="mais-detalhes-manutencao">
-              <div class="mb-6">
-                <label class="form-label" for="{{ formulario_manutencao.descricao_problema.id_for_label }}">
-                  {{ formulario_manutencao.descricao_problema.label }}
-                </label>
-                {{ formulario_manutencao.descricao_problema }}
-                {% for erro in formulario_manutencao.descricao_problema.errors %}
-                  <div class="text-danger small mt-1">{{ erro }}</div>
-                {% endfor %}
-              </div>
+              {% comment %}O problema é texto livre: pode ser escrito ou ditado, e a
+              fala só preenche este campo — o microfone não entra em escolha, data
+              nem situação.{% endcomment %}
+              {% if voz_disponivel %}
+                {% url 'demandas:transcrever' as url_da_transcricao %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_manutencao.descricao_problema voz_url=url_da_transcricao %}
+                <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+              {% else %}
+                {% include "pages/cadastros/_campo.html" with campo=formulario_manutencao.descricao_problema %}
+              {% endif %}
 
               <div class="mb-6">
                 <label class="form-label" for="{{ formulario_manutencao.responsavel.id_for_label }}">
@@ -380,6 +386,16 @@
         </form>
       </div>
     </div>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  {% comment %}O controlador de voz só é carregado quando há para onde transcrever: sem
+  serviço configurado não existe botão, e não faz sentido baixar código para um
+  botão que não está na tela.{% endcomment %}
+  {% if voz_disponivel %}
+    <script src="{% static 'js/eithra-ditar.js' %}"></script>
   {% endif %}
 {% endblock %}
 

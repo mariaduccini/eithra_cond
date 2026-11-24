@@ -1609,6 +1609,22 @@ def aplicar_modelo_de_conferencia(
 
 
 @transaction.atomic
+def registrar_atualizacao(manutencao, usuario, descricao: str) -> HistoricoManutencao:
+    """Anota, na memória da manutenção, uma atualização do acompanhamento.
+
+    A atualização é uma frase curta sobre o andamento — o técnico começou a
+    vistoria, a peça foi pedida —, e entra no mesmo histórico que já guarda as
+    decisões da manutenção: um evento a mais, com quem escreveu e quando. Não há
+    diário paralelo do acompanhamento: acompanhar é lembrar no lugar onde a
+    manutenção inteira é lembrada.
+    """
+    texto = _texto(descricao)
+    if not texto:
+        raise ErroDeManutencao("Escreva a atualização antes de registrar.")
+    return _registrar(manutencao, usuario, TipoEventoManutencao.ACOMPANHAMENTO, texto)
+
+
+@transaction.atomic
 def registrar_comunicado(manutencao, usuario, descricao: str) -> HistoricoManutencao:
     """Anota, na memória da manutenção, que um comunicado foi gerado a partir dela.
 
