@@ -1,5 +1,6 @@
 """Telas de manutenção: listagem, detalhe, ações e criação por demanda."""
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
@@ -531,3 +532,63 @@ class AcoesTests(BaseDeTelas):
             {"descricao_servico": "Feito.", "data_conclusao": ""},
         )
         self.assertEqual(resposta.status_code, 404)
+
+
+class VozNaExecucaoTests(BaseDeTelas):
+    """O microfone aparece também para quem executa, não só para quem cria.
+
+    Ditar é escrever: o microfone segue a permissão de escrever o texto livre
+    desta manutenção. Quem a registra no condomínio já o via; quem executa o
+    serviço sob sua responsabilidade passa a vê-lo também. Quem não pode nada
+    com ela continua sem microfone, mesmo com o serviço de voz configurado.
+    """
+
+    def _operacional(self, email="op@exemplo.test"):
+        operacional = criar_pessoa(email, "Operacional")
+        criar_vinculo(operacional, self.condominio, papel=Papel.OPERACIONAL)
+        return operacional
+
+    def _detalhe(self, manutencao):
+        return self.client.get(reverse("manutencoes:detalhe", args=[manutencao.pk]))
+
+    @patch("apps.manutencoes.views.audio.disponivel", return_value=True)
+    def test_operacional_responsavel_ve_o_microfone(self, _disponivel):
+        operacional = self._operacional()
+        manutencao = self._manutencao(responsavel=operacional)
+        self.client.force_login(operacional)
+
+        resposta = self._detalhe(manutencao)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "data-eithra-ditar")
+        self.assertContains(resposta, "js/eithra-ditar.js")
+
+    @patch("apps.manutencoes.views.audio.disponivel", return_value=True)
+    def test_operacional_sem_responsabilidade_nao_ve_o_microfone(self, _disponivel):
+        operacional = self._operacional()
+        manutencao = self._manutencao()
+        self.client.force_login(operacional)
+
+        resposta = self._detalhe(manutencao)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertNotContains(resposta, "js/eithra-ditar.js")
+
+    @patch("apps.manutencoes.views.audio.disponivel", return_value=True)
+    def test_quem_cria_continua_vendo_o_microfone(self, _disponivel):
+        manutencao = self._manutencao()
+
+        resposta = self._detalhe(manutencao)
+
+        self.assertContains(resposta, "js/eithra-ditar.js")
+
+    @patch("apps.manutencoes.views.audio.disponivel", return_value=False)
+    def test_sem_servico_de_voz_nao_ha_microfone(self, _disponivel):
+        operacional = self._operacional()
+        manutencao = self._manutencao(responsavel=operacional)
+        self.client.force_login(operacional)
+
+        resposta = self._detalhe(manutencao)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertNotContains(resposta, "js/eithra-ditar.js")

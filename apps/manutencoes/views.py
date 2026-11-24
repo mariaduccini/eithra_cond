@@ -1144,11 +1144,16 @@ def _render_detalhe(
         "formulario_evidencia": formulario_evidencia or EvidenciaDaExecucaoForm(),
         "resultados_da_conferencia": RESULTADOS_DA_CONFERENCIA,
         "modal_aberto": modal,
-        # Ditar é escrever: o microfone aparece onde a pessoa pode registrar
-        # manutenção neste condomínio — a mesma permissão que o serviço de
-        # transcrição confere no backend, para o botão nunca dar em nada.
+        # Ditar é escrever: o microfone aparece onde a pessoa pode escrever o
+        # texto livre desta manutenção — quem a registra neste condomínio ou
+        # quem executa o serviço sob sua responsabilidade. É a mesma permissão
+        # que o serviço de transcrição confere no backend, para o botão nunca
+        # dar em nada.
         "voz_disponivel": audio.disponivel()
-        and pode_criar_manutencao(request.user, manutencao.condominio),
+        and (
+            pode_criar_manutencao(request.user, manutencao.condominio)
+            or pode_executar_agora
+        ),
     }
     return render(request, "pages/manutencoes/detalhe.html", contexto, status=status)
 
