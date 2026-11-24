@@ -552,6 +552,9 @@
                 <p class="mb-0">
                   <span class="badge bg-label-{{ resumo_atualizacao.consequencia_tom }}">{{ resumo_atualizacao.consequencia }}</span>
                 </p>
+                {% if resumo_atualizacao.sugestao_por_manutencao %}
+                  <p class="form-text mt-2 mb-0">A manutenção vinculada a esta demanda foi encerrada e não há outras em aberto. Confirme para concluir a demanda.</p>
+                {% endif %}
               </div>
               {% if pode_observar %}
                 <div class="eithra-review-card mt-3">

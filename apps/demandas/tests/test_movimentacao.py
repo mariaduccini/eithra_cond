@@ -36,6 +36,7 @@ from apps.demandas.tests.test_audio import (
     corpo_json,
     recado,
 )
+from apps.manutencoes.services import cancelar_manutencao, concluir_manutencao, criar_manutencao
 
 RELATO_DO_FORNECEDOR = "A Atlas informou que virá amanhã às 14h."
 RELATO_DE_CONCLUSAO = "Serviço concluído hoje. Elevador testado e funcionando."
@@ -43,8 +44,13 @@ RELATO_SEM_CONSEQUENCIA = "Ainda aguardando orçamento da empresa."
 RELATO_AMBIGUO = "Falei com eles."
 
 
-class BaseDaMovimentacao(TestCase):
-    """Uma demanda aberta e uma pessoa que responde por ela."""
+class CenarioDaMovimentacao:
+    """Uma demanda aberta e uma pessoa que responde por ela.
+
+    Reúne o ponto de partida e os dois jeitos de escrever a atualização — o
+    texto digitado e a fala —, para que classes de teste diferentes partam do
+    mesmo cenário sem repetir o preparo.
+    """
 
     def setUp(self):
         self.condominio = criar_condominio("Alpha")
@@ -93,6 +99,10 @@ class BaseDaMovimentacao(TestCase):
         """O caminho completo de uma atualização, do relato à confirmação."""
         etapa = self._abrir(texto)
         return self._confirmar(texto, etapa.context["confirmacao"]), etapa
+
+
+class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
+    """A movimentação de uma demanda comum, pelo texto e pela fala."""
 
     # --- o fato sempre entra -------------------------------------------------
 
@@ -321,3 +331,89 @@ class BaseDaMovimentacao(TestCase):
         self.demanda.refresh_from_db()
         self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
         self.assertEqual(self.demanda.historico.count(), 3)
+
+
+class SugestaoDeConclusaoPelaManutencaoTests(CenarioDaMovimentacao, TestCase):
+    """A manutenção vinculada terminou: a próxima atualização sugere a conclusão.
+
+    Enquanto nenhuma outra manutenção continuar aberta, a leitura propõe
+    concluir a demanda — sempre como sugestão, nunca concluindo sozinha, e sem
+    interferir quando ainda há um serviço em andamento.
+    """
+
+    def _manutencao(self, **campos):
+        campos.setdefault("titulo", "Revisar elevador")
+        return criar_manutencao(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            demanda_origem=self.demanda,
+            **campos,
+        )
+
+    def test_manutencao_concluida_sugere_conclusao_sem_concluir_sozinho(self):
+        manutencao = self._manutencao()
+        concluir_manutencao(
+            manutencao=manutencao, usuario=self.gestao, descricao_servico="Feito."
+        )
+
+        etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
+
+        resumo = etapa.context["resumo_atualizacao"]
+        self.assertTrue(resumo["propoe_conclusao"])
+        self.assertTrue(resumo["sugestao_por_manutencao"])
+        # Antes da confirmação, a demanda continua exatamente onde estava.
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+
+    def test_a_confirmacao_conclui_a_demanda(self):
+        manutencao = self._manutencao()
+        concluir_manutencao(
+            manutencao=manutencao, usuario=self.gestao, descricao_servico="Feito."
+        )
+        etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
+
+        self._confirmar(RELATO_SEM_CONSEQUENCIA, etapa.context["confirmacao"])
+
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.CONCLUIDA)
+
+    def test_manutencao_cancelada_tambem_sugere_conclusao(self):
+        manutencao = self._manutencao()
+        cancelar_manutencao(manutencao=manutencao, usuario=self.gestao)
+
+        etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
+
+        self.assertTrue(etapa.context["resumo_atualizacao"]["sugestao_por_manutencao"])
+
+    def test_outra_manutencao_aberta_nao_sugere_conclusao(self):
+        concluida = self._manutencao(titulo="Primeira")
+        concluir_manutencao(
+            manutencao=concluida, usuario=self.gestao, descricao_servico="Feito."
+        )
+        self._manutencao(titulo="Segunda")  # continua aberta
+
+        etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
+
+        resumo = etapa.context["resumo_atualizacao"]
+        self.assertFalse(resumo["propoe_conclusao"])
+        self.assertFalse(resumo["sugestao_por_manutencao"])
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+
+    def test_demanda_encerrada_nao_e_reconduzida_pela_manutencao(self):
+        """Demanda já cancelada não vira 'concluída' só porque a manutenção acabou."""
+        manutencao = self._manutencao()
+        concluir_manutencao(
+            manutencao=manutencao, usuario=self.gestao, descricao_servico="Feito."
+        )
+        alterar_status(
+            demanda=self.demanda,
+            usuario=self.gestao,
+            novo_status=StatusDemanda.CANCELADA,
+        )
+
+        etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
+
+        self.assertFalse(etapa.context["resumo_atualizacao"]["propoe_conclusao"])
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.CANCELADA)

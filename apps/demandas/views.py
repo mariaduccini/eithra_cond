@@ -463,6 +463,17 @@ def atualizar(request, pk):
         and StatusDemanda.CONCLUIDA in permitidos
     ):
         proximo_status = StatusDemanda.CONCLUIDA
+    # A manutenção que a demanda gerou já terminou e não há outra em andamento:
+    # é o que sustenta sugerir a conclusão. A sugestão é só isso — propõe a ação
+    # na leitura, e nada é aplicado antes da confirmação de quem registrou.
+    sugestao_por_manutencao = (
+        proximo_status == demanda.status
+        and not demanda.esta_encerrada
+        and StatusDemanda.CONCLUIDA in permitidos
+        and _conclusao_sugerida_pela_manutencao(demanda)
+    )
+    if sugestao_por_manutencao:
+        proximo_status = StatusDemanda.CONCLUIDA
     proposta_acompanhamento = (
         _proposta_de_acompanhamento(
             demanda,
@@ -473,7 +484,13 @@ def atualizar(request, pk):
         if pode_observar
         else {}
     )
-    resumo = _resumo_da_atualizacao(demanda, proximo_status, texto, leitura=leitura)
+    resumo = _resumo_da_atualizacao(
+        demanda,
+        proximo_status,
+        texto,
+        leitura=leitura,
+        sugestao_por_manutencao=sugestao_por_manutencao,
+    )
     resumo["acompanhamento"] = _resumo_acompanhamento_para_tela(
         demanda, proposta_acompanhamento
     )
@@ -1454,6 +1471,17 @@ def _manutencao_da_demanda(demanda):
     return demanda.manutencoes_geradas.abertas().order_by("-criado_em").first()
 
 
+def _conclusao_sugerida_pela_manutencao(demanda) -> bool:
+    """Se o serviço que a demanda gerou terminou sem deixar nada em andamento.
+
+    A manutenção vinculada teve desfecho e nenhuma outra continua aberta: é o
+    que sustenta sugerir a conclusão da demanda na próxima atualização. A
+    sugestão nunca decide sozinha — quem confirma é quem registrou.
+    """
+    geradas = demanda.manutencoes_geradas
+    return geradas.exists() and not geradas.abertas().exists()
+
+
 def _proximo_passo(demanda, usuario, manutencao):
     """A próxima ação que faz sentido para esta demanda, uma só.
 
@@ -2147,13 +2175,19 @@ def _relacionadas_para_tela(demanda, manutencao):
     return relacionadas
 
 
-def _resumo_da_atualizacao(demanda, proximo_status, texto, *, leitura=None):
+def _resumo_da_atualizacao(
+    demanda, proximo_status, texto, *, leitura=None, sugestao_por_manutencao=False
+):
     """O que a tela mostra entre o relato e a confirmação.
 
     É um retrato do que aconteceria se esta pessoa confirmasse: o que o próprio
     relato sustentou e a consequência que ele teria. Nada aqui foi aplicado à
     demanda — a leitura propõe, a tela mostra, e só a confirmação chama o
     serviço oficial.
+
+    ``sugestao_por_manutencao`` diz que a conclusão proposta não veio do relato,
+    e sim do desfecho da manutenção vinculada — a tela explica essa origem para
+    que a proposta não pareça ter saído do que foi escrito.
     """
     mudou_status = proximo_status != demanda.status
     situacao = StatusDemanda(proximo_status).label
@@ -2174,6 +2208,7 @@ def _resumo_da_atualizacao(demanda, proximo_status, texto, *, leitura=None):
         "consequencia": consequencia,
         "consequencia_tom": tom,
         "propoe_conclusao": conclui,
+        "sugestao_por_manutencao": conclui and sugestao_por_manutencao,
     }
 
 

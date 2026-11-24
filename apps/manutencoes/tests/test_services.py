@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.core.constants import Prioridade
+from apps.demandas.constants import TipoEventoDemanda
 from apps.manutencoes.constants import (
     StatusManutencao,
     TipoEventoManutencao,
@@ -592,6 +593,83 @@ class TransacaoTests(TestCase):
                 )
         finally:
             services._registrar = original
-
         self.assertEqual(Manutencao.objects.count(), 0)
         self.assertEqual(HistoricoManutencao.objects.count(), 0)
+
+
+class DesfechoNaDemandaDeOrigemTests(TestCase):
+    """O desfecho da manutenção deixa lembrança na demanda que a originou.
+
+    Concluir ou cancelar registra um evento na demanda de origem — só a
+    lembrança de que a manutenção teve um desfecho, sem copiar o histórico dela.
+    Manutenção sem demanda de origem não tem onde lembrar.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio()
+        self.gestao = criar_pessoa("gestao@origem.test", "Gestão")
+        self.demanda = criar_demanda(self.condominio, self.gestao, "Vazamento no subsolo")
+
+    def _manutencao_da_demanda(self, titulo="Revisar bomba"):
+        return criar_manutencao(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo=titulo,
+            demanda_origem=self.demanda,
+        )
+
+    def test_concluir_registra_evento_na_demanda_de_origem(self):
+        manutencao = self._manutencao_da_demanda("Revisar bomba")
+
+        concluir_manutencao(
+            manutencao=manutencao,
+            usuario=self.gestao,
+            descricao_servico="Feito.",
+            data_conclusao=timezone.localdate(),
+        )
+
+        evento = self.demanda.historico.get(tipo_evento=TipoEventoDemanda.MANUTENCAO)
+        self.assertEqual(evento.usuario, self.gestao)
+        self.assertIn("Revisar bomba", evento.descricao)
+        self.assertIn("concluída", evento.descricao)
+
+    def test_cancelar_registra_evento_na_demanda_de_origem(self):
+        manutencao = self._manutencao_da_demanda("Revisar bomba")
+
+        cancelar_manutencao(
+            manutencao=manutencao, usuario=self.gestao, motivo="Serviço não será feito"
+        )
+
+        evento = self.demanda.historico.get(tipo_evento=TipoEventoDemanda.MANUTENCAO)
+        self.assertIn("cancelada", evento.descricao)
+
+    def test_concluir_sem_demanda_de_origem_nao_registra_em_lugar_nenhum(self):
+        manutencao = criar_manutencao(
+            condominio=self.condominio, criado_por=self.gestao, titulo="Serviço"
+        )
+
+        concluir_manutencao(
+            manutencao=manutencao, usuario=self.gestao, descricao_servico="Feito."
+        )
+
+        self.assertFalse(
+            self.demanda.historico.filter(
+                tipo_evento=TipoEventoDemanda.MANUTENCAO
+            ).exists()
+        )
+
+    def test_a_demanda_so_recebe_a_lembranca_sem_copiar_o_historico(self):
+        manutencao = self._manutencao_da_demanda("Revisar bomba")
+
+        concluir_manutencao(
+            manutencao=manutencao, usuario=self.gestao, descricao_servico="Feito."
+        )
+
+        # A demanda ganha um único evento, e ele não repete os eventos da manutenção.
+        self.assertEqual(
+            self.demanda.historico.filter(
+                tipo_evento=TipoEventoDemanda.MANUTENCAO
+            ).count(),
+            1,
+        )
+        self.assertGreaterEqual(manutencao.historico.count(), 2)

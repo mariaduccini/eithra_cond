@@ -203,7 +203,11 @@ class TipoEventoDemanda(models.TextChoices):
     ACOMPANHAMENTO = "acompanhamento", "Acompanhamento atualizado"
     CONCLUIDA = "concluida", "Demanda concluída"
     CANCELADA = "cancelada", "Demanda cancelada"
-    # Um comunicado aos moradores foi gerado a partir desta demanda. É o único
-    # evento que a demanda recebe de fora: o fato é da comunicação, e a demanda
-    # apenas lembra que ele existiu, sem copiar o histórico de lá.
+    # Um comunicado aos moradores foi gerado a partir desta demanda. É um evento
+    # que a demanda recebe de fora: o fato é da comunicação, e a demanda apenas
+    # lembra que ele existiu, sem copiar o histórico de lá.
     COMUNICADO = "comunicado", "Comunicado gerado"
+    # A manutenção que nasceu desta demanda teve um desfecho — concluída ou
+    # cancelada. Como o comunicado, é um evento que a demanda recebe de fora: o
+    # fato pertence à manutenção, e a demanda só lembra que ele aconteceu.
+    MANUTENCAO = "manutencao", "Manutenção vinculada"

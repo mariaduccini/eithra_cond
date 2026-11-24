@@ -612,3 +612,16 @@ def registrar_comunicado(demanda, usuario, descricao: str) -> HistoricoDemanda:
     """
     texto = _texto(descricao) or "Comunicado gerado para os moradores"
     return _registrar(demanda, usuario, TipoEventoDemanda.COMUNICADO, texto)
+
+
+@transaction.atomic
+def registrar_manutencao(demanda, usuario, descricao: str) -> HistoricoDemanda:
+    """Anota, na memória da demanda, o desfecho da manutenção que nasceu dela.
+
+    Como o comunicado, é um evento que a demanda recebe de fora da própria
+    operação: o fato pertence à manutenção, e por isso não se copia para cá o
+    histórico dela — registra-se a lembrança de que houve um desfecho, e nada
+    mais. A autoridade sobre o serviço continua sendo o domínio de manutenções.
+    """
+    texto = _texto(descricao) or "A manutenção vinculada teve um desfecho"
+    return _registrar(demanda, usuario, TipoEventoDemanda.MANUTENCAO, texto)

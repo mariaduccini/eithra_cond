@@ -151,6 +151,23 @@ def _registrar(
     )
 
 
+def _lembrar_na_demanda_de_origem(manutencao, usuario, descricao: str) -> None:
+    """Registra, na demanda de origem, o desfecho da manutenção que nasceu dela.
+
+    O fato pertence à manutenção, e por isso o evento na demanda é só a
+    lembrança de que ele existiu — o histórico da manutenção não é copiado para
+    lá. Manutenção sem demanda de origem não tem onde lembrar, e nada acontece.
+    """
+    if not manutencao.demanda_origem_id:
+        return
+
+    from apps.demandas import services as demandas_services
+
+    demandas_services.registrar_manutencao(
+        manutencao.demanda_origem, usuario, descricao
+    )
+
+
 def _completar_local_pelo_equipamento(manutencao) -> None:
     """Quando o equipamento tem local e a manutenção não escolheu nenhum, assume o dele.
 
@@ -700,6 +717,9 @@ def concluir_manutencao(
         novos={"status": StatusManutencao.CONCLUIDA},
     )
     manutencao.save(update_fields=campos)
+    _lembrar_na_demanda_de_origem(
+        manutencao, usuario, f"Manutenção «{manutencao.titulo}» concluída"
+    )
     return manutencao
 
 
@@ -732,6 +752,9 @@ def cancelar_manutencao(
     manutencao.status = StatusManutencao.CANCELADA
     manutencao.data_conclusao = None
     manutencao.save(update_fields=["status", "data_conclusao", "atualizado_em"])
+    _lembrar_na_demanda_de_origem(
+        manutencao, usuario, f"Manutenção «{manutencao.titulo}» cancelada"
+    )
     return manutencao
 
 
