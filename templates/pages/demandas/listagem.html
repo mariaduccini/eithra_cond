@@ -22,34 +22,28 @@
   </header>
 
   {% comment %}
-    Os indicadores vêm separados por quem controla o resultado: desempenho
-    interno é o que a operação decide, desempenho externo é o que depende de
-    terceiros. A separação impede que atraso de fornecedor seja lido como falha
-    da equipe.
+    Os filtros rápidos substituem os antigos cartões de desempenho: em vez de
+    sete números que não abrem nada, quatro atalhos que recortam a lista abaixo.
+    O contador é o número exato de linhas que cada um mostra — o mesmo recorte
+    que a lista aplica quando ele está ativo. Zero fica discreto; o ativo fica
+    destacado e, clicado de novo, limpa o filtro.
   {% endcomment %}
-  {% regroup indicadores by grupo as grupos_de_indicadores %}
-  {% for grupo in grupos_de_indicadores %}
-    <div class="d-flex align-items-center justify-content-between mt-1 mb-2">
-      <h2 class="h6 mb-0">{{ grupo.grouper }}</h2>
-    </div>
-    <div class="row g-3 mb-3">
-      {% for indicador in grupo.list %}
-        <div class="col-6 col-xl-3">
-          <div class="card eithra-summary-indicator h-100">
-            <div class="card-body d-flex align-items-center gap-3">
-              <span class="eithra-summary-indicator-icon text-{{ indicador.tom }}">
-                <i class="bx {{ indicador.icone }}" aria-hidden="true"></i>
-              </span>
-              <div>
-                <div class="eithra-summary-indicator-value">{{ indicador.valor }}</div>
-                <div class="eithra-summary-indicator-label">{{ indicador.titulo }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% endfor %}
+  <div class="eithra-chips-filtro mb-3" role="group" aria-label="Filtros rápidos">
+    {% for chip in chips %}
+      <a class="eithra-chip-filtro eithra-chip-filtro--{{ chip.tom }}{% if chip.ativo %} is-ativo{% endif %}{% if not chip.total %} is-vazio{% endif %}"
+         href="{{ chip.url }}"
+         {% if chip.ativo %}aria-current="true"{% endif %}>
+        <i class="bx {{ chip.icone }}" aria-hidden="true"></i>
+        <span class="eithra-chip-filtro-rotulo">{{ chip.titulo }}</span>
+        <span class="eithra-chip-filtro-contador">{{ chip.total }}</span>
+      </a>
+    {% endfor %}
+    {% if chip %}
+      <a class="eithra-chip-filtro-limpar" href="{% querystring chip=None aba=None page=None %}">
+        <i class="bx bx-x" aria-hidden="true"></i> Limpar filtro
+      </a>
+    {% endif %}
+  </div>
 
   {% comment %}
     A busca é o único recorte à mão. Os filtros finos continuam existindo no
@@ -110,16 +104,12 @@
           <caption class="visually-hidden">Demandas operacionais em acompanhamento</caption>
           <thead>
             <tr>
-              {% comment %}Código, título e descrição são três coisas diferentes e por isso
-              ocupam três colunas: o código identifica, o título nomeia, a
-              descrição contextualiza. Empilhá-las na mesma célula obrigava a
-              coluna a ser larga para acomodar todas — e mesmo assim a leitura
-              ficava em blocos, sem alinhamento entre as linhas.
-
-              Nem toda largura comporta as nove colunas: quando a tabela aperta,
-              o que sai primeiro é o que menos decide — a descrição, e depois o
-              responsável. O que sobra é o essencial: o que é (código, título,
-              local, prioridade, prazo, situação) e o que se faz com isso.
+              {% comment %}A grade enxuta: seis colunas que decidem. O código e a
+              descrição saíram de colunas próprias — o código virou a linha
+              miúda sob o título, e a descrição, uma linha curta de contexto. O
+              prazo e a situação se juntaram em "Situação", dita em linguagem
+              humana ("Atrasada 5 dias", "Aguardando fornecedor"). O que resta é
+              o que muda a decisão de quem olha a lista.
 
               Onde há o que ordenar, o título da coluna é o próprio comando: um
               clique põe a lista naquela ordem, e o segundo inverte. O sinal só
@@ -134,13 +124,9 @@
                     aria-label="Selecionar todas as demandas que podem ser concluídas">
                 </th>
               {% endif %}
-              <th scope="col" class="eithra-col-codigo">Código</th>
-              <th scope="col" class="eithra-col-titulo" aria-sort="{{ ordenacao.colunas.titulo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.titulo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.titulo.url }}">Título{% if ordenacao.colunas.titulo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.titulo.indicador }}</span>{% endif %}</a></th>
-              <th scope="col" class="eithra-col-descricao d-none d-xxl-table-cell">Descrição</th>
+              <th scope="col" class="eithra-col-demanda" aria-sort="{{ ordenacao.colunas.titulo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.titulo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.titulo.url }}">Demanda{% if ordenacao.colunas.titulo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.titulo.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-local" aria-sort="{{ ordenacao.colunas.local.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.local.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.local.url }}">Local{% if ordenacao.colunas.local.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.local.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-prioridade" aria-sort="{{ ordenacao.colunas.prioridade.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.prioridade.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.prioridade.url }}">Prioridade{% if ordenacao.colunas.prioridade.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.prioridade.indicador }}</span>{% endif %}</a></th>
-              <th scope="col" class="eithra-col-registrada" aria-sort="{{ ordenacao.colunas.criado_em.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.criado_em.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.criado_em.url }}">Registrada em{% if ordenacao.colunas.criado_em.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.criado_em.indicador }}</span>{% endif %}</a></th>
-              <th scope="col" class="eithra-col-prazo" aria-sort="{{ ordenacao.colunas.prazo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.prazo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.prazo.url }}">Prazo{% if ordenacao.colunas.prazo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.prazo.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-responsavel d-none d-xl-table-cell">Responsável</th>
               <th scope="col" class="eithra-col-situacao" aria-sort="{{ ordenacao.colunas.status.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.status.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.status.url }}">Situação{% if ordenacao.colunas.status.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.status.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-acoes text-end">Ações</th>
@@ -163,35 +149,28 @@
                     {% endif %}
                   </td>
                 {% endif %}
-                <td class="eithra-col-codigo">
-                  <span class="eithra-demanda-codigo text-body-secondary">{{ demanda.referencia }}</span>
-                </td>
-                <td class="eithra-col-titulo">
-                  <a class="fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}" title="{{ demanda.titulo }}">
+                <td class="eithra-col-demanda">
+                  <a class="eithra-demanda-titulo fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}" title="{{ demanda.titulo }}">
                     {{ demanda.titulo }}
                   </a>
-                </td>
-                {% comment %}A descrição contextualiza o título, nunca o repete: são dois campos
-                distintos e a coluna só mostra o que a descrição acrescenta. Duas
-                linhas com reticências bastam para reconhecer o assunto; o texto
-                inteiro continua no detalhe da demanda e no title.{% endcomment %}
-                <td class="eithra-col-descricao d-none d-xxl-table-cell">
-                  <div class="text-body-secondary small eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+                  <div class="eithra-demanda-meta small text-body-secondary">
+                    <span class="eithra-demanda-codigo">{{ demanda.referencia }}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{{ demanda.registrada_relativa }}</span>
+                  </div>
+                  {% comment %}A descrição contextualiza o título, nunca o repete: vira
+                  uma linha curta sob ele, com o texto inteiro no title. Não
+                  ocupa mais coluna própria.{% endcomment %}
+                  {% if demanda.descricao_curta %}
+                    <div class="eithra-demanda-contexto small text-body-secondary eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+                  {% endif %}
                 </td>
                 <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
                 <td class="eithra-col-prioridade"><span class="badge bg-label-{{ demanda.prioridade_tom }}">{{ demanda.prioridade }}</span></td>
-                {% comment %}A data em que a demanda entrou no sistema. Sem hora: na
-                lista ela situa o registro no tempo, e a hora só pesaria.{% endcomment %}
-                <td class="eithra-col-registrada"><div class="small">{{ demanda.registrada_em }}</div></td>
-                <td class="eithra-col-prazo">
-                  <div class="small">{{ demanda.prazo }}</div>
-                  {% if demanda.prazo_destaque %}
-                    <div class="small text-{{ demanda.prazo_tom }}-emphasis">{{ demanda.prazo_destaque }}</div>
-                  {% endif %}
-                </td>
                 <td class="eithra-col-responsavel small d-none d-xl-table-cell"><div class="eithra-duas-linhas" title="{{ demanda.responsavel }}">{{ demanda.responsavel }}</div></td>
                 <td class="eithra-col-situacao">
-                  <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
+                  <span class="badge bg-label-{{ demanda.situacao_tom }}">{{ demanda.situacao_rotulo }}</span>
+                  <div class="eithra-col-situacao-prazo small text-body-secondary mt-1">{{ demanda.prazo }}</div>
                   {% comment %}O acompanhamento não vira coluna: o sinal aparece ao lado da
                   situação só quando muda uma decisão de quem olha a grade — o que está
                   parado à espera de alguém, ou uma data prometida que já passou.{% endcomment %}
@@ -200,11 +179,10 @@
                   {% endif %}
                 </td>
                 <td class="eithra-col-acoes text-end">
-                  {% comment %}Concluir tem o próprio ícone — sem borda, no padrão dos
-                  ícones de ação do sistema —, e só aparece para quem tem a conclusão
-                  entre as situações que alcança. É a única ação direta da linha; o
-                  resto continua no menu de três pontos, e a linha segue sendo o
-                  caminho para o detalhe.{% endcomment %}
+                  {% comment %}As ações do dia a dia são ícones sem borda: concluir e contar
+                  novidade. O menu de três pontos guarda só o que é raro — editar e as
+                  demais ações que o detalhe também oferece, com os mesmos ícones. A
+                  linha inteira segue sendo o caminho para o detalhe.{% endcomment %}
                   {% if demanda.pode_concluir %}
                     <button
                       type="button"
@@ -218,6 +196,15 @@
                       aria-label="Concluir demanda">
                       <i class="bx bx-check-circle" aria-hidden="true"></i>
                     </button>
+                  {% endif %}
+                  {% if demanda.contar_novidade %}
+                    <a
+                      class="eithra-acao-icone"
+                      href="{{ demanda.url_contar_novidade }}"
+                      title="Contar novidade"
+                      aria-label="Contar novidade">
+                      <i class="bx bx-message-rounded-dots" aria-hidden="true"></i>
+                    </a>
                   {% endif %}
                   {% if demanda.acoes %}
                     <div class="dropdown d-inline-block">
@@ -238,10 +225,14 @@
         </table>
       </div>
 
+      {% comment %}No celular cada demanda é um cartão compacto: o título, o selo da
+      situação em linguagem humana, o responsável e os mesmos ícones de ação da
+      tabela. O que não decide no polegar — local, prazo cru, prioridade — sai do
+      cartão; a linha inteira continua sendo o caminho para o detalhe.{% endcomment %}
       <div class="list-group list-group-flush d-lg-none">
         {% for demanda in demandas %}
-          <div class="list-group-item" data-href="{% url 'demandas:detalhe' demanda.pk %}">
-            <div class="d-flex align-items-start justify-content-between gap-2">
+          <div class="list-group-item eithra-demanda-cartao" data-href="{% url 'demandas:detalhe' demanda.pk %}">
+            <div class="d-flex align-items-start gap-2">
               {% if pode_concluir_alguma and demanda.pode_concluir %}
                 <input
                   type="checkbox"
@@ -252,27 +243,19 @@
                   data-eithra-lote-escolha
                   aria-label="Selecionar {{ demanda.titulo }}">
               {% endif %}
-              <div class="min-w-0">
-                <div class="text-body-secondary small">{{ demanda.referencia }}</div>
-                <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
-                <div class="text-body-secondary small eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+              <div class="min-w-0 flex-grow-1">
+                <a class="eithra-demanda-titulo fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
+                <div class="eithra-demanda-meta small text-body-secondary">
+                  <span class="eithra-demanda-codigo">{{ demanda.referencia }}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{{ demanda.registrada_relativa }}</span>
+                </div>
+                <div class="mt-1 d-flex flex-wrap align-items-center gap-2">
+                  <span class="badge bg-label-{{ demanda.situacao_tom }}">{{ demanda.situacao_rotulo }}</span>
+                  <span class="small text-body-secondary"><i class="bx bx-user" aria-hidden="true"></i> {{ demanda.responsavel }}</span>
+                </div>
               </div>
-              <div class="text-end">
-                <span class="badge bg-label-{{ demanda.status_tom }}">{{ demanda.status }}</span>
-                {% if demanda.sinal_acompanhamento %}
-                  <div class="small text-{{ demanda.sinal_acompanhamento_tom }}-emphasis mt-1">{{ demanda.sinal_acompanhamento }}</div>
-                {% endif %}
-              </div>
-            </div>
-            <div class="row g-2 mt-2 small">
-              <div class="col-6"><span class="text-body-secondary">Local</span><br>{{ demanda.local }}</div>
-              <div class="col-6"><span class="text-body-secondary">Prazo</span><br>{{ demanda.prazo }}</div>
-              <div class="col-6"><span class="text-body-secondary">Prioridade</span><br>{{ demanda.prioridade }}</div>
-              <div class="col-6"><span class="text-body-secondary">Registrada em</span><br>{{ demanda.registrada_em }}</div>
-              <div class="col-6"><span class="text-body-secondary">Responsável</span><br>{{ demanda.responsavel }}</div>
-            </div>
-            {% if demanda.acoes or demanda.pode_concluir %}
-              <div class="d-flex justify-content-end align-items-center gap-2 mt-2">
+              <div class="eithra-demanda-cartao-acoes flex-shrink-0 d-flex align-items-center gap-1">
                 {% if demanda.pode_concluir %}
                   <button
                     type="button"
@@ -287,6 +270,15 @@
                     <i class="bx bx-check-circle" aria-hidden="true"></i>
                   </button>
                 {% endif %}
+                {% if demanda.contar_novidade %}
+                  <a
+                    class="eithra-acao-icone"
+                    href="{{ demanda.url_contar_novidade }}"
+                    title="Contar novidade"
+                    aria-label="Contar novidade">
+                    <i class="bx bx-message-rounded-dots" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
                 {% if demanda.acoes %}
                   <div class="dropdown">
                     <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
@@ -300,7 +292,7 @@
                   </div>
                 {% endif %}
               </div>
-            {% endif %}
+            </div>
           </div>
         {% endfor %}
       </div>

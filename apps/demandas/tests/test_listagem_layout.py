@@ -1,18 +1,28 @@
-"""Apresentação da listagem de demandas: código, título e descrição.
+"""Apresentação da listagem de demandas: grade enxuta e filtros rápidos.
 
-A grid mostra três coisas diferentes em três colunas: o código identifica, o
-título nomeia, a descrição contextualiza. Nenhuma delas repete a outra, e o
-texto que não couber fica no detalhe — a lista não cresce para acomodar texto
-longo. Estes testes travam essa estrutura, porque é ela que sustenta a leitura
-em qualquer resolução.
+A lista deixou de separar código, título e descrição em três colunas: o código
+virou a linha miúda sob o título, a descrição, uma linha curta de contexto, e o
+prazo e a situação se juntaram em "Situação", dita em linguagem humana. Acima da
+grade, quatro chips recortam a lista e cada contador é o número exato de linhas
+que ele mostra. Estes testes travam essa estrutura, porque é ela que sustenta a
+leitura objetiva em qualquer resolução.
 """
+from datetime import timedelta
+
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.condominios.constants import Papel
-from apps.demandas.constants import PrioridadeDemanda, StatusDemanda
+from apps.demandas.constants import AguardandoTipo, PrioridadeDemanda, StatusDemanda
 from apps.demandas.forms import DemandaForm
-from apps.demandas.services import alterar_status, criar_demanda, editar_demanda
+from apps.demandas.models import Demanda
+from apps.demandas.services import (
+    alterar_status,
+    atualizar_acompanhamento,
+    criar_demanda,
+    editar_demanda,
+)
 from apps.demandas.tests.apoio import (
     criar_condominio,
     criar_pessoa,
@@ -60,13 +70,21 @@ class ListagemDeDemandasTests(TestCase):
 
     # -- Estrutura das colunas ------------------------------------------------
 
-    def test_codigo_titulo_e_descricao_sao_colunas_separadas(self):
+    def test_a_grade_enxuta_tem_as_colunas_que_decidem(self):
         demanda = self._demanda(titulo="Portão travando", descricao="Abre e fecha.")
         resposta = self._abrir()
 
-        self.assertContains(resposta, "eithra-col-codigo")
-        self.assertContains(resposta, "eithra-col-titulo")
-        self.assertContains(resposta, "eithra-col-descricao")
+        # O código e a descrição saíram de colunas próprias; o que resta é o
+        # que muda a decisão de quem olha a lista.
+        for coluna in (
+            "eithra-col-demanda",
+            "eithra-col-local",
+            "eithra-col-prioridade",
+            "eithra-col-responsavel",
+            "eithra-col-situacao",
+            "eithra-col-acoes",
+        ):
+            self.assertContains(resposta, f'class="{coluna}')
 
         linha = resposta.context["demandas"][0]
         self.assertEqual(linha["referencia"], f"D-{str(demanda.pk).split('-')[0].upper()}")
@@ -77,49 +95,19 @@ class ListagemDeDemandasTests(TestCase):
         resposta = self._abrir()
 
         celula = resposta.content.decode()
-        # O título aparece uma vez na linha da tabela e uma vez no card do
-        # celular — nunca dentro da célula da descrição.
+        # O título aparece uma vez, no próprio título da linha — nunca dentro do
+        # contexto, que traz a descrição.
         self.assertEqual(celula.count(f'title="{titulo}"'), 1)
 
     # -- Responsividade das colunas -------------------------------------------
     #
-    # A grade não cabe inteira em qualquer largura. Em vez de apertar as nove
-    # colunas — o que deixaria prioridade e prazo encostados e a leitura em
-    # blocos —, ela mostra menos: o que sai primeiro é o que menos decide. Estes
-    # testes travam a ordem da saída, não a medida exata de cada faixa.
-
-    def test_a_grade_ampla_traz_as_nove_colunas(self):
-        """No desktop amplo nada foi retirado: as nove colunas estão lá."""
-        self._demanda(descricao="Abre pela metade.")
-        resposta = self._abrir()
-        for coluna in (
-            "eithra-col-codigo",
-            "eithra-col-titulo",
-            "eithra-col-descricao",
-            "eithra-col-local",
-            "eithra-col-prioridade",
-            "eithra-col-prazo",
-            "eithra-col-responsavel",
-            "eithra-col-situacao",
-            "eithra-col-acoes",
-        ):
-            self.assertContains(resposta, f'class="{coluna}')
-
-    def test_o_cabecalho_da_descricao_cede_espaco_abaixo_de_xxl(self):
-        """A descrição é a primeira coluna a sair quando a largura aperta.
-
-        As nove colunas só cabem na faixa mais ampla. Abaixo dela a célula deixa
-        de ser desenhada — e some por inteiro, sem largura reservada, para o
-        espaço voltar ao título.
-        """
-        self._demanda(descricao="Abre pela metade.")
-        resposta = self._abrir()
-        self.assertContains(
-            resposta, 'class="eithra-col-descricao d-none d-xxl-table-cell"'
-        )
+    # A grade não cabe inteira em qualquer largura. Em vez de apertar as colunas
+    # — o que deixaria prioridade e situação encostados e a leitura em blocos —,
+    # ela mostra menos: o que sai primeiro é o que menos decide. Estes testes
+    # travam a ordem da saída, não a medida exata de cada faixa.
 
     def test_o_responsavel_cede_espaco_abaixo_de_xl(self):
-        """Depois da descrição, é o responsável quem sai."""
+        """O responsável é a coluna que sai primeiro quando a largura aperta."""
         self._demanda()
         resposta = self._abrir()
         self.assertContains(
@@ -221,45 +209,47 @@ class ListagemDeDemandasTests(TestCase):
 
     # -- Coluna de ações -------------------------------------------------------
     #
-    # A linha inteira leva ao detalhe. Concluir ganhou o próprio ícone — a única
-    # ação direta da linha —, e o resto continua no menu de três pontos, sem
-    # outra ação competindo com o clique da linha.
+    # As ações do dia a dia são ícones sem borda na própria linha: concluir e
+    # contar novidade. O menu de três pontos guarda só o que é raro — editar e as
+    # demais ações que o detalhe também oferece —, para nada competir com o
+    # clique da linha.
 
-    def test_a_coluna_de_acoes_reune_o_icone_de_concluir_e_o_menu(self):
+    def test_a_coluna_de_acoes_reune_os_icones_do_dia_a_dia_e_o_menu(self):
         self._demanda(titulo="Portão travando")
         celula = self._celula_de_acoes(self._abrir())
 
-        # O menu de três pontos, com as ações que abrem janelas do detalhe.
-        self.assertIn("bx-dots-vertical-rounded", celula)
-        # O ícone de concluir, no mesmo padrão dos ícones de ação do sistema.
+        # Os ícones sem borda do dia a dia: concluir e contar novidade.
         self.assertIn("bx-check-circle", celula)
+        self.assertIn("bx-message-rounded-dots", celula)
         self.assertIn("eithra-acao-icone", celula)
-        # Dois controles: o ícone de concluir e o botão do ⋮ — nada mais.
-        self.assertEqual(celula.count("<button"), 2)
-        # Nenhum botão direto na linha — nem lápis, nem olho, nem "visualizar".
+        # O menu de três pontos, com as ações raras.
+        self.assertIn("bx-dots-vertical-rounded", celula)
+        # Dois controles clicáveis além dos ícones: o botão do ⋮ é o único
+        # <button> aqui (concluir também é botão; contar novidade é um link).
+        self.assertLessEqual(celula.count("<button"), 2)
+        # Nenhum botão com moldura direto na linha — nem lápis, nem olho.
         self.assertNotIn('<a class="btn', celula)
         self.assertNotIn("eithra-acoes", celula)
 
-    def test_o_menu_da_linha_oferece_apenas_acoes_reais(self):
-        """Cada item abre uma janela que a página da demanda já oferece."""
+    def test_o_menu_da_linha_guarda_apenas_as_acoes_raras(self):
+        """O menu não repete o que já tem ícone na linha."""
         self._demanda()
         resposta = self._abrir()
         acoes = resposta.context["demandas"][0]["acoes"]
+        rotulos = [acao["label"] for acao in acoes]
 
-        self.assertEqual(
-            [acao["label"] for acao in acoes],
-            [
-                "Ver detalhes",
-                "Registrar atualização",
-                "Adicionar evidência",
-                "Editar",
-            ],
-        )
-        # Toda ação leva ao detalhe da demanda, onde a janela correspondente
-        # abre — a lista não inventa um caminho que não exista.
-        detalhe = reverse("demandas:detalhe", args=[resposta.context["demandas"][0]["pk"]])
+        # O que se faz o tempo todo vive nos ícones da linha, nunca aqui.
+        for repetida in (
+            "Ver detalhes",
+            "Registrar atualização",
+            "Adicionar evidência",
+        ):
+            self.assertNotIn(repetida, rotulos)
+        # Editar é o caso raro que o menu precisa oferecer.
+        self.assertIn("Editar demanda", rotulos)
+        # Cada ação traz o próprio ícone — as mesmas marcas do topo do detalhe.
         for acao in acoes:
-            self.assertTrue(acao["url"].startswith(detalhe))
+            self.assertTrue(acao["icon"])
 
     def test_o_acompanhamento_nao_tem_entrada_propria(self):
         """O acompanhamento passou a fazer parte do fluxo de atualização.
@@ -271,14 +261,9 @@ class ListagemDeDemandasTests(TestCase):
         resposta = self._abrir()
 
         self.assertNotContains(resposta, "Atualizar acompanhamento")
-        self.assertEqual(
+        self.assertNotIn(
+            "Registrar atualização",
             [acao["label"] for acao in resposta.context["demandas"][0]["acoes"]],
-            [
-                "Ver detalhes",
-                "Registrar atualização",
-                "Adicionar evidência",
-                "Editar",
-            ],
         )
 
     # -- Scroll ----------------------------------------------------------------
@@ -309,12 +294,175 @@ class ListagemDeDemandasTests(TestCase):
 
     # -- Celular ---------------------------------------------------------------
 
-    def test_o_celular_recebe_cartao_com_titulo_e_situacao(self):
+    def test_o_celular_recebe_cartao_compacto_com_titulo_e_situacao(self):
         self._demanda(titulo="Portão travando", descricao="Abre pela metade.")
         resposta = self._abrir()
 
         # A tabela some abaixo de lg e o cartão assume, mostrando o que a
-        # operação precisa ver primeiro: o assunto e a situação.
+        # operação precisa ver primeiro: o assunto, o selo da situação e o
+        # responsável — sem repetir a grade inteira.
         self.assertContains(resposta, "table-responsive d-none d-lg-block")
         self.assertContains(resposta, "list-group list-group-flush d-lg-none")
+        self.assertContains(resposta, "eithra-demanda-cartao")
         self.assertContains(resposta, "Portão travando")
+
+
+class FiltrosRapidosDaListagemTests(TestCase):
+    """Os chips recortam a lista e contam exatamente o número de linhas que mostram.
+
+    Cada contador sai da mesma base que a lista usa, com o mesmo recorte que o
+    chip aplica — por isso o número nunca discorda do que aparece ao clicar.
+    """
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, papel=Papel.SINDICA)
+        self.client.force_login(self.gestao)
+
+    def _demanda(self, **campos):
+        status = campos.pop("status", None)
+        base = {
+            "condominio": self.condominio,
+            "criado_por": self.gestao,
+            "titulo": "Demanda de teste",
+        }
+        base.update(campos)
+        demanda = criar_demanda(**base)
+        if status and status != StatusDemanda.ABERTA:
+            alterar_status(demanda=demanda, usuario=self.gestao, novo_status=status)
+        return demanda
+
+    def _abrir(self, **parametros):
+        resposta = self.client.get(reverse("demandas:listagem"), parametros)
+        self.assertEqual(resposta.status_code, 200)
+        return resposta
+
+    def _chip(self, resposta, chave):
+        return next(
+            chip for chip in resposta.context["chips"] if chip["chave"] == chave
+        )
+
+    def _titulos(self, resposta):
+        return [linha["titulo"] for linha in resposta.context["demandas"]]
+
+    # -- Os quatro recortes ---------------------------------------------------
+
+    def test_os_chips_trazem_os_quatro_recortes_na_ordem(self):
+        resposta = self._abrir()
+        self.assertEqual(
+            [chip["chave"] for chip in resposta.context["chips"]],
+            ["atrasadas", "esperando", "paradas", "concluidas"],
+        )
+
+    def test_o_contador_do_chip_e_o_numero_de_linhas_que_ele_mostra(self):
+        """O número do chip é o número exato de linhas que ele abre."""
+        self._demanda(
+            titulo="Atrasada", prazo=timezone.localdate() - timedelta(days=2)
+        )
+        self._demanda(
+            titulo="Em dia", prazo=timezone.localdate() + timedelta(days=5)
+        )
+
+        sem_filtro = self._abrir()
+        self.assertEqual(self._chip(sem_filtro, "atrasadas")["total"], 1)
+
+        com_filtro = self._abrir(chip="atrasadas")
+        self.assertEqual(self._titulos(com_filtro), ["Atrasada"])
+        # O chip ativo se marca e some com um clique de novo.
+        self.assertTrue(self._chip(com_filtro, "atrasadas")["ativo"])
+
+    def test_a_atrasada_conta_a_previsao_vencida(self):
+        self._demanda(titulo="Previsão vencida")
+        demanda = Demanda.objects.get(titulo="Previsão vencida")
+        atualizar_acompanhamento(
+            demanda=demanda,
+            usuario=self.gestao,
+            previsao=timezone.localdate() - timedelta(days=1),
+        )
+
+        resposta = self._abrir(chip="atrasadas")
+        self.assertEqual(self._chip(resposta, "atrasadas")["total"], 1)
+        self.assertEqual(self._titulos(resposta), ["Previsão vencida"])
+
+    def test_esperando_alguem_conta_quem_aguarda_fornecedor_ou_terceiro(self):
+        self._demanda(titulo="Esperando")
+        demanda = Demanda.objects.get(titulo="Esperando")
+        atualizar_acompanhamento(
+            demanda=demanda,
+            usuario=self.gestao,
+            aguardando_tipo=AguardandoTipo.FORNECEDOR,
+        )
+        self._demanda(titulo="Sem espera")
+
+        resposta = self._abrir(chip="esperando")
+        self.assertEqual(self._chip(resposta, "esperando")["total"], 1)
+        self.assertEqual(self._titulos(resposta), ["Esperando"])
+
+    def test_paradas_conta_o_que_esta_sem_atualizacao_ha_mais_de_sete_dias(self):
+        parada = self._demanda(titulo="Parada")
+        self._demanda(titulo="Recente")
+        limite = timezone.now() - timedelta(days=10)
+        Demanda.objects.filter(pk=parada.pk).update(atualizado_em=limite)
+
+        resposta = self._abrir(chip="paradas")
+        self.assertEqual(self._chip(resposta, "paradas")["total"], 1)
+        self.assertEqual(self._titulos(resposta), ["Parada"])
+
+    def test_concluidas_no_mes_conta_o_que_fechou_neste_mes(self):
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
+        self._demanda(titulo="Aberta")
+
+        resposta = self._abrir(chip="concluidas")
+        self.assertEqual(self._chip(resposta, "concluidas")["total"], 1)
+        self.assertEqual(self._titulos(resposta), ["Concluída"])
+
+    def test_o_chip_de_zero_fica_discreto_sem_desaparecer(self):
+        self._demanda(titulo="Aberta")
+        resposta = self._abrir()
+        self.assertEqual(self._chip(resposta, "atrasadas")["total"], 0)
+        # O chip continua na tela — só discreto, nunca invisível.
+        self.assertContains(resposta, "is-vazio")
+
+    # -- O filtro rápido recorta, não inventa ---------------------------------
+
+    def test_o_filtro_do_formulario_estreita_tambem_o_contador_do_chip(self):
+        """Contador e lista leem a mesma base filtrada — o número não mente."""
+        self._demanda(
+            titulo="Atrasada Alpha",
+            prazo=timezone.localdate() - timedelta(days=3),
+        )
+        outro = criar_condominio("Beta")
+        criar_vinculo(self.gestao, outro, papel=Papel.SINDICA)
+        criar_demanda(
+            condominio=outro,
+            criado_por=self.gestao,
+            titulo="Atrasada Beta",
+            prazo=timezone.localdate() - timedelta(days=3),
+        )
+
+        resposta = self._abrir(chip="atrasadas", condominio=str(self.condominio.pk))
+        self.assertEqual(self._chip(resposta, "atrasadas")["total"], 1)
+        self.assertEqual(self._titulos(resposta), ["Atrasada Alpha"])
+
+    # -- Ordem padrão por urgência --------------------------------------------
+
+    def test_a_ordem_padrao_e_por_urgencia(self):
+        """Atrasadas primeiro, depois pela data mais próxima, depois as demais."""
+        self._demanda(
+            titulo="Sem prazo",
+            prioridade=PrioridadeDemanda.NORMAL,
+        )
+        self._demanda(
+            titulo="Vence em 3 dias",
+            prazo=timezone.localdate() + timedelta(days=3),
+        )
+        self._demanda(
+            titulo="Atrasada",
+            prazo=timezone.localdate() - timedelta(days=1),
+        )
+
+        self.assertEqual(
+            self._titulos(self._abrir()),
+            ["Atrasada", "Vence em 3 dias", "Sem prazo"],
+        )

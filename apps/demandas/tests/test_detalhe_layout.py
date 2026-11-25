@@ -117,29 +117,36 @@ class DetalheDaDemandaTests(TestCase):
     # -- Ações ----------------------------------------------------------------
 
     def test_as_acoes_vivem_no_cabecalho(self):
-        """O que fazer agora fica no cabeçalho, junto do estado que o explica."""
+        """O que fazer agora fica no cabeçalho, junto do estado que o explica.
+
+        São as mesmas ações da linha da lista, com os mesmos ícones: concluir e
+        contar novidade como ícones sem borda, e o menu de três pontos com o que
+        é raro.
+        """
         conteudo = self._abrir().content.decode()
         cabecalho = conteudo[
             conteudo.index("eithra-detalhe-topo"):conteudo.index("eithra-detalhe-grade")
         ]
         for marca in (
-            "Registrar atualização",
-            "Adicionar evidência",
             "Concluir demanda",
+            "Contar novidade",
             "Mais ações",
         ):
             self.assertIn(marca, cabecalho)
+        self.assertIn("bx-check-circle", cabecalho)
+        self.assertIn("bx-message-rounded-dots", cabecalho)
 
     def test_nenhum_caminho_funcional_foi_removido(self):
         conteudo = self._abrir().content.decode()
         # Voltar para a lista continua valendo.
         self.assertIn(reverse("demandas:listagem"), conteudo)
-        # Atualizar e anexar continuam acessíveis sem duplicar acompanhamento.
+        # Contar novidade abre o Registrar atualização, que já aceita evidência:
+        # a evidência anexada continua alcançável pelo mesmo fluxo.
         self.assertIn("?abrir=atualizar", conteudo)
-        self.assertIn("?abrir=evidencia", conteudo)
         self.assertNotIn("?abrir=acompanhamento", conteudo)
         self.assertNotIn("Atualizar acompanhamento", conteudo)
         self.assertIn('id="atualizar-demanda"', conteudo)
+        self.assertIn('id="adicionar-evidencia"', conteudo)
 
     def test_o_editar_continua_alcancavel_pelas_mais_acoes(self):
         """O lápis solto saiu da descrição; editar vive nas Mais ações."""

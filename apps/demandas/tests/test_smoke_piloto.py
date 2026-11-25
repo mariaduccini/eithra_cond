@@ -197,14 +197,13 @@ class FluxoDePontaAPontaTests(TestCase):
         self.assertEqual(evento.dados_anteriores.get("prioridade"), PrioridadeDemanda.ALTA)
         self.assertEqual(evento.dados_novos.get("prioridade"), PrioridadeDemanda.BAIXA)
 
-        # 11. A listagem e os indicadores refletem o estado final.
+        # 11. A listagem e os filtros rápidos refletem o estado final.
         listagem = self.client.get(reverse("demandas:listagem"))
         self.assertEqual(listagem.status_code, 200)
-        indicadores = {
-            item["titulo"]: item["valor"] for item in listagem.context["indicadores"]
-        }
-        self.assertEqual(indicadores["Concluídas no mês"], 1)
-        self.assertEqual(indicadores["Em aberto"], 0)
+        chips = {chip["chave"]: chip["total"] for chip in listagem.context["chips"]}
+        self.assertEqual(chips["concluidas"], 1)
+        # Nada ficou atrasado: o chip de atrasadas está zerado.
+        self.assertEqual(chips["atrasadas"], 0)
         # A lista separa o que ainda pede ação do que já foi encerrado (§5): a
         # demanda concluída sai da aba Ativas e passa a viver na aba Concluídas.
         ativas = [linha["titulo"] for linha in listagem.context["demandas"]]

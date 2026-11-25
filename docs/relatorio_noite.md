@@ -70,3 +70,59 @@ _(preenchido ao encerrar a fila, conforme a regra 11)_
   do repositório e não foi alterado (regra 8 prevalece sobre a regra 10 quanto a
   arquivos fora do repositório), mantendo o precedente da T2; o estado de cada
   tarefa fica registrado aqui.
+
+### T4. Listagem de demandas objetiva
+
+- **Tarefa:** T4 — redesenhar a listagem `/demandas/` (chips de filtro, ordem por
+  urgência, grade enxuta e ações por ícone), sem mudar regra, permissão nem URL.
+  O ícone de concluir, os checkboxes e a barra "Concluir selecionadas" foram
+  preservados (já vinham de c7af7ad).
+- **Commit:** ver `git log noite-25-11` para o hash desta entrega.
+- **Arquivos:** `apps/demandas/views.py` (chips, recorte por chip, `_chips_da_listagem`,
+  `_tempo_relativo`, `_situacao_humana`, `_mais_acoes_da_demanda` com ícones; removida
+  `_indicadores_da_listagem`), `templates/pages/demandas/listagem.html` (linha de chips,
+  grade de 6 colunas, cartão do celular), `templates/pages/demandas/detalhe.html`
+  (ações do topo = mesmas da linha), `static/css/eithra.css` (chips, título/meta da
+  demanda, cartão), e os testes de `apps/demandas/tests/`.
+- **Testes rodados e resultado:**
+  - `.\test-local.ps1 --noinput --keepdb apps.demandas.tests.test_listagem_layout
+    apps.demandas.tests.test_detalhe_layout
+    apps.demandas.tests.test_views.ListagemEFiltrosTests
+    apps.demandas.tests.test_views.TelaDeAcompanhamentoTests
+    apps.demandas.tests.test_views.ListagemPorAbasEOrdenacaoTests
+    apps.demandas.tests.test_smoke_piloto` → **77 testes, OK**.
+- **Decisões tomadas:**
+  - Os 7 cards de desempenho viraram 4 chips ("Atrasadas", "Esperando alguém",
+    "Paradas há +7 dias", "Concluídas no mês"). Contadores e lista leem a **mesma**
+    base filtrada (`_base_da_listagem` + `_recorte_do_chip`), de modo que o número
+    do chip é exatamente o número de linhas que ele mostra — travado por teste.
+    Zero fica discreto (`is-vazio`); o ativo fica destacado e há "Limpar filtro".
+  - Ordem padrão por urgência reaproveita `na_ordem_de_atencao()` (atrasadas →
+    prazo mais próximo → demais); nada de regra nova de ordenação.
+  - Grade: `Demanda | Local | Prioridade | Responsável | Situação | Ações`. O código
+    virou a linha miúda sob o título, a descrição, um contexto curto, e "Registrada
+    em" virou tempo relativo ("há N dias"). Prazo e situação se juntaram em
+    "Situação" com selo humano (Aguardando fornecedor, Atrasada N dias...).
+  - Ações por linha: Concluir (`bx-check-circle`, se permitido) e Contar novidade
+    (`bx-message-rounded-dots`, abre o Registrar atualização, que já aceita
+    evidência). O menu ⋮ ficou só com o raro (Editar e demais ações do detalhe);
+    "Ver detalhes" e "Adicionar evidência" saíram (linha/título clicáveis; evidência
+    dentro do Contar novidade). As mesmas ações, com os mesmos ícones, subiram ao
+    topo do detalhe — ambas as origens saem de `_mais_acoes_da_demanda`.
+  - No celular, cada demanda é um cartão compacto (título, selo de situação,
+    responsável e ícones de ação), no mesmo padrão `min-block-size: 44px`.
+- **Prints antes/depois (desktop):** **não produzidos.** O ambiente da noite veda
+  criar/parar servidores e não há ferramenta de captura instalada (sem Playwright/
+  Selenium; instalar dependência exigiria autorização). Como evidência, foi feita a
+  renderização real da página (`tmp_render.py` + `Client`, GET `/demandas/`): o HTML
+  servido mostra os chips com contadores, a grade de 6 colunas e os ícones de ação.
+  Registrado como limitação.
+- **Correção de teste obsoleta (fora do comportamento da T4):** a asserção
+  `assertIn("Detalhe da demanda")` em `test_detalhe_le_secoes_continuas` já falhava
+  na HEAD — a string não existe em nenhum template há commits. Foi trocada por
+  `eithra-detalhe-titulo` (o herói do detalhe), que reflete a tela atual. A asserção
+  de ausência de "Descrição" na listagem foi trocada por checagem de classe de coluna
+  (`eithra-col-descricao`/`eithra-col-codigo`), pois o wizard da própria página
+  também usa a palavra "Descrição" como etapa.
+- **Pendências:** nenhuma dentro do escopo. O arquivo-bandeja da fila está fora do
+  repositório e não foi alterado, mantendo o precedente da T2/T3.

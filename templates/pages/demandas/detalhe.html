@@ -40,10 +40,11 @@
           <i class="bx {{ proximo_passo.icon }} me-1" aria-hidden="true"></i>{{ proximo_passo.label }}
         </a>
       {% endif %}
-      {% comment %}Concluir é ação de quem encerra a demanda, e é simples: um ícone
-      sem borda, no mesmo padrão do microfone do campo, abre a janela de uma
-      etapa. Só aparece para quem tem a conclusão entre as situações que
-      alcança.{% endcomment %}
+      {% comment %}As ações do topo são as mesmas da linha da lista, com os mesmos
+      ícones: concluir e contar novidade como ícones sem borda, e o menu de três
+      pontos só com o que é raro. Contar novidade abre o Registrar atualização,
+      que já aceita evidência — por isso "Adicionar evidência" não tem entrada
+      própria aqui.{% endcomment %}
       {% if pode_concluir %}
         <button
           type="button"
@@ -56,23 +57,22 @@
         </button>
       {% endif %}
       {% if pode_atualizar %}
-        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn {% if proximo_passo %}eithra-btn-secundario{% else %}eithra-btn-primario{% endif %}">
-          <i class="bx bx-refresh me-1" aria-hidden="true"></i>Registrar atualização
-        </a>
-      {% endif %}
-      {% if pode_adicionar_evidencia %}
-        <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=evidencia&aba=historico" class="btn eithra-btn-secundario">
-          <i class="bx bx-image-add me-1" aria-hidden="true"></i>Adicionar evidência
+        <a
+          class="eithra-acao-icone"
+          href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral"
+          title="Contar novidade"
+          aria-label="Contar novidade">
+          <i class="bx bx-message-rounded-dots" aria-hidden="true"></i>
         </a>
       {% endif %}
       {% if mais_acoes %}
         <div class="dropdown">
-          <button class="btn eithra-btn-secundario dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-            Mais ações
+          <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações">
+            <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
           </button>
           <ul class="dropdown-menu dropdown-menu-end">
             {% for acao in mais_acoes %}
-              <li><a class="dropdown-item" href="{{ acao.url }}">{{ acao.label }}</a></li>
+              <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
             {% endfor %}
           </ul>
         </div>

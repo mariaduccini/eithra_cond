@@ -291,7 +291,19 @@ class ListagemEFiltrosTests(BaseDeTelas):
         titulos = [linha["titulo"] for linha in resposta.context["demandas"]]
         self.assertEqual(titulos[0], "Vencida")
 
-    def test_indicadores_representam_o_universo_visivel_e_nao_os_filtros(self):
+    def test_os_chips_substituem_os_antigos_cartoes_de_desempenho(self):
+        """A lista trouxe filtros rápidos no lugar dos sete cartões de números."""
+        self._demanda(titulo="Aberta")
+        resposta = self.client.get(reverse("demandas:listagem"))
+
+        self.assertNotIn("indicadores", resposta.context)
+        self.assertEqual(
+            [chip["chave"] for chip in resposta.context["chips"]],
+            ["atrasadas", "esperando", "paradas", "concluidas"],
+        )
+
+    def test_o_contador_do_chip_segue_o_filtro_da_lista(self):
+        """O número do chip é exatamente o número de linhas que ele mostra."""
         hoje = timezone.localdate()
         self._demanda(titulo="Aberta")
         self._demanda(
@@ -300,38 +312,23 @@ class ListagemEFiltrosTests(BaseDeTelas):
             status=StatusDemanda.EM_ANDAMENTO,
         )
         self._demanda(titulo="Andamento", status=StatusDemanda.EM_ANDAMENTO)
-        self._demanda(
-            titulo="Concluída",
-            status=StatusDemanda.CONCLUIDA,
-        )
+        self._demanda(titulo="Concluída", status=StatusDemanda.CONCLUIDA)
 
-        resposta = self.client.get(
+        sem_filtro = self.client.get(reverse("demandas:listagem"))
+        chips = {chip["chave"]: chip["total"] for chip in sem_filtro.context["chips"]}
+        self.assertEqual(chips["atrasadas"], 1)
+        self.assertEqual(chips["concluidas"], 1)
+
+        # Com um filtro de prioridade que não alcança ninguém, o contador zera
+        # junto com a lista — o número nunca discorda das linhas.
+        filtrada = self.client.get(
             reverse("demandas:listagem"), {"prioridade": PrioridadeDemanda.URGENTE}
         )
-        indicadores = {item["titulo"]: item["valor"] for item in resposta.context["indicadores"]}
-        self.assertEqual(indicadores["Em aberto"], 3)
-        self.assertEqual(indicadores["Vencidas"], 1)
-        self.assertEqual(indicadores["Em andamento"], 2)
-        self.assertEqual(indicadores["Concluídas no mês"], 1)
-
-    def test_indicadores_separam_desempenho_interno_e_externo(self):
-        # A operação interna não é penalizada pelo atraso de terceiros: o
-        # compromisso formal de conclusão e a data prometida por quem se aguarda
-        # ficam no grupo externo; o que a equipe decide, no interno.
-        self._demanda(titulo="Aberta")
-        self._demanda(
-            titulo="Vencida", prazo=timezone.localdate() - timedelta(days=1)
-        )
-
-        resposta = self.client.get(reverse("demandas:listagem"))
-        grupos = {
-            item["titulo"]: item["grupo"] for item in resposta.context["indicadores"]
+        chips_filtrados = {
+            chip["chave"]: chip["total"] for chip in filtrada.context["chips"]
         }
-
-        self.assertEqual(grupos["Em aberto"], "Desempenho interno")
-        self.assertEqual(grupos["Próxima ação vencida"], "Desempenho interno")
-        self.assertEqual(grupos["Vencidas"], "Desempenho externo")
-        self.assertEqual(grupos["Previsão atrasada"], "Desempenho externo")
+        self.assertEqual(chips_filtrados["atrasadas"], 0)
+        self.assertEqual(chips_filtrados["concluidas"], 0)
 
 
 class ListagemPorAbasEOrdenacaoTests(BaseDeTelas):
@@ -561,11 +558,16 @@ class ListagemPorAbasEOrdenacaoTests(BaseDeTelas):
         ):
             self.assertNotIn(f'name="{campo}"', formulario)
 
-    def test_registrada_em_vem_imediatamente_antes_de_prazo(self):
+    def test_a_grade_vai_da_decisao_para_a_acao(self):
+        """A ordem das colunas acompanha a leitura: o que é (situação) antes do
+        que se faz (ações). "Registrada em" deixou de ser coluna — virou tempo
+        relativo sob o título."""
         self._demanda()
         html = self._abrir().content.decode()
-        self.assertLess(html.index("Registrada em"), html.index(">Prazo"))
-        self.assertIn("eithra-col-registrada", html)
+        self.assertLess(html.index(">Prioridade"), html.index(">Situação"))
+        self.assertLess(html.index(">Situação"), html.index(">Ações"))
+        self.assertNotIn("Registrada em", html)
+        self.assertNotIn("eithra-col-registrada", html)
 
 
 class AcoesTests(BaseDeTelas):
@@ -747,19 +749,24 @@ class RegistroEmTresEtapasTests(BaseDeTelas):
 class TelaDeAcompanhamentoTests(BaseDeTelas):
     """A interface segue o design operacional aprovado."""
 
-    def test_listagem_usa_tabela_operacional_com_indicadores(self):
+    def test_listagem_usa_tabela_operacional_com_filtros_rapidos(self):
         self._demanda(titulo="Tabela")
         resposta = self.client.get(reverse("demandas:listagem"))
         conteudo = resposta.content.decode()
 
-        self.assertIn("Em aberto", conteudo)
+        self.assertIn("Atrasadas", conteudo)
         self.assertIn("Concluídas no mês", conteudo)
         self.assertIn("<table", conteudo)
-        # Código, título e descrição ocupam colunas próprias na grid. O título
-        # passou a ser o próprio comando de ordenação — o cabeçalho é um link.
-        self.assertIn(">Código<", conteudo)
-        self.assertIn('class="eithra-col-titulo"', conteudo)
-        self.assertIn(">Descrição<", conteudo)
+        # A grade enxuta: a demanda encabeça a própria coluna — o código virou a
+        # linha miúda sob o título e a descrição, um contexto curto. Prazo e
+        # situação se juntaram em "Situação".
+        self.assertIn(">Demanda<", conteudo)
+        self.assertIn(">Situação<", conteudo)
+        # O código e a descrição deixaram de ser colunas próprias — o que se
+        # confere é a ausência das colunas, não de palavras que o wizard da
+        # própria página também usa ("Descrição" é uma etapa do registro).
+        self.assertNotIn("eithra-col-codigo", conteudo)
+        self.assertNotIn("eithra-col-descricao", conteudo)
         self.assertNotIn('<ul class="eithra-lista">', conteudo)
 
     def test_registro_exibe_wizard_de_tres_etapas(self):
@@ -778,7 +785,7 @@ class TelaDeAcompanhamentoTests(BaseDeTelas):
         # O detalhe é uma leitura só, de cima para baixo — sem abas.
         for secao in ("Demanda", "Informações", "Acompanhamento", "Histórico"):
             self.assertIn(secao, conteudo)
-        self.assertIn("Detalhe da demanda", conteudo)
+        self.assertIn("eithra-detalhe-titulo", conteudo)
 
     def test_detalhe_mostra_acao_contextual_e_modal_de_atualizacao(self):
         demanda = self._demanda()

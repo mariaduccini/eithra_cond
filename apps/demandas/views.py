@@ -152,6 +152,40 @@ COLUNAS_QUE_ADMITEM_VAZIO = frozenset({"local__nome", "prazo"})
 # mais recente para o mais antigo; o resto, do começo para o fim.
 PRIMEIRA_DIRECAO_DESCE = {"criado_em": True}
 
+# Os filtros rápidos da listagem. Cada um é um recorte do domínio dito em uma
+# palavra, e "reaproveite as regras que já existem" vale aqui: o chip não cria
+# uma leitura nova, só escolhe entre as que a lista já faz. O contador de cada
+# um é o número exato de linhas que ele mostra — a mesma base e o mesmo recorte
+# que a lista aplica quando ele está ativo.
+CHIPS_DA_LISTAGEM = ("atrasadas", "esperando", "paradas", "concluidas")
+
+# Quantos dias sem atualização fazem uma demanda ser lida como parada.
+DIAS_PARA_ESTAR_PARADA = 7
+
+# A aba que cada chip abre. Só "Concluídas no mês" troca de lado; os demais
+# vivem na operação corrente.
+ABA_DO_CHIP = {"concluidas": "concluidas"}
+
+# O que cada chip diz na tela: o rótulo, o ícone e o tom. O tom pinta o chip sem
+# gritar — o atraso usa o vermelho claro, a espera o laranja, a parada o cinza e
+# o que fechou o verde.
+CHIP_NA_TELA = {
+    "atrasadas": {"titulo": "Atrasadas", "icone": "bx-error-circle", "tom": "danger"},
+    "esperando": {"titulo": "Esperando alguém", "icone": "bx-time-five", "tom": "warning"},
+    "paradas": {"titulo": "Paradas há +7 dias", "icone": "bx-pause-circle", "tom": "muted"},
+    "concluidas": {"titulo": "Concluídas no mês", "icone": "bx-check-circle", "tom": "success"},
+}
+
+# O ícone de cada ação de situação, para o menu da linha e o do detalhe usarem o
+# mesmo desenho. A chave é a situação que a ação produz, não o verbo.
+ICONE_DA_SITUACAO = {
+    StatusDemanda.ABERTA: "bx-folder-open",
+    StatusDemanda.EM_ANDAMENTO: "bx-play-circle",
+    StatusDemanda.AGUARDANDO: "bx-pause-circle",
+    StatusDemanda.CONCLUIDA: "bx-check-circle",
+    StatusDemanda.CANCELADA: "bx-x-circle",
+}
+
 # Onde a sessão guarda as confirmações que já produziram movimentação. Existe
 # para uma coisa só: o mesmo formulário não escrever duas vezes no histórico.
 CHAVE_DAS_CONFIRMACOES = "demandas_confirmacoes"
@@ -1044,10 +1078,13 @@ def _render_listagem(
         condominios=condominios,
         responsaveis=usuarios_elegiveis_entre(condominios),
     )
-    aba = _aba_da_listagem(request)
+    # O filtro rápido manda na aba quando está ativo: "Concluídas no mês" abre
+    # as concluídas, os demais vivem na operação corrente.
+    chip = _chip_da_listagem(request)
+    aba = ABA_DO_CHIP.get(chip) if chip else _aba_da_listagem(request)
     chave, desce = _ordenacao_pedida(request)
     pagina_demandas = paginar_do_pedido(
-        _demandas_filtradas(request, condominios, filtros, aba, chave, desce),
+        _demandas_filtradas(request, condominios, filtros, aba, chave, desce, chip),
         request.GET,
     )
     pode_criar_condominios = condominios_para_criar(request.user)
@@ -1060,7 +1097,11 @@ def _render_listagem(
 
     contexto = {
         "demandas": linhas,
-        "indicadores": _indicadores_da_listagem(condominios),
+        # Os filtros rápidos com o contador exato de cada recorte. Substituem os
+        # antigos cartões de desempenho: em vez de sete números que não filtram,
+        # quatro que abrem a lista já recortada.
+        "chips": _chips_da_listagem(request, condominios, filtros, chip),
+        "chip": chip,
         "pagina_demandas": pagina_demandas,
         "filtros": filtros,
         "filtros_ativos": tem_filtros(filtros),
@@ -1215,13 +1256,31 @@ def _render_detalhe(
     return render(request, "pages/demandas/detalhe.html", contexto, status=status)
 
 
-def _demandas_filtradas(request, condominios, filtros, aba=ABA_PADRAO, chave="", desce=False):
+def _demandas_filtradas(
+    request, condominios, filtros, aba=ABA_PADRAO, chave="", desce=False, chip=""
+):
     """Aplica os filtros essenciais e devolve a lista já no recorte e na ordem.
 
     O recorte da aba é a fronteira do domínio — ativas ou encerradas — e vem
-    depois dos filtros, para os dois valerem juntos. A ordenação, por fim: quem
-    não pediu nenhuma recebe a ordem operacional, que é a leitura natural de
-    quem abre a lista para decidir o que fazer agora.
+    depois dos filtros, para os dois valerem juntos. Quando um filtro rápido
+    está ativo, ele é o recorte no lugar da aba. A ordenação, por fim: quem não
+    pediu nenhuma recebe a ordem operacional, que é a leitura natural de quem
+    abre a lista para decidir o que fazer agora.
+    """
+    queryset = _base_da_listagem(request, condominios, filtros)
+    if chip:
+        queryset = _recorte_do_chip(queryset, chip)
+    else:
+        queryset = queryset.encerradas() if aba == "concluidas" else queryset.abertas()
+    return _ordenar(queryset, aba, chave, desce)
+
+
+def _base_da_listagem(request, condominios, filtros):
+    """O universo visível já passado pelos filtros do formulário.
+
+    Filtro não é recorte de aba nem de chip: é o que a pessoa digitou ou
+    escolheu. Fica separado para a lista e os contadores dos chips lerem a mesma
+    base — assim o número do chip nunca discorda das linhas que ele mostra.
     """
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
@@ -1273,8 +1332,75 @@ def _demandas_filtradas(request, condominios, filtros, aba=ABA_PADRAO, chave="",
         if dados["minhas"]:
             queryset = queryset.minhas(request.user)
 
-    queryset = queryset.encerradas() if aba == "concluidas" else queryset.abertas()
-    return _ordenar(queryset, aba, chave, desce)
+    return queryset
+
+
+def _recorte_do_chip(queryset, chip):
+    """O recorte que um filtro rápido aplica sobre a base visível.
+
+    Cada chip reaproveita uma leitura que o domínio já sustenta: o atraso é o
+    prazo ou a previsão vencidos, a espera é a demanda parada com fornecedor ou
+    terceiro, a parada é o tempo sem atualização e o concluído é o que fechou
+    neste mês. Nada nasce aqui — só a escolha de qual leitura mostrar.
+    """
+    hoje = timezone.localdate()
+    if chip == "atrasadas":
+        return queryset.abertas().filter(Q(prazo__lt=hoje) | Q(previsao__lt=hoje))
+    if chip == "esperando":
+        return queryset.abertas().filter(
+            aguardando_tipo__in=(AguardandoTipo.FORNECEDOR, AguardandoTipo.TERCEIRO)
+        )
+    if chip == "paradas":
+        limite = timezone.now() - timedelta(days=DIAS_PARA_ESTAR_PARADA)
+        return queryset.abertas().filter(atualizado_em__lt=limite)
+    if chip == "concluidas":
+        inicio_mes = hoje.replace(day=1)
+        return queryset.encerradas().filter(
+            status=StatusDemanda.CONCLUIDA,
+            concluido_em__date__gte=inicio_mes,
+            concluido_em__date__lte=hoje,
+        )
+    return queryset
+
+
+def _chip_da_listagem(request) -> str:
+    """O filtro rápido pedido no endereço, validado — ou vazio, sem nenhum."""
+    chip = (request.GET.get("chip") or "").strip().lower()
+    return chip if chip in CHIPS_DA_LISTAGEM else ""
+
+
+def _chips_da_listagem(request, condominios, filtros, chip_ativo):
+    """Os filtros rápidos com o número exato de linhas que cada um mostra.
+
+    Cada contador sai da mesma base que a lista usa, com o mesmo recorte que o
+    chip aplica — por isso o número nunca discorda do que aparece ao clicar. O
+    chip ativo fica marcado e, clicado de novo, limpa o filtro. A aba de destino
+    viaja no endereço, para "Concluídas no mês" abrir as concluídas.
+    """
+    base = _base_da_listagem(request, condominios, filtros)
+    chips = []
+    for chave in CHIPS_DA_LISTAGEM:
+        tela = CHIP_NA_TELA[chave]
+        ativo = chave == chip_ativo
+        chips.append(
+            {
+                "chave": chave,
+                "titulo": tela["titulo"],
+                "icone": tela["icone"],
+                "tom": tela["tom"],
+                "total": _recorte_do_chip(base, chave).count(),
+                "ativo": ativo,
+                # O ativo aponta para a própria limpeza: clicar de novo tira o
+                # filtro. Os demais aplicam o recorte e ajustam a aba.
+                "url": _url_com(
+                    request,
+                    chip=None if ativo else chave,
+                    aba=ABA_DO_CHIP.get(chave, ABA_PADRAO),
+                    page=None,
+                ),
+            }
+        )
+    return chips
 
 
 # -- Recorte, ordenação e endereços da listagem --------------------------------
@@ -1707,11 +1833,13 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
 
     # Mover a situação pelas mesmas ações que a pessoa alcança — a lista é a do
     # domínio, não uma segunda régua escrita aqui. O item só abre o formulário
-    # na ação pedida; a escolha continua sendo confirmada no envio.
+    # na ação pedida; a escolha continua sendo confirmada no envio. O ícone é o
+    # da situação que cada ação produz, para o menu falar a mesma língua da tela.
     for situacao, verbo in acoes_de_status(permitidos, demanda):
         acoes.append(
             {
                 "label": ROTULO_DO_MENU_DE_STATUS.get(verbo, verbo),
+                "icon": ICONE_DA_SITUACAO.get(situacao, "bx-circle"),
                 "url": f"{destino}?abrir=atualizar&aba=visao_geral&acao={situacao}",
             }
         )
@@ -1726,12 +1854,19 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
         acoes.append(
             {
                 "label": "Criar manutenção",
+                "icon": "bx-wrench",
                 "url": f"{reverse('manutencoes:listagem')}?demanda={demanda.pk}",
             }
         )
 
     if pode_editar_demanda(usuario, demanda):
-        acoes.append({"label": "Editar demanda", "url": f"{destino}?abrir=editar"})
+        acoes.append(
+            {
+                "label": "Editar demanda",
+                "icon": "bx-pencil",
+                "url": f"{destino}?abrir=editar",
+            }
+        )
     # Comunicar aos moradores é uma capacidade transversal: a demanda é a origem,
     # e quem responde pelo condomínio é quem escreve o aviso. O comunicado nasce
     # apontando para esta demanda, e os dados dela continuam sendo dela.
@@ -1739,6 +1874,7 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
         acoes.append(
             {
                 "label": "Gerar comunicado",
+                "icon": "bx-megaphone",
                 "url": f"{reverse('comunicacao:criar')}?demanda={demanda.pk}",
             }
         )
@@ -1923,6 +2059,44 @@ def _data_curta(momento) -> str:
     return timezone.localtime(momento).strftime("%d/%m/%Y") if momento else ""
 
 
+def _tempo_relativo(momento, hoje) -> str:
+    """Quando, dito pela distância até hoje: "hoje", "ontem", "há 32 dias".
+
+    A lista situa o registro no tempo; a data crua obriga à conta de cabeça e
+    não responde à pergunta que importa — há quanto tempo aquilo está ali.
+    """
+    if momento is None:
+        return ""
+    dia = timezone.localtime(momento).date()
+    dias = (hoje - dia).days
+    if dias <= 0:
+        return "hoje"
+    if dias == 1:
+        return "ontem"
+    return f"há {dias} dias"
+
+
+def _situacao_humana(demanda, hoje):
+    """A situação dita em uma frase, com o tom que a pinta.
+
+    O atraso vem com os dias; a espera vem com quem se aguarda — o nome próprio
+    quando houver, a categoria quando não. Encerrada, é a própria situação. É a
+    leitura que substitui as colunas separadas de prazo e situação.
+    """
+    if demanda.esta_encerrada:
+        return demanda.get_status_display(), TOM_POR_STATUS.get(
+            demanda.status, "secondary"
+        )
+    if demanda.prazo and demanda.prazo < hoje:
+        dias = (hoje - demanda.prazo).days
+        return f"Atrasada {dias} dia{'s' if dias != 1 else ''}", "danger"
+    if demanda.aguardando_descricao:
+        return f"Aguardando {demanda.aguardando_descricao}", "warning"
+    if demanda.aguardando_tipo:
+        return f"Aguardando {demanda.get_aguardando_tipo_display().lower()}", "warning"
+    return demanda.get_status_display(), TOM_POR_STATUS.get(demanda.status, "secondary")
+
+
 def _prazo_da_sintese(prazo, leitura) -> str:
     """O prazo como a síntese do registro o diz.
 
@@ -1983,6 +2157,7 @@ def _demanda_para_tela(demanda, usuario=None):
     """
     hoje = timezone.localdate()
     situacao, tom = _situacao_do_prazo(demanda.prazo, demanda.esta_encerrada, hoje)
+    rotulo_situacao, tom_situacao = _situacao_humana(demanda, hoje)
     sinal = _sinal_do_acompanhamento(demanda)
     # Concluir não vive no menu da linha: ele tem o próprio ícone, e só aparece
     # para quem tem a conclusão entre as situações que alcança. A mesma marca
@@ -1991,14 +2166,19 @@ def _demanda_para_tela(demanda, usuario=None):
     pode_concluir = bool(usuario) and StatusDemanda.CONCLUIDA in status_permitidos_para(
         usuario, demanda
     )
+    # "Contar novidade" é a porta do dia a dia: abre a janela de registrar
+    # atualização, que já aceita evidência. Só é oferecida a quem pode observar
+    # a demanda — a mesma régua do detalhe.
+    pode_contar = bool(usuario) and pode_adicionar_observacao(usuario, demanda)
     return {
         "pk": demanda.pk,
         "referencia": _referencia_curta(demanda),
         "titulo": demanda.titulo,
-        # A data em que a demanda entrou no sistema, como a lista a mostra: sem
-        # hora, que ali não decide nada. O mesmo campo que a coluna "Registrada
-        # em" ordena.
+        # A data em que a demanda entrou no sistema. A lista já não mostra a data
+        # crua: mostra há quanto tempo ela está ali — a distância diz o que a
+        # data sozinha obrigava a contar de cabeça.
         "registrada_em": _data_curta(demanda.criado_em),
+        "registrada_relativa": _tempo_relativo(demanda.criado_em, hoje),
         "descricao_curta": _contexto_curto(demanda.descricao),
         # O corte acima é de exibição: a lista mostra uma linha, e o texto
         # completo fica disponível no title. O que está guardado não muda.
@@ -2018,6 +2198,11 @@ def _demanda_para_tela(demanda, usuario=None):
             demanda.prioridade in (PrioridadeDemanda.ALTA, PrioridadeDemanda.URGENTE)
             and not demanda.esta_encerrada
         ),
+        # O selo da situação dito em linguagem humana: "Atrasada 5 dias",
+        # "Aguardando fornecedor". Prazo e situação deixaram de ser colunas
+        # separadas — a leitura de uma só frase basta.
+        "situacao_rotulo": rotulo_situacao,
+        "situacao_tom": tom_situacao,
         "status": demanda.get_status_display(),
         "status_tom": TOM_POR_STATUS.get(demanda.status, "secondary"),
         "encerrada": demanda.esta_encerrada,
@@ -2031,62 +2216,35 @@ def _demanda_para_tela(demanda, usuario=None):
         # aparece para quem tem a conclusão entre as situações que alcança. A
         # mesma marca decide se a linha entra na conclusão em lote.
         "pode_concluir": pode_concluir,
+        # A outra ação direta da linha: contar novidade. A janela que ela abre é
+        # a mesma de registrar atualização, e é lá que a evidência entra.
+        "contar_novidade": pode_contar,
+        "url_contar_novidade": (
+            f"{reverse('demandas:detalhe', args=[demanda.pk])}"
+            "?abrir=atualizar&aba=visao_geral"
+        ),
         # O aviso da janela de conclusão: há serviço em curso ligado à demanda.
         "manutencao_aberta": pode_concluir and _manutencao_da_demanda(demanda) is not None,
+        # O menu de três pontos guarda só o que é raro — as mesmas ações, com os
+        # mesmos ícones, do topo do detalhe.
         "acoes": _acoes_da_linha(demanda, usuario),
     }
 
 
 def _acoes_da_linha(demanda, usuario):
-    """As ações oferecidas no menu da linha, já decididas pelo domínio.
+    """O que a lista oferece no menu de três pontos: só o que é raro.
 
-    A linha inteira continua levando ao detalhe, e o menu abre com o mesmo
-    caminho: quem chega pelo teclado ou pelo toque não adivinha que a linha é
-    clicável, e aí o destino precisa estar escrito. As demais entradas abrem a
-    mesma janela que o detalhe já oferece — a lista não inventa caminho novo,
-    só encurta o que existe.
-
-    O acompanhamento não tem entrada própria: ele passou a fazer parte do fluxo
-    de registrar atualização, e oferecer os dois lado a lado fazia parecer que
-    eram decisões diferentes. As permissões são as do detalhe: quem acompanha
-    pode registrar atualização e anexar evidência; editar o conteúdo continua
-    sendo de quem responde pelo condomínio.
+    As ações do dia a dia — concluir e contar novidade — têm o próprio ícone na
+    linha e não se repetem aqui. O que vive no menu é o que se faz de vez em
+    quando: mover a situação, editar o conteúdo, criar a manutenção, avisar os
+    moradores. São as mesmas ações, com os mesmos ícones, do topo do detalhe; a
+    lista não inventa caminho que a demanda já não ofereça.
     """
     if usuario is None:
         return []
-
-    destino = reverse("demandas:detalhe", args=[demanda.pk])
-    acoes = [
-        {
-            "label": "Ver detalhes",
-            "icon": "bx-show",
-            "url": destino,
-        }
-    ]
-    if pode_adicionar_observacao(usuario, demanda):
-        acoes.append(
-            {
-                "label": "Registrar atualização",
-                "icon": "bx-refresh",
-                "url": f"{destino}?abrir=atualizar&aba=visao_geral",
-            }
-        )
-        acoes.append(
-            {
-                "label": "Adicionar evidência",
-                "icon": "bx-image-add",
-                "url": f"{destino}?abrir=evidencia&aba=historico",
-            }
-        )
-    if pode_editar_demanda(usuario, demanda):
-        acoes.append(
-            {
-                "label": "Editar",
-                "icon": "bx-pencil",
-                "url": f"{destino}?abrir=editar&aba=visao_geral",
-            }
-        )
-    return acoes
+    permitidos = status_permitidos_para(usuario, demanda)
+    manutencao = _manutencao_da_demanda(demanda)
+    return _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao)
 
 
 def _demanda_para_detalhe(demanda):
@@ -2245,89 +2403,6 @@ def _evidencia_para_tela(evidencia):
         "tipo": evidencia.get_tipo_midia_display(),
         "nome": evidencia.nome_original,
     }
-
-
-def _indicadores_da_listagem(condominios):
-    """Indicadores do universo visível, separados por quem controla o resultado.
-
-    A separação existe para não penalizar a operação interna pelo atraso de quem
-    ela não controla. Desempenho interno é o que a equipe decide: o volume em
-    aberto, o que anda, o que segue sem acompanhamento e a ação combinada que
-    venceu. Desempenho externo é o que depende de terceiros: o compromisso
-    formal de conclusão e a data prometida por quem está sendo aguardado. Cada
-    indicador carrega o grupo a que pertence, e é o grupo que a tela agrupa.
-    """
-    hoje = timezone.localdate()
-    base = Demanda.objects.filter(condominio__in=condominios, ativo=True)
-    inicio_mes = hoje.replace(day=1)
-    sem_acompanhamento = base.abertas().filter(
-        aguardando_tipo="",
-        aguardando_descricao="",
-        proxima_acao="",
-        prazo_proxima_acao__isnull=True,
-        previsao__isnull=True,
-        impedimento="",
-        responsavel_acompanhamento__isnull=True,
-    )
-    return [
-        {
-            "titulo": "Em aberto",
-            "valor": base.abertas().count(),
-            "icone": "bx-folder-open",
-            "tom": "primary",
-            "grupo": "Desempenho interno",
-        },
-        {
-            "titulo": "Em andamento",
-            "valor": base.filter(status=StatusDemanda.EM_ANDAMENTO).count(),
-            "icone": "bx-time-five",
-            "tom": "warning",
-            "grupo": "Desempenho interno",
-        },
-        {
-            "titulo": "Sem acompanhamento",
-            "valor": sem_acompanhamento.count(),
-            "icone": "bx-pause-circle",
-            "tom": "primary",
-            "grupo": "Desempenho interno",
-        },
-        {
-            "titulo": "Próxima ação vencida",
-            "valor": base.abertas().filter(prazo_proxima_acao__lt=hoje).count(),
-            "icone": "bx-error-circle",
-            "tom": "danger",
-            "grupo": "Desempenho interno",
-        },
-        {
-            "titulo": "Concluídas no mês",
-            "valor": base.filter(
-                status=StatusDemanda.CONCLUIDA,
-                concluido_em__date__gte=inicio_mes,
-                concluido_em__date__lte=hoje,
-            ).count(),
-            "icone": "bx-check-circle",
-            "tom": "success",
-            "grupo": "Desempenho interno",
-        },
-        {
-            # O prazo formal costuma nascer de contrato ou SLA — compromisso
-            # assumido com terceiro —, e por isso vive no desempenho externo.
-            "titulo": "Vencidas",
-            "valor": base.vencidas(hoje).count(),
-            "icone": "bx-calendar-x",
-            "tom": "danger",
-            "grupo": "Desempenho externo",
-        },
-        {
-            # A data prometida por quem está sendo aguardado. É atraso de
-            # terceiro, e não descumprimento da operação interna.
-            "titulo": "Previsão atrasada",
-            "valor": base.abertas().filter(previsao__lt=hoje).count(),
-            "icone": "bx-time",
-            "tom": "warning",
-            "grupo": "Desempenho externo",
-        },
-    ]
 
 
 def _etapas_para_tela(etapas, atual):

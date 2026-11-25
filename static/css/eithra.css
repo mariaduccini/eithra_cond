@@ -5819,3 +5819,133 @@ a:not(.btn):not(.menu-link):hover {
   background-color: var(--eithra-lilas-claro, #eee9f6);
   color: var(--eithra-lilas-profundo, #58487c);
 }
+
+/* Listagem objetiva — filtros rápidos e coluna da demanda ----------------- */
+/* Os chips substituem os antigos cartões de desempenho: em vez de números que
+   não abrem nada, atalhos que recortam a lista. O contador é o número exato de
+   linhas que cada um mostra; zero fica discreto, nunca invisível. */
+.eithra-chips-filtro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-chip-filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: 2.75rem;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 999px;
+  background-color: var(--eithra-papel, #ffffff);
+  color: var(--eithra-texto-secundario, #6c7b80);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.eithra-chip-filtro:hover,
+.eithra-chip-filtro:focus-visible {
+  border-color: color-mix(in sRGB, currentColor 35%, var(--eithra-divisor, #e5ebeb));
+  color: var(--eithra-grafite, #2f4146);
+}
+
+.eithra-chip-filtro .bx {
+  font-size: 1.125rem;
+}
+
+.eithra-chip-filtro-contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding-inline: 0.375rem;
+  border-radius: 999px;
+  background-color: #eef2f2;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* Só o ícone se tinge pelo tom do chip — o chip inteiro não grita na tela. */
+.eithra-chip-filtro--danger .bx {
+  color: var(--bs-danger, #b02a37);
+}
+
+.eithra-chip-filtro--warning .bx {
+  color: var(--bs-warning, #997404);
+}
+
+.eithra-chip-filtro--success .bx {
+  color: var(--bs-success, #146c43);
+}
+
+.eithra-chip-filtro--muted .bx {
+  color: var(--eithra-texto-suave, #637075);
+}
+
+.eithra-chip-filtro.is-ativo {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-chip-filtro.is-ativo .eithra-chip-filtro-contador {
+  background-color: #ffffff;
+}
+
+.eithra-chip-filtro.is-vazio {
+  opacity: 0.55;
+}
+
+.eithra-chip-filtro-limpar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-block-size: 2.75rem;
+  padding-inline: 0.5rem;
+  color: var(--eithra-lilas-apoio, #76659a);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.eithra-chip-filtro-limpar:hover,
+.eithra-chip-filtro-limpar:focus {
+  text-decoration: underline;
+}
+
+/* A coluna da demanda: título em destaque, código pequeno e a distância no
+   tempo; a descrição vira uma linha curta de contexto sob o título. */
+.eithra-demanda-titulo {
+  overflow-wrap: anywhere;
+}
+
+.eithra-demanda-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-block-start: 0.125rem;
+}
+
+.eithra-demanda-contexto {
+  margin-block-start: 0.125rem;
+  color: var(--eithra-texto-suave, #637075);
+}
+
+/* Cartão compacto do celular: título, selo de situação, responsável e os
+   ícones de ação — o que decide no polegar, sem repetir a grade inteira. */
+.eithra-demanda-cartao {
+  padding-block: 0.875rem;
+}
+
+.eithra-demanda-cartao-acoes {
+  margin-inline-start: auto;
+}
