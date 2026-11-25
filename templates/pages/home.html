@@ -141,6 +141,34 @@
     {% if not experiencia_morador %}
     <div class="eithra-home-grade">
       <div class="eithra-home-principal">
+        {% if meu_dia_itens %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Meu dia</h2>
+                <p class="eithra-home-secao-legenda">O que é seu para fazer hoje.</p>
+              </div>
+              <a class="eithra-home-secao-ver" href="{% url 'core:meu_dia' %}">
+                Ver tudo <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+              </a>
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in meu_dia_itens %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{{ item.destino }}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    <span class="eithra-linha-contexto d-block">
+                      <span class="badge {% if item.atrasado %}bg-label-danger{% else %}bg-label-secondary{% endif %}">{{ item.quando }}</span>
+                      {% if item.local %}{{ item.local }}{% endif %}
+                    </span>
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
         {% if blocos_da_supervisao %}
           <section class="eithra-home-secao">
             <div class="eithra-home-secao-topo">

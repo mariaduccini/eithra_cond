@@ -22,6 +22,7 @@ from apps.cadastros.permissoes import pode_ver_cadastros_em_algum
 from apps.comunicacao.permissoes import pode_ver_comunicacao_em_algum
 from apps.comunidade.permissoes import pode_ver_comunidade_em_algum
 from apps.condominios import logo
+from apps.core.meu_dia import pode_ver_meu_dia
 from apps.demandas.permissoes import pode_ver_alguma_demanda
 from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
 from apps.governanca.permissoes import pode_ver_governanca_em_algum
@@ -31,6 +32,16 @@ from apps.rotinas.permissoes import pode_ver_alguma_rotina
 
 NAVIGATION = [
     {"label": "Painel", "view_name": "core:home", "icon": "bx-home"},
+    {
+        # O que a pessoa precisa fazer hoje, antes de tudo: é a pergunta que a
+        # operação faz ao abrir o sistema. Só quem conduz o dia a enxerga — a
+        # supervisão e quem executa. A gestão continua pelo painel e pela
+        # decisão; o morador não entra aqui. O menu não autoriza: a view decide.
+        "label": "Meu dia",
+        "view_name": "core:meu_dia",
+        "icon": "bx-sun",
+        "visivel_para": pode_ver_meu_dia,
+    },
     {
         "label": "Portaria",
         "view_name": "portaria:painel",

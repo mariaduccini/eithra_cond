@@ -19,6 +19,7 @@ from django.db.models import Count, Q, Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.balancos.constants import StatusBalanco
@@ -27,6 +28,7 @@ from apps.balancos.permissoes import (
     condominios_para_ler,
     condominios_para_ler_publicados,
 )
+from apps.condominios import logo
 from apps.core import email_acoes
 from apps.core.acompanhamento import (
     GESTO_ATUALIZAR,
@@ -38,6 +40,7 @@ from apps.core.acompanhamento import (
     registrar_atualizacao,
 )
 from apps.core.email_interpretacao import Consequencia
+from apps.core.meu_dia import condominios_do_meu_dia, itens_do_meu_dia
 from apps.core.supervisao import (
     ORIGEM_DEMANDA,
     ORIGEM_MANUTENCAO,
@@ -76,6 +79,10 @@ LIMITE_DE_EXCECOES_NA_HOME = 5
 
 # O mesmo corte para os vencimentos que a gestão precisa lembrar de renovar.
 LIMITE_DE_VENCIMENTOS_NA_HOME = 5
+
+# O "Meu dia" na Home é só um aperitivo: os três primeiros itens e o atalho
+# para a tela. A lista inteira continua a um clique.
+LIMITE_DO_MEU_DIA_NA_HOME = 3
 
 # O que a tela mostra das leituras: só o que tem nome humano. Remetente,
 # assunto e momento já estão no cabeçalho; o resto vira linha rotulada.
@@ -185,6 +192,22 @@ def home(request):
         vencimentos_de_hoje = proximos_vencimentos[:LIMITE_DE_VENCIMENTOS_NA_HOME]
         tem_mais_vencimentos = len(proximos_vencimentos) > LIMITE_DE_VENCIMENTOS_NA_HOME
 
+    # O "Meu dia" na Home é o aperitivo de quem conduz a operação do dia: os
+    # três primeiros itens do condomínio em vista. A leitura é a mesma da tela
+    # (apps.core.meu_dia); aqui só se corta o topo. Quem não conduz o dia não
+    # recebe o bloco — a leitura devolve vazio e nada é desenhado.
+    meu_dia_condominios = list(condominios_do_meu_dia(request.user))
+    meu_dia_itens = []
+    meu_dia_total = 0
+    tem_mais_meu_dia = False
+    if meu_dia_condominios:
+        itens_do_dia = itens_do_meu_dia(
+            request.user, _condominio_da_home(request, meu_dia_condominios)
+        )
+        meu_dia_itens = itens_do_dia[:LIMITE_DO_MEU_DIA_NA_HOME]
+        meu_dia_total = len(itens_do_dia)
+        tem_mais_meu_dia = len(itens_do_dia) > LIMITE_DO_MEU_DIA_NA_HOME
+
     # O marcador do topo conta o que precisa de atenção. Para a supervisão, esse
     # número é o das ações dela; para os demais, segue a leitura das manutenções.
     total_de_hoje = resumo.total - resumo.proximas
@@ -219,8 +242,48 @@ def home(request):
             "tem_mais_excecoes": len(excecoes) > LIMITE_DE_EXCECOES_NA_HOME,
             "vencimentos_de_hoje": vencimentos_de_hoje,
             "tem_mais_vencimentos": tem_mais_vencimentos,
+            "meu_dia_itens": meu_dia_itens,
+            "meu_dia_total": meu_dia_total,
+            "tem_mais_meu_dia": tem_mais_meu_dia,
         },
     )
+
+
+@login_required
+def meu_dia(request):
+    """O que a pessoa logada precisa fazer hoje, num só lugar.
+
+    A tela não decide o que conta como atraso nem o que é "meu": cada módulo
+    responde com o que já responde e a leitura reúne (``apps.core.meu_dia``).
+    Aqui só se resolve o condomínio em vista — o mesmo do resto do sistema, com
+    a escolha do endereço conferida contra a lista autorizada — e se apresenta.
+    """
+    condominios = list(condominios_do_meu_dia(request.user))
+    condominio = _condominio_da_home(request, condominios)
+    itens = itens_do_meu_dia(request.user, condominio)
+    return render(
+        request,
+        "pages/core/meu_dia.html",
+        {
+            "condominios": condominios,
+            "condominio_atual": condominio,
+            "logo_do_condominio": logo.endereco(condominio),
+            "mostrar_seletor": len(condominios) > 1,
+            "itens": itens,
+            "total": len(itens),
+            "saudacao": _saudacao_do_dia(),
+        },
+    )
+
+
+def _saudacao_do_dia() -> str:
+    """A saudação do topo, pelo horário do servidor."""
+    hora = timezone.localtime().hour
+    if hora < 12:
+        return "Bom dia"
+    if hora < 18:
+        return "Boa tarde"
+    return "Boa noite"
 
 
 @login_required

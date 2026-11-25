@@ -1,0 +1,57 @@
+{% extends "layouts/app.html" %}
+
+{% comment %}
+  "Meu dia": o que a pessoa que conduz a operação precisa fazer hoje, num só
+  lugar. A tela não calcula nada — recebe os itens já lidos e ordenados por
+  ``apps.core.meu_dia`` — e apenas apresenta: primeiro o que atrasou, depois o
+  que é de hoje. Cada cartão leva ao detalhe do item; concluir acontece lá, na
+  tela de origem, não aqui.
+{% endcomment %}
+
+{% block title %}Meu dia · Eithra{% endblock %}
+
+{% block content %}
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Meu dia</span>
+      <h1 class="eithra-pagina-titulo">{{ saudacao }}, {{ user.short_name }}!</h1>
+      <p class="eithra-pagina-sub">
+        {% if total %}
+          Você tem {{ total }} coisa{{ total|pluralize }} para hoje.
+        {% else %}
+          Tudo certo por hoje 🎉
+        {% endif %}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+    </div>
+  </header>
+
+  {% if itens %}
+    <ul class="eithra-meu-dia-lista">
+      {% for item in itens %}
+        <li class="eithra-meu-dia-cartao{% if item.atrasado %} eithra-meu-dia-cartao--atrasado{% endif %}">
+          <span class="eithra-meu-dia-icone" aria-hidden="true">
+            <i class="bx {{ item.icone }}"></i>
+          </span>
+          <div class="eithra-meu-dia-corpo">
+            <span class="eithra-meu-dia-titulo">{{ item.titulo }}</span>
+            {% if item.local %}
+              <span class="eithra-meu-dia-local">{{ item.local }}</span>
+            {% endif %}
+            <span class="eithra-meu-dia-quando">{{ item.quando }}</span>
+          </div>
+          <a
+            class="eithra-meu-dia-abrir"
+            href="{{ item.destino }}"
+            aria-label="Abrir {{ item.titulo }}">
+            <i class="bx bx-chevron-right" aria-hidden="true"></i>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% include "components/state.html" with state_icon="bx-check-circle" state_tone="success" state_title="Tudo certo por hoje 🎉" state_message="Nada seu está atrasado nem marcado para hoje." %}
+  {% endif %}
+{% endblock %}

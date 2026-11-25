@@ -33,3 +33,40 @@ _(preenchido ao encerrar a fila, conforme a regra 11)_
 - **Pendências:** nenhuma dentro do escopo. O arquivo-bandeja da fila está fora
   do repositório e não foi alterado (regra 8 prevalece sobre a regra 10 quanto a
   arquivos fora do repositório); o estado de cada tarefa fica registrado aqui.
+
+### T3. "Meu dia" para colaboradores
+
+- **Tarefa:** T3 — tela única `/meu-dia/` com o que a pessoa logada precisa fazer
+  hoje (rotinas, manutenções e demandas), mais o bloco na home e o item de menu.
+- **Commit:** ver `git log noite-25-11` para o hash desta entrega (o hash do
+  commit corrente não pode constar dentro do próprio arquivo).
+- **Testes rodados e resultado:**
+  - `.\test-local.ps1 --noinput --keepdb apps.core.tests.test_meu_dia`
+    → 16 testes, OK.
+  - Regressão direcionada (navegação + home, sem rodar a suíte completa de um
+    app): `apps.core.tests.test_shell`, `...test_home_supervisao`,
+    `...test_home_atencao`, `...test_home_demandas`, `...test_home_excecoes`,
+    `...test_home_financeiro` e `apps.condominios.tests.test_acesso_global`
+    → 140 testes, OK.
+- **Decisões tomadas:**
+  - A leitura do "meu dia" foi posta em `apps/core/meu_dia.py` e é reusada pela
+    tela e pelo bloco da home, sem modelo novo nem migração. Cada origem usa as
+    permissões de leitura já existentes do módulo (`condominios_para_ver` de
+    rotinas, manutenções e demandas) e os querysets `minhas()`/`abertas()`/
+    `do_condominio()`/`pendentes()` de cada domínio — nenhuma regra de situação
+    nasce aqui.
+  - Visibilidade do menu/home pelo vínculo ativo com os papéis da especificação
+    (`condominios_com_papel` = SUPERVISORA, OPERACIONAL, PORTEIRO). Como as
+    permissões de leitura dos módulos não incluem PORTEIRO, o porteiro enxerga o
+    item e a tela, mas sem itens — exatamente o que a especificação pede ("use as
+    permissões de leitura já existentes de cada módulo para filtrar").
+  - Manutenção sem data prevista é lida como de hoje (é minha e está em aberto);
+    a demanda sem prazo vencido fica de fora. A data de referência da demanda é a
+    mais urgente entre `prazo_proxima_acao` e `prazo`.
+  - O bloco da home mostra só os 3 primeiros itens (`LIMITE_DO_MEU_DIA_NA_HOME`),
+    com "Ver tudo"; o condomínio em vista é resolvido pelo mesmo helper da home
+    (`_condominio_da_home`), conferido contra a lista autorizada.
+- **Pendências:** nenhuma dentro do escopo. O arquivo-bandeja da fila está fora
+  do repositório e não foi alterado (regra 8 prevalece sobre a regra 10 quanto a
+  arquivos fora do repositório), mantendo o precedente da T2; o estado de cada
+  tarefa fica registrado aqui.

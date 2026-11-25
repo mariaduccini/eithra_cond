@@ -5734,3 +5734,88 @@ a:not(.btn):not(.menu-link):hover {
     font-size: 0.86rem;
   }
 }
+
+/* Meu dia — a tela de quem conduz a operação do dia ---------------------- */
+/* Cartões em coluna única, pensados para o celular: o ícone do tipo à
+   esquerda, o que fazer no meio e o chevron sem borda que abre o detalhe à
+   direita. O atraso se anuncia pela borda e pela cor do "quando", nunca só
+   pela cor. */
+.eithra-meu-dia-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.eithra-meu-dia-cartao {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  background-color: var(--eithra-papel, #ffffff);
+  border: 1px solid var(--eithra-divisor, #e7e3eb);
+  border-radius: 0.875rem;
+}
+
+.eithra-meu-dia-cartao--atrasado {
+  border-inline-start: 3px solid var(--eithra-vermelho, #b76868);
+}
+
+.eithra-meu-dia-icone {
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background-color: var(--eithra-lilas-claro, #eee9f6);
+  color: var(--eithra-lilas-profundo, #58487c);
+  font-size: 1.25rem;
+}
+
+.eithra-meu-dia-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.eithra-meu-dia-titulo {
+  color: var(--eithra-texto, #2f4146);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.eithra-meu-dia-local,
+.eithra-meu-dia-quando {
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+}
+
+.eithra-meu-dia-cartao--atrasado .eithra-meu-dia-quando {
+  color: var(--eithra-vermelho, #b76868);
+  font-weight: 600;
+}
+
+.eithra-meu-dia-abrir {
+  flex: none;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 1.5rem;
+  text-decoration: none;
+}
+
+.eithra-meu-dia-abrir:hover,
+.eithra-meu-dia-abrir:focus {
+  background-color: var(--eithra-lilas-claro, #eee9f6);
+  color: var(--eithra-lilas-profundo, #58487c);
+}
