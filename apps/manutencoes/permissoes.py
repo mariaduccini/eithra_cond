@@ -283,6 +283,23 @@ def pode_registrar_execucao(usuario, manutencao) -> bool:
     return StatusManutencao.CONCLUIDA in status_permitidos_para(usuario, manutencao)
 
 
+def pode_ditar_texto(usuario, manutencao) -> bool:
+    """Diz se a pessoa pode escrever o texto livre desta manutenção por voz.
+
+    Ditar é escrever: quem pode registrar manutenção neste condomínio ou
+    executar o serviço sob sua responsabilidade escreve o texto desta
+    manutenção — nem mais, nem menos. É a mesma permissão que a tela usa para
+    oferecer o microfone, e a mesma que o serviço de transcrição confere no
+    backend. Sem certeza, a resposta é negar.
+    """
+    if manutencao is None or not getattr(manutencao, "pk", None):
+        return False
+
+    return pode_criar_manutencao(
+        usuario, getattr(manutencao, "condominio", None)
+    ) or pode_registrar_execucao(usuario, manutencao)
+
+
 def pode_conferir(usuario, manutencao) -> bool:
     """Diz se a pessoa pode conferir o que foi entregue nesta manutenção.
 

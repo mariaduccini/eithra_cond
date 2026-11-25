@@ -17,7 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -74,7 +74,7 @@ from .permissoes import (
     pode_cancelar_manutencao,
     pode_concluir,
     pode_conferir,
-    pode_criar_manutencao,
+    pode_ditar_texto,
     pode_editar_manutencao,
     pode_registrar_execucao,
     situacoes_para_mudar,
@@ -197,6 +197,90 @@ def criar(request):
 
     messages.success(request, "Manutenção registrada.")
     return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+@login_required
+@require_POST
+def transcrever_audio(request):
+    """Transforma a fala em texto no texto livre da manutenção — e para aí.
+
+    Esta é a porta de áudio das Manutenções, e ela termina no texto. Recebe o
+    recado falado, devolve a transcrição fiel e descarta o arquivo: não
+    interpreta, não sugere, não registra nada. O texto cai no mesmo campo que a
+    pessoa digitaria — "o que foi feito" na execução, o parecer na conferência,
+    o serviço realizado na conclusão, o motivo no cancelamento — e daí em
+    diante o caminho é o de sempre.
+
+    Falar é uma forma de escrever, não um caminho paralelo: por isso a
+    permissão é a de quem escreve nesta manutenção, e não uma regra nova. Quem
+    pode registrar manutenção neste condomínio ou executar o serviço sob sua
+    responsabilidade escreve o texto; os demais, não. O condomínio não é
+    escolhido pelo navegador: sai do próprio registro apontado no pedido.
+
+    O arquivo não é gravado em lugar nenhum — vive na memória deste pedido e
+    morre com ele. Nem o áudio nem a transcrição entram em log.
+
+    A resposta termina no texto: só a transcrição de Demandas diz se a fala
+    basta para seguir adiante. Aqui não há etapa a avançar — a manutenção
+    continua exigindo a revisão e o clique de quem escreveu.
+    """
+    condominio = _condominio_para_ditar(request)
+    arquivo = request.FILES.get("audio")
+    resultado = audio.transcrever(
+        audio.PedidoDeAudio(
+            conteudo=audio.ler_conteudo(arquivo),
+            nome_do_arquivo=getattr(arquivo, "name", ""),
+            content_type=getattr(arquivo, "content_type", ""),
+            condominio=condominio,
+            usuario=request.user,
+        )
+    )
+    # Um recado que não pôde ser transcrito não é falha do sistema: é uma
+    # situação comum, com frase pronta para a tela. A resposta é sempre a mesma
+    # forma — ou vem o texto, ou vem o que dizer sobre ele.
+    if resultado.obtida:
+        return JsonResponse({"texto": resultado.texto})
+    return JsonResponse({"mensagem": resultado.erro})
+
+
+def _condominio_para_ditar(request):
+    """O condomínio em que esta pessoa pode ditar o texto de uma manutenção.
+
+    Quando o pedido aponta uma manutenção, o condomínio não é escolhido pelo
+    navegador: sai do próprio registro — a mesma fonte que a tela mostra —, e a
+    permissão é a de quem escreve nela. Sem manutenção indicada, o pedido é o
+    de uma manutenção nova: vale o condomínio do formulário, conferido contra
+    os condomínios em que a pessoa pode registrar.
+
+    Condomínio fora da lista autorizada não existe para esta pessoa, e a
+    resposta é 404 — esconder o botão na tela nunca substituiu esta checagem.
+    Nada aqui adivinha o condomínio: ele vem do registro ou do que o pedido
+    escolheu, e nunca de um ``first()`` sobre tudo o que a pessoa alcança.
+    """
+    identificador = (
+        request.POST.get("manutencao") or request.GET.get("manutencao") or ""
+    ).strip()
+    if identificador:
+        manutencao = _manutencao_autorizada(request, identificador)
+        if not pode_ditar_texto(request.user, manutencao):
+            raise Http404("Esta pessoa não pode escrever nesta manutenção.")
+        return manutencao.condominio
+
+    autorizados = condominios_para_criar(request.user)
+    if not autorizados.exists():
+        raise Http404("Nenhum condomínio disponível para registrar manutenção.")
+
+    escolhido = (request.POST.get("condominio") or "").strip()
+    if not escolhido:
+        raise Http404("Informe o condomínio da manutenção.")
+
+    try:
+        condominio = autorizados.filter(pk=escolhido).first()
+    except (ValidationError, ValueError, TypeError):
+        condominio = None
+    if condominio is None:
+        raise Http404("Condomínio não autorizado.")
+    return condominio
 
 
 @login_required
@@ -1150,10 +1234,7 @@ def _render_detalhe(
         # que o serviço de transcrição confere no backend, para o botão nunca
         # dar em nada.
         "voz_disponivel": audio.disponivel()
-        and (
-            pode_criar_manutencao(request.user, manutencao.condominio)
-            or pode_executar_agora
-        ),
+        and pode_ditar_texto(request.user, manutencao),
     }
     return render(request, "pages/manutencoes/detalhe.html", contexto, status=status)
 

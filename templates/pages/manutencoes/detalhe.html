@@ -410,8 +410,8 @@
             {% comment %}O que foi feito é texto livre: escrever e falar são a mesma
             coisa dita de dois jeitos — a fala só produz o texto deste campo.{% endcomment %}
             {% if voz_disponivel %}
-              {% url 'demandas:transcrever' as url_da_transcricao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico voz_url=url_da_transcricao classe="mb-0" %}
+              {% url 'manutencoes:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico voz_url=url_da_transcricao voz_manutencao=manutencao.pk classe="mb-0" %}
               <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
             {% else %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_execucao.descricao_servico classe="mb-0" %}
@@ -534,9 +534,9 @@
             {% comment %}O parecer é texto livre — motivo e observação se escrevem
             ou se ditam, e a fala só preenche o campo que ela alimenta.{% endcomment %}
             {% if voz_disponivel %}
-              {% url 'demandas:transcrever' as url_da_transcricao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo voz_url=url_da_transcricao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao voz_url=url_da_transcricao classe="mb-0" %}
+              {% url 'manutencoes:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo voz_url=url_da_transcricao voz_manutencao=manutencao.pk %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.observacao voz_url=url_da_transcricao voz_manutencao=manutencao.pk classe="mb-0" %}
               <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
             {% else %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_conferencia.motivo %}
@@ -773,8 +773,8 @@
             fala, e a fala vira o texto deste campo. A conclusão continua sendo
             uma decisão à parte, confirmada no botão.{% endcomment %}
             {% if voz_disponivel %}
-              {% url 'demandas:transcrever' as url_da_transcricao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.descricao_servico voz_url=url_da_transcricao %}
+              {% url 'manutencoes:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.descricao_servico voz_url=url_da_transcricao voz_manutencao=manutencao.pk %}
               <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
             {% else %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.descricao_servico %}
@@ -826,8 +826,8 @@
             {% comment %}O motivo é texto livre: pode ser escrito ou ditado, e a fala
             só preenche este campo — cancelar continua exigindo o clique.{% endcomment %}
             {% if voz_disponivel %}
-              {% url 'demandas:transcrever' as url_da_transcricao %}
-              {% include "pages/cadastros/_campo.html" with campo=formulario_cancelamento.motivo voz_url=url_da_transcricao classe="mb-0" %}
+              {% url 'manutencoes:transcrever' as url_da_transcricao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_cancelamento.motivo voz_url=url_da_transcricao voz_manutencao=manutencao.pk classe="mb-0" %}
               <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
             {% else %}
               {% include "pages/cadastros/_campo.html" with campo=formulario_cancelamento.motivo classe="mb-0" %}

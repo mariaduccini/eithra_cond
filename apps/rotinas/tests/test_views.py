@@ -177,7 +177,7 @@ class CriacaoTests(BaseDeTelas):
 
         self.assertEqual(resposta.status_code, 200)
         self.assertContains(resposta, "data-eithra-ditar")
-        self.assertContains(resposta, reverse("demandas:transcrever"))
+        self.assertContains(resposta, reverse("rotinas:transcrever"))
         self.assertContains(resposta, "js/eithra-ditar.js")
 
     def test_criar_redireciona_para_o_detalhe(self):

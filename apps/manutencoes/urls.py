@@ -13,6 +13,7 @@ app_name = "manutencoes"
 urlpatterns = [
     path("", views.listagem, name="listagem"),
     path("registrar/", views.criar, name="criar"),
+    path("transcrever/", views.transcrever_audio, name="transcrever"),
     path("planos/", views.planos, name="planos"),
     path("planos/registrar/", views.criar_plano, name="criar_plano"),
     path("planos/<uuid:pk>/editar/", views.editar_plano, name="editar_plano"),

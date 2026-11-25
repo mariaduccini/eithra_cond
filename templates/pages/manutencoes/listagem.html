@@ -306,7 +306,7 @@
               fala só preenche este campo — o microfone não entra em escolha, data
               nem situação.{% endcomment %}
               {% if voz_disponivel %}
-                {% url 'demandas:transcrever' as url_da_transcricao %}
+                {% url 'manutencoes:transcrever' as url_da_transcricao %}
                 {% include "pages/cadastros/_campo.html" with campo=formulario_manutencao.descricao_problema voz_url=url_da_transcricao %}
                 <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
               {% else %}

@@ -19,7 +19,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -216,6 +216,75 @@ def criar(request):
 
     messages.success(request, "Rotina registrada.")
     return redirect("rotinas:detalhe", pk=rotina.pk)
+
+
+@login_required
+@require_POST
+def transcrever_audio(request):
+    """Transforma a fala em texto no relato de uma rotina nova — e para aí.
+
+    Esta é a porta de áudio das Rotinas, e ela termina no texto. Recebe o
+    recado falado, devolve a transcrição fiel e descarta o arquivo: não
+    interpreta, não sugere periodicidade nem responsável, não cria nada. O
+    texto cai no mesmo campo que a pessoa digitaria, e daí em diante o caminho
+    é o do relato escrito.
+
+    Falar é uma forma de escrever, não um caminho paralelo: por isso a
+    permissão é a própria de registrar rotina — quem cria, registra. O
+    condomínio não é adivinhado: é o que o formulário escolheu, conferido
+    contra os condomínios em que a pessoa pode criar. Nada aqui recorre a um
+    ``first()`` sobre tudo o que a pessoa alcança.
+
+    O arquivo não é gravado em lugar nenhum — vive na memória deste pedido e
+    morre com ele. Nem o áudio nem a transcrição entram em log.
+
+    A resposta termina no texto: só a transcrição de Demandas diz se a fala
+    basta para seguir adiante.
+    """
+    condominio = _condominio_para_ditar(request)
+    arquivo = request.FILES.get("audio")
+    resultado = audio.transcrever(
+        audio.PedidoDeAudio(
+            conteudo=audio.ler_conteudo(arquivo),
+            nome_do_arquivo=getattr(arquivo, "name", ""),
+            content_type=getattr(arquivo, "content_type", ""),
+            condominio=condominio,
+            usuario=request.user,
+        )
+    )
+    # Um recado que não pôde ser transcrito não é falha do sistema: é uma
+    # situação comum, com frase pronta para a tela. A resposta é sempre a mesma
+    # forma — ou vem o texto, ou vem o que dizer sobre ele.
+    if resultado.obtida:
+        return JsonResponse({"texto": resultado.texto})
+    return JsonResponse({"mensagem": resultado.erro})
+
+
+def _condominio_para_ditar(request):
+    """O condomínio em que esta pessoa pode ditar o relato de uma rotina nova.
+
+    Ditar é escrever o relato, então quem dita é quem registra: a permissão é a
+    mesma de ``criar``, sem papel novo e sem regra nova. O condomínio vem do
+    próprio formulário — o que a pessoa escolheu —, conferido contra os
+    condomínios em que ela pode criar. Condomínio fora da lista autorizada não
+    existe para esta pessoa, e a resposta é 404: esconder o botão na tela nunca
+    substituiu esta checagem.
+    """
+    autorizados = condominios_para_criar(request.user)
+    if not autorizados.exists():
+        raise Http404("Nenhum condomínio disponível para registrar rotina.")
+
+    escolhido = (request.POST.get("condominio") or "").strip()
+    if not escolhido:
+        raise Http404("Informe o condomínio da rotina.")
+
+    try:
+        condominio = autorizados.filter(pk=escolhido).first()
+    except (ValidationError, ValueError, TypeError):
+        condominio = None
+    if condominio is None:
+        raise Http404("Condomínio não autorizado.")
+    return condominio
 
 
 @login_required
@@ -873,8 +942,9 @@ def _render_listagem(request, condominios, *, formulario=None, modal=None, statu
         "modal_aberto": modal,
         "mostrar_condominio": condominios.count() > 1,
         "resumo_da_rotina": RESUMO_DA_ROTINA,
-        # A gravação usa o mesmo endpoint autorizado de relato por voz: os
-        # papéis que criam rotinas também podem criar demandas.
+        # Ditar é escrever: o microfone só se oferece onde a pessoa poderia
+        # registrar rotina — a mesma permissão que o serviço de transcrição
+        # confere no backend, para o botão nunca dar em nada.
         "voz_disponivel": audio.disponivel() and pode_criar,
     }
     return render(request, "pages/rotinas/listagem.html", contexto, status=status)

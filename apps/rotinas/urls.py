@@ -15,6 +15,7 @@ app_name = "rotinas"
 urlpatterns = [
     path("", views.listagem, name="listagem"),
     path("registrar/", views.criar, name="criar"),
+    path("transcrever/", views.transcrever_audio, name="transcrever"),
     path(
         "modelos-preventivos/",
         views.biblioteca_preventiva,
