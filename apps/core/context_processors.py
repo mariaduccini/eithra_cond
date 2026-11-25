@@ -121,6 +121,15 @@ NAVIGATION = [
             {"label": "Equipamentos", "view_name": "cadastros:equipamentos"},
             {"label": "Fornecedores", "view_name": "cadastros:fornecedores"},
             {
+                # Tudo o que vence — contrato, garantia e documento — numa
+                # porta só, antes das listas próprias de cada um: é a pergunta
+                # que a gestão faz primeiro, e a resposta não distingue origem.
+                "label": "Vencimentos",
+                "view_name": "governanca:vencimentos",
+                "icon": "bx-calendar-exclamation",
+                "visivel_para": pode_ver_governanca_em_algum,
+            },
+            {
                 "label": "Contratos",
                 "view_name": "governanca:contratos",
                 "visivel_para": pode_ver_governanca_em_algum,

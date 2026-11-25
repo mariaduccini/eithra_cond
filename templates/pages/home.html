@@ -297,6 +297,32 @@
           </section>
         {% endif %}
 
+        {% if vencimentos_de_hoje %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Vencimentos próximos</h2>
+                <p class="eithra-home-secao-legenda">O que vence — contrato, garantia ou documento.</p>
+              </div>
+              <a class="eithra-home-secao-ver" href="{% url 'governanca:vencimentos' %}">
+                Ver todos <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+              </a>
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in vencimentos_de_hoje %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{{ item.destino }}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    <span class="eithra-linha-contexto d-block">{{ item.tipo }}{% if item.origem %} · {{ item.origem }}{% endif %}</span>
+                    <span class="eithra-linha-contexto d-block text-{{ item.tom }}">{{ item.quando }}</span>
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
         {% if pendencias %}
           <section class="eithra-home-secao">
             <div class="eithra-home-secao-topo">

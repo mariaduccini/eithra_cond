@@ -52,6 +52,8 @@ from apps.demandas.permissoes import condominios_para_ver, pode_gerenciar_em_alg
 from apps.demandas.services import ErroDeDemanda
 from apps.governanca.constants import PeriodicidadeCobranca
 from apps.governanca.models import ContratoFornecedor
+from apps.governanca.permissoes import condominios_para_gerenciar
+from apps.governanca.vencimentos import vencimentos_proximos
 from apps.manutencoes.atencao import (
     ResumoDeAtencoes,
     TipoAtencao,
@@ -71,6 +73,9 @@ LIMITE_DE_DEMANDAS_NA_HOME = 5
 # Mesmo corte para as exceções que pedem decisão de quem responde pelo
 # condomínio. A Home mostra o que é mais imediato; o resto continua a um clique.
 LIMITE_DE_EXCECOES_NA_HOME = 5
+
+# O mesmo corte para os vencimentos que a gestão precisa lembrar de renovar.
+LIMITE_DE_VENCIMENTOS_NA_HOME = 5
 
 # O que a tela mostra das leituras: só o que tem nome humano. Remetente,
 # assunto e momento já estão no cabeçalho; o resto vira linha rotulada.
@@ -166,6 +171,20 @@ def home(request):
     # Sem o papel, `None` — a área não existe para quem não a conduz.
     blocos_da_supervisao = _blocos_da_supervisao(request.user)
 
+    # Os vencimentos que pedem uma decisão de renovação. Só quem responde pelo
+    # condomínio recebe o bloco — a supervisão acompanha os registros, mas a
+    # decisão de renovar não é dela. A leitura mora em apps.governanca.vencimentos;
+    # aqui só se resolve o condomínio em vista e se corta o topo.
+    vencimentos_de_hoje = []
+    tem_mais_vencimentos = False
+    condominios_geridos = list(condominios_para_gerenciar(request.user).order_by("nome"))
+    if condominios_geridos:
+        proximos_vencimentos = vencimentos_proximos(
+            _condominio_da_home(request, condominios_geridos)
+        )
+        vencimentos_de_hoje = proximos_vencimentos[:LIMITE_DE_VENCIMENTOS_NA_HOME]
+        tem_mais_vencimentos = len(proximos_vencimentos) > LIMITE_DE_VENCIMENTOS_NA_HOME
+
     # O marcador do topo conta o que precisa de atenção. Para a supervisão, esse
     # número é o das ações dela; para os demais, segue a leitura das manutenções.
     total_de_hoje = resumo.total - resumo.proximas
@@ -198,6 +217,8 @@ def home(request):
             "tem_mais_demandas": len(linhas_de_demanda) > LIMITE_DE_DEMANDAS_NA_HOME,
             "excecoes": excecoes[:LIMITE_DE_EXCECOES_NA_HOME],
             "tem_mais_excecoes": len(excecoes) > LIMITE_DE_EXCECOES_NA_HOME,
+            "vencimentos_de_hoje": vencimentos_de_hoje,
+            "tem_mais_vencimentos": tem_mais_vencimentos,
         },
     )
 

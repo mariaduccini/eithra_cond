@@ -1,0 +1,57 @@
+{% extends "layouts/app.html" %}
+
+{# Tudo o que vence neste condomínio — contrato, garantia e documento — numa
+   leitura só, da urgência à calma. Cada faixa é um grupo; o que está em dia
+   fica recolhido para não disputar atenção com o que pede ação. #}
+
+{% block title %}Vencimentos · Eithra{% endblock %}
+
+{% block content %}
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <span class="eithra-eyebrow">Governança</span>
+      <h1 class="eithra-pagina-titulo">Vencimentos</h1>
+      <p class="eithra-pagina-sub">Contratos, garantias e documentos com prazo, na ordem em que pedem atenção.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+    </div>
+  </header>
+
+  {% if total %}
+    {% for faixa in faixas %}
+      {% if faixa.itens %}
+        {% if faixa.chave == 'em_dia' %}
+          <section class="card mb-3">
+            <button
+              class="card-header d-flex align-items-center justify-content-between w-100 border-0 bg-transparent text-start"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#vencimentos-{{ faixa.chave }}"
+              aria-expanded="false"
+              aria-controls="vencimentos-{{ faixa.chave }}">
+              <span class="d-flex align-items-center gap-2">
+                <span class="badge bg-label-{{ faixa.tom }}">{{ faixa.titulo }}</span>
+                <span class="text-body-secondary small">{{ faixa.resumo }}</span>
+              </span>
+              <i class="bx bx-chevron-down" aria-hidden="true"></i>
+            </button>
+            <div class="collapse" id="vencimentos-{{ faixa.chave }}">
+              {% include "pages/governanca/_linhas_vencimento.html" with itens=faixa.itens %}
+            </div>
+          </section>
+        {% else %}
+          <section class="card mb-3">
+            <div class="card-header d-flex align-items-center gap-2">
+              <span class="badge bg-label-{{ faixa.tom }}">{{ faixa.titulo }}</span>
+              <span class="text-body-secondary small">{{ faixa.resumo }}</span>
+            </div>
+            {% include "pages/governanca/_linhas_vencimento.html" with itens=faixa.itens %}
+          </section>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    {% include "components/state.html" with state_icon="bx-calendar-check" state_title="Nada a vencer" state_message="Nenhum contrato, garantia ou documento deste condomínio tem prazo em aberto." %}
+  {% endif %}
+{% endblock %}

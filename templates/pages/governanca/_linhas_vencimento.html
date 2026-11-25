@@ -1,0 +1,28 @@
+{% comment %}
+As linhas de um grupo de vencimentos. Cada linha diz o tipo, o que vence, de
+quem é o prazo e quanto falta — e leva ao registro com um ícone sem borda.
+{% endcomment %}
+<ul class="list-group list-group-flush">
+  {% for item in itens %}
+    <li class="list-group-item d-flex align-items-center gap-3">
+      <div class="flex-grow-1">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-label-secondary">{{ item.tipo }}</span>
+          <span class="fw-medium eithra-duas-linhas" title="{{ item.titulo }}">{{ item.titulo }}</span>
+        </div>
+        <div class="text-body-secondary small mt-1">
+          {% if item.origem %}{{ item.origem }} · {% endif %}{{ item.data_texto }}
+          <span class="text-{{ item.tom }} fw-medium">· {{ item.quando }}</span>
+        </div>
+      </div>
+      <a
+        class="btn btn-icon btn-text-secondary rounded-pill flex-shrink-0"
+        href="{{ item.destino }}"
+        data-acao
+        title="Abrir registro"
+        aria-label="Abrir {{ item.tipo }}: {{ item.titulo }}">
+        <i class="bx bx-chevron-right" aria-hidden="true"></i>
+      </a>
+    </li>
+  {% endfor %}
+</ul>

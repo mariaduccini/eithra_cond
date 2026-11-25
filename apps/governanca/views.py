@@ -53,6 +53,7 @@ from .permissoes import (
     pode_gerenciar_tipos,
     pode_operar,
 )
+from .vencimentos import agrupar_por_faixa, coletar_vencimentos
 
 # Como cada situação de vigência aparece escrita na tela.
 ROTULO_POR_SITUACAO = dict(SituacaoVigencia.choices)
@@ -747,6 +748,27 @@ def _render_tipos_de_documento(
     return render(
         request, "pages/governanca/tipos_de_documento.html", contexto, status=status
     )
+
+
+# -- Vencimentos ----------------------------------------------------------------
+
+
+@login_required
+def vencimentos(request):
+    """Tudo o que vence neste condomínio, contrato, garantia e documento juntos.
+
+    A tela não decide a urgência: pede ao domínio de vencimentos a leitura já
+    classificada e apenas apresenta. Quem enxerga a governança consulta — a
+    leitura é a mesma para quem responde e para quem supervisiona.
+    """
+    base = _base_da_pagina(request)
+    itens = coletar_vencimentos(base["condominio_atual"])
+    contexto = {
+        **base,
+        "faixas": agrupar_por_faixa(itens),
+        "total": len(itens),
+    }
+    return render(request, "pages/governanca/vencimentos.html", contexto)
 
 
 # -- Autorização e contexto -----------------------------------------------------

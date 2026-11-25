@@ -13,6 +13,7 @@ from apps.governanca import views
 app_name = "governanca"
 
 urlpatterns = [
+    path("vencimentos/", views.vencimentos, name="vencimentos"),
     path("contratos/", views.contratos, name="contratos"),
     path("contratos/registrar/", views.criar_contrato, name="criar_contrato"),
     path("contratos/<uuid:pk>/editar/", views.editar_contrato, name="editar_contrato"),
