@@ -377,6 +377,15 @@ class Pessoa(models.Model):
         default="",
         help_text="Guardado só com os dígitos.",
     )
+    aceita_avisos_whatsapp = models.BooleanField(
+        "Aceita avisos por WhatsApp",
+        default=False,
+        help_text=(
+            "Autoriza a portaria a avisar esta pessoa por WhatsApp quando uma "
+            "encomenda chegar. Sem esta autorização, a portaria não oferece o "
+            "aviso — mesmo com o número preenchido."
+        ),
+    )
     email = models.EmailField("E-mail", blank=True, default="")
     documento = models.CharField(
         "CPF ou CNPJ",

@@ -1,7 +1,7 @@
 """Tela operacional da Portaria."""
 import uuid
 from datetime import timedelta
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -26,11 +26,13 @@ from apps.condominios import logo
 from apps.core import audio
 from apps.core.paginacao import paginar_do_pedido
 
-from . import interpretacao, numero_falado
+from . import etiqueta, interpretacao, numero_falado
 from .constants import (
     HORA_DE_ABERTURA,
     HORA_DE_FECHAMENTO,
+    TIPOS_DE_ENTREGA,
     ContextoAcessoPortaria,
+    EventoAcessoPortaria,
     IntencaoPortaria,
     StatusAutorizacaoPortaria,
     TipoAcessoPortaria,
@@ -41,12 +43,13 @@ from .forms import (
     ChegadaNaoPrevistaForm,
     VerificarAutorizacaoForm,
 )
-from .fotos import ErroDeFoto, guardar_foto
-from .models import AcessoPortaria, AutorizacaoPortaria
+from .fotos import ErroDeFoto, guardar_foto, validar_foto
+from .models import AcessoPortaria, AutorizacaoPortaria, HistoricoAcessoPortaria
 from .permissoes import condominios_para_ver, pode_operar_portaria
 from .services import (
     ErroDePortaria,
     empresas_conhecidas,
+    registrar_aviso_whatsapp,
     registrar_chegada,
     registrar_chegada_com_resultado,
     registrar_esperado,
@@ -163,7 +166,7 @@ def criar_chegada_nao_prevista(request):
         guardar_foto(acesso=acesso, arquivo=request.FILES.get("foto"))
     except ErroDeFoto as erro:
         messages.warning(request, str(erro))
-    messages.success(request, _recado_do_resultado(autorizacao, acesso))
+    messages.success(request, _recado_do_resultado(autorizacao, acesso) + _recado_do_aviso(acesso))
     return redirect(_destino("portaria:painel", condominio))
 
 
@@ -239,6 +242,59 @@ def saiu(request, pk):
     except ErroDePortaria as erro:
         messages.error(request, str(erro))
     return redirect(_destino("portaria:painel", condominio))
+
+
+@login_required
+@require_POST
+def registrar_aviso(request, pk):
+    """Anota que a portaria abriu o aviso de encomenda no WhatsApp do morador.
+
+    O Eithra não envia nada: quem toca abre a conversa no próprio aparelho. O
+    que se guarda é o fato de a portaria ter avisado — e quem avisou —, preso ao
+    acesso, para que "o morador foi avisado?" tenha resposta depois.
+    """
+    condominio = _condominio_para_operar(request)
+    acesso = _obter_ou_404(
+        AcessoPortaria.objects.do_condominio(condominio), pk
+    )
+    pessoa = _obter_ou_404(
+        Pessoa.objects.filter(condominio=condominio), request.POST.get("pessoa")
+    )
+    evento = registrar_aviso_whatsapp(
+        acesso=acesso, usuario=request.user, nome=str(pessoa)
+    )
+    return JsonResponse(
+        {"ok": True, "avisado_em": timezone.localtime(evento.data_hora).strftime("%H:%M")}
+    )
+
+
+@login_required
+@require_POST
+def ler_etiqueta(request):
+    """Lê a etiqueta fotografada e propõe unidade, morador e transportadora.
+
+    Não grava nada: devolve a sugestão para o porteiro conferir e preencher o
+    registro de chegada. A leitura é local e determinística — nada é enviado
+    para fora e nenhum modelo de linguagem participa.
+    """
+    condominio = _condominio_para_operar(request)
+    try:
+        conteudo, _mime, _extensao = validar_foto(request.FILES.get("foto"))
+    except ErroDeFoto as erro:
+        return JsonResponse({"erro": str(erro)}, status=400)
+
+    if not etiqueta.ocr_disponivel():
+        return JsonResponse(
+            {"erro": "A leitura de etiquetas não está disponível neste servidor."},
+            status=400,
+        )
+    try:
+        dados = etiqueta.ler_etiqueta(conteudo, condominio)
+    except Exception:  # noqa: BLE001 - a leitura é um limite: falha vira recusa humana
+        return JsonResponse(
+            {"erro": "Não foi possível ler a etiqueta. Digite os dados."}, status=400
+        )
+    return JsonResponse(dados)
 
 
 @login_required
@@ -795,6 +851,9 @@ def _render_painel(
         "modal_aberto": modal,
         "relato": relato,
         "proposta": proposta,
+        # Os tipos que são entrega — e não pessoa. A tela usa esta lista para
+        # saber quando oferecer a leitura da etiqueta; a origem é única.
+        "tipos_de_entrega": TIPOS_DE_ENTREGA,
         "campo_do_relato": campo_do_relato,
         "placeholder_do_relato": placeholder_do_relato,
         "respondendo": respondendo,
@@ -969,12 +1028,13 @@ def _painel_operacional(condominio, agora):
     chegando = [
         _linha_de_autorizacao(autorizacao, agora) for autorizacao in autorizacoes
     ]
+    avisados = _avisos_registrados(acessos_abertos)
     aqui_agora = []
     for acesso in acessos_abertos:
         # Quem entrou antes do turno de hoje continua dentro: a lista de saída
         # precisa saber disso para a presença antiga não passar por chegada.
         _descrever_presenca(acesso, agora, inicio_do_turno)
-        aqui_agora.append(_linha_de_acesso(acesso))
+        aqui_agora.append(_linha_de_acesso(acesso, avisados.get(acesso.pk, "")))
 
     acessos_do_dia = AcessoPortaria.objects.do_condominio(condominio).filter(
         entrada_em__date=agora.date()
@@ -1041,7 +1101,9 @@ def _acessos_operacionais(condominio):
     return (
         AcessoPortaria.objects.do_condominio(condominio)
         .abertas()
-        .select_related("pessoa", "unidade", "local", "veiculo", "autorizacao")
+        .select_related(
+            "condominio", "pessoa", "unidade", "local", "veiculo", "autorizacao"
+        )
     )
 
 
@@ -1085,7 +1147,87 @@ def _linha_de_autorizacao(autorizacao, agora):
     }
 
 
-def _linha_de_acesso(acesso):
+def _primeiro_nome(nome: str) -> str:
+    """Como a portaria chama a pessoa: só o primeiro nome."""
+    partes = [parte for parte in (nome or "").split() if parte]
+    return partes[0] if partes else ""
+
+
+def _moradores_a_avisar(acesso):
+    """Quem, nesta unidade, autorizou ser avisado por WhatsApp.
+
+    Só entra quem tem número E autorização: sem qualquer um dos dois, a portaria
+    não oferece o aviso — uma encomenda não vira uma mensagem que ninguém pediu.
+    """
+    if not acesso.unidade_id:
+        return []
+    return [
+        pessoa
+        for pessoa in acesso.unidade.pessoas_atuais()
+        if pessoa.ativa and pessoa.aceita_avisos_whatsapp and pessoa.whatsapp
+    ]
+
+
+def _mensagem_do_aviso(acesso, pessoa) -> str:
+    """O recado que a portaria manda ao morador quando a encomenda chega."""
+    primeiro = _primeiro_nome(str(pessoa))
+    hora = timezone.localtime(acesso.entrada_em).strftime("%H:%M")
+    texto = (
+        f"📦 Olá, {primeiro}! Chegou uma encomenda para o apto "
+        f"{acesso.destino_para_exibir}"
+    )
+    transportadora = (acesso.empresa or "").strip()
+    if transportadora:
+        texto += f", {transportadora}"
+    texto += f" às {hora}."
+    if acesso.instrucao_entrega:
+        texto += f" {acesso.get_instrucao_entrega_display()}."
+    return f"{texto} Portaria {acesso.condominio.nome}."
+
+
+def _link_do_aviso(acesso, pessoa) -> str:
+    """O endereço wa.me que abre a conversa com a mensagem já escrita."""
+    texto = quote(_mensagem_do_aviso(acesso, pessoa), safe="")
+    return f"https://wa.me/55{pessoa.whatsapp}?text={texto}"
+
+
+def _avisos_da_entrega(acesso):
+    """O que a linha da entrega oferece: quem avisar e se ninguém pode receber."""
+    if acesso.tipo_acesso not in TIPOS_DE_ENTREGA:
+        return [], False
+    pessoas = _moradores_a_avisar(acesso)
+    if not pessoas:
+        return [], bool(acesso.unidade_id)
+    avisos = [
+        {
+            "pessoa_id": str(pessoa.pk),
+            "nome": str(pessoa),
+            "primeiro_nome": _primeiro_nome(str(pessoa)),
+            "link": _link_do_aviso(acesso, pessoa),
+        }
+        for pessoa in pessoas
+    ]
+    return avisos, False
+
+
+def _avisos_registrados(acessos) -> dict:
+    """Quando cada acesso teve o aviso aberto, para a linha dizer "avisado às"."""
+    ids = [acesso.pk for acesso in acessos]
+    if not ids:
+        return {}
+    eventos = HistoricoAcessoPortaria.objects.filter(
+        acesso_id__in=ids, evento=EventoAcessoPortaria.AVISO_WHATSAPP
+    ).order_by("data_hora")
+    ultimos = {}
+    for evento in eventos:
+        ultimos[evento.acesso_id] = timezone.localtime(evento.data_hora).strftime(
+            "%H:%M"
+        )
+    return ultimos
+
+
+def _linha_de_acesso(acesso, avisado_em=""):
+    avisos, sem_whatsapp = _avisos_da_entrega(acesso)
     return {
         "kind": "acesso",
         "pk": acesso.pk,
@@ -1103,6 +1245,11 @@ def _linha_de_acesso(acesso):
         # nenhuma: a tela precisa dizer isso, senão a presença antiga passa por
         # chegada recente.
         "turno_anterior": getattr(acesso, "do_turno_anterior", False),
+        # A entrega oferece o aviso por WhatsApp ao morador que o autorizou; sem
+        # ninguém elegível, a linha diz isso em vez de esconder o fato.
+        "avisos": avisos,
+        "sem_whatsapp": sem_whatsapp,
+        "avisado_em": avisado_em,
         "acao_label": "Saiu",
         "acao_url": reverse("portaria:saiu", args=[acesso.pk]),
         "acao_post": True,
@@ -1262,6 +1409,24 @@ def _recado_do_resultado(autorizacao, acesso) -> str:
     if not nome:
         return f"Resultado registrado: {situacao}."
     return f"{nome}: {situacao}."
+
+
+def _recado_do_aviso(acesso) -> str:
+    """O que a mensagem de sucesso acrescenta sobre o aviso por WhatsApp.
+
+    A mensagem de sucesso é texto: o ícone do aviso vive na linha da entrega, em
+    "Aqui agora". Aqui a portaria é avisada, por escrito, de quem pode receber o
+    recado — ou de que ninguém autorizou.
+    """
+    if acesso is None or acesso.tipo_acesso not in TIPOS_DE_ENTREGA:
+        return ""
+    pessoas = _moradores_a_avisar(acesso)
+    if pessoas:
+        nomes = ", ".join(_primeiro_nome(str(pessoa)) for pessoa in pessoas)
+        return f" Aviso por WhatsApp disponível para {nomes}."
+    if acesso.unidade_id:
+        return " Sem WhatsApp autorizado nesta unidade."
+    return ""
 
 
 # A busca de autorizador não é catálogo: quem foi encontrado responde agora.

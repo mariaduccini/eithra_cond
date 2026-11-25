@@ -3205,6 +3205,32 @@ button:focus-visible,
   line-height: 1.4;
 }
 
+/* O aviso da encomenda por WhatsApp, na linha da entrega de "Aqui agora": o
+   ícone sem borda segue o desenho dos demais ícones de ação, e o rótulo ao lado
+   diz o que ele faz sem precisar de moldura. */
+.eithra-portaria-aviso {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+}
+
+.eithra-portaria-aviso-rotulo {
+  font-weight: 600;
+}
+
+.eithra-portaria-aviso .eithra-acao-icone {
+  color: var(--bs-success);
+  font-size: 1.375rem;
+}
+
+.eithra-portaria-avisado {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+  white-space: nowrap;
+}
+
 /* Modal equilibrado: os pavimentos e as unidades cabem sem ficarem
    comprimidos. */
 .eithra-portaria-modal {

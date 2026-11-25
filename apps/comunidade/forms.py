@@ -121,6 +121,7 @@ class PessoaForm(forms.ModelForm):
             "nome_social",
             "telefone",
             "whatsapp",
+            "aceita_avisos_whatsapp",
             "email",
             "documento",
             "observacao_interna",
@@ -142,6 +143,9 @@ class PessoaForm(forms.ModelForm):
             ),
             "whatsapp": forms.TextInput(
                 attrs={**TEXTO, "placeholder": "(00) 00000-0000", "autocomplete": "off"}
+            ),
+            "aceita_avisos_whatsapp": forms.CheckboxInput(
+                attrs={"class": "form-check-input"}
             ),
             "email": forms.EmailInput(attrs={**TEXTO, "autocomplete": "off"}),
             "documento": forms.TextInput(

@@ -24,4 +24,6 @@ urlpatterns = [
     ),
     path("esperados/<uuid:pk>/chegou/", views.chegou, name="chegou"),
     path("acessos/<uuid:pk>/saiu/", views.saiu, name="saiu"),
+    path("acessos/<uuid:pk>/avisado/", views.registrar_aviso, name="registrar_aviso"),
+    path("etiqueta/ler/", views.ler_etiqueta, name="ler_etiqueta"),
 ]

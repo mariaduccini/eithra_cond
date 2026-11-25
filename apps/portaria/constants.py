@@ -79,6 +79,18 @@ class OrigemPortaria(models.TextChoices):
     EMAIL = "email", "E-mail"
 
 
+class EventoAcessoPortaria(models.TextChoices):
+    """O que aconteceu com um acesso depois de registrado.
+
+    Vocabulário do histórico do acesso — linha acrescentada, nunca reescrita.
+    Hoje o único evento é o aviso de encomenda por WhatsApp: a portaria
+    registra que abriu a conversa com o morador, para que o fato não dependa
+    da memória de quem estava no turno.
+    """
+
+    AVISO_WHATSAPP = "aviso_whatsapp", "Aviso por WhatsApp"
+
+
 class IntencaoPortaria(models.TextChoices):
     """O que uma fala pode querer dizer na portaria.
 

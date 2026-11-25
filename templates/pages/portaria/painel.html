@@ -290,6 +290,27 @@
                 <span class="eithra-portaria-horario">
                   <i class="bx bxs-circle" aria-hidden="true"></i>Entrada: {{ item.horario }}
                 </span>
+                {% if item.avisos %}
+                  <span class="eithra-portaria-aviso" data-eithra-aviso-bloco>
+                    <span class="eithra-portaria-aviso-rotulo">Avisar</span>
+                    {% for aviso in item.avisos %}
+                      <button
+                        type="button"
+                        class="eithra-acao-icone"
+                        data-eithra-avisar
+                        data-url="{% url 'portaria:registrar_aviso' item.pk %}"
+                        data-pessoa="{{ aviso.pessoa_id }}"
+                        data-whatsapp="{{ aviso.link }}"
+                        title="Avisar {{ aviso.primeiro_nome }}"
+                        aria-label="Avisar {{ aviso.primeiro_nome }} pelo WhatsApp">
+                        <i class="bx bxl-whatsapp" aria-hidden="true"></i>
+                      </button>
+                    {% endfor %}
+                  </span>
+                  <span class="eithra-portaria-avisado" data-eithra-avisado {% if not item.avisado_em %}hidden{% endif %}>Avisado às {{ item.avisado_em }}</span>
+                {% elif item.sem_whatsapp %}
+                  <span class="eithra-portaria-legenda">Sem WhatsApp autorizado nesta unidade</span>
+                {% endif %}
                 <div class="eithra-linha-acao">
                   <form method="post" action="{{ item.acao_url }}">
                     {% csrf_token %}
@@ -775,7 +796,11 @@
               celular abre a câmera; no computador, escolhe-se o arquivo. Fica
               opcional e some sem deixar rastro quando não há foto.
             {% endcomment %}
-            <div class="mt-4" data-eithra-foto>
+            <div
+              class="mt-4"
+              data-eithra-foto
+              data-eithra-etiqueta-url="{% url 'portaria:ler_etiqueta' %}"
+              data-eithra-tipos-entrega="{% for valor in tipos_de_entrega %}{{ valor }} {% endfor %}">
               <label class="form-label" for="chegada-foto">Foto</label>
               <input
                 type="file"
@@ -792,6 +817,7 @@
                 <button type="button" class="btn btn-sm btn-text-primary" data-eithra-foto-remover hidden>Remover</button>
               </div>
               <img class="eithra-foto-previa mt-3" data-eithra-foto-previa alt="Prévia da foto" hidden>
+              <p class="eithra-ditar-recado" data-eithra-etiqueta-recado hidden aria-live="polite"></p>
             </div>
           </section>
 
@@ -1690,6 +1716,14 @@
       var previaFoto = formulario.querySelector("[data-eithra-foto-previa]");
       var urlDaPrevia = null;
 
+      // A partir da foto de uma entrega, o Eithra lê a etiqueta e propõe a
+      // unidade e o morador. Nada é registrado: a proposta preenche os campos e
+      // o porteiro confere antes de tocar em "Registrar chegada".
+      var blocoFoto = formulario.querySelector("[data-eithra-foto]");
+      var recadoEtiqueta = formulario.querySelector("[data-eithra-etiqueta-recado]");
+      var campoCondominio = formulario.querySelector("[name='condominio']");
+      var tokenCsrf = formulario.querySelector("[name='csrfmiddlewaretoken']");
+
       function limparPrevia() {
         if (urlDaPrevia) {
           URL.revokeObjectURL(urlDaPrevia);
@@ -1702,6 +1736,78 @@
         if (removerFoto) {
           removerFoto.hidden = true;
         }
+        if (recadoEtiqueta) {
+          recadoEtiqueta.hidden = true;
+        }
+      }
+
+      function tipoSelecionadoEhEntrega() {
+        var tipo = formulario.querySelector("input[name$='tipo_acesso']:checked");
+        if (!tipo || !blocoFoto) {
+          return false;
+        }
+        var tipos = (blocoFoto.dataset.eithraTiposEntrega || "").split(/\s+/);
+        return tipos.indexOf(tipo.value) !== -1;
+      }
+
+      function mostrarRecadoEtiqueta(lido, erro) {
+        if (!recadoEtiqueta) {
+          return;
+        }
+        if (erro) {
+          recadoEtiqueta.textContent = erro;
+        } else {
+          var partes = [lido.nome, lido.unidade_rotulo, lido.transportadora].filter(
+            function (parte) {
+              return parte && String(parte).trim();
+            }
+          );
+          recadoEtiqueta.textContent = partes.length
+            ? "Lido na etiqueta: " + partes.join(" · ") + " (confira)"
+            : "Não foi possível ler a etiqueta. Confira os dados.";
+        }
+        recadoEtiqueta.hidden = false;
+      }
+
+      function lerEtiqueta(arquivo) {
+        if (!blocoFoto || !recadoEtiqueta || !tokenCsrf) {
+          return;
+        }
+        var dados = new FormData();
+        dados.append("foto", arquivo);
+        if (campoCondominio) {
+          dados.append("condominio", campoCondominio.value);
+        }
+        fetch(blocoFoto.dataset.eithraEtiquetaUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": tokenCsrf.value },
+          body: dados,
+          credentials: "same-origin"
+        })
+          .then(function (resposta) { return resposta.json(); })
+          .then(function (lido) {
+            if (lido.erro) {
+              mostrarRecadoEtiqueta(null, lido.erro);
+              return;
+            }
+            if (lido.unidade_id && campoUnidade) {
+              campoUnidade.value = lido.unidade_id;
+            }
+            if (lido.nome && campoNome) {
+              campoNome.value = lido.nome;
+            }
+            var modalDoForm = formulario.closest(".modal");
+            if (modalDoForm && typeof modalDoForm.eithraAtualizarDestino === "function") {
+              modalDoForm.eithraAtualizarDestino();
+            } else {
+              atualizarContexto();
+              atualizarResumo();
+            }
+            mostrarRecadoEtiqueta(lido);
+          })
+          .catch(function () {
+            mostrarRecadoEtiqueta(null, "Não foi possível ler a etiqueta. Digite os dados.");
+          });
       }
 
       if (abrirFoto && campoFoto) {
@@ -1726,6 +1832,9 @@
           }
           if (removerFoto) {
             removerFoto.hidden = false;
+          }
+          if (tipoSelecionadoEhEntrega()) {
+            lerEtiqueta(arquivo);
           }
         });
       }
@@ -1801,6 +1910,51 @@
     // (static/js/eithra-ditar.js): a tela principal, o destino e o nome de quem
     // chegou ditam pelo mesmo mecanismo, sem um segundo motor de gravação só
     // para a Portaria.
+
+    // Avisar o morador pelo WhatsApp: a portaria toca no ícone, o Eithra anota
+    // no histórico do acesso que o morador foi avisado e só então abre a
+    // conversa. Nada é enviado pelo sistema — quem manda a mensagem é quem está
+    // no balcão, com a conversa já escrita.
+    document.querySelectorAll("[data-eithra-avisar]").forEach(function (botao) {
+      botao.addEventListener("click", function () {
+        var token = document.querySelector("input[name='csrfmiddlewaretoken']");
+        var destino = botao.dataset.whatsapp;
+        // A janela nasce no gesto do toque (senão o navegador a bloqueia) e só
+        // navega depois do registro: o fetch vem antes de abrir o wa.me.
+        var janela = window.open("about:blank", "_blank");
+        var dados = new FormData();
+        dados.append("pessoa", botao.dataset.pessoa);
+        var pedido = token
+          ? fetch(botao.dataset.url, {
+              method: "POST",
+              headers: { "X-CSRFToken": token.value },
+              body: dados,
+              credentials: "same-origin"
+            })
+          : Promise.resolve(null);
+        pedido
+          .then(function (resposta) { return resposta ? resposta.json() : null; })
+          .then(function (lido) {
+            if (!lido || !lido.avisado_em) {
+              return;
+            }
+            var linha = botao.closest(".eithra-portaria-linha");
+            var alvo = linha ? linha.querySelector("[data-eithra-avisado]") : null;
+            if (alvo) {
+              alvo.textContent = "Avisado às " + lido.avisado_em;
+              alvo.hidden = false;
+            }
+          })
+          .catch(function () {})
+          .then(function () {
+            if (janela && !janela.closed) {
+              janela.location.href = destino;
+            } else {
+              window.open(destino, "_blank");
+            }
+          });
+      });
+    });
   </script>
   <script src="{% static 'js/eithra-ditar.js' %}"></script>
 {% endblock %}

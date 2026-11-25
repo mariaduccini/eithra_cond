@@ -14,6 +14,7 @@ from apps.comunidade.models import Pessoa, Unidade, Veiculo
 from apps.condominios.models import Condominio, somente_digitos
 
 from .constants import (
+    EventoAcessoPortaria,
     InstrucaoEntrega,
     MeioAutorizacaoPortaria,
     NaturezaObjetoCorreios,
@@ -549,3 +550,48 @@ class AcessoPortaria(models.Model):
     @property
     def esta_dentro(self) -> bool:
         return self.saida_em is None
+
+
+class HistoricoAcessoPortaria(models.Model):
+    """O que aconteceu com um acesso depois de registrado — e quem registrou.
+
+    Linha acrescentada, nunca reescrita: a aplicação não atualiza nem apaga o
+    que já foi anotado. Guarda o aviso de encomenda aberto por WhatsApp, para
+    que "o morador foi avisado?" tenha resposta sem depender da memória de quem
+    estava no turno.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    acesso = models.ForeignKey(
+        AcessoPortaria,
+        on_delete=models.PROTECT,
+        related_name="historico",
+        verbose_name="Acesso",
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="eventos_de_portaria",
+        verbose_name="Registrado por",
+        help_text="Quem provocou o evento. Preservado para rastreabilidade.",
+    )
+    evento = models.CharField(
+        "Evento", max_length=24, choices=EventoAcessoPortaria.choices
+    )
+    descricao = models.CharField(
+        "Descrição",
+        max_length=255,
+        help_text="O evento em linguagem humana, do jeito que deve ser lembrado.",
+    )
+    data_hora = models.DateTimeField("Quando", default=timezone.now)
+
+    class Meta:
+        verbose_name = "Evento do acesso"
+        verbose_name_plural = "Histórico dos acessos"
+        ordering = ["-data_hora"]
+        indexes = [
+            models.Index(fields=["acesso", "data_hora"], name="portaria_hist_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_evento_display()} · {self.acesso}"

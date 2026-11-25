@@ -7,8 +7,8 @@ from django.utils import timezone
 
 from apps.cadastros.models import Fornecedor
 
-from .constants import OrigemPortaria, StatusAutorizacaoPortaria
-from .models import AcessoPortaria, AutorizacaoPortaria
+from .constants import EventoAcessoPortaria, OrigemPortaria, StatusAutorizacaoPortaria
+from .models import AcessoPortaria, AutorizacaoPortaria, HistoricoAcessoPortaria
 
 
 class ErroDePortaria(Exception):
@@ -273,3 +273,21 @@ def registrar_saida(*, acesso: AcessoPortaria, usuario) -> AcessoPortaria:
     _validar(acesso)
     acesso.save(update_fields=["saida_em", "saida_registrada_por", "atualizado_em"])
     return acesso
+
+
+def registrar_aviso_whatsapp(
+    *, acesso: AcessoPortaria, usuario, nome: str
+) -> HistoricoAcessoPortaria:
+    """Anota que a portaria abriu o aviso de encomenda no WhatsApp do morador.
+
+    O sistema não envia nada: quem toca abre a conversa no próprio celular. O
+    que fica registrado é o fato de a portaria ter avisado — e quem avisou —,
+    para que a pergunta "o morador foi avisado?" tenha resposta depois.
+    """
+    quem = " ".join((nome or "").split()) or acesso.nome_para_exibir
+    return HistoricoAcessoPortaria.objects.create(
+        acesso=acesso,
+        usuario=usuario,
+        evento=EventoAcessoPortaria.AVISO_WHATSAPP,
+        descricao=f"Aviso por WhatsApp aberto para {quem} por {usuario}",
+    )
