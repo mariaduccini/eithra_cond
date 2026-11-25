@@ -5,6 +5,18 @@
 
 {% block content %}
   <div class="eithra-portaria">
+    {% comment %}
+      Registrada uma encomenda com um único morador a avisar, o painel volta
+      com o toque pronto: esta marca diz ao JS qual aviso abrir sozinho, e o
+      botão da linha é quem faz o registro antes da conversa. Sem a marca, o
+      painel é só o painel.
+    {% endcomment %}
+    {% if aviso_a_abrir %}
+      <span
+        hidden
+        data-eithra-aviso-abrir
+        data-acesso="{{ aviso_a_abrir.acesso }}"></span>
+    {% endif %}
     <div class="eithra-portaria-topo">
       <div>
         <h1 class="eithra-portaria-titulo">Portaria</h1>
@@ -105,6 +117,14 @@
         <div class="eithra-portaria-barra-acoes">
           <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#registro-chegada">
             <i class="bx bx-log-in" aria-hidden="true"></i>Registrar chegada
+          </button>
+          {% comment %}
+            A encomenda tem caminho próprio: quem entrega não é visita, e o
+            registro inteiro cabe em uma etapa. O fluxo de três decisões
+            continua sendo o de quem chega como pessoa.
+          {% endcomment %}
+          <button type="button" class="btn btn-label-primary" data-bs-toggle="modal" data-bs-target="#chegou-encomenda">
+            <i class="bx bx-package" aria-hidden="true"></i>Chegou encomenda
           </button>
         </div>
       </div>
@@ -299,6 +319,7 @@
                         class="eithra-acao-icone"
                         data-eithra-avisar
                         data-url="{% url 'portaria:registrar_aviso' item.pk %}"
+                        data-acesso="{{ item.pk }}"
                         data-pessoa="{{ aviso.pessoa_id }}"
                         data-whatsapp="{{ aviso.link }}"
                         title="Avisar {{ aviso.primeiro_nome }}"
@@ -463,13 +484,13 @@
                     class="eithra-opcao-card eithra-opcao-card-raro{% if opcao.data.selected %} is-selected{% else %} d-none{% endif %}"
                     data-eithra-tipo-raro>
                     {{ opcao.tag }}
-                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-package{% endif %}" aria-hidden="true"></i>
+                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-envelope{% endif %}" aria-hidden="true"></i>
                     <span>{{ opcao.choice_label }}</span>
                   </label>
                 {% else %}
                   <label class="eithra-opcao-card{% if opcao.data.selected %} is-selected{% endif %}">
                     {{ opcao.tag }}
-                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-scooter{% else %}bx-user{% endif %}" aria-hidden="true"></i>
+                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-cycling{% else %}bx-user{% endif %}" aria-hidden="true"></i>
                     <span>{{ opcao.choice_label }}</span>
                   </label>
                 {% endif %}
@@ -583,6 +604,152 @@
           <button type="button" class="btn btn-label-secondary" data-eithra-step-voltar hidden>Voltar</button>
           <button type="button" class="btn btn-primary" data-eithra-step-avancar>Continuar</button>
           <button type="submit" class="btn btn-primary" data-eithra-step-enviar hidden>Adicionar esperado</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% comment %}
+    Chegou encomenda: o caminho curto da entrega, em uma etapa. Fotografa-se a
+    etiqueta e o Eithra propõe o destino; quem entrega não é visita, então não
+    há tipo de acesso, veículo nem quem autorizou para perguntar. A
+    transportadora e a instrução são toques, e a foto fica como prova.
+
+    O seletor de destino é o mesmo do fluxo de chegada — busca e planta do
+    condomínio —, porque a pergunta é a mesma: para qual unidade vai.
+  {% endcomment %}
+  <div
+    class="modal fade{% if modal_aberto == 'chegou-encomenda' %} show eithra-modal-reaberto{% endif %}"
+    id="chegou-encomenda"
+    tabindex="-1"
+    role="dialog"
+    aria-labelledby="chegou-encomenda-titulo"
+    aria-hidden="{% if modal_aberto == 'chegou-encomenda' %}false{% else %}true{% endif %}">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable eithra-portaria-modal">
+      <form
+        class="modal-content"
+        method="post"
+        enctype="multipart/form-data"
+        action="{% url 'portaria:chegou_encomenda' %}"
+        novalidate
+        data-eithra-encomenda>
+        {% csrf_token %}
+        <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+        <input type="hidden" name="unidade" value="">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="chegou-encomenda-titulo">Chegou encomenda</h5>
+            <p class="eithra-portaria-legenda mb-0">Fotografe a etiqueta ou escolha o destino</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          {% if erro_encomenda %}
+            <div class="text-danger small mb-3" data-eithra-encomenda-erro>{{ erro_encomenda }}</div>
+          {% endif %}
+
+          {% comment %}
+            A área da foto é grande de propósito: no celular ela abre a câmera,
+            e é o primeiro gesto de quem recebe uma encomenda. O que a leitura
+            escrever embaixo é sugestão — o porteiro confere antes de registrar.
+          {% endcomment %}
+          <div
+            class="eithra-encomenda-foto"
+            data-eithra-foto
+            data-eithra-etiqueta-url="{% url 'portaria:ler_etiqueta' %}">
+            <input
+              type="file"
+              class="visually-hidden"
+              id="encomenda-foto"
+              name="foto"
+              accept="image/*"
+              capture="environment"
+              data-eithra-foto-entrada>
+            <button type="button" class="eithra-encomenda-foto-botao" data-eithra-foto-tirar>
+              <i class="bx bx-camera" aria-hidden="true"></i>
+              <span>Fotografar etiqueta</span>
+            </button>
+            <img class="eithra-foto-previa mt-3" data-eithra-foto-previa alt="Prévia da etiqueta" hidden>
+            <p class="eithra-ditar-recado" data-eithra-etiqueta-recado hidden aria-live="polite"></p>
+          </div>
+
+          <h6 class="eithra-portaria-secao-titulo-grande mt-4 mb-2">Para</h6>
+          <div class="eithra-autorizador-busca">
+            <i class="bx bx-search" aria-hidden="true"></i>
+            <input
+              type="search"
+              class="form-control"
+              id="encomenda-autorizador"
+              placeholder="Digite o nome do morador ou apartamento"
+              autocomplete="off"
+              data-eithra-autorizador-busca
+              data-url="{% url 'portaria:buscar_autorizador' %}"
+              data-condominio="{{ condominio_atual.pk }}">
+          </div>
+          <div class="eithra-autorizador-resultado" data-eithra-autorizador-resultado aria-live="polite"></div>
+          <p class="eithra-autorizador-escolhido" data-eithra-autorizador-escolhido hidden>
+            <i class="bx bx-home" aria-hidden="true"></i>
+            <span data-eithra-autorizador-destino></span>
+            <button type="button" class="eithra-autorizador-trocar" data-eithra-autorizador-trocar>Trocar</button>
+          </p>
+          <p class="eithra-portaria-morador-sugerido" data-eithra-morador-sugerido hidden aria-live="polite"></p>
+
+          {% if estrutura_unidades %}
+            <div class="eithra-mapa-unidades mt-3" data-eithra-mapa-unidade>
+              {% for bloco in estrutura_unidades %}
+                <div class="eithra-mapa-bloco">
+                  {% if bloco.nome %}
+                    <div class="eithra-mapa-bloco-nome"><i class="bx bx-building-house" aria-hidden="true"></i>{{ bloco.nome }}</div>
+                  {% endif %}
+                  <div class="eithra-mapa-andares">
+                    {% for andar in bloco.andares %}
+                      <div class="eithra-mapa-andar">
+                        <span class="eithra-mapa-andar-nome">{{ andar.rotulo }}</span>
+                        <div class="eithra-mapa-chips">
+                          {% for unidade in andar.unidades %}
+                            <button
+                              type="button"
+                              class="eithra-mapa-chip"
+                              data-eithra-unidade-chip
+                              data-unidade="{{ unidade.pk }}"
+                              data-rotulo="{{ unidade.rotulo }}">{{ unidade.identificador }}</button>
+                          {% endfor %}
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="eithra-vazio mt-3 mb-0">Nenhuma unidade cadastrada neste condomínio.</p>
+          {% endif %}
+
+          <h6 class="eithra-portaria-secao-titulo-grande mt-4 mb-2">Transportadora</h6>
+          <div class="eithra-opcoes-cards" data-eithra-transportadora>
+            {% for valor, rotulo in transportadoras %}
+              <label class="eithra-opcao-card{% if valor == 'Outra' %} is-selected{% endif %}">
+                <input type="radio" name="transportadora" value="{{ valor }}" class="form-check-input"{% if valor == 'Outra' %} checked{% endif %}>
+                <span>{{ rotulo }}</span>
+              </label>
+            {% endfor %}
+          </div>
+
+          <h6 class="eithra-portaria-secao-titulo-grande mt-4 mb-2">O que fazer</h6>
+          <div class="eithra-opcoes-cards" data-eithra-instrucao>
+            {% for valor, rotulo in instrucoes_de_entrega %}
+              <label class="eithra-opcao-card eithra-opcao-card-status{% if valor == 'deixar_na_portaria' %} is-selected{% endif %}">
+                <input type="radio" name="instrucao_entrega" value="{{ valor }}" class="form-check-input"{% if valor == 'deixar_na_portaria' %} checked{% endif %}>
+                <span>{{ rotulo }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" data-eithra-encomenda-enviar>
+            Registrar e avisar
+          </button>
         </div>
       </form>
     </div>
@@ -711,7 +878,7 @@
               <button type="button" class="eithra-portaria-contexto-trocar" data-eithra-ir-para="1">Trocar</button>
             </div>
 
-            <h6 class="eithra-portaria-secao-titulo-grande mb-1">Quem chegou?</h6>
+            <h6 class="eithra-portaria-secao-titulo-grande mb-1" data-eithra-titulo-quem-chegou>Quem chegou?</h6>
             <label class="form-label">Tipo de acesso</label>
             <div class="eithra-opcoes-cards" data-eithra-tipo-acesso>
               {% for opcao in formulario_chegada.tipo_acesso %}
@@ -720,13 +887,13 @@
                     class="eithra-opcao-card eithra-opcao-card-raro{% if opcao.data.selected %} is-selected{% else %} d-none{% endif %}"
                     data-eithra-tipo-raro>
                     {{ opcao.tag }}
-                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-package{% endif %}" aria-hidden="true"></i>
+                    <i class="bx {% if opcao.data.value == 'tecnico' %}bx-wrench{% else %}bx-envelope{% endif %}" aria-hidden="true"></i>
                     <span>{{ opcao.choice_label }}</span>
                   </label>
                 {% else %}
                   <label class="eithra-opcao-card{% if opcao.data.selected %} is-selected{% endif %}">
                     {{ opcao.tag }}
-                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-scooter{% else %}bx-user{% endif %}" aria-hidden="true"></i>
+                    <i class="bx {% if opcao.data.value == 'visitante' %}bx-user{% elif opcao.data.value == 'prestador' %}bx-briefcase{% elif opcao.data.value == 'fornecedor' %}bx-cube{% elif opcao.data.value == 'delivery' %}bx-cycling{% else %}bx-user{% endif %}" aria-hidden="true"></i>
                     <span>{{ opcao.choice_label }}</span>
                   </label>
                 {% endif %}
@@ -734,7 +901,15 @@
             </div>
             <button type="button" class="btn btn-sm btn-text-primary mt-2" data-eithra-revelar-tipos>Mais tipos</button>
 
-            {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.nome classe="mt-4 mb-6" voz_url=url_da_transcricao %}
+            {% comment %}
+              O rótulo deste campo muda com o tipo: para uma entrega não é uma
+              pessoa que chegou, é a transportadora que trouxe. O texto de
+              origem continua sendo o do formulário; a tela só o reescreve
+              quando o tipo é entrega.
+            {% endcomment %}
+            <div data-eithra-campo-nome-chegada>
+              {% include "pages/cadastros/_campo.html" with campo=formulario_chegada.nome classe="mt-4 mb-6" voz_url=url_da_transcricao %}
+            </div>
 
             {% comment %}
               Empresa é do prestador e do fornecedor; o motivo só entra quando
@@ -1045,6 +1220,224 @@
         radio.addEventListener("change", ajustar);
       });
       ajustar();
+    });
+
+    // No passo 2, "quem chegou" troca de nome quando quem chega é uma entrega:
+    // não é uma pessoa, é a transportadora que trouxe a encomenda. O mesmo
+    // título e o mesmo campo dizem isso sem virar uma segunda pergunta.
+    document.querySelectorAll("[data-eithra-titulo-quem-chegou]").forEach(function (titulo) {
+      var modal = titulo.closest(".modal");
+      if (!modal) {
+        return;
+      }
+      var radios = modal.querySelectorAll("input[name$='tipo_acesso']");
+      var blocoNome = modal.querySelector("[data-eithra-campo-nome-chegada]");
+      var rotulo = blocoNome ? blocoNome.querySelector(".form-label") : null;
+      var entrada = blocoNome ? blocoNome.querySelector("input, textarea") : null;
+      var rotuloDePessoa = "Quem chegou?";
+      var rotuloDeEntrega = "Quem trouxe?";
+      var campoDePessoa = "Nome do visitante ou prestador";
+      var campoDeEntrega = "Ex.: Correios";
+
+      // O rótulo do campo é reescrito no lugar do texto, sem perder a marca do
+      // obrigatório que o próprio campo desenha.
+      function reescreverRotulo(texto) {
+        if (!rotulo) {
+          return;
+        }
+        var nos = Array.prototype.slice.call(rotulo.childNodes);
+        for (var i = 0; i < nos.length; i++) {
+          if (nos[i].nodeType === 3) {
+            nos[i].nodeValue = texto + " ";
+            return;
+          }
+        }
+        rotulo.insertBefore(document.createTextNode(texto), rotulo.firstChild);
+      }
+
+      function ajustar() {
+        var valor = "";
+        radios.forEach(function (radio) {
+          if (radio.checked) {
+            valor = radio.value;
+          }
+        });
+        var deEntrega = valor === "delivery" || valor === "correios";
+        titulo.textContent = deEntrega ? rotuloDeEntrega : rotuloDePessoa;
+        reescreverRotulo(deEntrega ? "Transportadora ou entregador" : "Quem chegou?");
+        if (entrada) {
+          entrada.placeholder = deEntrega ? campoDeEntrega : campoDePessoa;
+        }
+      }
+
+      radios.forEach(function (radio) {
+        radio.addEventListener("change", ajustar);
+      });
+      ajustar();
+    });
+
+    // Chegou encomenda: uma etapa só. Fotografa-se a etiqueta, o Eithra lê e
+    // propõe a unidade e a transportadora, e o resto é toque. O destino usa o
+    // mesmo seletor do registro de chegada — busca e planta preenchem o mesmo
+    // campo escondido —, então aqui se liga só o que é próprio da encomenda: a
+    // câmera, a leitura da etiqueta e a pré-seleção dos botões.
+    document.querySelectorAll("[data-eithra-encomenda]").forEach(function (formulario) {
+      var blocoFoto = formulario.querySelector("[data-eithra-foto]");
+      var campoFoto = formulario.querySelector("[data-eithra-foto-entrada]");
+      var abrirFoto = formulario.querySelector("[data-eithra-foto-tirar]");
+      var previaFoto = formulario.querySelector("[data-eithra-foto-previa]");
+      var recadoEtiqueta = formulario.querySelector("[data-eithra-etiqueta-recado]");
+      var campoUnidade = formulario.querySelector("[name='unidade']");
+      var moradorSugerido = formulario.querySelector("[data-eithra-morador-sugerido]");
+      var grupoTransportadora = formulario.querySelector("[data-eithra-transportadora]");
+      var escolhidoNaTela = formulario.querySelector("[data-eithra-autorizador-escolhido]");
+      var destinoNaTela = formulario.querySelector("[data-eithra-autorizador-destino]");
+      var campoCondominio = formulario.querySelector("[name='condominio']");
+      var tokenCsrf = formulario.querySelector("[name='csrfmiddlewaretoken']");
+      var urlDaPrevia = null;
+      var SEM_LEITURA = "Não consegui ler; escolha a unidade";
+
+      if (abrirFoto && campoFoto) {
+        abrirFoto.addEventListener("click", function () {
+          campoFoto.click();
+        });
+      }
+
+      function limparRecado() {
+        if (recadoEtiqueta) {
+          recadoEtiqueta.hidden = true;
+        }
+      }
+
+      function mostrarRecado(erro, lido) {
+        if (!recadoEtiqueta) {
+          return;
+        }
+        if (erro) {
+          recadoEtiqueta.textContent = erro;
+        } else {
+          var partes = [lido.nome, lido.unidade_rotulo, lido.transportadora].filter(
+            function (parte) {
+              return parte && String(parte).trim();
+            }
+          );
+          recadoEtiqueta.textContent = partes.length
+            ? "Lido na etiqueta: " + partes.join(" · ") + " — confira"
+            : SEM_LEITURA;
+        }
+        recadoEtiqueta.hidden = false;
+      }
+
+      function mostrarMoradorSugerido(nome) {
+        if (!moradorSugerido) {
+          return;
+        }
+        var texto = (nome || "").trim();
+        moradorSugerido.textContent = texto ? "Morador sugerido: " + texto : "";
+        moradorSugerido.hidden = !texto;
+      }
+
+      // A unidade lida vale como uma escolha: o mesmo campo escondido que a
+      // busca e a planta preenchem, o mesmo cabeçalho de destino — e o chip da
+      // planta aceso, quando houver.
+      function marcarUnidade(id, rotulo) {
+        if (!id) {
+          return;
+        }
+        if (campoUnidade) {
+          campoUnidade.value = id;
+        }
+        var chip = formulario.querySelector(
+          '[data-eithra-unidade-chip][data-unidade="' + id + '"]'
+        );
+        var texto = rotulo || (chip && (chip.dataset.rotulo || chip.textContent.trim())) || "";
+        if (destinoNaTela) {
+          destinoNaTela.textContent = texto;
+        }
+        if (escolhidoNaTela) {
+          escolhidoNaTela.hidden = !texto;
+        }
+        formulario.querySelectorAll("[data-eithra-unidade-chip]").forEach(function (item) {
+          item.classList.toggle("is-selected", item === chip);
+        });
+      }
+
+      // A transportadora lida acende o botão correspondente; fora da lista, nada
+      // muda — "Outra" continua escolhida, que é o que já está na tela.
+      function selecionarTransportadora(nome) {
+        if (!grupoTransportadora || !nome) {
+          return;
+        }
+        var procurado = String(nome).toLowerCase();
+        var alvo = null;
+        grupoTransportadora.querySelectorAll("input[type='radio']").forEach(function (radio) {
+          if (radio.value.toLowerCase() === procurado) {
+            alvo = radio;
+          }
+        });
+        if (!alvo) {
+          return;
+        }
+        alvo.checked = true;
+        grupoTransportadora.querySelectorAll(".eithra-opcao-card").forEach(function (card) {
+          var input = card.querySelector("input");
+          card.classList.toggle("is-selected", Boolean(input && input.checked));
+        });
+      }
+
+      function lerEtiqueta(arquivo) {
+        if (!blocoFoto || !tokenCsrf) {
+          mostrarRecado(SEM_LEITURA);
+          return;
+        }
+        var dados = new FormData();
+        dados.append("foto", arquivo);
+        if (campoCondominio) {
+          dados.append("condominio", campoCondominio.value);
+        }
+        fetch(blocoFoto.dataset.eithraEtiquetaUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": tokenCsrf.value },
+          body: dados,
+          credentials: "same-origin"
+        })
+          .then(function (resposta) {
+            return resposta.ok ? resposta.json() : null;
+          })
+          .then(function (lido) {
+            if (!lido || lido.erro) {
+              mostrarRecado(SEM_LEITURA);
+              return;
+            }
+            marcarUnidade(lido.unidade_id, lido.unidade_rotulo);
+            selecionarTransportadora(lido.transportadora);
+            mostrarMoradorSugerido(lido.nome);
+            mostrarRecado(null, lido);
+          })
+          .catch(function () {
+            mostrarRecado(SEM_LEITURA);
+          });
+      }
+
+      if (campoFoto) {
+        campoFoto.addEventListener("change", function () {
+          var arquivo = campoFoto.files && campoFoto.files[0];
+          if (!arquivo) {
+            limparRecado();
+            return;
+          }
+          if (urlDaPrevia) {
+            URL.revokeObjectURL(urlDaPrevia);
+          }
+          urlDaPrevia = URL.createObjectURL(arquivo);
+          if (previaFoto) {
+            previaFoto.src = urlDaPrevia;
+            previaFoto.hidden = false;
+          }
+          limparRecado();
+          lerEtiqueta(arquivo);
+        });
+      }
     });
 
     document.querySelectorAll(".eithra-opcoes-cards").forEach(function (grupo) {
@@ -1955,6 +2348,21 @@
           });
       });
     });
+
+    // Acabou de registrar uma encomenda com um único morador a avisar: o painel
+    // volta com a marca do acesso, e o próprio toque da linha é acionado aqui —
+    // ele registra o aviso no histórico antes de abrir a conversa. Com mais de
+    // um morador, a lista fica na linha e o aviso é escolha de quem está no
+    // balcão, não abertura automática.
+    var avisoAutomatico = document.querySelector("[data-eithra-aviso-abrir]");
+    if (avisoAutomatico) {
+      var botaoAutomatico = document.querySelector(
+        '[data-eithra-avisar][data-acesso="' + avisoAutomatico.dataset.acesso + '"]'
+      );
+      if (botaoAutomatico) {
+        botaoAutomatico.click();
+      }
+    }
   </script>
   <script src="{% static 'js/eithra-ditar.js' %}"></script>
 {% endblock %}

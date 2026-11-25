@@ -17,6 +17,7 @@ urlpatterns = [
         views.criar_chegada_nao_prevista,
         name="criar_chegada_nao_prevista",
     ),
+    path("encomenda/", views.chegou_encomenda, name="chegou_encomenda"),
     path(
         "autorizacoes/<uuid:pk>/verificar/",
         views.verificar,

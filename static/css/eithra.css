@@ -3048,6 +3048,7 @@ button:focus-visible,
    portaria e dos seus modais passam a ser teal, sem tocar na paleta global. */
 .eithra-portaria,
 #registro-chegada,
+#chegou-encomenda,
 #novo-esperado,
 #verificar-autorizacao {
   --eithra-portaria-teal: #0f766e;
@@ -3235,6 +3236,54 @@ button:focus-visible,
    comprimidos. */
 .eithra-portaria-modal {
   max-inline-size: 48rem;
+}
+
+/* Chegou encomenda: a foto é o primeiro gesto, então a área dela é grande e
+   sem moldura pesada — no celular da portaria abre a câmera, e o ícone no
+   centro diz o que fazer. */
+.eithra-encomenda-foto {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.eithra-encomenda-foto-botao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  min-block-size: 8.5rem;
+  padding: 1.5rem;
+  border: 1px dashed var(--bs-border-color);
+  border-radius: 0.875rem;
+  background-color: var(--bs-paper-bg);
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.eithra-encomenda-foto-botao .bx {
+  font-size: 2rem;
+}
+
+.eithra-encomenda-foto-botao:hover,
+.eithra-encomenda-foto-botao:focus-visible {
+  border-color: var(--eithra-portaria-lilas);
+  color: var(--eithra-portaria-lilas);
+}
+
+/* O morador que a etiqueta sugeriu, ao lado do seletor de destino: é sugestão,
+   não escolha — por isso vem por escrito, sem virar um segundo campo. */
+.eithra-portaria-morador-sugerido {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--bs-body-color);
+}
+
+.eithra-portaria-morador-sugerido[hidden] {
+  display: none;
 }
 
 /* O corpo do modal é uma coluna: cabeçalho e rodapé ficam fixos, e o único

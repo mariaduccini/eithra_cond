@@ -30,6 +30,21 @@ TIPOS_DE_ENTREGA = frozenset(
     {TipoAcessoPortaria.DELIVERY, TipoAcessoPortaria.CORREIOS}
 )
 
+# As transportadoras que a tela da encomenda oferece em botões. É uma lista de
+# atalhos, não um catálogo: "Outra" existe para o caso que não está aqui, e o
+# que se grava quando ela é escolhida é a ausência de transportadora — melhor
+# nada do que um nome inventado.
+TRANSPORTADORA_CORREIOS = "Correios"
+TRANSPORTADORA_OUTRA = "Outra"
+TRANSPORTADORAS_DE_ENTREGA = (
+    (TRANSPORTADORA_CORREIOS, TRANSPORTADORA_CORREIOS),
+    ("Mercado Livre", "Mercado Livre"),
+    ("Amazon", "Amazon"),
+    ("Shopee", "Shopee"),
+    ("iFood/Delivery", "iFood/Delivery"),
+    (TRANSPORTADORA_OUTRA, TRANSPORTADORA_OUTRA),
+)
+
 
 class NaturezaObjetoCorreios(models.TextChoices):
     """O que os Correios trouxeram, quando isso for informado.

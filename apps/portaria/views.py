@@ -31,9 +31,14 @@ from .constants import (
     HORA_DE_ABERTURA,
     HORA_DE_FECHAMENTO,
     TIPOS_DE_ENTREGA,
+    TRANSPORTADORA_CORREIOS,
+    TRANSPORTADORA_OUTRA,
+    TRANSPORTADORAS_DE_ENTREGA,
     ContextoAcessoPortaria,
     EventoAcessoPortaria,
+    InstrucaoEntrega,
     IntencaoPortaria,
+    MeioAutorizacaoPortaria,
     StatusAutorizacaoPortaria,
     TipoAcessoPortaria,
 )
@@ -168,6 +173,119 @@ def criar_chegada_nao_prevista(request):
         messages.warning(request, str(erro))
     messages.success(request, _recado_do_resultado(autorizacao, acesso) + _recado_do_aviso(acesso))
     return redirect(_destino("portaria:painel", condominio))
+
+
+@login_required
+@require_POST
+def chegou_encomenda(request):
+    """Registra a encomenda em uma etapa só: a entrega, não a visita.
+
+    O caminho curto da entrega: a etiqueta sugere o destino, o porteiro confere,
+    e a chegada nasce como Correios ou Delivery conforme a transportadora — a
+    autorização é presencial, porque quem entrega está no balcão agora. Só a
+    unidade é obrigatória; o resto é atalho.
+
+    Registrada a encomenda, a tela oferece o aviso ao morador: com um único
+    destinatário elegível, o painel já volta pronto para abrir a conversa; com
+    mais de um, a lista fica na linha da entrega; sem ninguém, a mensagem diz.
+    """
+    condominio = _condominio_para_operar(request)
+    unidade = _unidade_da_encomenda(request, condominio)
+    if unidade is None:
+        return _render_painel(
+            request,
+            modal="chegou-encomenda",
+            erro_encomenda="Escolha a unidade que recebe a encomenda.",
+            status=400,
+        )
+    transportadora = _transportadora_da_encomenda(request)
+    dados = {
+        "unidade": unidade,
+        "tipo_acesso": (
+            TipoAcessoPortaria.CORREIOS
+            if transportadora == TRANSPORTADORA_CORREIOS
+            else TipoAcessoPortaria.DELIVERY
+        ),
+        "nome": _nome_da_encomenda(transportadora),
+        # "Outra" não é transportadora: é a ausência dela. Guardar o rótulo
+        # faria o recado ao morador dizer "Outra" como se fosse uma empresa.
+        "empresa": "" if transportadora == TRANSPORTADORA_OUTRA else transportadora,
+        "status": StatusAutorizacaoPortaria.AUTORIZADO,
+        # O meio é o mesmo que a chegada não prevista já usa: a portaria é o
+        # lugar onde o resultado foi obtido, e a entrega não inventa um meio
+        # próprio só para caber no registro.
+        "meio_autorizacao": MeioAutorizacaoPortaria.INTERFONE,
+        "instrucao_entrega": _instrucao_da_encomenda(request),
+    }
+    try:
+        _autorizacao, acesso = registrar_chegada_com_resultado(
+            condominio=condominio, usuario=request.user, dados=dados
+        )
+    except ErroDePortaria as erro:
+        return _render_painel(
+            request,
+            modal="chegou-encomenda",
+            erro_encomenda=str(erro),
+            status=400,
+        )
+    try:
+        guardar_foto(acesso=acesso, arquivo=request.FILES.get("foto"))
+    except ErroDeFoto as erro:
+        messages.warning(request, str(erro))
+
+    avisos, _sem_whatsapp = _avisos_da_entrega(acesso)
+    if not avisos:
+        messages.success(
+            request, "Encomenda registrada. Sem WhatsApp autorizado nesta unidade."
+        )
+        return redirect(_destino("portaria:painel", condominio))
+    if len(avisos) > 1:
+        nomes = ", ".join(aviso["primeiro_nome"] for aviso in avisos)
+        messages.success(
+            request, f"Encomenda registrada. Avisar por WhatsApp: {nomes}."
+        )
+        return redirect(_destino("portaria:painel", condominio))
+    aviso = avisos[0]
+    messages.success(
+        request,
+        f"Encomenda registrada. Avisando {aviso['primeiro_nome']} pelo WhatsApp.",
+    )
+    return redirect(
+        f"{_destino('portaria:painel', condominio)}"
+        f"&avisar={acesso.pk}&pessoa={aviso['pessoa_id']}"
+    )
+
+
+def _unidade_da_encomenda(request, condominio):
+    """A unidade escolhida para receber a encomenda, se for deste condomínio."""
+    valor = (request.POST.get("unidade") or "").strip()
+    if not _eh_uuid(valor):
+        return None
+    return Unidade.objects.filter(pk=valor, condominio=condominio).first()
+
+
+def _transportadora_da_encomenda(request) -> str:
+    """A transportadora escolhida nos botões, ou "Outra" quando não for uma delas."""
+    escolhida = (request.POST.get("transportadora") or "").strip()
+    for nome, _rotulo in TRANSPORTADORAS_DE_ENTREGA:
+        if nome.casefold() == escolhida.casefold():
+            return nome
+    return TRANSPORTADORA_OUTRA
+
+
+def _instrucao_da_encomenda(request) -> str:
+    """O que fazer com a encomenda; sem escolha, ela fica na portaria."""
+    escolhida = (request.POST.get("instrucao_entrega") or "").strip()
+    if escolhida in InstrucaoEntrega.values:
+        return escolhida
+    return InstrucaoEntrega.DEIXAR_NA_PORTARIA
+
+
+def _nome_da_encomenda(transportadora: str) -> str:
+    """Como a encomenda aparece na lista: pela transportadora que a trouxe."""
+    if transportadora == TRANSPORTADORA_OUTRA:
+        return "Encomenda"
+    return f"Entrega {transportadora}"
 
 
 @login_required
@@ -799,6 +917,7 @@ def _render_painel(
     modal=None,
     relato="",
     proposta=None,
+    erro_encomenda="",
     status=200,
 ):
     """Monta a Portaria operacional, com histórico separado."""
@@ -854,6 +973,15 @@ def _render_painel(
         # Os tipos que são entrega — e não pessoa. A tela usa esta lista para
         # saber quando oferecer a leitura da etiqueta; a origem é única.
         "tipos_de_entrega": TIPOS_DE_ENTREGA,
+        # A encomenda em uma etapa: as transportadoras em botões e as instruções
+        # de entrega vêm do domínio, não de uma lista escrita na tela.
+        "transportadoras": TRANSPORTADORAS_DE_ENTREGA,
+        "instrucoes_de_entrega": InstrucaoEntrega.choices,
+        "erro_encomenda": erro_encomenda,
+        # A encomenda acabou de ser registrada e há um morador a avisar: o
+        # painel volta com o toque pronto. O JS abre o mesmo aviso da linha da
+        # entrega, para que o histórico registre quem foi avisado.
+        "aviso_a_abrir": _aviso_a_abrir(request),
         "campo_do_relato": campo_do_relato,
         "placeholder_do_relato": placeholder_do_relato,
         "respondendo": respondendo,
@@ -1208,6 +1336,20 @@ def _avisos_da_entrega(acesso):
         for pessoa in pessoas
     ]
     return avisos, False
+
+
+def _aviso_a_abrir(request):
+    """O aviso que o painel deve abrir sozinho depois de registrar a encomenda.
+
+    A tela só volta com esta marca quando a encomenda acabou de ser registrada
+    e há um morador elegível: o resto do tempo o painel é só o painel, e abrir
+    uma conversa de WhatsApp por conta própria seria um susto, não um atalho.
+    """
+    acesso = (request.GET.get("avisar") or "").strip()
+    pessoa = (request.GET.get("pessoa") or "").strip()
+    if not _eh_uuid(acesso) or not _eh_uuid(pessoa):
+        return None
+    return {"acesso": acesso, "pessoa": pessoa}
 
 
 def _avisos_registrados(acessos) -> dict:
