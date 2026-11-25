@@ -30,6 +30,7 @@ from django.db.models import Q
 
 from apps.accounts.models import User
 from apps.cadastros.models import Equipamento, LocalOperacional
+from apps.comunidade.models import Pessoa, VinculoPessoaUnidade
 from apps.condominios.models import Condominio
 
 from . import derivacao, interpretacao
@@ -107,6 +108,63 @@ def _equipamentos_entre(condominios):
         condominio__in=condominios,
         ativo=True,
     ).order_by("nome")
+
+
+class _SolicitanteDoCondominio(forms.ModelChoiceField):
+    """A pessoa escolhida como solicitante, com a unidade à vista.
+
+    Nome sozinho não distingue: num condomínio há homônimos. A unidade atual é
+    como a operação reconhece quem pediu, e por isso acompanha o nome na
+    escolha. Os rótulos já chegam prontos — montá-los aqui, pessoa a pessoa,
+    custaria uma consulta a cada opção desenhada.
+    """
+
+    def __init__(self, *args, rotulos=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rotulos = rotulos or {}
+
+    def label_from_instance(self, pessoa):
+        return self.rotulos.get(pessoa.pk) or str(pessoa)
+
+
+def _solicitantes_do_condominio(condominio, atual=None):
+    """As pessoas elegíveis como solicitante, e como cada uma deve ser lida.
+
+    Só quem está em uso — mais aquela que a demanda já aponta, para que um
+    cadastro desativado depois continue legível sem voltar a ser oferecido.
+    Duas consultas bastam: as pessoas e os vínculos vigentes com as unidades.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return Pessoa.objects.none(), {}
+
+    pessoas = Pessoa.objects.do_condominio(condominio)
+    if atual is not None and getattr(atual, "pk", None):
+        pessoas = pessoas.filter(Q(ativa=True) | Q(pk=atual.pk))
+    else:
+        pessoas = pessoas.ativas()
+    pessoas = pessoas.order_by("nome")
+
+    unidades_por_pessoa: dict = {}
+    vinculos = (
+        VinculoPessoaUnidade.objects.do_condominio(condominio)
+        .vigentes()
+        .select_related("unidade")
+    )
+    for vinculo in vinculos:
+        unidade = vinculo.unidade
+        nome_da_unidade = " ".join(
+            parte for parte in (unidade.bloco_torre, unidade.identificador) if parte
+        )
+        if nome_da_unidade:
+            unidades_por_pessoa.setdefault(vinculo.pessoa_id, []).append(nome_da_unidade)
+
+    rotulos = {}
+    for pessoa in pessoas:
+        unidades = unidades_por_pessoa.get(pessoa.pk, [])
+        rotulos[pessoa.pk] = (
+            f"{pessoa} — {', '.join(unidades)}" if unidades else str(pessoa)
+        )
+    return pessoas, rotulos
 
 
 # As escolhas de classificação na tela. O vazio não é "outro": é "ainda não
@@ -209,6 +267,18 @@ class DemandaForm(forms.Form):
         required=False,
         empty_label="Ninguém ainda",
         widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    # Quem pediu: o morador por trás da demanda. É escolha, não texto livre —
+    # aponta para o cadastro da pessoa, e é ele que permite mandar o
+    # acompanhamento por link. Escolher alguém faz a origem virar "Morador".
+    solicitante = _SolicitanteDoCondominio(
+        label="Quem pediu (morador)",
+        queryset=Pessoa.objects.none(),
+        required=False,
+        empty_label="Não informado",
+        widget=forms.Select(attrs={"class": "form-select"}),
+        help_text="O morador que pediu. Ao escolher alguém, a origem vira "
+        "\"Morador\".",
     )
     prazo = forms.DateField(
         label="Prazo",
@@ -314,6 +384,13 @@ class DemandaForm(forms.Form):
             f"{self['local_texto'].id_for_label}_lista"
         )
 
+        solicitantes, rotulos = _solicitantes_do_condominio(
+            self.condominio_efetivo, self._solicitante_atual()
+        )
+        campo_solicitante = self.fields["solicitante"]
+        campo_solicitante.queryset = solicitantes
+        campo_solicitante.rotulos = rotulos
+
     def _local_atual(self):
         """O local que a demanda já aponta, quando o formulário é de edição.
 
@@ -331,6 +408,13 @@ class DemandaForm(forms.Form):
         if not equipamento_id:
             return None
         return Equipamento.objects.filter(pk=equipamento_id).first()
+
+    def _solicitante_atual(self):
+        """O morador que a demanda já aponta, pela mesma razão do local."""
+        solicitante_id = (self.initial or {}).get("solicitante")
+        if not solicitante_id:
+            return None
+        return Pessoa.objects.filter(pk=solicitante_id).first()
 
     def _condominio_escolhido(self, permitidos):
         """Qual condomínio vale para montar a lista de responsáveis e de locais.

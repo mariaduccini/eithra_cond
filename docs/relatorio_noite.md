@@ -2,7 +2,15 @@
 
 ## Resumo final
 
-_(preenchido ao encerrar a fila, conforme a regra 11)_
+- Executadas as tarefas T2, T3, T4 e T5; parada obrigatória após a T5, conforme a fila.
+- T2 — tela única de vencimentos (governança) mais bloco no painel.
+- T3 — "Meu dia" para colaboradores (tela, bloco na home, item de menu).
+- T4 — listagem de demandas objetiva (chips, grade enxuta, ações por ícone).
+- T5 — acompanhamento e avaliação do morador por link (página pública, avaliação, envio por WhatsApp, retorno no painel).
+- Testes da T5: 9 OK no módulo novo; comando combinado = 579 testes, 10 falhas **pré-existentes** em `test_marca_do_shell` (branding, fora do escopo), sem regressão atribuível à T5.
+- T1 já estava feita (commit `a1bc929`); as demais tarefas da fila (T6+) ficaram pendentes pela parada obrigatória.
+- Nenhuma dependência nova; nenhuma migração rodada em `eithra_dev` (só `makemigrations`); nenhum servidor iniciado; nada em segundo plano.
+- Estado de cada tarefa registrado nas seções abaixo; o arquivo-bandeja (fora do repositório) não foi alterado.
 
 ## Registro por tarefa
 
@@ -126,3 +134,52 @@ _(preenchido ao encerrar a fila, conforme a regra 11)_
   também usa a palavra "Descrição" como etapa.
 - **Pendências:** nenhuma dentro do escopo. O arquivo-bandeja da fila está fora do
   repositório e não foi alterado, mantendo o precedente da T2/T3.
+
+### T5. Acompanhamento e avaliação do morador por link
+
+- **Tarefa:** T5 — o morador acompanha a demanda por um link (sem login) e, quando
+  ela é concluída, responde "Ficou resolvido?"; a gestão envia o link por WhatsApp;
+  o painel reúne o retorno e a listagem marca as demandas avaliadas.
+- **Commit:** ver `git log noite-25-11` para o hash desta entrega.
+- **Arquivos:** `apps/demandas/models.py` (`Demanda.solicitante`, novo
+  `AcompanhamentoMorador`, `HistoricoDemanda.usuario` anulável),
+  `apps/demandas/constants.py` (`AvaliacaoMorador`, `TipoEventoDemanda.AVALIACAO`),
+  `apps/demandas/forms.py` (`solicitante`), `apps/demandas/services.py`
+  (`registrar_avaliacao_do_morador`, `retorno_dos_moradores`),
+  `apps/demandas/views.py` (views/helpers públicos), `apps/demandas/urls.py`,
+  `apps/core/views.py` (bloco da home), `templates/base.html` (bloco `extra_head`),
+  `templates/pages/demandas/acompanhar_publico.html` (novo),
+  `templates/pages/demandas/detalhe.html`, `templates/pages/demandas/listagem.html`,
+  `templates/pages/home.html`, migrações `0012` e `0013`, e o teste novo
+  `apps/demandas/tests/test_acompanhamento_morador.py`.
+- **Testes rodados e resultado:**
+  - `apps.demandas.tests.test_acompanhamento_morador` → 9 testes, OK.
+  - `.\test-local.ps1 --noinput --keepdb apps.demandas.tests.test_acompanhamento_morador
+    apps.demandas.tests.test_detalhe_layout apps.core` → 579 testes, 10 falhas
+    **pré-existentes** em `test_marca_do_shell` (ver abaixo); o módulo novo e
+    `test_detalhe_layout` passam.
+- **Decisões tomadas:**
+  - A página pública não usa `@login_required` (o projeto não tem
+    `LoginRequiredMiddleware`), leva `noindex` e mostra só os campos permitidos;
+    token inexistente ou demanda cancelada há +30 dias resulta em 404.
+  - `_link_do_acompanhamento` centraliza `get_or_create` e
+    `request.build_absolute_uri`; o `AcompanhamentoMorador` nasce no primeiro
+    clique do ícone do WhatsApp.
+  - O evento `AVALIACAO` é registrado com `usuario=None` — daí o
+    `HistoricoDemanda.usuario` anulável (migração `0013`); o histórico nunca é
+    reescrito.
+  - "Não resolvido" não reabre a demanda: apenas registra o evento e a resposta
+    (uma avaliação por link).
+  - O bloco da home usa `condominios_para_criar` (ADMINISTRADORA/SINDICA/SUPERVISORA)
+    e `LIMITE_DO_RETORNO_NA_HOME = 3`, no mesmo padrão do "Meu dia".
+- **Correção de teste obsoleta (fora do comportamento da T5):** as 10 falhas de
+  `apps.core.tests.test_marca_do_shell` são **pré-existentes**, não regressão desta
+  entrega. `templates/layouts/app.html` (commit `ed75d9a`, ancestral de HEAD) exibe
+  `img/logorveoficial.PNG` fixo, enquanto o teste espera a logo do condomínio
+  (`eithra-logo-condominio-iniciais` / `logos/<pk>`). A única alteração da T5 em
+  arquivo compartilhado é o bloco inerte `{% block extra_head %}` em `base.html`.
+  Como o rebranding está fora do escopo da T5, foi decidido não mexer (regra da
+  noite: decidir e registrar).
+- **Pendências:** nenhuma dentro do escopo. O arquivo-bandeja da fila está fora do
+  repositório e não foi alterado. As tarefas seguintes (T6+) não foram executadas
+  por causa da PARADA OBRIGATÓRIA após a T5.

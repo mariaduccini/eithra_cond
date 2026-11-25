@@ -1,0 +1,105 @@
+{% extends "layouts/public.html" %}
+
+{% comment %}
+Acompanhamento do morador por link.
+
+Uma página pública e enxuta: quem pediu algo acompanha a demanda sem login e,
+quando ela é concluída, responde "Ficou resolvido?". O link carrega um token que
+ninguém adivinha, e é ele a credencial. O que se mostra aqui é o recorte do que
+diz respeito ao morador — nunca a operação por dentro. O endereço não é para
+indexar: daí o noindex.
+{% endcomment %}
+
+{% block title %}{{ acompanhamento.titulo }} · Acompanhamento{% endblock %}
+
+{% block extra_head %}
+  <meta name="robots" content="noindex">
+{% endblock %}
+
+{% block public_content %}
+  <div class="text-center mb-4">
+    {% if logo_do_condominio %}
+      <img
+        src="{{ logo_do_condominio }}"
+        alt="{{ acompanhamento.condominio }}"
+        style="max-height: 3rem; max-width: 100%; object-fit: contain;">
+    {% endif %}
+    <h1 class="h4 mt-3 mb-1">{{ acompanhamento.titulo }}</h1>
+    <p class="text-body-secondary mb-0">{{ acompanhamento.condominio }}</p>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center justify-content-center gap-2 mb-4">
+    <span class="badge bg-label-{{ acompanhamento.situacao_tom }}">{{ acompanhamento.situacao }}</span>
+    {% if acompanhamento.previsao %}
+      <span class="small text-body-secondary">Previsão: {{ acompanhamento.previsao }}</span>
+    {% endif %}
+  </div>
+
+  <dl class="row small mb-4">
+    <dt class="col-6 fw-normal text-body-secondary">Aberta em</dt>
+    <dd class="col-6 text-end mb-1">{{ acompanhamento.aberta_em }}</dd>
+    {% if acompanhamento.concluida_em %}
+      <dt class="col-6 fw-normal text-body-secondary">Concluída em</dt>
+      <dd class="col-6 text-end mb-1">{{ acompanhamento.concluida_em }}</dd>
+    {% endif %}
+  </dl>
+
+  {% if acompanhamento.concluida and not acompanhamento.respondido %}
+    <form method="post" action="{% url 'demandas:avaliar' token %}" class="mb-4">
+      {% csrf_token %}
+      <p class="fw-medium text-center mb-3">Ficou resolvido?</p>
+      <div class="d-flex justify-content-center gap-4 mb-3">
+        <button
+          type="submit"
+          name="avaliacao"
+          value="resolvido"
+          class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+          style="color: var(--bs-success);"
+          aria-label="Sim, resolvido">
+          <i class="bx bx-like" aria-hidden="true" style="font-size: 2.5rem;"></i>
+          <span class="small">Sim, resolvido</span>
+        </button>
+        <button
+          type="submit"
+          name="avaliacao"
+          value="nao_resolvido"
+          class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+          style="color: var(--bs-danger);"
+          aria-label="Não foi resolvido">
+          <i class="bx bx-dislike" aria-hidden="true" style="font-size: 2.5rem;"></i>
+          <span class="small">Não foi resolvido</span>
+        </button>
+      </div>
+      <label class="form-label small text-body-secondary" for="comentario-do-morador">
+        Quer contar o que aconteceu? (opcional)
+      </label>
+      <textarea
+        id="comentario-do-morador"
+        name="comentario"
+        class="form-control"
+        rows="3"
+        maxlength="{{ limite_do_comentario }}"
+        placeholder="Escreva aqui, se quiser detalhar."></textarea>
+    </form>
+  {% elif acompanhamento.respondido %}
+    <div class="alert alert-success d-flex align-items-start" role="alert">
+      <i class="bx bx-check-circle icon-md me-2 flex-shrink-0" aria-hidden="true"></i>
+      <div>
+        <div class="fw-medium">Obrigado! Sua resposta foi registrada.</div>
+        <div class="small">Você respondeu: {{ acompanhamento.avaliacao_rotulo }}.</div>
+      </div>
+    </div>
+  {% endif %}
+
+  <h2 class="h6 text-body-secondary mb-2">O que já aconteceu</h2>
+  <ul class="list-group list-group-flush">
+    {% for evento in acompanhamento.eventos %}
+      <li class="list-group-item px-0">
+        <div class="small text-body-secondary">{{ evento.momento }}</div>
+        <div>{{ evento.descricao }}</div>
+      </li>
+    {% empty %}
+      <li class="list-group-item px-0 text-body-secondary small">Nada registrado ainda.</li>
+    {% endfor %}
+  </ul>
+{% endblock %}

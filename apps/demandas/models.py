@@ -22,12 +22,14 @@ from django.db import models
 from django.utils import timezone
 
 from apps.cadastros.models import Equipamento, LocalOperacional
+from apps.comunidade.models import Pessoa
 from apps.condominios.models import Condominio
 from apps.core.storage import FORMATO_SHA256, erros_de_referencia_de_storage
 
 from .constants import (
     MIMES_DE_EVIDENCIA,
     AguardandoTipo,
+    AvaliacaoMorador,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
@@ -194,6 +196,16 @@ class Demanda(models.Model):
         choices=OrigemDemanda.choices,
         default=OrigemDemanda.MANUAL,
         help_text="De onde a demanda veio. Nesta fase, sempre registrada pela gestão.",
+    )
+    solicitante = models.ForeignKey(
+        Pessoa,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="demandas_solicitadas",
+        verbose_name="Quem pediu (morador)",
+        help_text="O morador que pediu, quando a demanda veio dele. Fica vazio "
+        "quando quem registrou não sabe quem foi.",
     )
     responsavel = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -516,9 +528,13 @@ class HistoricoDemanda(models.Model):
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="eventos_de_demanda",
         verbose_name="Quem registrou",
-        help_text="Quem provocou o evento. Preservado para rastreabilidade.",
+        help_text="Quem provocou o evento. Preservado para rastreabilidade. "
+        "Fica vazio quando o evento veio de fora da operação — a resposta do "
+        "morador, por exemplo —, que não tem conta no Eithra.",
     )
     data_hora = models.DateTimeField("Quando", default=timezone.now)
     tipo_evento = models.CharField(
@@ -674,3 +690,89 @@ class EvidenciaDemanda(models.Model):
 
     def __str__(self) -> str:
         return f"Evidência {self.get_tipo_midia_display()} · {self.demanda}"
+
+
+class AcompanhamentoMorador(models.Model):
+    """O link pelo qual o morador acompanha a própria demanda.
+
+    Quem pediu algo não entra no sistema: recebe um link com um token e, por
+    ele, vê o que aconteceu com o pedido — sem nome de funcionário, sem custo,
+    sem observação interna. Quando a demanda é concluída, é por este mesmo link
+    que ele responde "Ficou resolvido?".
+
+    Um link por demanda e por morador. O token existe antes de qualquer envio,
+    para que o mesmo endereço sirva ao aviso de abertura e ao pedido de
+    avaliação. A resposta é dada uma vez e fica guardada aqui: o que o morador
+    achou não muda a situação da demanda, e "Não resolvido" não reabre nada.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    demanda = models.ForeignKey(
+        Demanda,
+        on_delete=models.CASCADE,
+        related_name="acompanhamentos",
+        verbose_name="Demanda",
+    )
+    pessoa = models.ForeignKey(
+        Pessoa,
+        on_delete=models.PROTECT,
+        related_name="acompanhamentos_de_demanda",
+        verbose_name="Morador",
+    )
+    token = models.UUIDField(
+        "Token",
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        help_text="O endereço do acompanhamento. Ninguém adivinha um UUID: "
+        "quem tem o link vê, quem não tem não vê.",
+    )
+    criado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="acompanhamentos_criados",
+        verbose_name="Criado por",
+        help_text="Quem gerou o link. Preservado para rastreabilidade.",
+    )
+    criado_em = models.DateTimeField("Criado em", auto_now_add=True)
+    avaliacao = models.CharField(
+        "Avaliação",
+        max_length=20,
+        choices=AvaliacaoMorador.choices,
+        blank=True,
+        help_text="O que o morador respondeu a 'Ficou resolvido?'. Vazio é ainda "
+        "não respondido.",
+    )
+    comentario = models.TextField(
+        "Comentário",
+        blank=True,
+        help_text="O que o morador quis acrescentar à resposta, quando quis.",
+    )
+    avaliado_em = models.DateTimeField("Avaliado em", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Acompanhamento do morador"
+        verbose_name_plural = "Acompanhamentos dos moradores"
+        ordering = ["-criado_em"]
+        constraints = [
+            # Uma resposta por morador e por demanda: o mesmo link não pergunta
+            # duas vezes, e uma segunda resposta não sobrescreveria a primeira.
+            models.UniqueConstraint(
+                fields=["demanda", "pessoa"],
+                name="demanda_um_acompanhamento_por_morador",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["demanda", "pessoa"],
+                name="acomp_demanda_pessoa_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Acompanhamento de {self.pessoa} · {self.demanda}"
+
+    @property
+    def respondido(self) -> bool:
+        """O morador já disse o que achou."""
+        return bool(self.avaliacao)

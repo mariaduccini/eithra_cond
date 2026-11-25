@@ -8,6 +8,7 @@ atualização sem reinventar o backend.
 import uuid
 
 from datetime import date, timedelta
+from urllib.parse import quote
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -21,6 +22,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.comunicacao.permissoes import pode_criar_comunicacao
+from apps.condominios import logo
 from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
@@ -30,6 +32,7 @@ from apps.manutencoes.permissoes import pode_criar_manutencao
 from . import movimentacao
 from .constants import (
     AguardandoTipo,
+    AvaliacaoMorador,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
@@ -64,7 +67,7 @@ from .forms import (
     SUGESTOES_DE_PROXIMA_ACAO,
     acoes_de_status,
 )
-from .models import Demanda, EvidenciaDemanda, peso_da_prioridade
+from .models import AcompanhamentoMorador, Demanda, EvidenciaDemanda, peso_da_prioridade
 from .permissoes import (
     condominios_para_criar,
     condominios_para_ver,
@@ -81,6 +84,7 @@ from .services import (
     contexto_de_governanca,
     criar_demanda,
     editar_demanda,
+    registrar_avaliacao_do_morador,
     registrar_evidencia_anexada,
     registrar_observacao,
 )
@@ -262,6 +266,7 @@ def criar(request):
         tipo_problema=dados.get("tipo_problema"),
         impacto=dados.get("impacto"),
         risco=dados.get("risco"),
+        solicitante=dados.get("solicitante"),
         classificacao_sugerida=dados.get("classificacao_sugerida"),
     )
     messages.success(request, "Demanda registrada.")
@@ -393,7 +398,7 @@ def editar(request, pk):
     # ninguém pediu.
     classificacao = {
         campo: dados.get(campo)
-        for campo in ("equipamento", "tipo_problema", "impacto", "risco")
+        for campo in ("equipamento", "tipo_problema", "impacto", "risco", "solicitante")
         if campo in request.POST
     }
     editar_demanda(
@@ -973,6 +978,152 @@ def evidencia_arquivo(request, pk, evidencia_id):
     return redirect(destino)
 
 
+# -- Acompanhamento do morador pelo link ----------------------------------------
+#
+# O morador que pediu algo acompanha a demanda sem login, por um endereço com
+# token. O token é a única credencial: quem tem o link vê, quem não tem não vê.
+# O que a página mostra é um recorte do que a gestão enxerga — nunca o histórico
+# interno inteiro —, para não expor quem trabalhou, o que foi observado nem a
+# prova anexada.
+
+# Os únicos eventos que a linha do tempo pública conta. Observação, evidência,
+# edição e movimento de responsável ficam de fora: são a operação por dentro.
+EVENTOS_DO_ACOMPANHAMENTO_PUBLICO = (
+    TipoEventoDemanda.CRIADA,
+    TipoEventoDemanda.STATUS,
+    TipoEventoDemanda.CONCLUIDA,
+    TipoEventoDemanda.COMUNICADO,
+)
+
+# Por quanto tempo o link continua valendo depois que a demanda é cancelada.
+# Passado esse prazo, o endereço é esquecido — o morador já teve tempo de ver o
+# desfecho.
+DIAS_DE_VALIDADE_APOS_CANCELAMENTO = 30
+
+
+def _acompanhamento_publico_ou_404(token):
+    """O acompanhamento do token, ou 404 quando o endereço não vale mais.
+
+    Um token que não existe não se anuncia: a resposta é a mesma para o link
+    errado e para o que já caducou. A demanda cancelada continua legível por
+    trinta dias — depois disso, o acompanhamento deixa de existir.
+    """
+    acompanhamento = (
+        AcompanhamentoMorador.objects.select_related(
+            "demanda", "demanda__condominio", "pessoa"
+        )
+        .filter(token=token)
+        .first()
+    )
+    if acompanhamento is None:
+        raise Http404("Acompanhamento não encontrado.")
+
+    demanda = acompanhamento.demanda
+    if (
+        demanda.status == StatusDemanda.CANCELADA
+        and demanda.cancelado_em is not None
+        and demanda.cancelado_em
+        < timezone.now() - timedelta(days=DIAS_DE_VALIDADE_APOS_CANCELAMENTO)
+    ):
+        raise Http404("Acompanhamento não encontrado.")
+    return acompanhamento
+
+
+def _acompanhamento_para_o_morador(acompanhamento):
+    """O que a página pública mostra — e só isso.
+
+    Título, situação em linguagem humana, previsão, as datas e a linha do tempo
+    enxuta. Nada de nomes de funcionários, custos, observações ou evidências:
+    o morador acompanha o que lhe diz respeito, não a operação por dentro.
+    """
+    demanda = acompanhamento.demanda
+    hoje = timezone.localdate()
+    rotulo, tom = _situacao_humana(demanda, hoje)
+    eventos = [
+        {
+            "momento": _momento_por_extenso(evento.data_hora, hoje),
+            "tipo": evento.get_tipo_evento_display(),
+            "descricao": evento.descricao,
+        }
+        for evento in demanda.historico.filter(
+            tipo_evento__in=EVENTOS_DO_ACOMPANHAMENTO_PUBLICO
+        ).order_by("data_hora")
+    ]
+    return {
+        "titulo": demanda.titulo,
+        "condominio": demanda.condominio.nome,
+        "situacao": rotulo,
+        "situacao_tom": tom,
+        "previsao": _prazo_por_extenso(demanda.previsao) if demanda.previsao else "",
+        "aberta_em": _momento_por_extenso(demanda.criado_em, hoje),
+        "concluida_em": (
+            _momento_por_extenso(demanda.concluido_em, hoje)
+            if demanda.concluido_em
+            else ""
+        ),
+        "concluida": demanda.status == StatusDemanda.CONCLUIDA,
+        "respondido": acompanhamento.respondido,
+        "avaliacao": acompanhamento.avaliacao,
+        "avaliacao_rotulo": (
+            AvaliacaoMorador(acompanhamento.avaliacao).label
+            if acompanhamento.avaliacao
+            else ""
+        ),
+        "comentario": acompanhamento.comentario,
+        "eventos": eventos,
+    }
+
+
+def acompanhar_publico(request, token):
+    """A demanda como o morador a acompanha, sem login."""
+    acompanhamento = _acompanhamento_publico_ou_404(token)
+    return render(
+        request,
+        "pages/demandas/acompanhar_publico.html",
+        {
+            "acompanhamento": _acompanhamento_para_o_morador(acompanhamento),
+            "logo_do_condominio": logo.endereco(acompanhamento.demanda.condominio),
+            "token": acompanhamento.token,
+            "limite_do_comentario": 500,
+        },
+    )
+
+
+@require_POST
+def avaliar(request, token):
+    """Guarda a resposta do morador a "Ficou resolvido?".
+
+    A resposta chega pelo link, sem login. Só uma vale: a segunda tentativa não
+    reescreve o que o morador já disse. E responder "Não resolvido" não reabre a
+    demanda — a resposta é dele, e o ciclo continua onde a operação o deixou.
+    """
+    acompanhamento = _acompanhamento_publico_ou_404(token)
+    destino = reverse("demandas:acompanhar_publico", args=[acompanhamento.token])
+
+    if acompanhamento.demanda.status != StatusDemanda.CONCLUIDA:
+        messages.error(request, "Esta demanda ainda não foi concluída.")
+        return redirect(destino)
+
+    if acompanhamento.respondido:
+        messages.info(request, "Sua resposta já foi registrada.")
+        return redirect(destino)
+
+    avaliacao = (request.POST.get("avaliacao") or "").strip()
+    try:
+        registrar_avaliacao_do_morador(
+            acompanhamento=acompanhamento,
+            avaliacao=avaliacao,
+            comentario=request.POST.get("comentario") or "",
+        )
+    except ErroDeDemanda:
+        messages.error(request, "Escolha uma das duas respostas.")
+        return redirect(destino)
+
+    # A confirmação é a própria página: com o vínculo respondido, ela passa a
+    # dizer "Obrigado! Sua resposta foi registrada.". Nada é repetido num aviso.
+    return redirect(destino)
+
+
 # -- Autorização ----------------------------------------------------------------
 #
 # Toda pergunta passa pelo domínio. Quem não enxerga o módulo não descobre que a
@@ -1216,6 +1367,10 @@ def _render_detalhe(
         # uma etapa, e o aviso de manutenção aberta acompanha essa janela.
         "pode_concluir": pode_concluir,
         "manutencao_aberta": manutencao is not None,
+        # O caminho direto para o morador que pediu: um ícone de WhatsApp que
+        # abre a conversa com a mensagem já escrita. Só existe quando há a quem
+        # escrever e quem escreve pode editar a demanda.
+        "aviso_ao_morador": _aviso_ao_morador(request, demanda, pode_editar),
         # A ação principal é contextual: acompanhar a manutenção em curso quando
         # ela existe; sem manutenção, o que sustenta o próximo passo é a própria
         # demanda — o próximo passo combinado ou registrar o que aconteceu.
@@ -1284,7 +1439,9 @@ def _base_da_listagem(request, condominios, filtros):
     """
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
-    ).select_related("condominio", "responsavel", "local", "equipamento")
+    ).select_related("condominio", "responsavel", "local", "equipamento").prefetch_related(
+        "acompanhamentos"
+    )
 
     if filtros.is_valid():
         dados = filtros.cleaned_data
@@ -1521,6 +1678,7 @@ def _iniciais_da_demanda(demanda):
         # e deixa quem tem permissão mudá-lo como qualquer outro campo.
         "prioridade": demanda.prioridade,
         "responsavel": demanda.responsavel_id,
+        "solicitante": demanda.solicitante_id,
         "prazo": demanda.prazo,
         "local": demanda.local_id,
         # O lugar é perguntado como busca: aparece o nome do cadastro e, quando
@@ -1560,6 +1718,7 @@ def _formulario_da_informacao(formulario, condominios, usuario):
             # esse valor —, e é ele que segue adiante se ninguém tocar no campo.
             "prioridade": dados.get("prioridade") or leitura.prioridade,
             "responsavel": getattr(responsavel, "pk", None),
+            "solicitante": getattr(dados.get("solicitante"), "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
             "local_texto": local_texto,
@@ -1599,6 +1758,7 @@ def _formulario_da_revisao(formulario, condominios, usuario):
             # para chegar inteiro ao registro.
             "prioridade": dados.get("prioridade") or leitura.prioridade,
             "responsavel": getattr(responsavel, "pk", None),
+            "solicitante": getattr(dados.get("solicitante"), "pk", None),
             "prazo": dados.get("prazo"),
             "local": getattr(local, "pk", None),
             "local_texto": local_texto,
@@ -1881,6 +2041,58 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
     return acoes
 
 
+def _link_do_acompanhamento(request, demanda):
+    """O endereço público do acompanhamento, criando o vínculo na primeira vez.
+
+    O link é do morador, e por isso o token é dele: criado no primeiro pedido e
+    reaproveitado depois — um morador por demanda, um endereço por morador. Só
+    quem pode editar a demanda chega aqui, e é essa a permissão que sustenta a
+    criação: o link é um ato da gestão, não do acaso.
+    """
+    acompanhamento, _ = AcompanhamentoMorador.objects.get_or_create(
+        demanda=demanda,
+        pessoa=demanda.solicitante,
+        defaults={"criado_por": request.user},
+    )
+    return request.build_absolute_uri(
+        reverse("demandas:acompanhar_publico", args=[acompanhamento.token])
+    )
+
+
+def _aviso_ao_morador(request, demanda, pode_editar):
+    """O ícone de WhatsApp que fala com o morador que pediu — ou nada.
+
+    Só existe quando a demanda tem morador identificado, ele autorizou os avisos
+    por WhatsApp e tem número, e quem está olhando pode editar a demanda. A
+    mensagem muda com o momento: aberta, convida a acompanhar; concluída, pede a
+    resposta. O endereço leva a mensagem já escrita, pronta para enviar.
+    """
+    if not pode_editar or demanda.solicitante is None:
+        return None
+    pessoa = demanda.solicitante
+    if not pessoa.whatsapp or not pessoa.aceita_avisos_whatsapp:
+        return None
+
+    link = _link_do_acompanhamento(request, demanda)
+    primeiro = (str(pessoa).split() or [""])[0]
+    if demanda.status == StatusDemanda.CONCLUIDA:
+        tooltip = "Pedir avaliação ao morador"
+        texto = (
+            f'Olá, {primeiro}! Sua solicitação "{demanda.titulo}" foi concluída. '
+            f"Ficou resolvido? Responda aqui: {link}"
+        )
+    else:
+        tooltip = "Enviar acompanhamento ao morador"
+        texto = (
+            f'Olá, {primeiro}! Sua solicitação "{demanda.titulo}" foi registrada no '
+            f"condomínio {demanda.condominio.nome}. Acompanhe aqui: {link}"
+        )
+    return {
+        "tooltip": tooltip,
+        "url": f"https://wa.me/55{pessoa.whatsapp}?text={quote(texto, safe='')}",
+    }
+
+
 def _acao_pedida(request) -> dict:
     """A ação de ciclo que a tela pediu para abrir já escolhida.
 
@@ -2149,6 +2361,26 @@ def _momento_da_ultima_movimentacao(demanda) -> str:
     return _momento_por_extenso(evento.data_hora, timezone.localdate())
 
 
+def _avaliacao_do_morador_para_tela(demanda):
+    """A resposta do morador como a lista a mostra — ou nada, quando não houve.
+
+    A demanda pode ter mais de um acompanhamento (um por morador); a leitura da
+    lista é a resposta mais recente. O ícone é discreto de propósito: é um sinal
+    ao lado da situação, não uma coluna nova.
+    """
+    respondidos = [item for item in demanda.acompanhamentos.all() if item.avaliacao]
+    if not respondidos:
+        return None
+    ultima = max(respondidos, key=lambda item: item.avaliado_em or item.criado_em)
+    if ultima.avaliacao == AvaliacaoMorador.RESOLVIDO:
+        return {"tom": "success", "icone": "bx-like", "rotulo": "O morador disse: resolvido"}
+    return {
+        "tom": "danger",
+        "icone": "bx-dislike",
+        "rotulo": "O morador disse: não resolvido",
+    }
+
+
 def _demanda_para_tela(demanda, usuario=None):
     """A demanda como a linha da lista precisa dela.
 
@@ -2212,6 +2444,9 @@ def _demanda_para_tela(demanda, usuario=None):
         # situação. O resto vive no detalhe da demanda.
         "sinal_acompanhamento": sinal[0],
         "sinal_acompanhamento_tom": sinal[1],
+        # A resposta do morador, quando já houve: um ícone ao lado da situação,
+        # sem virar coluna. É o que a gestão quer ver de relance na grade.
+        "avaliacao_morador": _avaliacao_do_morador_para_tela(demanda),
         # Concluir não vive no menu da linha: ele tem o próprio ícone, e só
         # aparece para quem tem a conclusão entre as situações que alcança. A
         # mesma marca decide se a linha entra na conclusão em lote.

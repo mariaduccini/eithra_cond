@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from .constants import (
     AguardandoTipo,
+    AvaliacaoMorador,
     ImpactoDemanda,
     OrigemDemanda,
     PrioridadeDemanda,
@@ -20,7 +21,7 @@ from .constants import (
     TipoEventoDemanda,
     TipoProblema,
 )
-from .models import Demanda, HistoricoDemanda
+from .models import AcompanhamentoMorador, Demanda, HistoricoDemanda
 
 # A descrição do evento cabe no histórico como uma frase curta. Observações
 # longas são cortadas aqui, e não na tela.
@@ -91,6 +92,13 @@ def _nome_do_equipamento(equipamento) -> str:
     return equipamento.nome
 
 
+def _nome_da_pessoa(pessoa) -> str:
+    """O morador como a gestão o lê no histórico, ou a ausência dele."""
+    if pessoa is None or not getattr(pessoa, "pk", None):
+        return "não informado"
+    return str(pessoa)
+
+
 def _rotulo(escolhas, valor, vazio: str = "não informado") -> str:
     """Como a gestão lê um valor de escolha do cadastro, ou a ausência dele.
 
@@ -132,6 +140,7 @@ def criar_demanda(
     titulo: str,
     descricao: str = "",
     origem: str = OrigemDemanda.MANUAL,
+    solicitante=None,
     prioridade: str = PrioridadeDemanda.NORMAL,
     responsavel=None,
     prazo=None,
@@ -156,12 +165,20 @@ def criar_demanda(
     A área não é coluna: ela é derivada do tipo do local cadastrado, e a
     recorrência é uma leitura do histórico — guardar qualquer uma delas criaria
     uma segunda fonte de verdade que envelhece sozinha.
+
+    Quando há ``solicitante``, a origem passa a ser o morador: quem pediu não é
+    a gestão, e a procedência é consequência da escolha — não uma segunda
+    pergunta.
     """
+    if solicitante is not None:
+        origem = OrigemDemanda.MORADOR
+
     demanda = Demanda.objects.create(
         condominio=condominio,
         titulo=_texto(titulo),
         descricao=_texto_longo(descricao),
         origem=origem,
+        solicitante=solicitante,
         prioridade=prioridade,
         responsavel=responsavel,
         prazo=prazo,
@@ -187,6 +204,7 @@ def editar_demanda(
     descricao: str = "",
     prioridade: str,
     responsavel=None,
+    solicitante=_NAO_INFORMADO,
     prazo=None,
     local=None,
     local_contexto=None,
@@ -284,6 +302,33 @@ def editar_demanda(
             )
             demanda.local_contexto = local_contexto
             campos.append("local_contexto")
+
+    if solicitante is not _NAO_INFORMADO:
+        novo = solicitante or None
+        if getattr(novo, "pk", None) != demanda.solicitante_id:
+            _registrar(
+                demanda,
+                usuario,
+                TipoEventoDemanda.EDICAO,
+                "Solicitante: "
+                f"{_nome_da_pessoa(demanda.solicitante)} → {_nome_da_pessoa(novo)}",
+                anteriores={
+                    "solicitante": str(demanda.solicitante_id)
+                    if demanda.solicitante_id
+                    else None
+                },
+                novos={
+                    "solicitante": str(novo.pk) if getattr(novo, "pk", None) else None
+                },
+            )
+            demanda.solicitante = novo
+            campos.append("solicitante")
+        # Escolher um morador define a procedência: quem foi apontado como
+        # solicitante não registrou pela gestão. A origem acompanha a escolha,
+        # sem virar uma segunda pergunta.
+        if novo is not None and demanda.origem != OrigemDemanda.MORADOR:
+            demanda.origem = OrigemDemanda.MORADOR
+            campos.append("origem")
 
     if tipo_problema is not _NAO_INFORMADO:
         novo = tipo_problema or None
@@ -625,3 +670,98 @@ def registrar_manutencao(demanda, usuario, descricao: str) -> HistoricoDemanda:
     """
     texto = _texto(descricao) or "A manutenção vinculada teve um desfecho"
     return _registrar(demanda, usuario, TipoEventoDemanda.MANUTENCAO, texto)
+
+
+# Quantos dias a resposta do morador continua à vista de quem responde pelo
+# condomínio. Passado esse tempo, ela já foi lida — ou não era mais notícia.
+DIAS_DO_RETORNO_DO_MORADOR = 30
+
+# O comentário do morador tem teto: é uma resposta curta, não um relato. O que
+# passar disso é cortado na gravação, e não confiado ao que o navegador mandou.
+LIMITE_DO_COMENTARIO_DO_MORADOR = 500
+
+
+@transaction.atomic
+def registrar_avaliacao_do_morador(
+    *, acompanhamento: AcompanhamentoMorador, avaliacao: str, comentario: str = ""
+) -> HistoricoDemanda:
+    """Guarda a resposta do morador e a anota na memória da demanda.
+
+    A avaliação é do morador, e não da operação: por isso o evento não é
+    atribuído a nenhuma conta interna — a autoria está na frase, que diz quem
+    respondeu. Responder não reabre a demanda nem move a situação: o que o
+    morador disse fica registrado ao lado do que a operação concluiu, e as duas
+    coisas não se confundem.
+
+    Só a primeira resposta vale: o vínculo já respondido devolve ``None``, e
+    nada novo é escrito.
+    """
+    if avaliacao not in AvaliacaoMorador.values:
+        raise ErroDeDemanda("Avaliação inválida.")
+    if acompanhamento.respondido:
+        return None
+
+    comentario = _texto_longo(comentario)[:LIMITE_DO_COMENTARIO_DO_MORADOR]
+    acompanhamento.avaliacao = avaliacao
+    acompanhamento.comentario = comentario
+    acompanhamento.avaliado_em = timezone.now()
+    acompanhamento.save(update_fields=["avaliacao", "comentario", "avaliado_em"])
+
+    rotulo = AvaliacaoMorador(avaliacao).label
+    texto = f"Morador avaliou: {rotulo}"
+    if comentario:
+        texto += f" — {comentario}"
+    return _registrar(
+        acompanhamento.demanda,
+        None,
+        TipoEventoDemanda.AVALIACAO,
+        texto,
+        novos={"avaliacao": avaliacao, "morador": str(acompanhamento.pessoa)},
+    )
+
+
+def retorno_dos_moradores(condominio, *, dias=DIAS_DO_RETORNO_DO_MORADOR) -> dict:
+    """O que os moradores responderam, para quem responde pelo condomínio.
+
+    Duas leituras da mesma fonte: as respostas "Não resolvido" recentes — o que
+    ainda pode pedir uma ação — e o quanto do mês foi dado como resolvido. A
+    régua é o que o morador disse, e não o que a operação concluiu: é por isso
+    que a resposta fica guardada à parte da situação da demanda.
+    """
+    vazio = {"nao_resolvidos": [], "percentual_resolvido": None, "total_no_mes": 0}
+    if condominio is None or not getattr(condominio, "pk", None):
+        return vazio
+
+    agora = timezone.now()
+    recentes = (
+        AcompanhamentoMorador.objects.filter(
+            demanda__condominio_id=condominio.pk,
+            avaliacao=AvaliacaoMorador.NAO_RESOLVIDO,
+            avaliado_em__gte=agora - timedelta(days=dias),
+        )
+        .select_related("demanda", "pessoa")
+        .order_by("-avaliado_em")
+    )
+    nao_resolvidos = [
+        {
+            "demanda_id": item.demanda_id,
+            "titulo": item.demanda.titulo,
+            "morador": str(item.pessoa),
+            "comentario": item.comentario,
+            "quando": item.avaliado_em,
+        }
+        for item in recentes
+    ]
+
+    inicio_do_mes = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    do_mes = AcompanhamentoMorador.objects.filter(
+        demanda__condominio_id=condominio.pk,
+        avaliado_em__gte=inicio_do_mes,
+    )
+    total = do_mes.count()
+    resolvidos = do_mes.filter(avaliacao=AvaliacaoMorador.RESOLVIDO).count()
+    return {
+        "nao_resolvidos": nao_resolvidos,
+        "percentual_resolvido": round(resolvidos * 100 / total) if total else None,
+        "total_no_mes": total,
+    }

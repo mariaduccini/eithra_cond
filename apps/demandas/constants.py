@@ -183,6 +183,19 @@ MIMES_DE_EVIDENCIA = (
 )
 
 
+class AvaliacaoMorador(models.TextChoices):
+    """A resposta do morador à pergunta "Ficou resolvido?".
+
+    É uma leitura de fora da operação, e por isso não se confunde com a situação
+    da demanda: "Não resolvido" não reabre nada e não move o ciclo. O que a
+    resposta faz é registrar o que o morador achou — e ficar disponível para
+    quem responde pelo condomínio olhar depois.
+    """
+
+    RESOLVIDO = "resolvido", "Resolvido"
+    NAO_RESOLVIDO = "nao_resolvido", "Não resolvido"
+
+
 class TipoEventoDemanda(models.TextChoices):
     """O que aconteceu com a demanda, como ela é lembrada depois.
 
@@ -211,3 +224,7 @@ class TipoEventoDemanda(models.TextChoices):
     # cancelada. Como o comunicado, é um evento que a demanda recebe de fora: o
     # fato pertence à manutenção, e a demanda só lembra que ele aconteceu.
     MANUTENCAO = "manutencao", "Manutenção vinculada"
+    # O morador respondeu "Ficou resolvido?". Também vem de fora da operação — a
+    # resposta é dele, não da gestão —, mas fica no histórico da demanda porque
+    # é sobre ela, e é o que quem responde pelo condomínio vai querer reler.
+    AVALIACAO = "avaliacao", "Avaliação do morador"

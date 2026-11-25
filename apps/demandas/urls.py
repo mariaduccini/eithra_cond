@@ -17,6 +17,15 @@ urlpatterns = [
     path("registrar/", views.criar, name="criar"),
     path("transcrever/", views.transcrever_audio, name="transcrever"),
     path("concluir-em-lote/", views.concluir_em_lote, name="concluir_em_lote"),
+    # O acompanhamento do morador vive fora do login: o token no endereço é a
+    # credencial. A leitura é um GET livre; a resposta à avaliação chega por
+    # POST e também não pede conta — é o morador quem responde.
+    path(
+        "acompanhar/<uuid:token>/",
+        views.acompanhar_publico,
+        name="acompanhar_publico",
+    ),
+    path("acompanhar/<uuid:token>/avaliar/", views.avaliar, name="avaliar"),
     path("<uuid:pk>/", views.detalhe, name="detalhe"),
     path("<uuid:pk>/editar/", views.editar, name="editar"),
     path("<uuid:pk>/atualizar/", views.atualizar, name="atualizar"),

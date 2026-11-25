@@ -65,6 +65,17 @@
           <i class="bx bx-message-rounded-dots" aria-hidden="true"></i>
         </a>
       {% endif %}
+      {% if aviso_ao_morador %}
+        <a
+          class="eithra-acao-icone"
+          href="{{ aviso_ao_morador.url }}"
+          target="_blank"
+          rel="noopener"
+          title="{{ aviso_ao_morador.tooltip }}"
+          aria-label="{{ aviso_ao_morador.tooltip }}">
+          <i class="bx bxl-whatsapp" aria-hidden="true"></i>
+        </a>
+      {% endif %}
       {% if mais_acoes %}
         <div class="dropdown">
           <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações">
@@ -388,6 +399,9 @@
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prioridade %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.prazo %}
             {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel %}
+            {% comment %}Quem pediu: o morador por trás da demanda. É ele que
+            sustenta a origem "Morador" e o link de acompanhamento.{% endcomment %}
+            {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.solicitante %}
 
             {% comment %}Impacto e risco descrevem a consequência. Aparecem direto
             quando há o que corrigir; sem nada avaliado, não ocupam espaço no

@@ -170,6 +170,12 @@
                 <td class="eithra-col-responsavel small d-none d-xl-table-cell"><div class="eithra-duas-linhas" title="{{ demanda.responsavel }}">{{ demanda.responsavel }}</div></td>
                 <td class="eithra-col-situacao">
                   <span class="badge bg-label-{{ demanda.situacao_tom }}">{{ demanda.situacao_rotulo }}</span>
+                  {% comment %}Quando o morador já respondeu, o sinal da avaliação fica
+                  discreto ao lado da situação: só lembra quem olha a grade que já há
+                  um retorno de quem pediu.{% endcomment %}
+                  {% if demanda.avaliacao_morador %}
+                    <i class="bx {{ demanda.avaliacao_morador.icone }} text-{{ demanda.avaliacao_morador.tom }} ms-1" title="{{ demanda.avaliacao_morador.rotulo }}" aria-label="{{ demanda.avaliacao_morador.rotulo }}"></i>
+                  {% endif %}
                   <div class="eithra-col-situacao-prazo small text-body-secondary mt-1">{{ demanda.prazo }}</div>
                   {% comment %}O acompanhamento não vira coluna: o sinal aparece ao lado da
                   situação só quando muda uma decisão de quem olha a grade — o que está
@@ -252,6 +258,9 @@
                 </div>
                 <div class="mt-1 d-flex flex-wrap align-items-center gap-2">
                   <span class="badge bg-label-{{ demanda.situacao_tom }}">{{ demanda.situacao_rotulo }}</span>
+                  {% if demanda.avaliacao_morador %}
+                    <i class="bx {{ demanda.avaliacao_morador.icone }} text-{{ demanda.avaliacao_morador.tom }}" title="{{ demanda.avaliacao_morador.rotulo }}" aria-label="{{ demanda.avaliacao_morador.rotulo }}"></i>
+                  {% endif %}
                   <span class="small text-body-secondary"><i class="bx bx-user" aria-hidden="true"></i> {{ demanda.responsavel }}</span>
                 </div>
               </div>
@@ -481,6 +490,12 @@
                     {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.responsavel classe="mb-0" %}
                   </div>
                   <div class="col-12 col-lg-6">
+                    {% comment %}Quem pediu é dado do morador, não da operação: fica
+                    junto do responsável para que a origem da demanda — e o link de
+                    acompanhamento — tenham de onde sair.{% endcomment %}
+                    {% include "pages/cadastros/_campo.html" with campo=formulario_demanda.solicitante classe="mb-0" %}
+                  </div>
+                  <div class="col-12 col-lg-6">
                     {% comment %}O prazo não é criado automaticamente: a data só existe
                     quando quem registra a informa. O campo fica aqui exatamente para essa
                     decisão, e nunca é exigido para concluir o registro.{% endcomment %}
@@ -518,6 +533,7 @@
             {{ formulario_demanda.prioridade.as_hidden }}
             {{ formulario_demanda.prazo.as_hidden }}
             {{ formulario_demanda.responsavel.as_hidden }}
+            {{ formulario_demanda.solicitante.as_hidden }}
             {{ formulario_demanda.local.as_hidden }}
             {{ formulario_demanda.local_texto.as_hidden }}
             {% comment %}A classificação confirmada segue adiante sem ser perguntada de

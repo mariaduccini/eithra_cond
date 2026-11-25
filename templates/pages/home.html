@@ -296,6 +296,42 @@
       </div>
 
       <aside class="eithra-home-lateral">
+        {% if retorno_moradores.disponivel %}
+          {% if retorno_moradores.percentual_resolvido is not None or retorno_moradores.nao_resolvidos %}
+          <section class="eithra-home-secao">
+            <div class="eithra-home-secao-topo">
+              <div class="eithra-home-secao-texto">
+                <h2 class="eithra-home-secao-titulo">Retorno dos moradores</h2>
+                <p class="eithra-home-secao-legenda">O que quem pediu respondeu depois da conclusão.</p>
+              </div>
+              {% if retorno_moradores.percentual_resolvido is not None %}
+                <span class="badge bg-label-success">{{ retorno_moradores.percentual_resolvido }}% resolvido</span>
+              {% endif %}
+            </div>
+
+            <ul class="eithra-lista eithra-home-lista">
+              {% for item in retorno_moradores.nao_resolvidos %}
+                <li class="eithra-linha">
+                  <a class="eithra-linha-corpo text-decoration-none" href="{% url 'demandas:detalhe' item.demanda_id %}">
+                    <span class="eithra-linha-nome eithra-duas-linhas d-block">{{ item.titulo }}</span>
+                    <span class="eithra-linha-contexto d-block">{{ item.morador }} · <span class="text-danger">Não resolvido</span></span>
+                    {% if item.comentario %}
+                      <span class="eithra-linha-contexto d-block">“{{ item.comentario }}”</span>
+                    {% endif %}
+                  </a>
+                </li>
+              {% empty %}
+                <li class="eithra-linha">
+                  <div class="eithra-linha-corpo">
+                    <span class="eithra-linha-contexto d-block">Nenhum “Não resolvido” nos últimos 30 dias.</span>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+        {% endif %}
+
         {% if demandas_de_hoje %}
           <section class="eithra-home-secao">
             <div class="eithra-home-secao-topo">

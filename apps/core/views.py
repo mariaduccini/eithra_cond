@@ -51,8 +51,12 @@ from apps.core.supervisao import (
 )
 from apps.demandas.excecoes import obter_excecoes_de_demandas
 from apps.demandas.models import Demanda
-from apps.demandas.permissoes import condominios_para_ver, pode_gerenciar_em_algum_condominio
-from apps.demandas.services import ErroDeDemanda
+from apps.demandas.permissoes import (
+    condominios_para_criar,
+    condominios_para_ver,
+    pode_gerenciar_em_algum_condominio,
+)
+from apps.demandas.services import ErroDeDemanda, retorno_dos_moradores
 from apps.governanca.constants import PeriodicidadeCobranca
 from apps.governanca.models import ContratoFornecedor
 from apps.governanca.permissoes import condominios_para_gerenciar
@@ -83,6 +87,10 @@ LIMITE_DE_VENCIMENTOS_NA_HOME = 5
 # O "Meu dia" na Home é só um aperitivo: os três primeiros itens e o atalho
 # para a tela. A lista inteira continua a um clique.
 LIMITE_DO_MEU_DIA_NA_HOME = 3
+
+# O retorno dos moradores também é um aperitivo: as respostas "Não resolvido"
+# mais recentes, com o percentual do mês. O resto continua no módulo.
+LIMITE_DO_RETORNO_NA_HOME = 3
 
 # O que a tela mostra das leituras: só o que tem nome humano. Remetente,
 # assunto e momento já estão no cabeçalho; o resto vira linha rotulada.
@@ -208,6 +216,30 @@ def home(request):
         meu_dia_total = len(itens_do_dia)
         tem_mais_meu_dia = len(itens_do_dia) > LIMITE_DO_MEU_DIA_NA_HOME
 
+    # O retorno dos moradores é a voz de quem pediu, e não a leitura da
+    # operação. Quem responde pelo condomínio — administradora, síndica e
+    # supervisão — recebe as respostas "Não resolvido" recentes e o percentual
+    # do mês. A leitura mora em apps.demandas.services; aqui só se resolve o
+    # condomínio em vista e se corta o topo.
+    retorno_dos_moradores_do_dia = {
+        "disponivel": False,
+        "nao_resolvidos": [],
+        "percentual_resolvido": None,
+        "total_no_mes": 0,
+    }
+    tem_mais_retorno = False
+    condominios_do_retorno = list(
+        condominios_para_criar(request.user).order_by("nome")
+    )
+    if condominios_do_retorno:
+        retorno = retorno_dos_moradores(
+            _condominio_da_home(request, condominios_do_retorno)
+        )
+        tem_mais_retorno = len(retorno["nao_resolvidos"]) > LIMITE_DO_RETORNO_NA_HOME
+        retorno["nao_resolvidos"] = retorno["nao_resolvidos"][:LIMITE_DO_RETORNO_NA_HOME]
+        retorno["disponivel"] = True
+        retorno_dos_moradores_do_dia = retorno
+
     # O marcador do topo conta o que precisa de atenção. Para a supervisão, esse
     # número é o das ações dela; para os demais, segue a leitura das manutenções.
     total_de_hoje = resumo.total - resumo.proximas
@@ -245,6 +277,8 @@ def home(request):
             "meu_dia_itens": meu_dia_itens,
             "meu_dia_total": meu_dia_total,
             "tem_mais_meu_dia": tem_mais_meu_dia,
+            "retorno_moradores": retorno_dos_moradores_do_dia,
+            "tem_mais_retorno": tem_mais_retorno,
         },
     )
 
