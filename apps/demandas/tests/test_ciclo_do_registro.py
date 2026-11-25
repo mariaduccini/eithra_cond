@@ -220,9 +220,14 @@ class ContratosDoFluxoTests(SimpleTestCase):
         ).read_text(encoding="utf-8")
 
     def test_fechar_com_fechamento_centralizado_e_um_caminho_so(self):
-        """Cancelar e o X são o mesmo gesto: `data-bs-dismiss="modal"`."""
+        """Cancelar e o X são o mesmo gesto: `data-bs-dismiss="modal"`.
+
+        Cada janela da listagem — o registro e as duas de conclusão, a de uma
+        linha e a do lote — oferece os dois caminhos de fechar, e nenhum deles
+        é um `onclick`: são dois controles por janela, quatro janelas.
+        """
         self.assertEqual(
-            self.listagem.count('data-bs-dismiss="modal"'), 4
+            self.listagem.count('data-bs-dismiss="modal"'), 8
         )
         self.assertNotIn("onclick", self.listagem)
         self.assertEqual(

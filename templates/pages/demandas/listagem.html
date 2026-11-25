@@ -85,6 +85,23 @@
        {% if aba == 'concluidas' %}aria-current="page"{% endif %}>Concluídas</a>
   </nav>
 
+  {% comment %}A conclusão em lote só existe quando há, na página, ao menos uma demanda
+  que esta pessoa possa concluir. Cada linha recebe o próprio evento no histórico —
+  o lote muda o esforço de quem clica, nunca a memória de cada demanda.{% endcomment %}
+  {% if pode_concluir_alguma %}
+    <div class="eithra-lote-barra">
+      <span class="eithra-lote-contagem small text-body-secondary" data-eithra-lote-contagem>Nenhuma demanda selecionada</span>
+      <button
+        type="button"
+        class="btn eithra-btn-secundario"
+        data-bs-toggle="modal"
+        data-bs-target="#concluir-selecionadas"
+        data-eithra-lote-abrir
+        disabled>
+        <i class="bx bx-check-circle me-1" aria-hidden="true"></i>Concluir selecionadas
+      </button>
+    </div>
+  {% endif %}
 
   <div class="card eithra-operational-table-shell">
     {% if demandas %}
@@ -108,6 +125,15 @@
               clique põe a lista naquela ordem, e o segundo inverte. O sinal só
               aparece na coluna em vigor — nada de uma fileira de ícones
               competindo com o cabeçalho.{% endcomment %}
+              {% if pode_concluir_alguma %}
+                <th scope="col" class="eithra-col-selecao">
+                  <input
+                    type="checkbox"
+                    class="form-check-input"
+                    data-eithra-lote-todos
+                    aria-label="Selecionar todas as demandas que podem ser concluídas">
+                </th>
+              {% endif %}
               <th scope="col" class="eithra-col-codigo">Código</th>
               <th scope="col" class="eithra-col-titulo" aria-sort="{{ ordenacao.colunas.titulo.aria }}"><a class="eithra-ordenar{% if ordenacao.colunas.titulo.ativo %} is-ativo{% endif %}" href="{{ ordenacao.colunas.titulo.url }}">Título{% if ordenacao.colunas.titulo.indicador %}<span class="eithra-ordenar-sinal" aria-hidden="true"> {{ ordenacao.colunas.titulo.indicador }}</span>{% endif %}</a></th>
               <th scope="col" class="eithra-col-descricao d-none d-xxl-table-cell">Descrição</th>
@@ -123,6 +149,20 @@
           <tbody>
             {% for demanda in demandas %}
               <tr data-href="{% url 'demandas:detalhe' demanda.pk %}">
+                {% if pode_concluir_alguma %}
+                  <td class="eithra-col-selecao">
+                    {% if demanda.pode_concluir %}
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        name="demandas"
+                        value="{{ demanda.pk }}"
+                        form="form-concluir-lote"
+                        data-eithra-lote-escolha
+                        aria-label="Selecionar {{ demanda.titulo }}">
+                    {% endif %}
+                  </td>
+                {% endif %}
                 <td class="eithra-col-codigo">
                   <span class="eithra-demanda-codigo text-body-secondary">{{ demanda.referencia }}</span>
                 </td>
@@ -160,12 +200,27 @@
                   {% endif %}
                 </td>
                 <td class="eithra-col-acoes text-end">
-                  {% comment %}As ações secundárias vivem no menu de três pontos: a linha
-                  continua sendo o caminho para o detalhe, e nada aqui compete com
-                  ela. Cada item abre a mesma janela que a página da demanda já
-                  oferece.{% endcomment %}
+                  {% comment %}Concluir tem o próprio ícone — sem borda, no padrão dos
+                  ícones de ação do sistema —, e só aparece para quem tem a conclusão
+                  entre as situações que alcança. É a única ação direta da linha; o
+                  resto continua no menu de três pontos, e a linha segue sendo o
+                  caminho para o detalhe.{% endcomment %}
+                  {% if demanda.pode_concluir %}
+                    <button
+                      type="button"
+                      class="eithra-acao-icone"
+                      data-bs-toggle="modal"
+                      data-bs-target="#concluir-linha"
+                      data-eithra-concluir-url="{% url 'demandas:concluir' demanda.pk %}"
+                      data-eithra-concluir-resumo="{{ demanda.referencia }} · {{ demanda.titulo }}"
+                      {% if demanda.manutencao_aberta %}data-eithra-concluir-manutencao="1"{% endif %}
+                      title="Concluir demanda"
+                      aria-label="Concluir demanda">
+                      <i class="bx bx-check-circle" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
                   {% if demanda.acoes %}
-                    <div class="dropdown">
+                    <div class="dropdown d-inline-block">
                       <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
                         <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
                       </button>
@@ -187,6 +242,16 @@
         {% for demanda in demandas %}
           <div class="list-group-item" data-href="{% url 'demandas:detalhe' demanda.pk %}">
             <div class="d-flex align-items-start justify-content-between gap-2">
+              {% if pode_concluir_alguma and demanda.pode_concluir %}
+                <input
+                  type="checkbox"
+                  class="form-check-input mt-1 flex-shrink-0"
+                  name="demandas"
+                  value="{{ demanda.pk }}"
+                  form="form-concluir-lote"
+                  data-eithra-lote-escolha
+                  aria-label="Selecionar {{ demanda.titulo }}">
+              {% endif %}
               <div class="min-w-0">
                 <div class="text-body-secondary small">{{ demanda.referencia }}</div>
                 <a class="fw-medium text-heading text-decoration-none" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
@@ -206,18 +271,34 @@
               <div class="col-6"><span class="text-body-secondary">Registrada em</span><br>{{ demanda.registrada_em }}</div>
               <div class="col-6"><span class="text-body-secondary">Responsável</span><br>{{ demanda.responsavel }}</div>
             </div>
-            {% if demanda.acoes %}
-              <div class="d-flex justify-content-end mt-2">
-                <div class="dropdown">
-                  <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
-                    <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+            {% if demanda.acoes or demanda.pode_concluir %}
+              <div class="d-flex justify-content-end align-items-center gap-2 mt-2">
+                {% if demanda.pode_concluir %}
+                  <button
+                    type="button"
+                    class="eithra-acao-icone"
+                    data-bs-toggle="modal"
+                    data-bs-target="#concluir-linha"
+                    data-eithra-concluir-url="{% url 'demandas:concluir' demanda.pk %}"
+                    data-eithra-concluir-resumo="{{ demanda.referencia }} · {{ demanda.titulo }}"
+                    {% if demanda.manutencao_aberta %}data-eithra-concluir-manutencao="1"{% endif %}
+                    title="Concluir demanda"
+                    aria-label="Concluir demanda">
+                    <i class="bx bx-check-circle" aria-hidden="true"></i>
                   </button>
-                  <ul class="dropdown-menu dropdown-menu-end">
-                    {% for acao in demanda.acoes %}
-                      <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
-                    {% endfor %}
-                  </ul>
-                </div>
+                {% endif %}
+                {% if demanda.acoes %}
+                  <div class="dropdown">
+                    <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações de {{ demanda.titulo }}">
+                      <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      {% for acao in demanda.acoes %}
+                        <li><a class="dropdown-item" href="{{ acao.url }}"><i class="bx {{ acao.icon }} me-2" aria-hidden="true"></i>{{ acao.label }}</a></li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                {% endif %}
               </div>
             {% endif %}
           </div>
@@ -528,6 +609,102 @@
       </div>
     </div>
   {% endif %}
+
+  {% comment %}A janela de conclusão de uma linha. É uma só para a lista inteira: quem a
+  abre diz de qual demanda se trata, e o endereço do envio vem do próprio ícone.
+  Aqui não há duas etapas nem situação a escolher — concluir é simples.{% endcomment %}
+  {% if pode_concluir_alguma %}
+    <div
+      class="modal fade"
+      id="concluir-linha"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="concluir-linha-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg eithra-modal-operacional">
+        <form class="modal-content" id="form-concluir-linha" method="post" enctype="multipart/form-data" action="" data-eithra-concluir-form novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="concluir-linha-titulo">Concluir demanda</h5>
+              <div class="eithra-modal-identidade" data-eithra-concluir-resumo></div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small eithra-modal-nota">
+              Concluir encerra esta demanda. O que você contar e a prova que anexar
+              ficam no histórico dela — e nada disso é obrigatório.
+            </p>
+            <div>
+              <label class="form-label" for="id_texto_conclusao_linha">O que foi feito?</label>
+              <textarea name="texto" id="id_texto_conclusao_linha" class="form-control" rows="3" placeholder="Opcional. Descreva o que foi feito para concluir esta demanda."></textarea>
+            </div>
+            <div class="mt-3">
+              <label class="form-label" for="id_evidencias_conclusao_linha">Evidência (opcional)</label>
+              <input type="file" name="evidencias" id="id_evidencias_conclusao_linha" class="form-control" accept="{{ limites_evidencia.aceite }}" multiple>
+              <div class="form-text">{{ limites_evidencia.formatos }}, até {{ limites_evidencia.foto }} por foto e {{ limites_evidencia.video }} por vídeo.</div>
+            </div>
+            <div class="alert alert-warning mt-3 mb-0" role="alert" data-eithra-concluir-aviso hidden>
+              <div class="d-flex align-items-start gap-2">
+                <i class="bx bx-error-circle mt-1" aria-hidden="true"></i>
+                <div>
+                  <div>Há uma manutenção em aberto ligada a esta demanda.</div>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="confirmar_manutencao" id="confirmar-manutencao-linha" value="1">
+                    <label class="form-check-label" for="confirmar-manutencao-linha">Concluir mesmo assim</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn eithra-btn-primario">Concluir demanda</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    {% comment %}A janela da conclusão em lote: uma observação comum e um clique. As
+    demandas viajam pelas caixas da lista, presas a este formulário pelo atributo
+    ``form`` — a lista não vira um formulário inteiro por causa disso. Cada uma
+    recebe o próprio evento de conclusão no histórico.{% endcomment %}
+    <div
+      class="modal fade"
+      id="concluir-selecionadas"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="concluir-selecionadas-titulo"
+      aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" id="form-concluir-lote" method="post" action="{% url 'demandas:concluir_em_lote' %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="concluir-selecionadas-titulo">Concluir selecionadas</h5>
+              <div class="eithra-modal-identidade" data-eithra-lote-resumo></div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small eithra-modal-nota">
+              Cada demanda selecionada recebe o próprio evento de conclusão no
+              histórico. A observação abaixo é registrada em todas elas.
+            </p>
+            <div>
+              <label class="form-label" for="id_texto_conclusao_lote">Observação comum (opcional)</label>
+              <textarea name="texto" id="id_texto_conclusao_lote" class="form-control" rows="3" placeholder="Ex.: Encerradas na revisão de novembro."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn eithra-btn-primario">Concluir selecionadas</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -537,5 +714,98 @@
   para um botão que não está na tela.{% endcomment %}
   {% if voz_disponivel %}
     <script src="{% static 'js/eithra-ditar.js' %}"></script>
+  {% endif %}
+  {% if pode_concluir_alguma %}
+    <script>
+      // A conclusão na lista tem duas portas: o ícone de uma linha e o lote das
+      // caixas marcadas. O ícone diz, pelo próprio dado, de qual demanda se
+      // trata e para onde o envio vai; o lote conta as caixas antes de deixar
+      // seguir, para ninguém confirmar uma lista vazia.
+      (function () {
+        var ESCOLHA = "[data-eithra-lote-escolha]";
+        var caixas = document.querySelectorAll(ESCOLHA);
+        var contagem = document.querySelector("[data-eithra-lote-contagem]");
+        var abrirLote = document.querySelector("[data-eithra-lote-abrir]");
+        var todas = document.querySelector("[data-eithra-lote-todos]");
+        var resumoLote = document.querySelector("[data-eithra-lote-resumo]");
+        var linha = document.getElementById("concluir-linha");
+        var formLinha = document.querySelector("[data-eithra-concluir-form]");
+        var resumoLinha = document.querySelector("[data-eithra-concluir-resumo]");
+        var avisoLinha = document.querySelector("[data-eithra-concluir-aviso]");
+        var confirmarLinha = document.getElementById("confirmar-manutencao-linha");
+
+        function marcadas() {
+          var total = 0;
+          caixas.forEach(function (caixa) {
+            if (caixa.checked) {
+              total += 1;
+            }
+          });
+          return total;
+        }
+
+        function atualizarLote() {
+          var total = marcadas();
+          if (contagem) {
+            contagem.textContent =
+              total === 0
+                ? "Nenhuma demanda selecionada"
+                : total === 1
+                  ? "1 demanda selecionada"
+                  : total + " demandas selecionadas";
+          }
+          if (abrirLote) {
+            abrirLote.disabled = total === 0;
+          }
+          if (resumoLote) {
+            resumoLote.textContent =
+              total === 0
+                ? ""
+                : total === 1
+                  ? "1 demanda selecionada"
+                  : total + " demandas selecionadas";
+          }
+          if (todas) {
+            todas.checked = total > 0 && total === caixas.length;
+            todas.indeterminate = total > 0 && total < caixas.length;
+          }
+        }
+
+        caixas.forEach(function (caixa) {
+          caixa.addEventListener("change", atualizarLote);
+        });
+        if (todas) {
+          todas.addEventListener("change", function () {
+            caixas.forEach(function (caixa) {
+              caixa.checked = todas.checked;
+            });
+            atualizarLote();
+          });
+        }
+        atualizarLote();
+
+        if (linha) {
+          linha.addEventListener("show.bs.modal", function (evento) {
+            var gatilho = evento.relatedTarget;
+            if (!gatilho) {
+              return;
+            }
+            if (formLinha) {
+              formLinha.setAttribute("action", gatilho.dataset.eithraConcluirUrl || "");
+            }
+            if (resumoLinha) {
+              resumoLinha.textContent = gatilho.dataset.eithraConcluirResumo || "";
+            }
+            var precisa = gatilho.dataset.eithraConcluirManutencao === "1";
+            if (avisoLinha) {
+              avisoLinha.hidden = !precisa;
+            }
+            if (confirmarLinha) {
+              confirmarLinha.checked = false;
+            }
+          });
+        }
+      })();
+    </script>
   {% endif %}
 {% endblock %}

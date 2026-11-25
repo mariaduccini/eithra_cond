@@ -221,17 +221,21 @@ class ListagemDeDemandasTests(TestCase):
 
     # -- Coluna de ações -------------------------------------------------------
     #
-    # A linha inteira leva ao detalhe. O que se faz com a demanda vive no menu
-    # de três pontos — um único controle, e nada de ação direta competindo com
-    # o clique da linha (§47).
+    # A linha inteira leva ao detalhe. Concluir ganhou o próprio ícone — a única
+    # ação direta da linha —, e o resto continua no menu de três pontos, sem
+    # outra ação competindo com o clique da linha.
 
-    def test_a_coluna_de_acoes_mostra_apenas_o_menu_de_tres_pontos(self):
+    def test_a_coluna_de_acoes_reune_o_icone_de_concluir_e_o_menu(self):
         self._demanda(titulo="Portão travando")
         celula = self._celula_de_acoes(self._abrir())
 
+        # O menu de três pontos, com as ações que abrem janelas do detalhe.
         self.assertIn("bx-dots-vertical-rounded", celula)
-        # Um só controle fora do menu: o próprio botão do ⋮.
-        self.assertEqual(celula.count("<button"), 1)
+        # O ícone de concluir, no mesmo padrão dos ícones de ação do sistema.
+        self.assertIn("bx-check-circle", celula)
+        self.assertIn("eithra-acao-icone", celula)
+        # Dois controles: o ícone de concluir e o botão do ⋮ — nada mais.
+        self.assertEqual(celula.count("<button"), 2)
         # Nenhum botão direto na linha — nem lápis, nem olho, nem "visualizar".
         self.assertNotIn('<a class="btn', celula)
         self.assertNotIn("eithra-acoes", celula)

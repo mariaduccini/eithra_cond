@@ -758,6 +758,52 @@ class EvidenciaDaDemandaForm(forms.Form):
         return [arquivo for arquivo in arquivos if arquivo]
 
 
+class ConclusaoDaDemandaForm(forms.Form):
+    """A conclusão em uma etapa: o que foi feito e, se houver, a prova.
+
+    Concluir precisa ser simples: a demanda termina e o histórico registra. O
+    que a tela pergunta é opcional — o relato do que foi feito e a prova que o
+    sustenta —, e nada disso é obrigatório para encerrar. O mesmo formulário
+    serve à conclusão pelo ícone e à conclusão em lote, onde só o texto é usado.
+    """
+
+    texto = forms.CharField(
+        label="O que foi feito?",
+        max_length=LIMITE_DA_OBSERVACAO,
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Opcional. Descreva o que foi feito para concluir esta demanda.",
+            }
+        ),
+    )
+    evidencias = _VariosArquivos(
+        label="Evidência (opcional)",
+        required=False,
+        widget=_VariosArquivosInput(attrs={"class": "form-control"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        limites = limites_legiveis()
+        self.fields["evidencias"].widget.attrs["accept"] = ACEITE_DE_EVIDENCIA
+        self.fields["evidencias"].help_text = (
+            f"{limites['formatos']}. Até {limites['foto']} por foto e "
+            f"{limites['video']} por vídeo."
+        )
+
+    def clean_texto(self):
+        """Normaliza os espaços como o resto do domínio; vazio continua vazio."""
+        return " ".join((self.cleaned_data.get("texto") or "").split())
+
+    def arquivos_enviados(self) -> list:
+        """As provas escolhidas, na ordem em que chegaram."""
+        arquivos = self.cleaned_data.get("evidencias") or []
+        return [arquivo for arquivo in arquivos if arquivo]
+
+
 class FiltroDeDemandasForm(forms.Form):
     """Filtros essenciais da lista. Nunca obrigatórios: filtrar é opcional.
 

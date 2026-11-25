@@ -40,6 +40,21 @@
           <i class="bx {{ proximo_passo.icon }} me-1" aria-hidden="true"></i>{{ proximo_passo.label }}
         </a>
       {% endif %}
+      {% comment %}Concluir é ação de quem encerra a demanda, e é simples: um ícone
+      sem borda, no mesmo padrão do microfone do campo, abre a janela de uma
+      etapa. Só aparece para quem tem a conclusão entre as situações que
+      alcança.{% endcomment %}
+      {% if pode_concluir %}
+        <button
+          type="button"
+          class="eithra-acao-icone"
+          data-bs-toggle="modal"
+          data-bs-target="#concluir-demanda"
+          title="Concluir demanda"
+          aria-label="Concluir demanda">
+          <i class="bx bx-check-circle" aria-hidden="true"></i>
+        </button>
+      {% endif %}
       {% if pode_atualizar %}
         <a href="{% url 'demandas:detalhe' demanda.pk %}?abrir=atualizar&aba=visao_geral" class="btn {% if proximo_passo %}eithra-btn-secundario{% else %}eithra-btn-primario{% endif %}">
           <i class="bx bx-refresh me-1" aria-hidden="true"></i>Registrar atualização
@@ -608,6 +623,90 @@
               <button type="submit" name="etapa_atualizacao" value="conclusao" class="btn eithra-btn-primario">Confirmar</button>
             </div>
           {% endif %}
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {% comment %}Concluir é uma etapa só. O ícone do cabeçalho abre esta janela, e ela
+  pergunta o essencial — o que foi feito e, se houver, a prova —, sem obrigar
+  nenhum dos dois: a demanda encerra mesmo em silêncio. Quando existe manutenção
+  em aberto ligada à demanda, o aviso aparece aqui e pede a confirmação a mais;
+  nada disso substitui o serviço oficial do domínio, que é quem encerra.{% endcomment %}
+  {% if pode_concluir %}
+    <div
+      class="modal fade{% if modal_aberto == 'concluir' %} show eithra-modal-reaberto{% endif %}"
+      id="concluir-demanda"
+      tabindex="-1"
+      role="dialog"
+      aria-labelledby="concluir-demanda-titulo"
+      aria-hidden="{% if modal_aberto == 'concluir' %}false{% else %}true{% endif %}">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg eithra-modal-operacional">
+        <form class="modal-content" method="post" enctype="multipart/form-data" action="{% url 'demandas:concluir' demanda.pk %}" novalidate>
+          {% csrf_token %}
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="concluir-demanda-titulo">Concluir demanda</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-body-secondary small eithra-modal-nota">
+              Concluir encerra esta demanda. O que você contar e a prova que anexar
+              ficam no histórico dela — e nada disso é obrigatório.
+            </p>
+            {% if voz_disponivel %}
+              {% url 'demandas:transcrever' as url_da_transcricao_conclusao %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.texto voz_url=url_da_transcricao_conclusao voz_demanda=demanda.pk classe="mb-0" %}
+            {% else %}
+              {% include "pages/cadastros/_campo.html" with campo=formulario_conclusao.texto classe="mb-0" %}
+            {% endif %}
+            {% if voz_disponivel %}
+              <p class="eithra-ditar-recado" data-eithra-ditar-recado hidden aria-live="polite"></p>
+            {% endif %}
+
+            {% comment %}O campo é escrito à mão porque as outras janelas também têm
+            um campo de evidência, e dois campos com o mesmo id confundiriam o
+            rótulo de cada um.{% endcomment %}
+            <div class="mt-3">
+              <label class="form-label" for="id_evidencias_conclusao">{{ formulario_conclusao.evidencias.label }}</label>
+              <input
+                type="file"
+                name="evidencias"
+                id="id_evidencias_conclusao"
+                class="form-control"
+                accept="{{ limites_evidencia.aceite }}"
+                multiple>
+              <div class="form-text">{{ formulario_conclusao.evidencias.help_text }}</div>
+              {% for erro in formulario_conclusao.evidencias.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            {% for erro in formulario_conclusao.non_field_errors %}
+              <div class="alert alert-danger mt-3 mb-0" role="alert" data-eithra-erro-de-formulario>{{ erro }}</div>
+            {% endfor %}
+
+            {% if manutencao_aberta %}
+              <div class="alert alert-warning mt-3 mb-0" role="alert">
+                <div class="d-flex align-items-start gap-2">
+                  <i class="bx bx-error-circle mt-1" aria-hidden="true"></i>
+                  <div>
+                    <div>Há uma manutenção em aberto ligada a esta demanda.</div>
+                    <div class="form-check mt-2">
+                      <input class="form-check-input" type="checkbox" name="confirmar_manutencao" id="confirmar-manutencao" value="1">
+                      <label class="form-check-label" for="confirmar-manutencao">Concluir mesmo assim</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn eithra-btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn eithra-btn-primario">Concluir demanda</button>
+          </div>
         </form>
       </div>
     </div>

@@ -55,6 +55,7 @@ from .evidencias import (
 from .forms import (
     AcompanhamentoDaDemandaForm,
     AcaoDeStatusForm,
+    ConclusaoDaDemandaForm,
     DemandaForm,
     EvidenciaDaDemandaForm,
     FiltroDeDemandasForm,
@@ -667,6 +668,146 @@ def mudar_status(request, pk):
 
 @login_required
 @require_POST
+def concluir(request, pk):
+    """Conclui a demanda em uma etapa: o que foi feito e a prova, se houver.
+
+    O ícone de concluir abre esta porta. Um clique registra o relato (quando há
+    um), prende a evidência ao evento de conclusão e encerra a demanda pelo
+    serviço oficial do domínio — nada muda de situação antes da confirmação.
+
+    A manutenção aberta ligada à demanda é um aviso, não um impedimento: o
+    domínio não proíbe concluir com serviço em curso. Concluir assim pede uma
+    confirmação a mais, e nada mais.
+    """
+    demanda = _demanda_para_concluir(request, pk)
+    formulario = ConclusaoDaDemandaForm(request.POST, request.FILES)
+    if not formulario.is_valid():
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_conclusao=formulario,
+            modal="concluir",
+            status=400,
+        )
+
+    texto = formulario.cleaned_data.get("texto") or ""
+    arquivos = formulario.arquivos_enviados()
+
+    # Há uma manutenção em aberto para esta demanda e ninguém confirmou seguir
+    # mesmo assim: a tela volta com o aviso, e nada foi concluído.
+    if _manutencao_da_demanda(demanda) is not None and not request.POST.get(
+        "confirmar_manutencao"
+    ):
+        formulario.add_error(
+            None,
+            "Há uma manutenção em aberto ligada a esta demanda. "
+            "Confirme para concluir mesmo assim.",
+        )
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_conclusao=formulario,
+            modal="concluir",
+            status=400,
+        )
+
+    # A conclusão, o relato e as provas são uma coisa só: ou tudo entra, ou nada
+    # entra. A prova acompanha o evento de conclusão — é o instante que ela
+    # sustenta —, e o relato ganha o evento próprio de sempre.
+    try:
+        with transaction.atomic():
+            evento = alterar_status(
+                demanda=demanda,
+                usuario=request.user,
+                novo_status=StatusDemanda.CONCLUIDA,
+            )
+            if texto:
+                registrar_observacao(
+                    demanda=demanda, usuario=request.user, texto=texto
+                )
+            if arquivos:
+                evento = evento or registrar_evidencia_anexada(
+                    demanda=demanda, usuario=request.user
+                )
+                anexar_evidencias(
+                    demanda=demanda,
+                    arquivos=arquivos,
+                    usuario=request.user,
+                    evento=evento,
+                )
+    except (ErroDeDemanda, ErroDeEvidencia, ErroDeStorage) as erro:
+        formulario.add_error(None, str(erro))
+        return _render_detalhe(
+            request,
+            demanda,
+            formulario_conclusao=formulario,
+            modal="concluir",
+            status=400,
+        )
+
+    messages.success(request, "Demanda concluída.")
+    return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+
+
+@login_required
+@require_POST
+def concluir_em_lote(request):
+    """Conclui várias demandas de uma vez, com uma observação comum.
+
+    Em lote muda o esforço de quem clica, não a memória de cada demanda: cada
+    uma recebe o próprio evento de conclusão — e a observação comum quando ela
+    existe —, e o histórico guarda quem concluiu e quando, uma por uma.
+
+    Só entram as demandas que esta pessoa alcança e pode concluir; as demais são
+    ignoradas em silêncio, nunca concluídas por engano.
+    """
+    formulario = ConclusaoDaDemandaForm(request.POST)
+    if not formulario.is_valid():
+        messages.error(request, "Não foi possível concluir em lote. Revise o que foi informado.")
+        return redirect("demandas:listagem")
+
+    texto = formulario.cleaned_data.get("texto") or ""
+
+    escolhidas = []
+    for bruto in request.POST.getlist("demandas"):
+        try:
+            escolhidas.append(uuid.UUID(str(bruto)))
+        except (ValueError, TypeError, AttributeError):
+            continue
+
+    condominios = condominios_para_ver(request.user)
+    selecionadas = Demanda.objects.filter(
+        pk__in=escolhidas, condominio__in=condominios, ativo=True
+    )
+
+    concluidas = 0
+    for demanda in selecionadas:
+        if StatusDemanda.CONCLUIDA not in status_permitidos_para(request.user, demanda):
+            continue
+        try:
+            with transaction.atomic():
+                alterar_status(
+                    demanda=demanda,
+                    usuario=request.user,
+                    novo_status=StatusDemanda.CONCLUIDA,
+                )
+                if texto:
+                    registrar_observacao(
+                        demanda=demanda, usuario=request.user, texto=texto
+                    )
+        except ErroDeDemanda:
+            continue
+        concluidas += 1
+
+    if concluidas:
+        messages.success(request, f"{concluidas} demanda(s) concluída(s).")
+    else:
+        messages.error(request, "Nenhuma demanda selecionada pôde ser concluída.")
+    return redirect("demandas:listagem")
+
+
+@login_required
+@require_POST
 def observar(request, pk):
     """Registra o que se sabe sobre a demanda, sem mexer nos campos dela."""
     demanda = _demanda_para_observar(request, pk)
@@ -850,6 +991,20 @@ def _demanda_para_mudar_status(request, pk):
     return demanda
 
 
+def _demanda_para_concluir(request, pk):
+    """Resolve a demanda e exige, no backend, o direito de concluí-la.
+
+    A régua é a mesma de sempre: concluir só é oferecido a quem tem a conclusão
+    entre as situações que alcança. Quem não enxerga a demanda não descobre que
+    ela existe — a resposta é 404; quem enxerga mas não pode concluir é recusado
+    com 403.
+    """
+    demanda = _demanda_autorizada(request, pk)
+    if StatusDemanda.CONCLUIDA not in status_permitidos_para(request.user, demanda):
+        raise PermissionDenied("Esta pessoa não pode concluir esta demanda.")
+    return demanda
+
+
 def _demanda_para_observar(request, pk):
     """Resolve a demanda e exige, no backend, o direito de observar sobre ela."""
     demanda = _demanda_autorizada(request, pk)
@@ -880,6 +1035,7 @@ def _render_listagem(
     registro_etapa="descricao",
     sugestoes=None,
     revisao=None,
+    formulario_conclusao=None,
     status=200,
 ):
     """Monta a lista com os filtros aplicados e o formulário de nova demanda."""
@@ -896,11 +1052,14 @@ def _render_listagem(
     )
     pode_criar_condominios = condominios_para_criar(request.user)
     pode_criar = pode_criar_condominios.exists()
+    # As ações de cada linha saem da mesma régua do domínio que o resto do
+    # sistema. "Concluir" não vive no menu da linha: ele tem o próprio ícone, e
+    # a lista só o oferece — e só deixa selecionar para o lote — quando a pessoa
+    # tem a conclusão entre as situações que alcança.
+    linhas = [_demanda_para_tela(item, request.user) for item in pagina_demandas]
 
     contexto = {
-        "demandas": [
-            _demanda_para_tela(item, request.user) for item in pagina_demandas
-        ],
+        "demandas": linhas,
         "indicadores": _indicadores_da_listagem(condominios),
         "pagina_demandas": pagina_demandas,
         "filtros": filtros,
@@ -917,8 +1076,12 @@ def _render_listagem(
             "colunas": _cabecalhos_ordenaveis(request, chave, desce),
         },
         "pode_criar": pode_criar,
+        # A conclusão em lote só é oferecida quando há, na página, ao menos uma
+        # demanda que esta pessoa possa concluir.
+        "pode_concluir_alguma": any(linha["pode_concluir"] for linha in linhas),
         "formulario_demanda": formulario
         or (DemandaForm(condominios=pode_criar_condominios) if pode_criar else None),
+        "formulario_conclusao": formulario_conclusao or ConclusaoDaDemandaForm(),
         "modal_aberto": modal,
         # O registro não guarda rascunho: cada etapa é a resposta do envio
         # anterior. Fechar uma etapa descarta o envio, e o lugar de onde a tela
@@ -929,6 +1092,10 @@ def _render_listagem(
         "sugestoes": sugestoes,
         "revisao": revisao,
         "mostrar_condominio": condominios.count() > 1,
+        # O que a tela pode dizer do arquivo de prova sem expor bytes nem termos
+        # técnicos: os formatos aceitos e o tamanho de cada um. Vale para a
+        # janela de conclusão de uma linha.
+        "limites_evidencia": limites_legiveis(),
         # Falar é outra forma de preencher o relato. Sem serviço de
         # transcrição configurado, o botão não é oferecido e o registro por
         # texto continua exatamente como era.
@@ -946,6 +1113,7 @@ def _render_detalhe(
     formulario_observacao=None,
     formulario_evidencia=None,
     formulario_acompanhamento=None,
+    formulario_conclusao=None,
     modal=None,
     aba=None,
     etapa_atualizacao="informacoes",
@@ -960,6 +1128,9 @@ def _render_detalhe(
     # Acompanhar é a mesma autorização de observar: quem enxerga a demanda diz o
     # que sabe dela — por quem espera, o próximo passo, o que a trava.
     pode_acompanhar = pode_observar
+    # Concluir é oferecido a quem tem a conclusão entre as situações que
+    # alcança. Não há régua paralela: é a mesma do domínio.
+    pode_concluir = StatusDemanda.CONCLUIDA in permitidos
     manutencao = _manutencao_da_demanda(demanda)
     aba_atual = _aba_da_demanda(aba)
     historico = _historico_para_tela(demanda)
@@ -969,6 +1140,8 @@ def _render_detalhe(
     ) or (modal == "observacao" and not pode_observar) or (
         modal == "evidencia" and not pode_observar
     ) or (modal == "acompanhamento" and not pode_acompanhar) or (
+        modal == "concluir" and not pode_concluir
+    ) or (
         modal == "atualizar" and not (permitidos or pode_observar)
     ):
         modal = None
@@ -998,6 +1171,10 @@ def _render_detalhe(
         # Anexar uma prova é observar a demanda, não movê-la: quem acompanha
         # pode guardar a foto ou o vídeo sem mexer na situação.
         "pode_adicionar_evidencia": pode_observar,
+        # Concluir é a ação de quem encerra a demanda: o ícone abre a janela de
+        # uma etapa, e o aviso de manutenção aberta acompanha essa janela.
+        "pode_concluir": pode_concluir,
+        "manutencao_aberta": manutencao is not None,
         # A ação principal é contextual: acompanhar a manutenção em curso quando
         # ela existe; sem manutenção, o que sustenta o próximo passo é a própria
         # demanda — o próximo passo combinado ou registrar o que aconteceu.
@@ -1013,6 +1190,9 @@ def _render_detalhe(
         ),
         "formulario_observacao": formulario_observacao or ObservacaoDaDemandaForm(),
         "formulario_evidencia": formulario_evidencia or EvidenciaDaDemandaForm(),
+        # A janela de conclusão: o relato opcional do que foi feito e a prova que
+        # o sustenta. Vazio, ela é a mesma leitura limpa de sempre.
+        "formulario_conclusao": formulario_conclusao or ConclusaoDaDemandaForm(),
         "formulario_acompanhamento": formulario_acompanhamento
         or AcompanhamentoDaDemandaForm(demanda=demanda),
         # As sugestões de próxima ação que a janela do acompanhamento oferece.
@@ -1804,6 +1984,13 @@ def _demanda_para_tela(demanda, usuario=None):
     hoje = timezone.localdate()
     situacao, tom = _situacao_do_prazo(demanda.prazo, demanda.esta_encerrada, hoje)
     sinal = _sinal_do_acompanhamento(demanda)
+    # Concluir não vive no menu da linha: ele tem o próprio ícone, e só aparece
+    # para quem tem a conclusão entre as situações que alcança. A mesma marca
+    # decide se a linha entra na conclusão em lote. O aviso de manutenção aberta
+    # só é consultado de quem já pode concluir — é para essa janela que ele vale.
+    pode_concluir = bool(usuario) and StatusDemanda.CONCLUIDA in status_permitidos_para(
+        usuario, demanda
+    )
     return {
         "pk": demanda.pk,
         "referencia": _referencia_curta(demanda),
@@ -1840,6 +2027,12 @@ def _demanda_para_tela(demanda, usuario=None):
         # situação. O resto vive no detalhe da demanda.
         "sinal_acompanhamento": sinal[0],
         "sinal_acompanhamento_tom": sinal[1],
+        # Concluir não vive no menu da linha: ele tem o próprio ícone, e só
+        # aparece para quem tem a conclusão entre as situações que alcança. A
+        # mesma marca decide se a linha entra na conclusão em lote.
+        "pode_concluir": pode_concluir,
+        # O aviso da janela de conclusão: há serviço em curso ligado à demanda.
+        "manutencao_aberta": pode_concluir and _manutencao_da_demanda(demanda) is not None,
         "acoes": _acoes_da_linha(demanda, usuario),
     }
 

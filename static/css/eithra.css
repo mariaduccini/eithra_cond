@@ -1350,6 +1350,21 @@
   font-weight: 600;
 }
 
+/* A faixa da conclusão em lote vive entre as abas e a lista: a contagem à
+   esquerda, a ação à direita. Quando não há o que concluir na página, ela não
+   existe — e a lista começa onde sempre começou. */
+.eithra-lote-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-block-end: 0.75rem;
+}
+
+.eithra-lote-contagem {
+  min-inline-size: 0;
+}
+
 /* O registro manual é exceção: fica na ponta, discreto, sem competir com o
    que a portaria precisa fazer primeiro. */
 .eithra-portaria-acoes {
@@ -1607,6 +1622,32 @@
   margin: 0.5rem 0 0;
   font-size: 0.8125rem;
   color: var(--bs-secondary-color);
+}
+
+/* O ícone de ação — concluir a demanda — segue o desenho do microfone do campo:
+   sem borda e sem fundo à vista, o realce só aparece sob o dedo. O alvo de
+   toque é generoso (2.75rem = 44px), como o próprio microfone, para que o
+   gesto não exija mira. */
+.eithra-acao-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--bs-secondary-color);
+  font-size: 1.5rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.eithra-acao-icone:hover,
+.eithra-acao-icone:focus-visible {
+  background-color: rgba(var(--bs-secondary-rgb), 0.12);
+  color: var(--bs-body-color);
 }
 
 .eithra-portaria-secao {
@@ -1931,10 +1972,19 @@
   inline-size: 14%;
 }
 
-/* O menu de três pontos é o único controle desta coluna, e tem sempre o mesmo
-   tamanho: largura fixa, sem depender do texto da linha. */
+/* A coluna de ações reúne o ícone de concluir e o menu de três pontos: largura
+   fixa, sem depender do texto da linha, dimensionada para os dois controles
+   lado a lado. */
 .eithra-operational-table .eithra-col-acoes {
-  inline-size: 4.5rem;
+  inline-size: 6.5rem;
+}
+
+/* A caixa de seleção do lote: estreita e centrada, presente em todas as linhas
+   que a pessoa pode concluir. Nas demais a célula fica vazia, para a coluna
+   não se deslocar de uma linha para outra. */
+.eithra-operational-table .eithra-col-selecao {
+  inline-size: 2.75rem;
+  text-align: center;
 }
 
 /* Acima de `xl` o responsável volta: a lista passa a ter nove colunas e é ele
