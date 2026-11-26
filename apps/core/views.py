@@ -34,10 +34,12 @@ from apps.balancos.privacidade import (
     linha_privada,
     linha_para_o_morador,
 )
+from apps.cadastros.permissoes import condominios_para_ver, pode_ver_cadastros
 from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.condominios import logo
 from apps.condominios.acesso import condominios_com_papel
 from apps.core import email_acoes
+from apps.core.predio import niveis_do_predio
 from apps.core.acompanhamento import (
     GESTO_ATUALIZAR,
     GESTO_ENCERRAR,
@@ -405,6 +407,38 @@ def _saudacao_do_dia() -> str:
     if hora < 18:
         return "Boa tarde"
     return "Boa noite"
+
+
+@login_required
+def predio(request):
+    """O prédio visto por dentro, com o estado vivo de cada nível.
+
+    A tela lê o mesmo condomínio em vista que o resto do sistema — pela escolha
+    do endereço conferida contra a lista autorizada — e barra quem não enxerga os
+    cadastros: o mapa é a operação do condomínio, e o morador não entra nele.
+
+    O status de cada nível e o que há dentro dele vêm prontos de
+    ``apps.core.predio``: a tela não recalcula nada, só desenha.
+    """
+    condominios = list(condominios_para_ver(request.user))
+    condominio = _condominio_da_home(request, condominios)
+    if not pode_ver_cadastros(request.user, condominio):
+        raise PermissionDenied("Esta pessoa não pode ver o prédio.")
+
+    leitura = niveis_do_predio(condominio)
+    return render(
+        request,
+        "pages/predio/predio.html",
+        {
+            "condominios": condominios,
+            "condominio_atual": condominio,
+            "logo_do_condominio": logo.endereco(condominio),
+            "mostrar_seletor": len(condominios) > 1,
+            "niveis": leitura.niveis,
+            "niveis_lista": leitura.lista,
+            "sem_local": leitura.sem_local,
+        },
+    )
 
 
 @login_required

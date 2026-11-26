@@ -324,7 +324,7 @@
         {% if filtros_ativos %}
           {% comment %}Com busca ou recorte ativo, o vazio é resultado do que foi
           pedido — a saída é limpar o pedido, não registrar de novo.{% endcomment %}
-          {% querystring busca=None condominio=None status=None prioridade=None local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
+          {% querystring busca=None condominio=None status=None prioridade=None local=None sem_local=None responsavel=None prazo=None equipamento=None tipo_problema=None impacto=None risco=None minhas=None page=None as filtros_limpos %}
           {% include "components/state.html" with state_icon="bx-search" state_title="Nenhuma demanda encontrada" state_message="Nenhuma demanda corresponde à busca ou ao recorte atual. Tente outro termo ou limpe a busca." state_action_url=filtros_limpos state_action_label="Limpar busca" state_action_tone="discreta" %}
         {% elif aba == 'concluidas' %}
           {% include "components/state.html" with state_icon="bx-check-circle" state_title="Nenhuma demanda concluída" state_message="As demandas concluídas e canceladas aparecem aqui." %}

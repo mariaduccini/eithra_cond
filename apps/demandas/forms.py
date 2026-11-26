@@ -977,6 +977,14 @@ class FiltroDeDemandasForm(forms.Form):
         required=False,
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
     )
+    # O que chegou sem lugar: é por onde o prédio aponta as demandas que ainda
+    # não têm nível, e onde a gestão as distribui. Mora aqui, e não num filtro
+    # próprio, porque é o mesmo recorte — a lista já sabe mostrá-lo.
+    sem_local = forms.BooleanField(
+        label="Sem local",
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
 
     def __init__(self, *args, condominios=None, responsaveis=None, **kwargs):
         super().__init__(*args, **kwargs)

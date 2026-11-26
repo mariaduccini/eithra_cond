@@ -1626,6 +1626,8 @@ def _base_da_listagem(request, condominios, filtros):
             queryset = queryset.filter(prioridade=dados["prioridade"])
         if dados["local"]:
             queryset = queryset.filter(local=dados["local"])
+        if dados["sem_local"]:
+            queryset = queryset.filter(local__isnull=True)
         if dados["responsavel"]:
             queryset = queryset.filter(responsavel=dados["responsavel"])
         # A classificação entra como filtro pela mesma razão que o local: é o que

@@ -47,6 +47,16 @@ NAVIGATION = [
         "visivel_para": pode_ver_meu_dia,
     },
     {
+        # O prédio inteiro num desenho só: onde há pendência e o que há em cada
+        # nível. É a leitura de quem responde pelo condomínio — o mesmo recorte
+        # dos cadastros, em leitura para a supervisão. O menu não autoriza: a
+        # view é que decide.
+        "label": "Prédio",
+        "view_name": "core:predio",
+        "icon": "bx-buildings",
+        "visivel_para": pode_ver_cadastros_em_algum,
+    },
+    {
         "label": "Portaria",
         "view_name": "portaria:painel",
         "icon": "bx-door-open",

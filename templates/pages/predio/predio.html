@@ -1,0 +1,58 @@
+{% extends "layouts/app.html" %}
+{% load static %}
+
+{# O prédio por dentro: cada nível mostra, pela bolinha, se há pendência, e um
+   toque abre o que há ali. O desenho é um só — vem inteiro do SVG — e a tela só
+   lhe diz, nível a nível, o status que ele deve pintar. O painel lateral lê o
+   que já veio pronto do contexto: nenhuma página nova, nenhuma nova consulta. #}
+
+{% block title %}Prédio · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <h1 class="h4 mb-1">Prédio</h1>
+      <p class="text-body-secondary small mb-0">
+        Toque em um nível para ver o que há ali.
+      </p>
+    </div>
+    {% include "pages/cadastros/_seletor_condominio.html" %}
+  </div>
+
+  <div class="eithra-predio">
+    <div class="eithra-predio-desenho">
+      {% include "pages/predio/_predio.svg" %}
+    </div>
+
+    <ul class="eithra-predio-legenda" aria-label="Legenda do desenho">
+      <li><span class="eithra-bolinha eithra-bolinha-urgente" aria-hidden="true"></span> Urgente</li>
+      <li><span class="eithra-bolinha eithra-bolinha-atencao" aria-hidden="true"></span> Vence logo</li>
+      <li><span class="eithra-bolinha eithra-bolinha-ok" aria-hidden="true"></span> Em dia</li>
+    </ul>
+
+    <button
+      type="button"
+      class="eithra-predio-linha"
+      data-nivel="predio"
+      aria-label="Ver o que há no prédio inteiro">
+      <span class="eithra-bolinha eithra-bolinha-{{ niveis.predio.status|default:'ok' }}" aria-hidden="true"></span>
+      <span class="eithra-predio-linha-nome">Prédio inteiro</span>
+      <span class="eithra-predio-linha-resumo">Torre, fachadas, depósito, vagas</span>
+      <i class="bx bx-chevron-right" aria-hidden="true"></i>
+    </button>
+
+    {% if sem_local %}
+      <a class="eithra-predio-sem-local" href="{% url 'demandas:listagem' %}?sem_local=1">
+        <i class="bx bx-info-circle" aria-hidden="true"></i>
+        {{ sem_local }} demanda{{ sem_local|pluralize }} aberta{{ sem_local|pluralize }} sem local
+      </a>
+    {% endif %}
+  </div>
+
+  {% include "pages/predio/_painel.html" %}
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script src="{% static 'js/eithra-predio.js' %}"></script>
+{% endblock %}

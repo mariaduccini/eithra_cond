@@ -6142,3 +6142,244 @@ a:not(.btn):not(.menu-link):hover {
   font-size: 0.86rem;
 }
 
+/* ==========================================================================
+   Eithra · Prédio vivo
+   --------------------------------------------------------------------------
+   O prédio num desenho só: a bolinha de cada nível diz, de relance, se há
+   pendência, e o toque abre o que há ali. O desenho vem inteiro do SVG — o
+   arquivo não é redesenhado nem convertido — e aqui ficam apenas as cores de
+   estado, o pulso e a coluna de leitura do painel.
+   ========================================================================== */
+
+.eithra-predio {
+  max-inline-size: 34rem;
+}
+
+.eithra-predio-desenho svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+}
+
+/* O rótulo do desenho: corpo pequeno e o tom de apoio do sistema. */
+.rotulo {
+  fill: var(--eithra-texto-suave, #637075);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* O que se pode tocar: a área do nível e o seu ponto. */
+.eithra-predio .area,
+.eithra-predio .ponto {
+  cursor: pointer;
+}
+
+/* A bolinha do nível. O miolo é o ponto cheio, com fio branco para destacá-lo
+   do desenho; a onda é o pulso, vazia e invisível até haver pendência. */
+.eithra-predio .ponto .miolo {
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.eithra-predio .ponto .onda {
+  fill: none;
+  opacity: 0;
+}
+
+.eithra-predio .ponto-urgente .miolo {
+  fill: #e24b4a;
+}
+
+.eithra-predio .ponto-atencao .miolo {
+  fill: #ef9f27;
+}
+
+.eithra-predio .ponto-ok .miolo {
+  fill: #639922;
+}
+
+/* Só o que pede atenção pulsa: a onda cresce do miolo e some. Em dia, a
+   bolinha fica quieta. */
+.eithra-predio .ponto-urgente .onda {
+  fill: #e24b4a;
+}
+
+.eithra-predio .ponto-atencao .onda {
+  fill: #ef9f27;
+}
+
+.eithra-predio .ponto-urgente .onda,
+.eithra-predio .ponto-atencao .onda {
+  animation: eithra-predio-pulso 1.6s ease-out infinite;
+}
+
+@keyframes eithra-predio-pulso {
+  0% {
+    r: 7;
+    opacity: 0.55;
+  }
+  100% {
+    r: 14;
+    opacity: 0;
+  }
+}
+
+/* A mesma bolinha da legenda e da linha "Prédio inteiro", fora do desenho. */
+.eithra-bolinha {
+  display: inline-block;
+  flex: none;
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--eithra-papel, #ffffff);
+}
+
+.eithra-bolinha-urgente {
+  background: #e24b4a;
+}
+
+.eithra-bolinha-atencao {
+  background: #ef9f27;
+}
+
+.eithra-bolinha-ok {
+  background: #639922;
+}
+
+.eithra-predio-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.9rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+}
+
+.eithra-predio-legenda li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* A linha do prédio inteiro: uma linha de documento, não um cartão. */
+.eithra-predio-linha {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  inline-size: 100%;
+  padding: 0.7rem 0.35rem;
+  border: 0;
+  border-block-start: 1px solid var(--eithra-divisor, #e7e3eb);
+  border-radius: 0.5rem;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.eithra-predio-linha:hover,
+.eithra-predio-linha:focus-visible {
+  background: var(--eithra-lilas-claro, #eee9f6);
+}
+
+.eithra-predio-linha-nome {
+  color: var(--eithra-texto, #2f4146);
+  font-weight: 600;
+}
+
+.eithra-predio-linha-resumo {
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+}
+
+.eithra-predio-linha .bx-chevron-right {
+  margin-inline-start: auto;
+  color: var(--eithra-texto-suave, #637075);
+}
+
+.eithra-predio-sem-local {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-block-start: 0.85rem;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.eithra-predio-sem-local:hover {
+  text-decoration: underline;
+}
+
+/* O painel lateral: uma coluna de leitura, sem cartões. */
+.eithra-predio-painel {
+  inline-size: min(28rem, 100vw);
+}
+
+.eithra-predio-nivel-titulo {
+  margin: 0 0 0.85rem;
+  color: var(--eithra-petroleo, #36545b);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.eithra-predio-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-end: 1.25rem;
+}
+
+.eithra-predio-local {
+  padding-block: 0.9rem;
+  border-block-start: 1px solid var(--eithra-divisor, #e7e3eb);
+}
+
+.eithra-predio-local-nome {
+  margin: 0 0 0.35rem;
+  color: var(--eithra-texto, #2f4146);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.eithra-predio-rotulo {
+  margin: 0.65rem 0 0.25rem;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.eithra-predio-lista {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+  color: var(--eithra-texto, #2f4146);
+  font-size: 0.875rem;
+}
+
+.eithra-predio-lista li {
+  margin-block: 0.15rem;
+}
+
+.eithra-predio-lista a {
+  color: var(--eithra-petroleo, #36545b);
+}
+
+.eithra-predio-dados {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0.5rem 0 0;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eithra-predio .ponto-urgente .onda,
+  .eithra-predio .ponto-atencao .onda {
+    animation: none;
+  }
+}
+

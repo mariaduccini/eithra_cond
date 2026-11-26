@@ -1,0 +1,78 @@
+{% comment %}
+O painel lateral de um nível do prédio.
+
+Estilo documento, sem cartões: uma coluna de leitura, com as ações no alto e,
+abaixo, o que existe em cada local — os equipamentos, a próxima preventiva, a
+última manutenção concluída e as demandas abertas.
+
+Os níveis vêm todos montados, cada um no seu bloco, e o script mostra só o que
+foi tocado. Assim o painel não busca nada ao abrir: o que ele mostra já estava
+na página, e o toque é instantâneo.
+{% endcomment %}
+<div
+  class="offcanvas offcanvas-end eithra-predio-painel"
+  tabindex="-1"
+  id="painel-do-predio"
+  aria-labelledby="painel-do-predio-titulo">
+  <div class="offcanvas-header">
+    <h2 class="offcanvas-title h5" id="painel-do-predio-titulo">Nível</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+  </div>
+  <div class="offcanvas-body">
+    {% for nivel in niveis_lista %}
+      <section class="eithra-predio-nivel" data-nivel="{{ nivel.chave }}" hidden>
+        <p class="eithra-predio-nivel-titulo">{{ nivel.titulo }}</p>
+
+        <div class="eithra-predio-acoes">
+          <a class="btn btn-primary btn-sm" href="{{ nivel.abrir_demanda_url }}">
+            <i class="bx bx-plus" aria-hidden="true"></i> Abrir demanda aqui
+          </a>
+          <a class="btn btn-label-secondary btn-sm" href="{{ nivel.registrar_manutencao_url }}">
+            <i class="bx bx-wrench" aria-hidden="true"></i> Registrar manutenção
+          </a>
+        </div>
+
+        {% for local in nivel.locais %}
+          <article class="eithra-predio-local">
+            <h3 class="eithra-predio-local-nome">{{ local.nome }}</h3>
+
+            {% if local.equipamentos %}
+              <p class="eithra-predio-rotulo">Equipamentos</p>
+              <ul class="eithra-predio-lista">
+                {% for equipamento in local.equipamentos %}
+                  <li>
+                    {{ equipamento.nome }}{% if equipamento.modelo %} · {{ equipamento.modelo }}{% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+
+            {% if local.proxima_preventiva or local.ultima_conclusao %}
+              <p class="eithra-predio-dados">
+                {% if local.proxima_preventiva %}
+                  <span>Próxima preventiva: {{ local.proxima_preventiva|date:"d/m/Y" }}</span>
+                {% endif %}
+                {% if local.ultima_conclusao %}
+                  <span>Última manutenção: {{ local.ultima_conclusao|date:"d/m/Y" }}</span>
+                {% endif %}
+              </p>
+            {% endif %}
+
+            {% if local.demandas %}
+              <p class="eithra-predio-rotulo">Demandas abertas</p>
+              <ul class="eithra-predio-lista">
+                {% for demanda in local.demandas %}
+                  <li>
+                    <a href="{{ demanda.url }}">{{ demanda.titulo }}</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </article>
+        {% empty %}
+          <p class="text-body-secondary small">Nada cadastrado neste nível.</p>
+        {% endfor %}
+      </section>
+    {% endfor %}
+  </div>
+</div>
