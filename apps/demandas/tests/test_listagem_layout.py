@@ -1,11 +1,12 @@
 """Apresentação da listagem de demandas: grade enxuta e filtros rápidos.
 
-A lista deixou de separar código, título e descrição em três colunas: o código
-virou a linha miúda sob o título, a descrição, uma linha curta de contexto, e o
-prazo e a situação se juntaram em "Situação", dita em linguagem humana. Acima da
-grade, quatro chips recortam a lista e cada contador é o número exato de linhas
-que ele mostra. Estes testes travam essa estrutura, porque é ela que sustenta a
-leitura objetiva em qualquer resolução.
+A lista não separa mais código, título e descrição em três colunas: o código
+saiu da linha — vive no detalhe —, a descrição virou uma linha curta de
+contexto sob o título (e some quando não acrescenta leitura), e o prazo e a
+situação se juntaram em "Situação", dita em linguagem humana. Acima da grade,
+quatro chips recortam a lista e cada contador é o número exato de linhas que ele
+mostra. Estes testes travam essa estrutura, porque é ela que sustenta a leitura
+objetiva em qualquer resolução.
 """
 from datetime import timedelta
 
@@ -250,6 +251,43 @@ class ListagemDeDemandasTests(TestCase):
         # Cada ação traz o próprio ícone — as mesmas marcas do topo do detalhe.
         for acao in acoes:
             self.assertTrue(acao["icon"])
+
+    def test_o_menu_nao_guarda_situacoes_do_dia_a_dia(self):
+        """Concluir tem ícone; andar e esperar vivem no contar novidade."""
+        self._demanda()
+        resposta = self._abrir()
+        rotulos = [acao["label"] for acao in resposta.context["demandas"][0]["acoes"]]
+
+        for fora in ("Concluir demanda", "Iniciar", "Aguardar"):
+            self.assertNotIn(fora, rotulos)
+        # A ordem do que fica é a da decisão: manutenção, comunicado, editar e
+        # cancelar — todos com ícone.
+        self.assertEqual(
+            rotulos,
+            ["Criar manutenção", "Gerar comunicado", "Editar demanda", "Cancelar"],
+        )
+
+    def test_descricao_igual_ao_titulo_nao_vira_segunda_linha(self):
+        titulo = "Portão da garagem travando"
+        self._demanda(titulo=titulo, descricao=f"{titulo} há três dias")
+        resposta = self._abrir()
+
+        self.assertEqual(resposta.context["demandas"][0]["descricao_curta"], "")
+        self.assertNotContains(resposta, "há três dias")
+
+    def test_registro_por_email_vira_icone_sem_repetir_o_texto(self):
+        self._demanda(
+            titulo="Vazamento no 302",
+            descricao="Registro recebido por e-mail. Natureza: Vazamento.",
+        )
+        resposta = self._abrir()
+        linha = resposta.context["demandas"][0]
+
+        self.assertTrue(linha["veio_por_email"])
+        self.assertEqual(linha["email_natureza"], "Vazamento")
+        self.assertEqual(linha["descricao_curta"], "")
+        self.assertNotContains(resposta, "Registro recebido por e-mail")
+        self.assertContains(resposta, "bx-envelope")
 
     def test_o_acompanhamento_nao_tem_entrada_propria(self):
         """O acompanhamento passou a fazer parte do fluxo de atualização.

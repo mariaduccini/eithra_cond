@@ -297,7 +297,9 @@ class SugestaoPelaMovimentacaoTests(BaseDoAcompanhamento):
         self.demanda.refresh_from_db()
         self.assertEqual(self.demanda.aguardando_tipo, AguardandoTipo.FORNECEDOR)
         self.assertEqual(self.demanda.proxima_acao, "Cobrar o orçamento")
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+        # O relato não conclui a demanda: contar uma novidade numa demanda aberta
+        # a coloca em andamento, e concluir continua exigindo o relato que o diz.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
         self.assertFalse(
             self._eventos(TipoEventoDemanda.CONCLUIDA).exists(),
         )
@@ -318,7 +320,9 @@ class SugestaoPelaMovimentacaoTests(BaseDoAcompanhamento):
         self.assertEqual(self.demanda.impedimento, "")
         self.assertEqual(self.demanda.aguardando_tipo, AguardandoTipo.FORNECEDOR)
         self.assertEqual(self.demanda.previsao, sexta)
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+        # Contar novidade põe a demanda em andamento; concluir continua exigindo
+        # o relato que o diz, e aqui não houve.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
 
     def test_relato_ambiguo_nao_inventa_acompanhamento(self):
         etapa = self._abrir(RELATO_AMBIGUO)

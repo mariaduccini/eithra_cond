@@ -2083,16 +2083,6 @@
   font-size: 0.85em;
 }
 
-/* O código acompanha a demanda sem competir com o assunto: corpo menor que o
-   do título, peso normal e tom de apoio. Partido em pedaços ele não identifica
-   mais nada. */
-.eithra-operational-table .eithra-demanda-codigo {
-  font-size: 0.75rem;
-  font-weight: 400;
-  line-height: 1.3;
-  white-space: nowrap;
-}
-
 /* O rodapé fecha a lista, não abre um bloco novo: fio do divisor do sistema e o
    mesmo recuo lateral das células. Sem fundo, sem moldura, sem sombra — um
    card aqui faria a lista parecer duas. */
@@ -5015,6 +5005,14 @@ a:not(.btn):not(.menu-link):hover {
 }
 
 .eithra-chip-opcao.is-active i {
+  color: #fff;
+}
+
+/* Os botões de situação do relato são radios vestidos de chip: o rótulo segue
+   o campo escondido, e o escolhido ganha a cor cheia. */
+.eithra-situacao-relato input:checked + .eithra-chip-opcao {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal, #176f73);
   color: #fff;
 }
 

@@ -154,13 +154,16 @@
                     {{ demanda.titulo }}
                   </a>
                   <div class="eithra-demanda-meta small text-body-secondary">
-                    <span class="eithra-demanda-codigo">{{ demanda.referencia }}</span>
-                    <span aria-hidden="true">·</span>
                     <span>{{ demanda.registrada_relativa }}</span>
+                    {% if demanda.veio_por_email %}
+                      <span aria-hidden="true">·</span>
+                      <i class="bx bx-envelope" title="Veio por e-mail{% if demanda.email_natureza %} · {{ demanda.email_natureza }}{% endif %}" aria-label="Veio por e-mail{% if demanda.email_natureza %} · {{ demanda.email_natureza }}{% endif %}"></i>
+                    {% endif %}
                   </div>
                   {% comment %}A descrição contextualiza o título, nunca o repete: vira
-                  uma linha curta sob ele, com o texto inteiro no title. Não
-                  ocupa mais coluna própria.{% endcomment %}
+                  uma linha curta sob ele, com o texto inteiro no title. Some quando
+                  repete o título ou quando é só o registro de um e-mail — este vira
+                  o ícone discreto acima.{% endcomment %}
                   {% if demanda.descricao_curta %}
                     <div class="eithra-demanda-contexto small text-body-secondary eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
                   {% endif %}
@@ -252,10 +255,15 @@
               <div class="min-w-0 flex-grow-1">
                 <a class="eithra-demanda-titulo fw-medium text-heading text-decoration-none eithra-duas-linhas" href="{% url 'demandas:detalhe' demanda.pk %}">{{ demanda.titulo }}</a>
                 <div class="eithra-demanda-meta small text-body-secondary">
-                  <span class="eithra-demanda-codigo">{{ demanda.referencia }}</span>
-                  <span aria-hidden="true">·</span>
                   <span>{{ demanda.registrada_relativa }}</span>
+                  {% if demanda.veio_por_email %}
+                    <span aria-hidden="true">·</span>
+                    <i class="bx bx-envelope" title="Veio por e-mail{% if demanda.email_natureza %} · {{ demanda.email_natureza }}{% endif %}" aria-label="Veio por e-mail{% if demanda.email_natureza %} · {{ demanda.email_natureza }}{% endif %}"></i>
+                  {% endif %}
                 </div>
+                {% if demanda.descricao_curta %}
+                  <div class="eithra-demanda-contexto small text-body-secondary eithra-duas-linhas mt-1" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+                {% endif %}
                 <div class="mt-1 d-flex flex-wrap align-items-center gap-2">
                   <span class="badge bg-label-{{ demanda.situacao_tom }}">{{ demanda.situacao_rotulo }}</span>
                   {% if demanda.avaliacao_morador %}

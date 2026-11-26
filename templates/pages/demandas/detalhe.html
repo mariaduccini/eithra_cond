@@ -487,6 +487,26 @@
 
           {% if etapa_atualizacao == "informacoes" %}
             <div class="modal-body">
+              {% comment %}Acima do relato, os botões de situação dizem o que está
+              acontecendo agora: andando ou esperando alguém. A escolha viaja com o
+              relato e a situação é consequência — nada muda sem o Confirmar.{% endcomment %}
+              {% if situacoes_do_relato %}
+                <div class="eithra-situacao-relato mb-3" role="group" aria-label="Situação agora">
+                  <div class="eithra-modal-pergunta mb-2">Situação agora</div>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for situacao in situacoes_do_relato %}
+                      <input
+                        type="radio"
+                        class="btn-check"
+                        name="situacao"
+                        id="relato-situacao-{{ forloop.counter }}"
+                        value="{{ situacao.valor }}"
+                        {% if situacao.selecionada %}checked{% endif %}>
+                      <label class="eithra-chip-opcao" for="relato-situacao-{{ forloop.counter }}">{{ situacao.rotulo }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
               {% if pode_observar %}
                 <p class="eithra-modal-apoio">Conte o que aconteceu, informe a situação atual e, se quiser, indique o próximo passo.</p>
                 <h3 class="eithra-modal-pergunta">Conte o que aconteceu</h3>
@@ -571,6 +591,7 @@
               <button type="submit" name="etapa_atualizacao" value="informacoes" class="btn eithra-btn-primario">Continuar</button>
             </div>
           {% else %}
+            {% if situacao_escolhida %}<input type="hidden" name="situacao" value="{{ situacao_escolhida }}">{% endif %}
             {% if formulario_status.fields.acao.choices %}{{ formulario_status.acao.as_hidden }}{% endif %}
             {% if pode_observar %}{{ formulario_observacao.texto.as_hidden }}{% endif %}
             {% if pode_observar %}

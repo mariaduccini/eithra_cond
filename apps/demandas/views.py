@@ -121,6 +121,63 @@ ETAPAS_DA_ATUALIZACAO = (
     ("conclusao", "Conclusão", False),
 )
 
+# As situações que o relato oferece como botões, acima do texto: o que a pessoa
+# está fazendo com a demanda agora. "Andando" a põe em movimento; as três esperas
+# usam o único status de espera que existe e dizem por quem se espera no motivo —
+# o mesmo vocabulário do acompanhamento, sem inventar estado novo. A chave é o
+# par (situação, motivo): o motivo é vazio em "Andando".
+SITUACOES_DO_RELATO = (
+    (StatusDemanda.EM_ANDAMENTO, "", "Andando"),
+    (StatusDemanda.AGUARDANDO, AguardandoTipo.FORNECEDOR, "Esperando fornecedor"),
+    (StatusDemanda.AGUARDANDO, AguardandoTipo.MORADOR, "Esperando morador"),
+    (StatusDemanda.AGUARDANDO, AguardandoTipo.OUTRO, "Esperando outro"),
+)
+
+
+def _situacoes_do_relato(demanda, permitidos, escolhida="") -> list[dict]:
+    """Os botões de situação da janela do relato.
+
+    Pré-seleciona o que a pessoa já escolheu ao corrigir o relato; sem escolha,
+    pré-seleciona a situação em que a demanda está — em movimento, ou a espera
+    pelo motivo que o acompanhamento registra. Uma demanda que ainda não começou
+    a andar não pré-seleciona nada: registrar a novidade é o que a põe em
+    andamento. Só aparece o botão que a pessoa alcança.
+    """
+    atual = getattr(demanda, "status", None)
+    motivo_atual = getattr(demanda, "aguardando_tipo", "") or ""
+    botoes = []
+    for situacao, motivo, rotulo in SITUACOES_DO_RELATO:
+        if situacao not in permitidos:
+            continue
+        valor = f"{situacao}:{motivo}" if motivo else situacao
+        if escolhida:
+            selecionada = escolhida == valor
+        elif situacao == StatusDemanda.EM_ANDAMENTO:
+            selecionada = atual == StatusDemanda.EM_ANDAMENTO
+        else:
+            # Sem motivo registrado, a espera se lê como "por outro": é a leitura
+            # que não inventa destinatário.
+            selecionada = atual == StatusDemanda.AGUARDANDO and (
+                motivo_atual or AguardandoTipo.OUTRO
+            ) == (motivo or AguardandoTipo.OUTRO)
+        botoes.append(
+            {
+                "valor": valor,
+                "rotulo": rotulo,
+                "selecionada": selecionada,
+            }
+        )
+    return botoes
+
+
+def _situacao_do_relato(valor) -> tuple[str, str]:
+    """Lê o botão escolhido: a situação que ele pede e, na espera, por quem."""
+    if not valor:
+        return "", ""
+    situacao, _, motivo = valor.partition(":")
+    return situacao, motivo
+
+
 # As abas da listagem. A operação corrente e o histórico encerrado não se
 # misturam: cada aba é um recorte, e o padrão é o que está pedindo ação agora.
 ABAS_DA_LISTAGEM = ("ativas", "concluidas")
@@ -492,11 +549,19 @@ def atualizar(request, pk):
     # na demanda antes da confirmação.
     leitura = movimentacao.ler(texto, demanda=demanda)
 
-    # A tela diz o que aconteceu; a situação é consequência. A ação escolhida
-    # manda; quando ninguém escolheu nenhuma, quem ainda pode mover a demanda é
-    # o próprio relato — e só até onde esta pessoa alcança.
+    # A tela diz o que aconteceu; a situação é consequência. O botão de situação
+    # manda quando houve um; depois, a ação do seletor; quando ninguém escolheu
+    # nada, quem ainda pode mover a demanda é o próprio relato — e só até onde
+    # esta pessoa alcança.
+    situacao_pedida, motivo_da_espera = _situacao_do_relato(
+        (request.POST.get("situacao") or "").strip()
+    )
+    if situacao_pedida and situacao_pedida not in permitidos:
+        situacao_pedida, motivo_da_espera = "", ""
     proximo_status = demanda.status
-    if permitidos and formulario_status.is_valid():
+    if situacao_pedida:
+        proximo_status = situacao_pedida
+    elif permitidos and formulario_status.is_valid():
         proximo_status = formulario_status.cleaned_data.get("acao") or demanda.status
     if (
         proximo_status == demanda.status
@@ -515,16 +580,29 @@ def atualizar(request, pk):
     )
     if sugestao_por_manutencao:
         proximo_status = StatusDemanda.CONCLUIDA
-    proposta_acompanhamento = (
-        _proposta_de_acompanhamento(
+    # Registrar uma novidade numa demanda que ainda não começou a andar a põe em
+    # andamento: contar o que aconteceu é operar a demanda. Vale só quando nada
+    # mais já a moveu, e passa pelo mesmo serviço de sempre.
+    if (
+        proximo_status == demanda.status
+        and demanda.status == StatusDemanda.ABERTA
+        and texto
+        and StatusDemanda.EM_ANDAMENTO in permitidos
+    ):
+        proximo_status = StatusDemanda.EM_ANDAMENTO
+    proposta_acompanhamento = {}
+    if pode_observar:
+        proposta_acompanhamento = _proposta_de_acompanhamento(
             demanda,
             leitura,
             formulario_acompanhamento,
             enviado=acompanhamento_enviado,
         )
-        if pode_observar
-        else {}
-    )
+        # O botão de espera diz por quem a demanda espera, e isso é o mesmo
+        # vocabulário do acompanhamento: o motivo escolhido viaja junto com a
+        # situação, no campo que já existe.
+        if situacao_pedida == StatusDemanda.AGUARDANDO and motivo_da_espera:
+            proposta_acompanhamento["aguardando_tipo"] = motivo_da_espera
     resumo = _resumo_da_atualizacao(
         demanda,
         proximo_status,
@@ -548,6 +626,7 @@ def atualizar(request, pk):
             etapa_atualizacao="conclusao",
             resumo_atualizacao=resumo,
             confirmacao=confirmacao or uuid.uuid4().hex,
+            situacao_escolhida=(request.POST.get("situacao") or "").strip(),
         )
 
     if etapa == "corrigir":
@@ -561,6 +640,7 @@ def atualizar(request, pk):
             aba=request.GET.get("aba") or "visao_geral",
             etapa_atualizacao="informacoes",
             confirmacao=confirmacao or uuid.uuid4().hex,
+            situacao_escolhida=(request.POST.get("situacao") or "").strip(),
         )
 
     mudou_status = proximo_status != demanda.status
@@ -1357,6 +1437,7 @@ def _render_detalhe(
     etapa_atualizacao="informacoes",
     resumo_atualizacao=None,
     confirmacao=None,
+    situacao_escolhida="",
     status=200,
 ):
     """Monta a tela da demanda com o que esta pessoa pode fazer com ela."""
@@ -1435,6 +1516,11 @@ def _render_detalhe(
         ),
         "formulario_observacao": formulario_observacao or ObservacaoDaDemandaForm(),
         "formulario_evidencia": formulario_evidencia or EvidenciaDaDemandaForm(),
+        # As situações que o relato oferece como botões no "Contar novidade": o
+        # que está acontecendo agora. A escolhida — ou a atual — vem marcada.
+        "situacoes_do_relato": _situacoes_do_relato(
+            demanda, permitidos, escolhida=situacao_escolhida
+        ),
         # A janela de conclusão: o relato opcional do que foi feito e a prova que
         # o sustenta. Vazio, ela é a mesma leitura limpa de sempre.
         "formulario_conclusao": formulario_conclusao or ConclusaoDaDemandaForm(),
@@ -1448,6 +1534,9 @@ def _render_detalhe(
         "limites_evidencia": limites_legiveis(),
         "modal_aberto": modal,
         "etapa_atualizacao": etapa_atualizacao,
+        # A situação escolhida nos botões do relato, para ela atravessar a
+        # revisão sem se perder no caminho.
+        "situacao_escolhida": situacao_escolhida,
         "etapas_da_atualizacao": _etapas_para_tela(
             ETAPAS_DA_ATUALIZACAO, etapa_atualizacao
         ),
@@ -2022,36 +2111,26 @@ def _proximo_passo(demanda, usuario, manutencao):
     return None
 
 
-# O verbo da ação de ciclo como o menu do detalhe o oferece. Ao lado de editar e
-# de criar, "Concluir" precisa dizer o objeto — a mesma ação, com o nome inteiro.
-ROTULO_DO_MENU_DE_STATUS = {"Concluir": "Concluir demanda"}
+# As situações raras que continuam no menu de três pontos. "Andando" e as esperas
+# passaram a ter botão próprio na janela do relato; concluir tem o ícone do dia a
+# dia. O que sobra no menu é o que se faz de vez em quando — cancelar uma demanda
+# ou devolvê-la à operação —, e cada item leva ao formulário na ação escolhida.
+SITUACOES_RARAS_NO_MENU = frozenset({StatusDemanda.CANCELADA, StatusDemanda.ABERTA})
 
 
 def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
     """Ações secundárias do detalhe, preservando permissões do backend.
 
     Registrar uma atualização e adicionar evidência são as ações do dia a dia e
-    já aparecem à vista — repeti-las aqui seria ruído. O que vive neste menu é o
-    que se faz de vez em quando: mover a situação (Aguardar, Concluir, Cancelar),
-    editar o conteúdo, criar a manutenção que leva o problema para quem executa e
-    avisar os moradores. Cada item abre a janela que a tela já oferece: mover a
-    situação é o mesmo formulário de atualização, aberto já na ação escolhida.
+    já aparecem à vista — repeti-las aqui seria ruído; concluir também tem ícone
+    próprio, e por isso não se repete. O que vive neste menu é o que se faz de
+    vez em quando: criar a manutenção que leva o problema para quem executa,
+    avisar os moradores, editar o conteúdo e cancelar a demanda. Cada item abre a
+    janela que a tela já oferece: mover a situação é o mesmo formulário de
+    atualização, aberto já na ação escolhida.
     """
     acoes = []
     destino = reverse("demandas:detalhe", args=[demanda.pk])
-
-    # Mover a situação pelas mesmas ações que a pessoa alcança — a lista é a do
-    # domínio, não uma segunda régua escrita aqui. O item só abre o formulário
-    # na ação pedida; a escolha continua sendo confirmada no envio. O ícone é o
-    # da situação que cada ação produz, para o menu falar a mesma língua da tela.
-    for situacao, verbo in acoes_de_status(permitidos, demanda):
-        acoes.append(
-            {
-                "label": ROTULO_DO_MENU_DE_STATUS.get(verbo, verbo),
-                "icon": ICONE_DA_SITUACAO.get(situacao, "bx-circle"),
-                "url": f"{destino}?abrir=atualizar&aba=visao_geral&acao={situacao}",
-            }
-        )
 
     # Criar manutenção não é o caminho universal da demanda: aparece aqui quando
     # o fluxo a sustenta — pessoa autorizada e nenhuma manutenção já em curso.
@@ -2068,14 +2147,6 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
             }
         )
 
-    if pode_editar_demanda(usuario, demanda):
-        acoes.append(
-            {
-                "label": "Editar demanda",
-                "icon": "bx-pencil",
-                "url": f"{destino}?abrir=editar",
-            }
-        )
     # Comunicar aos moradores é uma capacidade transversal: a demanda é a origem,
     # e quem responde pelo condomínio é quem escreve o aviso. O comunicado nasce
     # apontando para esta demanda, e os dados dela continuam sendo dela.
@@ -2085,6 +2156,29 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
                 "label": "Gerar comunicado",
                 "icon": "bx-megaphone",
                 "url": f"{reverse('comunicacao:criar')}?demanda={demanda.pk}",
+            }
+        )
+
+    if pode_editar_demanda(usuario, demanda):
+        acoes.append(
+            {
+                "label": "Editar demanda",
+                "icon": "bx-pencil",
+                "url": f"{destino}?abrir=editar",
+            }
+        )
+
+    # Só a situação rara sobra no menu, pelas mesmas ações que a pessoa alcança —
+    # a lista é a do domínio, não uma segunda régua escrita aqui. O ícone é o da
+    # situação que cada ação produz, para o menu falar a mesma língua da tela.
+    for situacao, verbo in acoes_de_status(permitidos, demanda):
+        if situacao not in SITUACOES_RARAS_NO_MENU:
+            continue
+        acoes.append(
+            {
+                "label": verbo,
+                "icon": ICONE_DA_SITUACAO.get(situacao, "bx-circle"),
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral&acao={situacao}",
             }
         )
     return acoes
@@ -2480,6 +2574,13 @@ def _demanda_para_tela(demanda, usuario=None):
     # atualização, que já aceita evidência. Só é oferecida a quem pode observar
     # a demanda — a mesma régua do detalhe.
     pode_contar = bool(usuario) and pode_adicionar_observacao(usuario, demanda)
+    # A descrição só ocupa a segunda linha quando acrescenta leitura: repetir o
+    # título é ruído, e o registro de e-mail não é texto, é procedência.
+    email = _registro_por_email(demanda.descricao)
+    if email["veio_por_email"] or _repete_o_titulo(demanda.descricao, demanda.titulo):
+        descricao_curta = ""
+    else:
+        descricao_curta = _contexto_curto(demanda.descricao)
     return {
         "pk": demanda.pk,
         "referencia": _referencia_curta(demanda),
@@ -2489,10 +2590,14 @@ def _demanda_para_tela(demanda, usuario=None):
         # data sozinha obrigava a contar de cabeça.
         "registrada_em": _data_curta(demanda.criado_em),
         "registrada_relativa": _tempo_relativo(demanda.criado_em, hoje),
-        "descricao_curta": _contexto_curto(demanda.descricao),
+        "descricao_curta": descricao_curta,
         # O corte acima é de exibição: a lista mostra uma linha, e o texto
         # completo fica disponível no title. O que está guardado não muda.
         "descricao_completa": demanda.descricao,
+        # A procedência do registro: quando veio por e-mail, a lista troca o
+        # texto factual por um ícone com a natureza na dica.
+        "veio_por_email": email["veio_por_email"],
+        "email_natureza": email["email_natureza"],
         "condominio": demanda.condominio.nome,
         "responsavel": _nome_de(demanda.responsavel),
         "prazo": _prazo_por_extenso(demanda.prazo),
@@ -2549,9 +2654,10 @@ def _acoes_da_linha(demanda, usuario):
 
     As ações do dia a dia — concluir e contar novidade — têm o próprio ícone na
     linha e não se repetem aqui. O que vive no menu é o que se faz de vez em
-    quando: mover a situação, editar o conteúdo, criar a manutenção, avisar os
-    moradores. São as mesmas ações, com os mesmos ícones, do topo do detalhe; a
-    lista não inventa caminho que a demanda já não ofereça.
+    quando: criar a manutenção, avisar os moradores, editar o conteúdo e a
+    situação rara — cancelar a demanda, ou devolvê-la à operação. São as mesmas
+    ações, com os mesmos ícones, do topo do detalhe; a lista não inventa caminho
+    que a demanda já não ofereça.
     """
     if usuario is None:
         return []
@@ -2883,3 +2989,31 @@ def _contexto_curto(texto):
     if len(linha) <= 72:
         return linha
     return f"{linha[:69].rstrip()}..."
+
+
+PREFIXO_DO_REGISTRO_POR_EMAIL = "Registro recebido por e-mail."
+
+
+def _registro_por_email(descricao):
+    """A procedência de um registro que veio por e-mail, quando a descrição é isso.
+
+    "Registro recebido por e-mail. Natureza: X." é forma de carga, não leitura:
+    na lista vira um ícone com a natureza na dica. Só esse prefixo é reconhecido;
+    qualquer outro texto é descrição comum.
+    """
+    texto = (descricao or "").strip()
+    if not texto.startswith(PREFIXO_DO_REGISTRO_POR_EMAIL):
+        return {"veio_por_email": False, "email_natureza": ""}
+    natureza = ""
+    if "Natureza:" in texto:
+        natureza = texto.split("Natureza:", 1)[1].split(".", 1)[0].strip()
+    return {"veio_por_email": True, "email_natureza": natureza}
+
+
+def _repete_o_titulo(descricao, titulo):
+    """A descrição que só repete o título não vira segunda linha na lista."""
+    descricao = (descricao or "").strip()
+    titulo = (titulo or "").strip()
+    if not descricao or not titulo:
+        return False
+    return descricao == titulo or descricao.startswith(titulo)

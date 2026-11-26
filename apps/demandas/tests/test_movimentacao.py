@@ -111,7 +111,8 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
 
         self.assertEqual(resposta.status_code, 302)
         self.demanda.refresh_from_db()
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+        # Contar novidade numa demanda aberta a põe em andamento.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
 
         evento = self.demanda.historico.get(tipo_evento=TipoEventoDemanda.OBSERVACAO)
         self.assertEqual(evento.descricao, RELATO_SEM_CONSEQUENCIA)
@@ -123,7 +124,8 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
 
         self.assertEqual(resposta.status_code, 302)
         self.demanda.refresh_from_db()
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
+        # A fala vale como o texto: contar novidade põe a demanda em andamento.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
 
         evento = self.demanda.historico.get(tipo_evento=TipoEventoDemanda.OBSERVACAO)
         self.assertEqual(evento.descricao, RELATO_SEM_CONSEQUENCIA)
@@ -149,7 +151,7 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
 
     # --- a leitura propõe, nunca aplica --------------------------------------
 
-    def test_atualizacao_sem_consequencia_altera_apenas_o_historico(self):
+    def test_atualizacao_ambigua_inicia_a_demanda_sem_concluir(self):
         antes = self.demanda.historico.count()
 
         _, etapa = self._atualizar(RELATO_AMBIGUO)
@@ -157,8 +159,11 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
         self.assertEqual(etapa.context["resumo_atualizacao"]["identificado"], [])
         self.assertFalse(etapa.context["resumo_atualizacao"]["propoe_conclusao"])
         self.demanda.refresh_from_db()
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
-        self.assertEqual(self.demanda.historico.count(), antes + 1)
+        # O relato não identifica nada nem propõe concluir, mas contar novidade
+        # numa demanda aberta já a põe em andamento: entram o evento da situação
+        # e o da observação.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
+        self.assertEqual(self.demanda.historico.count(), antes + 2)
 
     def test_a_conclusao_explicita_e_apenas_proposta_antes_da_confirmacao(self):
         etapa = self._abrir(RELATO_DE_CONCLUSAO)
@@ -202,8 +207,10 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
         resumo = etapa.context["resumo_atualizacao"]
 
         self.assertEqual(resumo["identificado"], [])
+        # Nada foi identificado, mas contar novidade põe a demanda em andamento:
+        # é essa a consequência que a tela anuncia.
         self.assertEqual(
-            resumo["consequencia"], "A demanda continua na mesma situação."
+            resumo["consequencia"], "A demanda passará para Em andamento."
         )
         self.demanda.refresh_from_db()
         self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
@@ -319,18 +326,19 @@ class BaseDaMovimentacao(CenarioDaMovimentacao, TestCase):
         etapa = self._abrir(RELATO_SEM_CONSEQUENCIA)
         confirmacao = etapa.context["confirmacao"]
 
-        # O relato sustenta duas coisas agora: o que aconteceu (observação) e
-        # por quem a demanda passa a esperar (acompanhamento). São dois eventos,
-        # e uma movimentação continua valendo uma confirmação.
+        # O relato sustenta três coisas agora: a situação que passa a andar, o
+        # que aconteceu (observação) e por quem a demanda passa a esperar
+        # (acompanhamento). São três eventos, e uma movimentação continua
+        # valendo uma confirmação.
         self._confirmar(RELATO_SEM_CONSEQUENCIA, confirmacao)
-        self.assertEqual(self.demanda.historico.count(), 3)
+        self.assertEqual(self.demanda.historico.count(), 4)
 
         repetida = self._confirmar(RELATO_SEM_CONSEQUENCIA, confirmacao)
 
         self.assertEqual(repetida.status_code, 302)
         self.demanda.refresh_from_db()
-        self.assertEqual(self.demanda.status, StatusDemanda.ABERTA)
-        self.assertEqual(self.demanda.historico.count(), 3)
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
+        self.assertEqual(self.demanda.historico.count(), 4)
 
 
 class SugestaoDeConclusaoPelaManutencaoTests(CenarioDaMovimentacao, TestCase):

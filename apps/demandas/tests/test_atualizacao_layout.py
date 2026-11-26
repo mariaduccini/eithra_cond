@@ -14,6 +14,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.condominios.constants import Papel
+from apps.demandas.constants import AguardandoTipo, StatusDemanda
 from apps.demandas.services import LIMITE_DA_OBSERVACAO, criar_demanda
 from apps.demandas.tests.apoio import (
     criar_condominio,
@@ -162,7 +163,7 @@ class ModalDeAtualizacaoTests(TestCase):
         # continuam secundárias.
         self.assertEqual(janela.count("eithra-btn-primario"), 1)
 
-    def test_acompanhamento_e_confirmado_no_mesmo_fluxo_sem_mover_status(self):
+    def test_acompanhamento_e_confirmado_no_mesmo_fluxo_movendo_a_demanda(self):
         dados = {
             "etapa_atualizacao": "informacoes",
             "texto": RELATO,
@@ -192,7 +193,41 @@ class ModalDeAtualizacaoTests(TestCase):
         self.assertEqual(resposta.status_code, 302)
         self.demanda.refresh_from_db()
         self.assertEqual(self.demanda.proxima_acao, "Confirmar a visita técnica")
-        self.assertEqual(self.demanda.status, "aberta")
+        # Contar uma novidade numa demanda que ainda não andava a põe em
+        # andamento: operar a demanda é justamente registrar o que aconteceu.
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
+
+    def test_novidade_em_demanda_aberta_leva_a_em_andamento(self):
+        etapa = self._relato(texto=RELATO)
+        self.client.post(
+            reverse("demandas:atualizar", args=[self.demanda.pk]),
+            {
+                "etapa_atualizacao": "conclusao",
+                "texto": RELATO,
+                "confirmacao": etapa.context["confirmacao"],
+            },
+        )
+
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.EM_ANDAMENTO)
+
+    def test_esperando_fornecedor_grava_a_espera(self):
+        escolha = f"{StatusDemanda.AGUARDANDO}:{AguardandoTipo.FORNECEDOR}"
+        etapa = self._relato(texto=RELATO, situacao=escolha)
+        resposta = self.client.post(
+            reverse("demandas:atualizar", args=[self.demanda.pk]),
+            {
+                "etapa_atualizacao": "conclusao",
+                "texto": RELATO,
+                "situacao": escolha,
+                "confirmacao": etapa.context["confirmacao"],
+            },
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        self.demanda.refresh_from_db()
+        self.assertEqual(self.demanda.status, StatusDemanda.AGUARDANDO)
+        self.assertEqual(self.demanda.aguardando_tipo, AguardandoTipo.FORNECEDOR)
 
     @override_settings(**CONFIGURADO)
     def test_o_relato_continua_podendo_ser_ditado(self):

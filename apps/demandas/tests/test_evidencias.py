@@ -324,7 +324,9 @@ class EvidenciaNaAtualizacaoTests(BaseDeEvidencias):
 
         self.assertEqual(repetida.status_code, 302)
         self.assertEqual(EvidenciaDemanda.objects.count(), 1)
-        self.assertEqual(demanda.historico.count(), 2)
+        # Criação, a novidade que põe a demanda em andamento e a observação: a
+        # confirmação repetida não acrescenta nada a essa linha do tempo.
+        self.assertEqual(demanda.historico.count(), 3)
 
 
 class EvidenciaPorAudioTests(BaseDeEvidencias):
