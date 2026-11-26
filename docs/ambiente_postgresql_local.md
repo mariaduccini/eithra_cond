@@ -30,8 +30,9 @@ aparecem depois.
 O Django lê **um** arquivo de `.env`, e qual arquivo é decidido pela variável
 `EITHRA_ENV_FILE`:
 
-- sem a variável → lê `.env` (o remoto; é o comportamento de sempre);
-- com `EITHRA_ENV_FILE=.env.local` → lê `.env.local` (o local).
+- sem a variável → lê `.env.local` (o local; é o padrão seguro por omissão);
+- com `EITHRA_ENV_FILE=.env.local` → lê `.env.local` (o local);
+- com `EITHRA_ENV_FILE=<outro>` → lê o arquivo escolhido de forma explícita.
 
 Duas travas acompanham essa escolha:
 
@@ -42,9 +43,10 @@ Duas travas acompanham essa escolha:
 2. **Um arquivo escolhido que não existe é erro**, e não silêncio. Seguir em
    frente faria o ambiente subir contra o banco errado sem avisar.
 
-Nada disso fica no controle de versão: `.env` e `.env.local` são ignorados pelo
-`.gitignore`. Só os modelos — `.env.example` e `.env.local.example` — são
-versionados, e nenhum deles contém segredo.
+Nada disso fica no controle de versão: `.env`, `.env.local` e o antigo
+`.env.neon.desativado` são ignorados pelo `.gitignore`. Só os modelos —
+`.env.example` e `.env.local.example` — são versionados, e nenhum deles contém
+segredo.
 
 ## 3. Como criar o `.env.local`
 
@@ -130,19 +132,15 @@ arquivo (§3) e rodar de novo.
 O remoto continua disponível, e a forma de usá-lo é **não** usar os scripts: eles
 existem para o local.
 
-Para trabalhar contra o Neon, use o `.env` (que já aponta para lá) e chame o
-`manage.py` direto:
+O arquivo que aponta para o Neon foi **renomeado** de `.env` para
+**`.env.neon.desativado`** — ele não é lido por nenhum caminho padrão e está no
+`.gitignore`. Para trabalhar contra o Neon, informe esse arquivo de forma
+explícita em `EITHRA_ENV_FILE`:
 
 ```powershell
+$env:EITHRA_ENV_FILE = ".env.neon.desativado"
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py runserver
-```
-
-E, se preferir ser explícito sobre qual arquivo está lendo:
-
-```powershell
-$env:EITHRA_ENV_FILE = ".env"
-.\.venv\Scripts\python.exe manage.py check
 ```
 
 Lembre-se de limpar a variável quando terminar. Note também que os scripts
@@ -151,10 +149,10 @@ para preferir o terminal já "limpo" ao voltar para o remoto.
 
 ## 7. Conferir o alvo sem rodar nada
 
-Um comando só, que imprime HOST, NAME e USER e nada mais:
+Um comando só, que imprime HOST, NAME e USER e nada mais. Sem definir nada, o
+padrão já é o `.env.local`:
 
 ```powershell
-$env:EITHRA_ENV_FILE = ".env.local"
 .\.venv\Scripts\python.exe manage.py check
 ```
 

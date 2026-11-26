@@ -35,15 +35,16 @@ def _arquivo_de_ambiente(nome: str) -> Path:
     return candidato
 
 
-# O Eithra tem mais de um arquivo de ambiente — o remoto (.env) e o local
-# (.env.local) —, e a escolha é explícita por EITHRA_ENV_FILE. Sem a variável,
-# o comportamento é o de sempre: ler ".env".
-_env_file_name = os.environ.get("EITHRA_ENV_FILE", "").strip() or ".env"
+# O Eithra tem mais de um arquivo de ambiente — o remoto e o local —, e a
+# escolha é explícita por EITHRA_ENV_FILE. Sem a variável, o padrão é o ambiente
+# LOCAL (".env.local"): o caminho seguro por omissão. Subir contra um banco de
+# nuvem precisa ser um ato consciente, nunca o acaso de rodar manage.py.
+_env_file_name = os.environ.get("EITHRA_ENV_FILE", "").strip() or ".env.local"
 _env_file = _arquivo_de_ambiente(_env_file_name)
 
 if _env_file.exists():
     environ.Env.read_env(_env_file)
-elif _env_file_name != ".env":
+elif _env_file_name != ".env.local":
     # Escolher um arquivo que não existe é engano de configuração: seguir em
     # frente faria o ambiente subir contra o banco errado sem avisar.
     raise ImproperlyConfigured(

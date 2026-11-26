@@ -39,17 +39,29 @@ Uma rodada faz, em ordem:
 1. `pg_dump -F c` (formato custom) do banco **`eithra_dev`**;
 2. compacta o dump **junto com a pasta de arquivos enviados** (`MEDIA_ROOT`,
    ou seja, `media\` na raiz do projeto: fotos, evidências e PDFs);
-3. grava o pacote em **`D:\backups_eithra\<data-hora>.zip`**;
-4. aplica a **retenção**: mantém os **7 diários** mais recentes e **o último de
-   cada uma das 4 semanas** mais recentes; apaga os mais antigos;
+3. grava o pacote **criptografado com AES-256** (via 7-Zip) em
+   **`D:\backups_eithra\<data-hora>.zip`**;
+4. aplica a **retenção local**: mantém os **7 diários** mais recentes e **o
+   último de cada uma das 4 semanas** mais recentes; apaga os mais antigos;
 5. copia o `.zip` mais recente para a pasta do **OneDrive** ou **Google Drive**
-   do usuário (procura em `%USERPROFILE%`; se não existir, registra e segue);
+   do usuário (procura em `%USERPROFILE%`; se não existir, registra e segue) e
+   **mantém lá apenas os 7 mais recentes**, apagando os mais antigos;
 6. grava **sucesso ou erro** em **`D:\backups_eithra\log.txt`**.
+
+### Criptografia (AES-256)
+
+- O pacote é gravado pelo **7-Zip** (`7z a -tzip -mem=AES256`) com a senha lida
+  de **`EITHRA_BACKUP_SENHA`** no `.env.local`.
+- **Sem a senha o backup falha** e registra o erro no log — o script **nunca
+  gera um arquivo sem proteção**.
+- Requer o 7-Zip instalado (`winget install --id 7zip.7zip -e`). O script
+  procura `7z.exe` no `PATH` e nos diretórios usuais de instalação.
 
 Regras de segurança do script:
 
 - A senha do banco vem de **`.env.local`** (campo `DATABASE_URL`); a senha
   nunca vive no script.
+- A senha de criptografia vem de **`EITHRA_BACKUP_SENHA`** no `.env.local`.
 - O script **aborta** se o banco apontado por `.env.local` não for `eithra_dev`.
 - Nenhuma credencial é escrita em log.
 
@@ -59,10 +71,26 @@ Regras de segurança do script:
 - Comando: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File
   "D:\github\eithra_v3\scripts\backup.ps1"`.
 - **Limitação conhecida:** a tarefa foi registrada sem elevação, então ela roda
-  apenas com o usuário logado. Para rodar mesmo sem ninguém logado, recrie a
-  tarefa numa sessão **como Administrador** com “Executar estando o usuário
-  conectado ou não” (ex.: `schtasks /Create /TN "Eithra - Backup" /SC DAILY
-  /ST 02:00 /RL HIGHEST /RU <usuário> /RP <senha> /TR "..."`).
+  apenas com o usuário logado.
+
+Para rodar **mesmo sem ninguém logado**, abra o **PowerShell como
+Administrador** e cole o bloco abaixo (ele recria a tarefa do zero):
+
+```powershell
+$acao = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument '-NoProfile -ExecutionPolicy Bypass -File "D:\github\eithra_v3\scripts\backup.ps1"'
+$gatilho = New-ScheduledTaskTrigger -Daily -At '02:00'
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
+    -LogonType Password -RunLevel Highest
+$config = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries
+
+Unregister-ScheduledTask -TaskName 'Eithra - Backup' -Confirm:$false
+Register-ScheduledTask -TaskName 'Eithra - Backup' -Action $acao -Trigger $gatilho `
+    -Principal $principal -Settings $config
+```
+
+O `-LogonType Password` (com `-RunLevel Highest`) é o que faz a tarefa executar
+sem sessão aberta. O Windows pedirá a senha da conta no momento do registro.
 
 ---
 
@@ -76,7 +104,8 @@ Restaura **sem nunca tocar no `eithra_dev`**:
 
 O que ele faz:
 
-1. extrai o `.zip` numa pasta temporária;
+1. **descompacta** o `.zip` criptografado com a senha `EITHRA_BACKUP_SENHA`
+   (via 7-Zip); se a senha não estiver no `.env.local`, ela é pedida no console;
 2. **recria** o banco **`eithra_restaurado`** do zero (se já existir, é
    descartado e recriado) — o alvo é sempre descartável;
 3. restaura o dump com `pg_restore --no-owner --no-privileges --exit-on-error`;
@@ -150,30 +179,63 @@ Estado atual da instalação local:
   são rejeitadas** na prática.
 
 Conclusão: hoje o banco **não aceita conexões de fora** (o `pg_hba.conf` barra).
-Resta, ainda assim, uma recomendação — **não aplicada**:
+Resta, ainda assim, uma recomendação — **não aplicada**: fazer o servidor nem
+escutar na rede, reduzindo a superfície mesmo se o `pg_hba.conf` for alterado por
+engano.
 
-- Trocar `listen_addresses = '*'` por `listen_addresses = 'localhost'` no
-  `postgresql.conf` e reiniciar o serviço. Assim o servidor nem escuta na rede,
-  reduzindo a superfície mesmo se o `pg_hba.conf` for alterado por engano.
+Para aplicar, abra o **PowerShell como Administrador** e cole o bloco abaixo
+(não foi executado por ninguém; é sua decisão rodá-lo):
 
-Nenhuma alteração foi feita nos arquivos do PostgreSQL.
+```powershell
+$conf = 'C:\Program Files\PostgreSQL\17\data\postgresql.conf'
+$bak  = "$conf.bak-listen-localhost"
+
+# Protege o original antes de mexer.
+Copy-Item -LiteralPath $conf -Destination $bak -Force
+
+# Fixa listen_addresses em 'localhost' (substitui a linha, ou acrescenta se faltar).
+$conteudo = Get-Content -LiteralPath $conf
+if ($conteudo -match "^\s*#?\s*listen_addresses\s*=") {
+    $conteudo = $conteudo -replace "^\s*#?\s*listen_addresses\s*=.*$", "listen_addresses = 'localhost'"
+} else {
+    $conteudo += "listen_addresses = 'localhost'"
+}
+Set-Content -LiteralPath $conf -Value $conteudo -Encoding ASCII
+
+# Reinicia o servico para valer.
+Restart-Service -Name 'postgresql-x64-17' -Force
+
+# Confere o valor em vigor.
+& 'C:\Program Files\PostgreSQL\17\bin\psql.exe' -U postgres -c "SHOW listen_addresses;"
+```
+
+Ajuste o nome do serviço (`postgresql-x64-17`) se a instalação usar outro.
+Para desfazer, restaure o backup: `Copy-Item $bak $conf -Force` e reinicie.
+
+Nenhuma alteração foi feita nos arquivos do PostgreSQL até aqui.
 
 ---
 
-## 7. Neon — `DATABASE_URL` em nuvem
+## 7. Ambiente padrão seguro e o Neon
 
-- O único `DATABASE_URL` apontando para Neon está no arquivo **`.env`**
-  (ambiente remoto), na linha da variável `DATABASE_URL`.
-- Ele **ainda é alcançável**: `config/settings/base.py` usa `.env` como padrão
-  quando `EITHRA_ENV_FILE` não está definida; portanto, rodar `manage.py`
-  diretamente (sem os scripts locais) sobe contra o Neon.
-- Os scripts locais (`run-local.ps1`, `test-local.ps1`, `manage-local.ps1`) e os
-  scripts de backup/restauração usam **`.env.local`** e conferem que o host é
-  local antes de agir.
+### Padrão de arquivo de ambiente
+
+- `config/settings/base.py`: quando **`EITHRA_ENV_FILE` não está definida**, o
+  arquivo lido é **`.env.local`** (o local) — e não mais `.env`. Subir contra a
+  nuvem passou a exigir escolha explícita, nunca um acidente de rodar `manage.py`.
+- Por isso, `manage.py` direto no desenvolvimento agora sobe contra o banco
+  **local**.
+
+### Neon
+
+- O antigo `.env` (que apontava para o Neon) foi **renomeado** para
+  **`.env.neon.desativado`** — nada foi apagado, e o arquivo **não é lido** por
+  nenhum caminho padrão.
+- `.env.local` e `.env.neon.desativado` estão no **`.gitignore`**.
+- Com o novo padrão, **não há mais caminho automático para o Neon**. Só um
+  `EITHRA_ENV_FILE` apontando de forma consciente alcançaria o arquivo.
 - **Nada foi apagado** e a senha não é exibida em lugar algum. Regra vigente:
   **não usar o banco Neon**.
-- Recomendação: manter `.env` fora do versionamento (confirmar no `.gitignore`)
-  e nunca rodar `manage.py` sem `EITHRA_ENV_FILE` no desenvolvimento.
 
 ---
 
@@ -181,10 +243,14 @@ Nenhuma alteração foi feita nos arquivos do PostgreSQL.
 
 | Assunto | Onde | Como acionar |
 | --- | --- | --- |
-| Backup | `scripts\backup.ps1` | Agendador, tarefa “Eithra - Backup”, 02:00 |
+| Backup (criptografado AES-256) | `scripts\backup.ps1` | Agendador, tarefa “Eithra - Backup”, 02:00 |
+| Senha do backup | `EITHRA_BACKUP_SENHA` em `.env.local` | guardada fora do computador |
 | Log do backup | `D:\backups_eithra\log.txt` | leitura direta |
+| Retenção na nuvem | `OneDrive\Backups Eithra` | automática (7 mais recentes) |
 | Restauração | `scripts\restaurar_backup.ps1 <zip>` | manual, banco `eithra_restaurado` |
 | Bloqueio de login | django-axes | automático (5 erros → 30 min) |
+| Ambiente padrão | `EITHRA_ENV_FILE` (padrão `.env.local`) | variável de ambiente |
+| Neon | `.env.neon.desativado` | desativado, não lido |
 | Desligar/ligar Gmail | `EITHRA_GMAIL_ATIVO` | variável de ambiente |
 | Admin | `EITHRA_ADMIN_URL` | variável de ambiente |
 | Revogar Gmail | https://myaccount.google.com/permissions | manual na conta Google |

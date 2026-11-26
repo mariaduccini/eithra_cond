@@ -6,6 +6,9 @@
 .env.*
 !.env.example
 !.env.local.example
+# Ambientes reais e o antigo .env do Neon (guardado, desativado, nunca versionado).
+.env.local
+.env.neon.desativado
 *.pem
 *.key
 credentials.json
