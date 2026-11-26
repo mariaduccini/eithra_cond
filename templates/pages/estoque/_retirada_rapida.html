@@ -1,0 +1,83 @@
+{% comment %}A retirada rápida: o ícone sem borda "Peguei do estoque" e o modal de
+   um passo. Os mesmos chips da conclusão, o local do condomínio — com o último
+   usado já escolhido — e o microfone opcional. Um toque em "Registrar" grava a
+   saída; o local vem daqui, o condomínio vem da tela que incluiu (nunca
+   digitado), e a autorização é decidida no backend.
+
+   O microfone só serve para o relato sugerir a quantidade dos chips: "peguei 2
+   lâmpadas" já marca o chip com 2. Não é um campo obrigatório.{% endcomment %}
+<div class="eithra-retirada-rapida">
+  <button
+    type="button"
+    class="eithra-acao-icone"
+    data-bs-toggle="modal"
+    data-bs-target="#retirada-rapida"
+    title="Peguei do estoque"
+    aria-label="Peguei do estoque">
+    <i class="bx bx-package" aria-hidden="true"></i>
+  </button>
+
+  <div
+    class="modal fade"
+    id="retirada-rapida"
+    tabindex="-1"
+    role="dialog"
+    aria-labelledby="retirada-rapida-titulo"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable eithra-modal-operacional">
+      <form class="modal-content" method="post" action="{% url 'estoque:retirar_rapido' %}">
+        {% csrf_token %}
+        <input type="hidden" name="volta" value="{{ request.get_full_path }}">
+        {% if retirada_condominio %}
+          <input type="hidden" name="condominio" value="{{ retirada_condominio.pk }}">
+        {% endif %}
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="retirada-rapida-titulo">Peguei do estoque</h5>
+            <div class="eithra-modal-identidade">Um toque para registrar o que saiu.</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <div class="modal-body">
+          {% include "pages/estoque/_material_do_trabalho.html" with material_condominio=retirada_condominio material_texto="relato" material_local=True material_rotulo="O que você pegou?" %}
+
+          <div class="mb-3" data-eithra-material-campo-local hidden>
+            <label class="form-label" for="id_retirada_local">Local</label>
+            <select name="local" id="id_retirada_local" class="form-select" data-eithra-material-local>
+              <option value="">Sem local</option>
+            </select>
+          </div>
+
+          <div class="eithra-campo-voz" data-eithra-campo-voz>
+            <label class="form-label" for="id_retirada_relato">
+              Relato <span class="text-body-secondary small">(opcional)</span>
+            </label>
+            <textarea
+              name="relato"
+              id="id_retirada_relato"
+              class="form-control"
+              rows="2"
+              placeholder="ex.: peguei 2 lâmpadas"></textarea>
+            <button
+              type="button"
+              class="eithra-ditar"
+              data-eithra-ditar
+              data-eithra-ditar-url="{% url 'estoque:transcrever' %}"
+              data-eithra-ditar-campo="#id_retirada_relato"
+              aria-label="Gravar relato por voz"
+              title="Gravar relato por voz"
+              aria-pressed="false"
+              hidden>
+              <i class="bx bx-microphone" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p class="eithra-ditar-recado small" data-eithra-ditar-recado hidden aria-live="polite"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn eithra-btn-primario">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

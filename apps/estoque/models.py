@@ -408,6 +408,33 @@ class MovimentacaoEstoque(models.Model):
         verbose_name="Manutenção",
         help_text="O serviço que consumiu o material, quando foi para uma manutenção.",
     )
+    ocorrencia = models.ForeignKey(
+        "rotinas.ExecucaoRotina",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="movimentacoes_de_estoque",
+        verbose_name="Ocorrência",
+        help_text="A ocorrência que consumiu o material, quando saiu para uma.",
+    )
+    demanda = models.ForeignKey(
+        "demandas.Demanda",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="movimentacoes_de_estoque",
+        verbose_name="Demanda",
+        help_text="A demanda que consumiu o material, quando saiu para uma.",
+    )
+    local = models.ForeignKey(
+        LocalOperacional,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="movimentacoes_de_estoque",
+        verbose_name="Local",
+        help_text="De onde o material saiu, quando se sabe. A retirada rápida informa.",
+    )
     motivo = models.CharField(
         "Motivo",
         max_length=255,

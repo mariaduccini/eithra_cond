@@ -95,6 +95,8 @@ class TipoMovimentacaoEstoque(models.TextChoices):
 
     ENTRADA_COMPRA = "entrada_compra", "Entrada por compra"
     SAIDA_MANUTENCAO = "saida_manutencao", "Saída para manutenção"
+    SAIDA_OCORRENCIA = "saida_ocorrencia", "Saída para ocorrência"
+    SAIDA_DEMANDA = "saida_demanda", "Saída para demanda"
     SAIDA_USO = "saida_uso", "Saída para uso"
     AJUSTE_ENTRADA = "ajuste_entrada", "Ajuste de entrada"
     AJUSTE_SAIDA = "ajuste_saida", "Ajuste de saída"
@@ -114,6 +116,8 @@ TIPOS_DE_ENTRADA = frozenset(
 TIPOS_DE_SAIDA = frozenset(
     {
         TipoMovimentacaoEstoque.SAIDA_MANUTENCAO,
+        TipoMovimentacaoEstoque.SAIDA_OCORRENCIA,
+        TipoMovimentacaoEstoque.SAIDA_DEMANDA,
         TipoMovimentacaoEstoque.SAIDA_USO,
         TipoMovimentacaoEstoque.AJUSTE_SAIDA,
         TipoMovimentacaoEstoque.PERDA,

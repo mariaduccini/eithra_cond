@@ -16,11 +16,16 @@ Nada aqui gera despesa, altera balanço ou cria lançamento financeiro. Os valor
 são operacionais: dizem quanto se pagou, não substituem a contabilidade.
 """
 import logging
+import re
+import unicodedata
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.formats import number_format
 
@@ -261,6 +266,9 @@ def _criar_movimento(
     motivo: str = "",
     compra_item=None,
     manutencao=None,
+    ocorrencia=None,
+    demanda=None,
+    local=None,
 ) -> MovimentacaoEstoque:
     """Grava um movimento já validado. Não decide saldo: só registra o fato."""
     movimento = MovimentacaoEstoque(
@@ -270,6 +278,9 @@ def _criar_movimento(
         quantidade=quantidade,
         compra_item=compra_item,
         manutencao=manutencao,
+        ocorrencia=ocorrencia,
+        demanda=demanda,
+        local=local,
         motivo=_texto(motivo),
         usuario=usuario,
     )
@@ -1130,3 +1141,413 @@ def cancelar_compra(*, compra: Compra, usuario) -> Compra:
     compra.confirmada_em = None
     compra.save(update_fields=["status", "confirmada_em", "atualizado_em"])
     return compra
+
+
+# -- Material do trabalho e retirada rápida ------------------------------------
+#
+# A baixa de estoque acompanha o trabalho: quem conclui uma manutenção, uma
+# ocorrência ou uma demanda diz, no mesmo gesto, o que consumiu. Aqui é
+# diferente da retirada manual: a saída **não** exige saldo. O trabalho já
+# aconteceu e negá-lo apagaria o fato — sem saldo, o registro fica e o sistema
+# avisa que o estoque ficou negativo, para a contagem corrigir depois. O
+# determinismo protege o saldo do erro, mas nunca impede registrar o que houve.
+
+LIMITE_DE_CHIPS_DE_MATERIAL = 6
+JANELA_DOS_MAIS_USADOS = 90  # dias
+MOTIVO_DA_RETIRADA_RAPIDA = "Peguei do estoque"
+
+PALAVRAS_IGNORADAS = frozenset(
+    {"para", "com", "sem", "dos", "das", "uma", "tipo", "caixa", "pacote"}
+)
+
+
+def _sem_acento(texto: str) -> str:
+    """O texto em minúsculas e sem acento, para casar nome de item com relato."""
+    normalizado = unicodedata.normalize("NFKD", texto or "")
+    return normalizado.encode("ascii", "ignore").decode("ascii").lower()
+
+
+def _radicais_do_nome(nome: str) -> list[str]:
+    """As palavras que identificam o item no relato, no singular.
+
+    "Lâmpada LED" vira "lampada": o primeiro substantivo com corpo suficiente,
+    sem o plural. É o casamento simples que o pedido descreve — palavra do nome
+    contra palavra do texto, sem IA.
+    """
+    radicais = []
+    for palavra in re.findall(r"[0-9a-z]+", _sem_acento(nome)):
+        if len(palavra) < 4 or palavra in PALAVRAS_IGNORADAS:
+            continue
+        if palavra.endswith("s") and len(palavra) > 4:
+            palavra = palavra[:-1]
+        radicais.append(palavra)
+    return radicais
+
+
+def sugestao_no_texto(nome: str, texto: str) -> int:
+    """A quantidade que o relato sugere para um item — só um palpite, sem IA.
+
+    "troquei 2 lâmpadas" sugere 2 lâmpadas: procura-se o radical do item no
+    texto e o número mais próximo antes dele. A sugestão aparece antes de
+    concluir, e quem conclui confirma ou corrige — nada é gravado sem isso.
+    """
+    alvo = _sem_acento(texto)
+    if not alvo:
+        return 0
+    for radical in _radicais_do_nome(nome):
+        posicao = alvo.find(radical)
+        while posicao != -1:
+            antes = alvo[max(0, posicao - 20) : posicao]
+            numeros = re.findall(r"\d+", antes)
+            if numeros:
+                return int(numeros[-1])
+            posicao = alvo.find(radical, posicao + 1)
+    return 0
+
+
+def chips_de_material(
+    condominio, *, texto: str = "", limite: int = LIMITE_DE_CHIPS_DE_MATERIAL
+) -> list[dict]:
+    """Até seis itens de estoque como chips, com a quantidade já sugerida.
+
+    A ordem é a do uso: primeiro o que mais saiu nos últimos 90 dias; sem
+    histórico, o crítico antes, e o resto por ordem alfabética. O palpite de
+    quantidade vem do relato, quando ele cita o item com um número.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return []
+
+    corte = timezone.now() - timedelta(days=JANELA_DOS_MAIS_USADOS)
+    usos = Count(
+        "movimentacoes",
+        filter=Q(
+            movimentacoes__tipo__in=TIPOS_DE_SAIDA,
+            movimentacoes__criado_em__gte=corte,
+        ),
+    )
+    itens = (
+        ItemEstoque.objects.do_condominio(condominio)
+        .ativos()
+        .annotate(_usos=usos)
+        .order_by("-_usos", "-item_critico", Lower("nome"))[:limite]
+    )
+    return [
+        {
+            "pk": str(item.pk),
+            "nome": item.nome,
+            "unidade": item.get_unidade_display(),
+            "quantidade": sugestao_no_texto(item.nome, texto),
+        }
+        for item in itens
+    ]
+
+
+def _pares_de_material(material) -> list[tuple[str, Decimal]]:
+    """Lê o material marcado no formulário em pares ("<pk>:<quantidade>").
+
+    A tela manda tudo numa lista separada por vírgula; uma lista já pronta
+    também serve. O que não tiver item e quantidade positiva é ignorado.
+    """
+    if isinstance(material, str):
+        material = [parte for parte in material.split(",") if parte]
+    pares = []
+    for bruto in material or ():
+        if not bruto or ":" not in str(bruto):
+            continue
+        chave, _, quantidade = str(bruto).partition(":")
+        try:
+            valor = Decimal(quantidade)
+        except (InvalidOperation, ValueError):
+            continue
+        if valor > 0:
+            pares.append((chave.strip(), valor))
+    return pares
+
+
+def _item_por_chave(condominio, chave):
+    """O item do condomínio com esta chave, ou nada quando a chave é inválida."""
+    try:
+        return ItemEstoque.objects.filter(pk=chave, condominio=condominio).first()
+    except (ValidationError, ValueError, TypeError):
+        return None
+
+
+@transaction.atomic
+def registrar_saida_do_trabalho(
+    *,
+    condominio,
+    item,
+    usuario,
+    quantidade,
+    tipo,
+    motivo: str = "",
+    manutencao=None,
+    ocorrencia=None,
+    demanda=None,
+    local=None,
+) -> MovimentacaoEstoque:
+    """Registra a saída de material ligada ao registro que a consumiu.
+
+    Diferente da retirada manual, aqui a saída **não** exige saldo: o trabalho
+    já aconteceu e negá-lo apagaria o fato. O item é travado e o saldo é relido
+    dentro da transação; quem chama decide o que fazer quando o saldo fica
+    negativo — na conclusão do trabalho, é concluir e avisar.
+    """
+    item = _item_do_condominio(item, condominio)
+    quantidade = _quantidade(quantidade)
+    if quantidade <= 0:
+        raise ErroDeEstoque("A quantidade precisa ser maior que zero.")
+
+    _bloquear_item(item)
+    return _criar_movimento(
+        condominio=condominio,
+        item=item,
+        usuario=usuario,
+        tipo=tipo,
+        quantidade=quantidade,
+        motivo=motivo,
+        manutencao=manutencao,
+        ocorrencia=ocorrencia,
+        demanda=demanda,
+        local=local,
+    )
+
+
+def registrar_material_do_trabalho(
+    *,
+    condominio,
+    usuario,
+    material,
+    tipo,
+    motivo: str = "",
+    manutencao=None,
+    ocorrencia=None,
+    demanda=None,
+    local=None,
+) -> tuple[list, bool]:
+    """Registra todas as saídas marcadas e diz se alguma zerou o saldo.
+
+    Devolve os movimentos criados e um aviso: se alguma saída deixou o saldo
+    negativo, quem chamou mostra o recado discreto e a contagem corrige depois.
+    Chave inválida ou item de outro condomínio é simplesmente ignorado.
+    """
+    movimentos = []
+    negativo = False
+    for chave, quantidade in _pares_de_material(material):
+        item = _item_por_chave(condominio, chave)
+        if item is None:
+            continue
+        movimentos.append(
+            registrar_saida_do_trabalho(
+                condominio=condominio,
+                item=item,
+                usuario=usuario,
+                quantidade=quantidade,
+                tipo=tipo,
+                motivo=motivo,
+                manutencao=manutencao,
+                ocorrencia=ocorrencia,
+                demanda=demanda,
+                local=local,
+            )
+        )
+        if saldo_do_item(item) < 0:
+            negativo = True
+    return movimentos, negativo
+
+
+def material_da_manutencao(*, manutencao, usuario, material) -> tuple[list, bool]:
+    """A saída do material usado nesta manutenção. O local vem da manutenção."""
+    return registrar_material_do_trabalho(
+        condominio=manutencao.condominio,
+        usuario=usuario,
+        material=material,
+        tipo=TipoMovimentacaoEstoque.SAIDA_MANUTENCAO,
+        manutencao=manutencao,
+        local=manutencao.local,
+    )
+
+
+def material_da_ocorrencia(*, execucao, usuario, material) -> tuple[list, bool]:
+    """A saída do material usado nesta ocorrência. O local vem da rotina."""
+    return registrar_material_do_trabalho(
+        condominio=execucao.condominio,
+        usuario=usuario,
+        material=material,
+        tipo=TipoMovimentacaoEstoque.SAIDA_OCORRENCIA,
+        ocorrencia=execucao,
+        local=execucao.rotina.local,
+    )
+
+
+def material_da_demanda(*, demanda, usuario, material) -> tuple[list, bool]:
+    """A saída do material usado nesta demanda. O local vem da demanda."""
+    return registrar_material_do_trabalho(
+        condominio=demanda.condominio,
+        usuario=usuario,
+        material=material,
+        tipo=TipoMovimentacaoEstoque.SAIDA_DEMANDA,
+        demanda=demanda,
+        local=demanda.local,
+    )
+
+
+def ultimo_local_do_usuario(usuario, condominio):
+    """O último local de onde esta pessoa retirou material neste condomínio.
+
+    É o "último usado" da retirada rápida: ele já vem escolhido, para o gesto
+    custar um toque. Sem histórico, não há sugestão.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return None
+
+    movimento = (
+        MovimentacaoEstoque.objects.do_condominio(condominio)
+        .filter(usuario=usuario, local__isnull=False)
+        .order_by("-criado_em")
+        .first()
+    )
+    return movimento.local if movimento else None
+
+
+# -- Reposição: o que foi feito com a compra anterior --------------------------
+
+
+def _quantidade_legivel(valor, unidade: str) -> str:
+    """O número sem zeros inúteis, com a unidade no fim: «2 un», «0,5 kg».
+
+    É leitura de tela: o número existe para dizer o tamanho, não para calcular.
+    """
+    numero = f"{Decimal(valor).normalize():f}"
+    if "," not in numero and "." in numero:
+        inteiro, _, casas = numero.partition(".")
+        numero = f"{inteiro},{casas}"
+    return f"{numero} {unidade}".strip()
+
+
+def _ultima_linha_de_compra(item):
+    """A linha da compra confirmada mais recente que repôs este item."""
+    return (
+        ItemCompra.objects.filter(
+            item_estoque=item, compra__status=StatusCompra.CONFIRMADA
+        )
+        .select_related("compra", "compra__fornecedor")
+        .order_by("-compra__data_compra", "-criado_em")
+        .first()
+    )
+
+
+def historico_de_reposicao(item) -> dict:
+    """O que já aconteceu com este item, em números, para decidir a reposição.
+
+    Responde três perguntas de uma vez: quanto veio na última compra e quando,
+    quanto já saiu registrado e quanto saiu **sem destino** — isto é, sem local
+    e sem vínculo com um registro de origem. É a diferença entre o material que
+    se sabe para onde foi e o que ninguém explicou.
+    """
+    if item is None or not getattr(item, "pk", None):
+        return {}
+
+    ultima = _ultima_linha_de_compra(item)
+    agregado = item.movimentacoes.saidas().aggregate(total=Sum("quantidade"))
+    sem_destino = (
+        item.movimentacoes.saidas()
+        .filter(
+            local__isnull=True,
+            manutencao__isnull=True,
+            ocorrencia__isnull=True,
+            demanda__isnull=True,
+        )
+        .aggregate(total=Sum("quantidade"))
+    )
+
+    unidade = item.get_unidade_display().lower()
+    return {
+        "quantidade": _quantidade_legivel(ultima.quantidade, unidade) if ultima else "",
+        "data": ultima.compra.data_compra if ultima else None,
+        "saidas": _quantidade_legivel(agregado["total"] or ZERO, unidade),
+        "sem_destino": _quantidade_legivel(sem_destino["total"] or ZERO, unidade),
+    }
+
+
+def saidas_do_item(item):
+    """As saídas registradas do item, com local e quem — a lista curta."""
+    if item is None or not getattr(item, "pk", None):
+        return MovimentacaoEstoque.objects.none()
+
+    return (
+        item.movimentacoes.saidas()
+        .select_related("usuario", "local", "manutencao", "ocorrencia", "demanda")
+        .order_by("-criado_em")
+    )
+
+
+# -- Contagem do estoque -------------------------------------------------------
+
+
+def contar_estoque(*, condominio, usuario, contagens, data=None) -> dict:
+    """Ajusta o saldo ao que a contagem encontrou e devolve o que ficou pendente.
+
+    Campo vazio é item não contado: não gera ajuste nenhum. Onde a contagem
+    difere do saldo, entra um ajuste de entrada ou de saída com o motivo
+    "Diferença na contagem de <data>" — e o histórico guarda quem contou. O
+    resumo mostra quantos itens têm saída ainda sem destino registrado.
+    """
+    momento = data or timezone.localdate()
+    motivo = f"Diferença na contagem de {momento.strftime('%d/%m/%Y')}"
+
+    ajustes = 0
+    for chave, valor in _contagens_do_pedido(contagens).items():
+        item = _item_por_chave(condominio, chave)
+        if item is None:
+            continue
+        diferenca = valor - saldo_do_item(item)
+        if diferenca == 0:
+            continue
+        tipo = (
+            TipoMovimentacaoEstoque.AJUSTE_ENTRADA
+            if diferenca > 0
+            else TipoMovimentacaoEstoque.AJUSTE_SAIDA
+        )
+        registrar_saida_do_trabalho(
+            condominio=condominio,
+            item=item,
+            usuario=usuario,
+            quantidade=abs(diferenca),
+            tipo=tipo,
+            motivo=motivo,
+        )
+        ajustes += 1
+
+    return {
+        "motivo": motivo,
+        "ajustes": ajustes,
+        "sem_destino": _itens_com_saida_sem_destino(condominio),
+    }
+
+
+def _contagens_do_pedido(contagens) -> dict:
+    """Só o que foi digitado na contagem: campo vazio fica de fora."""
+    lidas = {}
+    for chave, valor in (contagens or {}).items():
+        bruto = _texto(str(valor)) if valor not in (None, "") else ""
+        if not bruto:
+            continue
+        lidas[chave] = _quantidade(bruto)
+    return lidas
+
+
+def _itens_com_saida_sem_destino(condominio) -> int:
+    """Quantos itens do condomínio têm saída registrada sem destino nenhum."""
+    return (
+        ItemEstoque.objects.do_condominio(condominio)
+        .filter(
+            movimentacoes__tipo__in=TIPOS_DE_SAIDA,
+            movimentacoes__local__isnull=True,
+            movimentacoes__manutencao__isnull=True,
+            movimentacoes__ocorrencia__isnull=True,
+            movimentacoes__demanda__isnull=True,
+        )
+        .distinct()
+        .count()
+    )

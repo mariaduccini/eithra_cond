@@ -112,6 +112,19 @@
             <span class="text-body-secondary">Último custo</span>
             <span class="text-end">{{ item.ultimo_custo|default:"—" }}</span>
           </div>
+          {% if historico %}
+            <hr>
+            <p class="mb-0 small text-body-secondary">
+              {% if historico.quantidade and historico.data %}
+                Última compra: {{ historico.quantidade }} em {{ historico.data|date:"d/m/Y" }}.
+              {% else %}
+                Sem compra registrada.
+              {% endif %}
+              Saídas registradas: {{ historico.saidas }}.
+              Sem destino: {{ historico.sem_destino }}.
+              <a href="{% url 'estoque:saidas_do_item' item.pk %}" class="text-decoration-none">Ver saídas</a>
+            </p>
+          {% endif %}
           {% if item.descricao %}
             <hr>
             <p class="mb-0">{{ item.descricao|linebreaksbr }}</p>

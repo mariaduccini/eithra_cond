@@ -761,6 +761,15 @@
               {% endfor %}
             </div>
 
+            {# O histórico do item ajuda a decidir quanto repor. Aparece ao escolher
+               o item e não é obrigatório: é memória, não um campo do formulário. #}
+            <div
+              class="small text-body-secondary mb-6"
+              data-eithra-historico
+              data-eithra-historico-url="{% url 'estoque:historico_do_item' %}"
+              data-eithra-historico-condominio="{{ compra.condominio.pk }}"
+              hidden></div>
+
             <div class="mb-6">
               <label class="form-label" for="{{ formulario_linha.quantidade_uso_imediato.id_for_label }}">
                 {{ formulario_linha.quantidade_uso_imediato.label }}
@@ -952,4 +961,5 @@
   {% endif %}
   <script src="{% static 'js/eithra-compra-documento.js' %}"></script>
   <script src="{% static 'js/eithra-compra-reembolso.js' %}"></script>
+  <script src="{% static 'js/eithra-historico-item.js' %}"></script>
 {% endblock %}

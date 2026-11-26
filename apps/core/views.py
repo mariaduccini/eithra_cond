@@ -71,6 +71,7 @@ from apps.demandas.permissoes import (
     pode_gerenciar_em_algum_condominio,
 )
 from apps.demandas.services import ErroDeDemanda, retorno_dos_moradores
+from apps.estoque.permissoes import pode_ver_estoque
 from apps.governanca.constants import PeriodicidadeCobranca
 from apps.governanca.models import ContratoFornecedor
 from apps.governanca.permissoes import condominios_para_gerenciar
@@ -372,6 +373,9 @@ def meu_dia(request):
             "pode_acompanhar": pode_acompanhar,
             "equipe": equipe,
             "pessoa_escolhida": pessoa_escolhida,
+            # A retirada rápida só aparece para quem alcança o estoque deste
+            # condomínio. O ícone é do dia a dia: pegar material sem trabalho.
+            "pode_retirar_material": pode_ver_estoque(request.user, condominio),
         },
     )
 

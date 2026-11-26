@@ -789,6 +789,8 @@
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>
+
+            {% include "pages/estoque/_material_do_trabalho.html" with material_condominio=manutencao.condominio material_texto="descricao_servico" %}
           </div>
 
           <div class="modal-footer">

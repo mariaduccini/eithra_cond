@@ -25,6 +25,7 @@ from apps.comunidade.models import (
 from apps.condominios import logo
 from apps.core import audio
 from apps.core.paginacao import paginar_do_pedido
+from apps.estoque.permissoes import pode_ver_estoque
 
 from . import etiqueta, interpretacao, numero_falado
 from .constants import (
@@ -1000,6 +1001,9 @@ def _render_painel(
         "url_da_transcricao": reverse("portaria:transcrever")
         if audio.disponivel()
         else "",
+        # A retirada rápida só aparece para quem alcança o estoque deste
+        # condomínio — a Portaria é onde o material sai com mais frequência.
+        "pode_retirar_material": pode_ver_estoque(request.user, atual),
     }
     if base["aba"] == "historico":
         contexto.update(_historico(request, atual))

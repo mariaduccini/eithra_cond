@@ -1,0 +1,30 @@
+{% comment %}A linha "Usou material?" dos modais que concluem trabalho. Os chips vêm
+   do estoque do condomínio do registro; um toque soma 1, o "×" tira. Quando o
+   texto do que foi feito cita o item com um número ("troquei 2 lâmpadas"), o
+   chip já vem marcado — é só sugestão, visível antes de concluir.
+
+   `material_condominio`: o condomínio do registro, quando a tela já o conhece.
+   Na lista de ocorrências ele fica de fora: quem o diz é o ícone que abre o
+   modal. `material_texto`: o nome do campo de texto que sugere a quantidade.{% endcomment %}
+<div
+  class="eithra-material mb-4"
+  data-eithra-material
+  data-eithra-material-url="{% url 'estoque:material_do_trabalho' %}"
+  {% if material_condominio %}data-eithra-material-condominio="{{ material_condominio.pk }}"{% endif %}
+  {% if material_texto %}data-eithra-material-texto="{{ material_texto }}"{% endif %}
+  {% if material_local %}data-eithra-material-local="1"{% endif %}>
+  <span class="form-label d-block mb-1">{% if material_rotulo %}{{ material_rotulo }}{% else %}Usou material?{% endif %}</span>
+  <input type="hidden" name="material" value="" data-eithra-material-valor>
+  <div class="eithra-material-chips" data-eithra-material-chips aria-live="polite">
+    <span class="eithra-material-vazio text-body-secondary small" data-eithra-material-vazio>
+      Sem itens de estoque neste condomínio.
+    </span>
+  </div>
+  <select
+    class="form-select form-select-sm eithra-material-busca mt-2"
+    data-eithra-material-busca
+    aria-label="Buscar item de estoque"
+    hidden>
+    <option value="">Buscar outro item…</option>
+  </select>
+</div>

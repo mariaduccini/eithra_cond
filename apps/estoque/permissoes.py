@@ -129,6 +129,15 @@ def pode_gerenciar_itens(usuario, condominio) -> bool:
     return condominios_para_operar_estoque(usuario).filter(pk=condominio.pk).exists()
 
 
+def pode_gerenciar_estoque_em_algum(usuario) -> bool:
+    """Diz se a pessoa faz a contagem do estoque em algum condomínio agora.
+
+    A contagem é de quem opera o estoque — gestão e supervisão. A operação não
+    entra: ela retira material, não ajusta saldo.
+    """
+    return condominios_para_operar_estoque(usuario).exists()
+
+
 def pode_ver_item(usuario, item) -> bool:
     """Diz se a pessoa pode consultar este item agora.
 

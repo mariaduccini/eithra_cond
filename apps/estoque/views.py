@@ -23,16 +23,19 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models.functions import Lower
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.constants import TipoPessoa
-from apps.cadastros.models import Fornecedor
+from apps.cadastros.models import Fornecedor, LocalOperacional
 from apps.cadastros.services import ErroDeCadastro, criar_fornecedor
 from apps.condominios.models import Condominio
+from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage, obter_provider
@@ -75,16 +78,20 @@ from .permissoes import (
     pode_registrar_movimento,
     pode_registrar_reembolso,
     pode_registrar_saida_para_manutencao,
+    pode_ver_estoque,
     tipos_de_movimento_permitidos,
 )
 from .services import (
     ErroDeEstoque,
+    MOTIVO_DA_RETIRADA_RAPIDA,
     adicionar_item_compra,
     adicionar_documento_compra,
     cancelar_compra,
     cadastrar_item_extraido,
+    chips_de_material,
     confirmar_compra,
     configurar_reembolso_compra,
+    contar_estoque,
     criar_compra,
     criar_compra_com_documento,
     criar_item,
@@ -92,15 +99,20 @@ from .services import (
     editar_compra,
     editar_item,
     editar_item_compra,
+    historico_de_reposicao,
     incluir_item_extraido,
     marcar_reembolso_compra,
     marcar_reembolso_realizado,
+    registrar_material_do_trabalho,
     registrar_movimentacao,
+    registrar_saida_do_trabalho,
     registrar_saida_para_manutencao,
     remover_item_compra,
     reprocessar_documento_compra,
+    saidas_do_item,
     selecionar_item_extraido,
     trazer_itens_identificados,
+    ultimo_local_do_usuario,
 )
 
 # Quantos movimentos a pÃ¡gina do item mostra. A pÃ¡gina do item Ã© um resumo do
@@ -294,6 +306,271 @@ def retirar_para_manutencao(request, pk):
 
     messages.success(request, "Retirada registrada.")
     return redirect("estoque:item_detalhe", pk=item.pk)
+
+
+# -- Material junto do trabalho ------------------------------------------------
+
+
+def _condominio_pedido(request):
+    """O condomínio pedido pela tela, resolvido no backend. Sem certeza, nada.
+
+    Nada aqui confia no identificador que vem do navegador: ele só é aceito se o
+    condomínio existir e a pessoa puder consultar o estoque dele.
+    """
+    chave = request.GET.get("condominio") or request.POST.get("condominio")
+    if not chave:
+        return None
+    try:
+        return Condominio.objects.filter(pk=chave).first()
+    except (ValidationError, ValueError, TypeError):
+        return None
+
+
+@login_required
+def material_do_trabalho(request):
+    """Os chips de material do trabalho, para o modal de conclusão.
+
+    A tela manda o condomínio do registro (que vem do próprio registro, nunca
+    digitado) e, quando há, o texto do que foi feito — dele sai a sugestão de
+    quantidade. Sem acesso ao estoque naquele condomínio, a resposta é vazia: o
+    modal simplesmente não oferece material.
+    """
+    condominio = _condominio_pedido(request)
+    if condominio is None or not pode_ver_estoque(request.user, condominio):
+        return JsonResponse({"chips": [], "itens": []})
+
+    texto = request.GET.get("texto", "")
+    itens = (
+        ItemEstoque.objects.do_condominio(condominio)
+        .ativos()
+        .order_by(Lower("nome"))
+        .values_list("id", "nome")
+    )
+    ultimo = ultimo_local_do_usuario(request.user, condominio)
+    locais = (
+        LocalOperacional.objects.filter(condominio=condominio, ativo=True)
+        .order_by(Lower("nome"))
+        .values_list("id", "nome")
+    )
+    return JsonResponse(
+        {
+            "chips": chips_de_material(condominio, texto=texto),
+            "itens": [{"pk": str(pk), "nome": nome} for pk, nome in itens],
+            "locais": [{"pk": str(pk), "nome": nome} for pk, nome in locais],
+            "ultimo_local": str(ultimo.pk) if ultimo else "",
+        }
+    )
+
+
+@login_required
+def historico_do_item(request):
+    """O que já aconteceu com um item, em números, para orientar a reposição."""
+    condominio = _condominio_pedido(request)
+    chave = request.GET.get("item", "")
+    if condominio is None or not pode_ver_estoque(request.user, condominio):
+        return JsonResponse({"historico": None})
+
+    item = (
+        ItemEstoque.objects.filter(pk=chave, condominio=condominio).first()
+        if chave
+        else None
+    )
+    if item is None:
+        return JsonResponse({"historico": None})
+
+    dados = historico_de_reposicao(item)
+    return JsonResponse(
+        {
+            "historico": {
+                "quantidade": dados.get("quantidade", ""),
+                "data": dados["data"].strftime("%d/%m/%Y") if dados.get("data") else "",
+                "saidas": dados.get("saidas", ""),
+                "sem_destino": dados.get("sem_destino", ""),
+                "saidas_url": reverse("estoque:saidas_do_item", args=[item.pk]),
+            }
+        }
+    )
+
+
+@login_required
+def saidas_do_item_view(request, pk):
+    """A lista curta das saídas de um item: para onde foi e quem levou."""
+    item = _item_autorizado(request, pk)
+    return render(
+        request,
+        "pages/estoque/_saidas_do_item.html",
+        {"item": item, "saidas": saidas_do_item(item)[:LIMITE_DE_MOVIMENTOS_NA_FICHA]},
+    )
+
+
+@login_required
+@require_POST
+def retirar_rapido(request):
+    """Registra que alguém pegou material do estoque, num passo só.
+
+    É a retirada sem trabalho atrelado: sabe-se de onde saiu e quem levou, não
+    para qual serviço. Diferente da retirada de gestão, aqui a saída **não**
+    exige saldo — o material já saiu, e negá-lo apagaria o fato. Se o saldo
+    ficar negativo, a contagem corrige depois.
+    """
+    condominio = _condominio_pedido(request)
+    if condominio is None or not pode_ver_estoque(request.user, condominio):
+        raise PermissionDenied("Esta pessoa não retira material deste condomínio.")
+
+    local = None
+    chave_local = request.POST.get("local", "")
+    if chave_local:
+        local = (
+            LocalOperacional.objects.filter(
+                pk=chave_local, condominio=condominio, ativo=True
+            ).first()
+            if chave_local
+            else None
+        )
+
+    movimentos, negativo = registrar_material_do_trabalho(
+        condominio=condominio,
+        usuario=request.user,
+        material=request.POST.get("material", ""),
+        tipo=TipoMovimentacaoEstoque.SAIDA_USO,
+        motivo=MOTIVO_DA_RETIRADA_RAPIDA,
+        local=local,
+    )
+
+    if not movimentos:
+        messages.error(request, "Marque ao menos um item para registrar a retirada.")
+    elif negativo:
+        messages.warning(
+            request, "Retirada registrada. Estoque ficou negativo, confira na contagem."
+        )
+    else:
+        messages.success(request, "Retirada registrada.")
+
+    return redirect(_volta_da_retirada(request))
+
+
+def _volta_da_retirada(request):
+    """De volta para onde a pessoa estava — a tela que pediu a retirada."""
+    destino = request.POST.get("volta", "")
+    if destino and destino.startswith("/") and not destino.startswith("//"):
+        return destino
+    return reverse("core:meu_dia")
+
+
+@login_required
+@require_POST
+def transcrever_retirada(request):
+    """A fala vira texto no relato da retirada rápida — e para aí.
+
+    Igual às outras portas de áudio do sistema: recebe o recado falado, devolve
+    a transcrição fiel e descarta o arquivo. O texto cai no mesmo campo que a
+    pessoa digitaria — o "o que você pegou", que sugere a quantidade dos chips —
+    e daí em diante o caminho é o de sempre.
+    """
+    condominio = _condominio_pedido(request)
+    if condominio is None or not pode_ver_estoque(request.user, condominio):
+        raise PermissionDenied("Esta pessoa não retira material deste condomínio.")
+
+    arquivo = request.FILES.get("audio")
+    resultado = audio.transcrever(
+        audio.PedidoDeAudio(
+            conteudo=audio.ler_conteudo(arquivo),
+            nome_do_arquivo=getattr(arquivo, "name", ""),
+            content_type=getattr(arquivo, "content_type", ""),
+            condominio=condominio,
+            usuario=request.user,
+        )
+    )
+    if resultado.obtida:
+        return JsonResponse({"texto": resultado.texto})
+    return JsonResponse({"mensagem": resultado.erro})
+
+
+@login_required
+def contagem_estoque(request):
+    """A contagem do estoque: o saldo do sistema ao lado do que se contou.
+
+    Entra-se nela para dizer quanto há de verdade. Onde a contagem difere do
+    saldo, o sistema lança o ajuste com o motivo datado e o nome de quem contou.
+    Campo deixado em branco é item não contado — e não vira ajuste nenhum.
+    """
+    condominios = _condominios_para_ver_estoque(request)
+    gerenciáveis = condominios.filter(
+        pk__in=condominios_para_operar_estoque(request.user).values("pk")
+    )
+    if not gerenciáveis.exists():
+        raise PermissionDenied("Esta pessoa não faz a contagem do estoque.")
+
+    condominio = _condominio_da_contagem(request, gerenciáveis)
+
+    if request.method == "POST":
+        if condominio is None:
+            raise PermissionDenied("Esta pessoa não faz a contagem deste condomínio.")
+        contagens = {
+            linha.get("pk"): linha.get("quantidade")
+            for linha in _linhas_de_contagem(request.POST)
+        }
+        resultado = contar_estoque(
+            condominio=condominio,
+            usuario=request.user,
+            contagens=contagens,
+        )
+        if resultado["ajustes"]:
+            messages.success(
+                request,
+                f"Contagem salva: {resultado['ajustes']} ajuste"
+                f"{'s' if resultado['ajustes'] != 1 else ''} registrado"
+                f"{'s' if resultado['ajustes'] != 1 else ''}.",
+            )
+        else:
+            messages.info(request, "Contagem salva. Nenhum ajuste foi preciso.")
+        if resultado["sem_destino"]:
+            messages.warning(
+                request,
+                f"{resultado['sem_destino']} "
+                f"{'itens têm' if resultado['sem_destino'] != 1 else 'item tem'} "
+                "saída sem destino registrado.",
+            )
+        return redirect("estoque:contagem")
+
+    return render(
+        request,
+        "pages/estoque/contagem.html",
+        {
+            "condominios": gerenciáveis,
+            "condominio_atual": condominio,
+            "mostrar_seletor": gerenciáveis.count() > 1,
+            "itens": _itens_para_contagem(condominio),
+        },
+    )
+
+
+def _linhas_de_contagem(dados) -> list[dict]:
+    """Lê os pares item/quantidade digitados na contagem, na ordem em que vieram."""
+    linhas = []
+    for chave in dados.getlist("item"):
+        linhas.append({"pk": chave, "quantidade": dados.get(f"quantidade-{chave}", "")})
+    return linhas
+
+
+def _itens_para_contagem(condominio):
+    """Os itens do condomínio com o saldo atual, para a tela da contagem."""
+    if condominio is None:
+        return []
+    return (
+        ItemEstoque.objects.do_condominio(condominio)
+        .ativos()
+        .com_saldo()
+        .order_by(Lower("nome"))
+    )
+
+
+def _condominio_da_contagem(request, condominios):
+    """O condomínio em vista na contagem, conferido contra os autorizados."""
+    escolhido = request.GET.get("condominio") or request.POST.get("condominio", "")
+    if escolhido:
+        return next((c for c in condominios if str(c.pk) == str(escolhido)), None)
+    return condominios.first()
 
 
 @login_required
@@ -1213,6 +1490,10 @@ def _render_item_detalhe(
     contexto = {
         "item": _item_para_detalhe(item),
         "movimentos": _movimentos_para_tela(item),
+        # A reposição se decide com o passado à vista: quanto veio na última
+        # compra, quanto já saiu e quanto saiu sem que se saiba para onde foi.
+        "historico": historico_de_reposicao(item),
+        "saidas": saidas_do_item(item)[:LIMITE_DE_MOVIMENTOS_NA_FICHA],
         "pode_gerenciar": pode_gerenciar,
         "pode_movimentar": bool(tipos_permitidos),
         "pode_retirar": pode_retirar,

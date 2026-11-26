@@ -1,0 +1,32 @@
+{% comment %}A lista curta das saídas de um item: para onde foi e quem levou.
+
+   Serve à linha "Saídas registradas" do detalhe do item e da compra. Cada
+   linha diz a quantidade, o local de onde saiu (quando houve) e quem retirou —
+   o que separa o material que se sabe para onde foi do que ninguém explicou.{% endcomment %}
+<div class="table-responsive">
+  <table class="table align-middle mb-0">
+    <caption class="visually-hidden">Saídas registradas de {{ item.nome }}</caption>
+    <thead>
+      <tr>
+        <th scope="col">Quando</th>
+        <th scope="col">Quantidade</th>
+        <th scope="col">Local</th>
+        <th scope="col">Quem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for saida in saidas %}
+        <tr>
+          <td class="text-body-secondary small">{{ saida.criado_em|date:"d/m/Y H:i" }}</td>
+          <td class="fw-medium">{{ saida.quantidade }}</td>
+          <td>{{ saida.local|default:"Sem destino" }}</td>
+          <td>{{ saida.usuario|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr>
+          <td colspan="4" class="text-body-secondary small">Nenhuma saída registrada ainda.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

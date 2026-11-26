@@ -31,6 +31,8 @@ from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
 from apps.demandas.models import Demanda
+from apps.estoque.permissoes import pode_ver_estoque
+from apps.estoque.services import material_da_manutencao
 
 from .atencao import _atencao_da_manutencao, _dias_de_antecedencia
 from .constants import (
@@ -379,19 +381,40 @@ def concluir(request, pk):
         )
 
     try:
-        concluir_manutencao(
-            manutencao=manutencao,
-            usuario=request.user,
-            descricao_servico=formulario.cleaned_data["descricao_servico"],
-            custo_real=formulario.cleaned_data["custo_real"],
-            data_conclusao=formulario.cleaned_data["data_conclusao"],
-        )
+        with transaction.atomic():
+            concluir_manutencao(
+                manutencao=manutencao,
+                usuario=request.user,
+                descricao_servico=formulario.cleaned_data["descricao_servico"],
+                custo_real=formulario.cleaned_data["custo_real"],
+                data_conclusao=formulario.cleaned_data["data_conclusao"],
+            )
+            # O material que a manutenção consumiu entra na mesma transação: ou
+            # a conclusão e a baixa valem juntas, ou nenhuma das duas vale.
+            negativo = _registrar_material(request, manutencao)
     except ErroDeManutencao as erro:
         messages.error(request, str(erro))
         return redirect("manutencoes:detalhe", pk=manutencao.pk)
 
     messages.success(request, "Manutenção concluída.")
+    if negativo:
+        messages.warning(request, "Estoque ficou negativo, confira na contagem.")
     return redirect("manutencoes:detalhe", pk=manutencao.pk)
+
+
+def _registrar_material(request, manutencao):
+    """Registra o material marcado no modal, se a pessoa alcança o estoque.
+
+    Sem acesso ao estoque, o modal nem oferece material — e nada é gravado. O
+    que voltar é o aviso de que alguma saída deixou o saldo negativo.
+    """
+    material = request.POST.get("material", "")
+    if not material or not pode_ver_estoque(request.user, manutencao.condominio):
+        return False
+    _, negativo = material_da_manutencao(
+        manutencao=manutencao, usuario=request.user, material=material
+    )
+    return negativo
 
 
 @login_required

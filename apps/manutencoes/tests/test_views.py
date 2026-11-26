@@ -1,5 +1,6 @@
 """Telas de manutenção: listagem, detalhe, ações e criação por demanda."""
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -8,6 +9,10 @@ from django.utils import timezone
 
 from apps.condominios.constants import Papel
 from apps.core.constants import Prioridade
+from apps.estoque.constants import TipoMovimentacaoEstoque
+from apps.estoque.models import MovimentacaoEstoque
+from apps.estoque.services import registrar_movimentacao
+from apps.estoque.tests.apoio import criar_item_estoque
 from apps.manutencoes.constants import StatusManutencao, TipoManutencao
 from apps.manutencoes.models import Manutencao
 from apps.manutencoes.services import (
@@ -592,3 +597,51 @@ class VozNaExecucaoTests(BaseDeTelas):
 
         self.assertEqual(resposta.status_code, 200)
         self.assertNotContains(resposta, "js/eithra-ditar.js")
+
+
+class MaterialNaConclusaoTests(BaseDeTelas):
+    """Concluir com material: a baixa sai junto, com o local e quem concluiu."""
+
+    def _com_saldo(self, item, quantidade):
+        return registrar_movimentacao(
+            condominio=self.condominio,
+            item=item,
+            usuario=self.gestao,
+            tipo=TipoMovimentacaoEstoque.AJUSTE_ENTRADA,
+            quantidade=Decimal(quantidade),
+            motivo="Saldo inicial",
+        )
+
+    def test_concluir_com_material_gera_saida_com_local_e_usuario(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        manutencao = self._manutencao(local=local)
+        item = criar_item_estoque(self.condominio, self.gestao)
+        self._com_saldo(item, 5)
+
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {"descricao_servico": "Bomba substituída.", "material": f"{item.pk}:2"},
+        )
+        self.assertEqual(resposta.status_code, 302)
+
+        saida = MovimentacaoEstoque.objects.get(
+            tipo=TipoMovimentacaoEstoque.SAIDA_MANUTENCAO
+        )
+        self.assertEqual(saida.manutencao, manutencao)
+        self.assertEqual(saida.quantidade, Decimal("2"))
+        self.assertEqual(saida.local, local)
+        self.assertEqual(saida.usuario, self.gestao)
+
+    def test_sem_saldo_conclui_e_avisa(self):
+        manutencao = self._manutencao()
+        item = criar_item_estoque(self.condominio, self.gestao)
+
+        resposta = self.client.post(
+            reverse("manutencoes:concluir", args=[manutencao.pk]),
+            {"descricao_servico": "Feito.", "material": f"{item.pk}:3"},
+            follow=True,
+        )
+
+        manutencao.refresh_from_db()
+        self.assertEqual(manutencao.status, StatusManutencao.CONCLUIDA)
+        self.assertContains(resposta, "Estoque ficou negativo, confira na contagem.")

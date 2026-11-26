@@ -51,6 +51,8 @@
             <div class="text-danger small mt-1">{{ erro }}</div>
           {% endfor %}
         </div>
+
+        {% include "pages/estoque/_material_do_trabalho.html" with material_condominio=execucao.condominio material_texto="observacao" %}
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>

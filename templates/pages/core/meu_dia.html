@@ -48,6 +48,11 @@
         </form>
       {% endif %}
       {% include "pages/cadastros/_seletor_condominio.html" %}
+      {% if pode_retirar_material %}
+        {% comment %}O ícone "Peguei do estoque": a retirada sem trabalho
+        atrelado, registrada em um passo, sem sair da tela do dia.{% endcomment %}
+        {% include "pages/estoque/_retirada_rapida.html" with retirada_condominio=condominio_atual %}
+      {% endif %}
     </div>
   </header>
 

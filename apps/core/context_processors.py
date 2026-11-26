@@ -24,7 +24,11 @@ from apps.comunidade.permissoes import pode_ver_comunidade_em_algum
 from apps.condominios import logo
 from apps.core.meu_dia import pode_ver_meu_dia
 from apps.demandas.permissoes import pode_ver_alguma_demanda
-from apps.estoque.permissoes import pode_ver_compras_em_algum, pode_ver_estoque_em_algum
+from apps.estoque.permissoes import (
+    pode_gerenciar_estoque_em_algum,
+    pode_ver_compras_em_algum,
+    pode_ver_estoque_em_algum,
+)
 from apps.governanca.permissoes import pode_ver_governanca_em_algum
 from apps.manutencoes.permissoes import pode_ver_alguma_manutencao
 from apps.portaria.permissoes import condominios_para_ver, pode_ver_portaria_em_algum
@@ -95,6 +99,15 @@ NAVIGATION = [
         # enxerga o estoque — a operação entra para retirar material do serviço
         # que assume. O menu não autoriza: a view é que decide.
         "visivel_para": pode_ver_estoque_em_algum,
+    },
+    {
+        # A contagem fica ao lado do Estoque: é por ela que o saldo de verdade
+        # entra, corrigindo o que o sistema acha que há. Só quem opera o estoque
+        # a enxerga — a operação retira material, não ajusta saldo.
+        "label": "Contagem do estoque",
+        "view_name": "estoque:contagem",
+        "icon": "bx-clipboard",
+        "visivel_para": pode_gerenciar_estoque_em_algum,
     },
     {
         "label": "Compras",

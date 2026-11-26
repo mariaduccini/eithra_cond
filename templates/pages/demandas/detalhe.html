@@ -746,6 +746,8 @@
               {% endfor %}
             </div>
 
+            {% include "pages/estoque/_material_do_trabalho.html" with material_condominio=demanda.condominio material_texto="texto" %}
+
             {% for erro in formulario_conclusao.non_field_errors %}
               <div class="alert alert-danger mt-3 mb-0" role="alert" data-eithra-erro-de-formulario>{{ erro }}</div>
             {% endfor %}

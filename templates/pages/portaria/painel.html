@@ -24,6 +24,11 @@
       </div>
       <div class="eithra-portaria-topo-acoes">
         {% include "pages/cadastros/_seletor_condominio.html" %}
+        {% if pode_retirar_material %}
+          {% comment %}O ícone "Peguei do estoque" fica junto das ações do topo:
+          a retirada sem trabalho atrelado, num passo, sem sair do painel.{% endcomment %}
+          {% include "pages/estoque/_retirada_rapida.html" with retirada_condominio=condominio_atual %}
+        {% endif %}
         <span class="eithra-portaria-agora">
           <i class="bx bx-calendar" aria-hidden="true"></i>{{ agora|date:"d/m/Y" }} · {{ agora|date:"H:i" }}
         </span>

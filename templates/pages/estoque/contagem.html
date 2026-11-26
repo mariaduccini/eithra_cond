@@ -1,0 +1,79 @@
+{% extends "layouts/app.html" %}
+
+{# A contagem do estoque: o saldo do sistema ao lado do campo do que se contou.
+   O foco começa no primeiro campo e o Enter vai para o próximo. Campo vazio é
+   item não contado — não gera ajuste nenhum. "Salvar contagem" lança os ajustes
+   com o motivo datado. É por aqui que entra o saldo inicial dos itens. #}
+
+{% block title %}Contagem do estoque · Eithra{% endblock %}
+
+{% block content %}
+  <header class="eithra-pagina-topo">
+    <div class="eithra-pagina-topo-texto">
+      <a
+        href="{% url 'estoque:itens' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Estoque
+      </a>
+      <span class="eithra-eyebrow">Operação</span>
+      <h1 class="eithra-pagina-titulo">Contagem do estoque</h1>
+      <p class="eithra-pagina-sub">
+        Diga quanto há de verdade. Onde a contagem diferir do sistema, entra um ajuste datado.
+      </p>
+    </div>
+    {% include "pages/cadastros/_seletor_condominio.html" %}
+  </header>
+
+  <div class="card eithra-operational-table-shell">
+    <div class="card-body">
+      {% if itens %}
+        <form method="post" data-eithra-contagem>
+          {% csrf_token %}
+          {% if condominio_atual %}
+            <input type="hidden" name="condominio" value="{{ condominio_atual.pk }}">
+          {% endif %}
+
+          <div class="eithra-contagem-linhas">
+            {% for item in itens %}
+              <div class="eithra-contagem-linha">
+                <div class="eithra-contagem-linha-nome">
+                  {{ item.nome }}
+                  <span class="eithra-contagem-linha-unidade">{{ item.get_unidade_display }}</span>
+                </div>
+                <span class="eithra-contagem-linha-saldo">Sistema: {{ item.saldo }}</span>
+                <input
+                  type="hidden"
+                  name="item"
+                  value="{{ item.pk }}">
+                <label class="visually-hidden" for="contagem-{{ item.pk }}">
+                  Quanto há de {{ item.nome }}
+                </label>
+                <input
+                  type="number"
+                  inputmode="decimal"
+                  step="any"
+                  min="0"
+                  class="form-control form-control-sm text-end"
+                  id="contagem-{{ item.pk }}"
+                  name="quantidade-{{ item.pk }}"
+                  value=""
+                  data-eithra-contagem-campo>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-4">
+            <p class="text-body-secondary small mb-0">
+              Deixe em branco o que não foi contado — não gera ajuste.
+            </p>
+            <button type="submit" class="btn eithra-btn-primario">
+              <i class="bx bx-check me-1" aria-hidden="true"></i> Salvar contagem
+            </button>
+          </div>
+        </form>
+      {% else %}
+        {% include "components/state.html" with state_icon="bx-package" state_title="Nada para contar ainda" state_message="Quando houver itens cadastrados neste condomínio, a contagem aparece aqui." %}
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

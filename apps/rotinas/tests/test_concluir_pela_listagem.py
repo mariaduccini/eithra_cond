@@ -11,6 +11,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.condominios.constants import Papel
+from apps.estoque.constants import TipoMovimentacaoEstoque
+from apps.estoque.models import MovimentacaoEstoque
+from apps.estoque.services import registrar_movimentacao
+from apps.estoque.tests.apoio import criar_item_estoque
 from apps.rotinas.constants import (
     Periodicidade,
     ResultadoExecucao,
@@ -22,6 +26,7 @@ from apps.rotinas.tests.apoio import (
     criar_checklist,
     criar_condominio,
     criar_item_do_checklist,
+    criar_local,
     criar_pessoa,
     criar_vinculo,
 )
@@ -152,3 +157,37 @@ class LinhaAbreAOcorrenciaTests(BaseDaListagem):
         self.assertNotContains(
             resposta, reverse("rotinas:detalhe", args=[rotina.pk])
         )
+
+
+class MaterialNaOcorrenciaTests(BaseDaListagem):
+    """Concluir a ocorrência com material grava a saída ligada a ela."""
+
+    def test_concluir_com_material_gera_saida_para_ocorrencia(self):
+        local = criar_local(self.condominio, "Casa de máquinas")
+        rotina = self._rotina(local=local)
+        execucao = self._pendente(rotina)
+        item = criar_item_estoque(self.condominio, self.gestao)
+        registrar_movimentacao(
+            condominio=self.condominio,
+            item=item,
+            usuario=self.gestao,
+            tipo=TipoMovimentacaoEstoque.AJUSTE_ENTRADA,
+            quantidade=5,
+            motivo="Saldo inicial",
+        )
+
+        resposta = self.client.post(
+            reverse("rotinas:concluir", args=[execucao.pk]),
+            {
+                "resultado": ResultadoExecucao.OK,
+                "material": f"{item.pk}:2",
+            },
+        )
+        self.assertEqual(resposta.status_code, 302)
+
+        saida = MovimentacaoEstoque.objects.get(
+            tipo=TipoMovimentacaoEstoque.SAIDA_OCORRENCIA
+        )
+        self.assertEqual(saida.ocorrencia, execucao)
+        self.assertEqual(saida.local, local)
+        self.assertEqual(saida.usuario, self.gestao)

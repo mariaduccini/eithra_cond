@@ -18,6 +18,7 @@ from itertools import groupby
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -30,6 +31,8 @@ from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
+from apps.estoque.permissoes import pode_ver_estoque
+from apps.estoque.services import material_da_ocorrencia
 
 from .biblioteca import (
     ErroDeBiblioteca,
@@ -628,19 +631,36 @@ def concluir(request, pk):
         return redirect("rotinas:execucoes")
 
     try:
-        concluir_execucao(
-            execucao=execucao,
-            usuario=request.user,
-            resultado=formulario.cleaned_data["resultado"],
-            observacao=formulario.cleaned_data["observacao"],
-            data_execucao=formulario.cleaned_data["data_execucao"],
-        )
+        with transaction.atomic():
+            concluir_execucao(
+                execucao=execucao,
+                usuario=request.user,
+                resultado=formulario.cleaned_data["resultado"],
+                observacao=formulario.cleaned_data["observacao"],
+                data_execucao=formulario.cleaned_data["data_execucao"],
+            )
+            # O material consumido entra na mesma transação da conclusão: ou os
+            # dois valem, ou nenhum vale.
+            negativo = _registrar_material(request, execucao)
     except ErroDeRotina as erro:
         messages.error(request, str(erro))
         return redirect("rotinas:execucoes")
 
     messages.success(request, "Ocorrência concluída.")
+    if negativo:
+        messages.warning(request, "Estoque ficou negativo, confira na contagem.")
     return redirect("rotinas:execucoes")
+
+
+def _registrar_material(request, execucao):
+    """Registra o material marcado no modal, se a pessoa alcança o estoque."""
+    material = request.POST.get("material", "")
+    if not material or not pode_ver_estoque(request.user, execucao.condominio):
+        return False
+    _, negativo = material_da_ocorrencia(
+        execucao=execucao, usuario=request.user, material=material
+    )
+    return negativo
 
 
 @login_required

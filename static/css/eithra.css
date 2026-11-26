@@ -6026,3 +6026,119 @@ a:not(.btn):not(.menu-link):hover {
 .eithra-demanda-cartao-acoes {
   margin-inline-start: auto;
 }
+
+/* Material que acompanha o trabalho --------------------------------------- */
+/* A linha "Usou material?" dos modais que concluem trabalho e da retirada
+   rápida. Os chips somam a um toque; o marcado ganha cor, o resto fica
+   discreto. A busca só aparece quando há item além dos chips. */
+.eithra-material-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.eithra-material-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 999px;
+  background-color: var(--eithra-papel, #ffffff);
+  overflow: hidden;
+}
+
+.eithra-material-chip--marcado {
+  border-color: var(--eithra-teal, #176f73);
+  background-color: var(--eithra-teal-suave, #e7f4f3);
+}
+
+.eithra-material-chip-somar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-block-size: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  border: 0;
+  background: none;
+  color: var(--eithra-grafite, #2f4146);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.eithra-material-chip--marcado .eithra-material-chip-somar {
+  color: var(--eithra-teal-escuro, #12595d);
+}
+
+.eithra-material-chip-qtd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.eithra-material-chip-tirar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 2.25rem;
+  padding-inline: 0.5rem;
+  border: 0;
+  border-inline-start: 1px solid var(--eithra-divisor, #e5ebeb);
+  background: none;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.eithra-material-chip-tirar:hover,
+.eithra-material-chip-tirar:focus-visible {
+  background-color: rgba(var(--bs-secondary-rgb), 0.12);
+  color: var(--eithra-grafite, #2f4146);
+}
+
+/* Contagem do estoque ----------------------------------------------------- */
+/* Cada linha traz o saldo do sistema e o campo do que foi contado. O campo
+   vazio não é zero: é "não contado", e não gera ajuste nenhum. */
+.eithra-contagem-linhas {
+  display: grid;
+  gap: 0;
+}
+
+.eithra-contagem-linha {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(6rem, 8rem);
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 0.6rem;
+  border-block-end: 1px solid var(--eithra-divisor, #edf0f0);
+}
+
+.eithra-contagem-linha-nome {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  color: var(--eithra-grafite, #2f4146);
+  font-weight: 600;
+}
+
+.eithra-contagem-linha-unidade {
+  display: block;
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.eithra-contagem-linha-saldo {
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.eithra-contagem-resumo {
+  margin-block-start: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #efe3c7;
+  border-radius: 0.75rem;
+  background: #fffaf0;
+  color: #69552c;
+  font-size: 0.86rem;
+}
+

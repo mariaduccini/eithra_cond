@@ -28,7 +28,8 @@ from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
-from apps.estoque.permissoes import pode_criar_compra
+from apps.estoque.permissoes import pode_criar_compra, pode_ver_estoque
+from apps.estoque.services import material_da_demanda
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
 from . import movimentacao
@@ -833,9 +834,10 @@ def concluir(request, pk):
             status=400,
         )
 
-    # A conclusão, o relato e as provas são uma coisa só: ou tudo entra, ou nada
-    # entra. A prova acompanha o evento de conclusão — é o instante que ela
-    # sustenta —, e o relato ganha o evento próprio de sempre.
+    # A conclusão, o relato, as provas e o material são uma coisa só: ou tudo
+    # entra, ou nada entra. A prova acompanha o evento de conclusão — é o
+    # instante que ela sustenta —, e o relato ganha o evento próprio de sempre.
+    negativo = False
     try:
         with transaction.atomic():
             evento = alterar_status(
@@ -857,6 +859,7 @@ def concluir(request, pk):
                     usuario=request.user,
                     evento=evento,
                 )
+            negativo = _registrar_material(request, demanda)
     except (ErroDeDemanda, ErroDeEvidencia, ErroDeStorage) as erro:
         formulario.add_error(None, str(erro))
         return _render_detalhe(
@@ -868,6 +871,8 @@ def concluir(request, pk):
         )
 
     messages.success(request, "Demanda concluída.")
+    if negativo:
+        messages.warning(request, "Estoque ficou negativo, confira na contagem.")
     # "Registrar compra agora" conclui e já abre o formulário de compra da
     # demanda. Quem não pediu isso segue para o histórico, como sempre.
     if request.POST.get("registrar_compra"):
@@ -875,6 +880,21 @@ def concluir(request, pk):
             f"{reverse('compras:listagem')}?abrir=manual&demanda={demanda.pk}"
         )
     return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
+
+
+def _registrar_material(request, demanda):
+    """Registra o material marcado no modal, se a pessoa alcança o estoque.
+
+    Sem acesso ao estoque, o modal nem oferece material — e nada é gravado. O
+    que voltar é o aviso de que alguma saída deixou o saldo negativo.
+    """
+    material = request.POST.get("material", "")
+    if not material or not pode_ver_estoque(request.user, demanda.condominio):
+        return False
+    _, negativo = material_da_demanda(
+        demanda=demanda, usuario=request.user, material=material
+    )
+    return negativo
 
 
 @login_required
