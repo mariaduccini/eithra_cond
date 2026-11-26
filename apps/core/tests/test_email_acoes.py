@@ -13,7 +13,7 @@ de linguagem são sempre falsos: nenhum teste toca a rede.
 """
 from unittest.mock import patch
 
-from django.test import Client
+from django.test import Client, override_settings
 from django.urls import reverse
 
 from apps.cadastros.tests.apoio import criar_pessoa, criar_vinculo
@@ -61,6 +61,7 @@ def patchar_leitura(**campos):
 # ---------------------------------------------------------------------------
 
 
+@override_settings(EITHRA_GMAIL_ATIVO=True)
 class BaseConfirmacaoTests(BaseLeituraTests):
     """Condomínio, gestão com papel de decisão e as ferramentas da confirmação."""
 

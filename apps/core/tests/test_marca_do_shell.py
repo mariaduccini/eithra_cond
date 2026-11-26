@@ -1,10 +1,11 @@
-"""A marca do alto do menu é a identidade do condomínio em vista.
+"""A marca do alto do menu do shell.
 
-O shell diz em qual condomínio a pessoa está operando: a logo dele quando
-existe, as iniciais do nome quando não. Nunca a marca fixa do produto, nunca o
-nome ao lado, e nunca a identidade de um condomínio diferente do que está
-aberto. Estes testes olham para a página inicial porque nela a única marca na
-tela é a do shell — não há seletor de condomínio no corpo.
+Hoje o alto do menu lateral renderiza uma marca fixa (a imagem do produto no
+link do shell), e não a logo do condomínio. Estes testes fixam o que o template
+renderiza hoje: a marca do shell aparece, o nome do condomínio não aparece ao
+lado, e a logo do condomínio não entra no alto do menu. Olham para a página
+inicial porque nela a única marca na tela é a do shell — não há seletor de
+condomínio no corpo.
 """
 from unittest.mock import patch
 
@@ -65,10 +66,15 @@ class MarcaDoShellTests(TestCase):
         html = resposta.content.decode()
         return html[html.index('class="app-brand"') : html.index("</aside>")]
 
-    def test_sem_logo_o_alto_do_menu_usa_as_iniciais(self):
+    def _marca_do_shell(self, resposta):
+        """A marca fixa que o alto do menu renderiza hoje."""
+        self.assertContains(resposta, "eithra-brand-link-condominio")
+        self.assertContains(resposta, "eithra-brand-implantacao-menu")
+        self.assertContains(resposta, "img/logorveoficial.PNG")
+
+    def test_o_alto_do_menu_usa_a_marca_do_shell(self):
         resposta = self._home()
-        self.assertContains(resposta, "eithra-logo-condominio-iniciais")
-        self.assertContains(resposta, "RVE")
+        self._marca_do_shell(resposta)
         self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
     def test_o_alto_do_menu_nao_usa_a_marca_fixa_do_produto(self):
@@ -77,37 +83,35 @@ class MarcaDoShellTests(TestCase):
         self.assertNotIn("eithra-mark.svg", menu)
         self.assertNotIn("app-brand-text", menu)
 
-    def test_cadastrar_logo_o_alto_do_menu_passa_a_mostrar_a_logo(self):
+    def test_cadastrar_logo_nao_usa_a_logo_do_condominio_no_shell(self):
         self._salvar(logo=png("marca.png"))
         resposta = self._home()
-        self.assertContains(resposta, self._logo_guardada(self.condominio))
-        self.assertNotContains(resposta, "eithra-logo-condominio-iniciais")
-        self.assertContains(resposta, "eithra-logo-condominio-imagem--shell")
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
-    def test_substituir_logo_o_alto_do_menu_mostra_a_nova(self):
+    def test_substituir_logo_nao_muda_a_marca_do_shell(self):
         self._salvar(logo=png("primeira.png"))
         self._salvar(logo=jpg("segunda.jpg"))
         resposta = self._home()
-        self.assertContains(resposta, f"logos/{self.condominio.pk}.jpg")
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, f"logos/{self.condominio.pk}.jpg")
         self.assertNotContains(resposta, f"logos/{self.condominio.pk}.png")
 
-    def test_remover_logo_o_alto_do_menu_volta_as_iniciais(self):
+    def test_remover_logo_mantem_a_marca_do_shell(self):
         self._salvar(logo=png("marca.png"))
         self._salvar(remover_logo="on")
         resposta = self._home()
-        self.assertContains(resposta, "eithra-logo-condominio-iniciais")
-        self.assertContains(resposta, "RVE")
+        self._marca_do_shell(resposta)
         self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
-    def test_apos_salvar_o_render_seguinte_ja_usa_a_nova_logo(self):
+    def test_apos_salvar_o_render_seguinte_mantem_a_marca_do_shell(self):
         resposta = self._salvar(logo=png("marca.png"))
         self.assertEqual(resposta.status_code, 302)
-        self.assertContains(
-            self.client.get(resposta["Location"]),
-            self._logo_guardada(self.condominio),
-        )
+        seguinte = self.client.get(resposta["Location"])
+        self._marca_do_shell(seguinte)
+        self.assertNotContains(seguinte, self._logo_guardada(self.condominio))
 
-    def test_trocar_de_condominio_troca_a_marca(self):
+    def test_trocar_de_condominio_mantem_a_marca_do_shell(self):
         outro = criar_condominio("Aurora")
         criar_vinculo(self.pessoa, outro, papel=Papel.SINDICA)
         logo.definir_logo(outro, png("aurora.png"))
@@ -116,31 +120,33 @@ class MarcaDoShellTests(TestCase):
         resposta = self._home(condominio=outro)
 
         self.assertEqual(resposta.context["condominio_da_marca"], outro)
-        self.assertContains(resposta, self._logo_guardada(outro))
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, self._logo_guardada(outro))
         self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
-    def test_recarregar_mantem_a_marca_correta(self):
+    def test_recarregar_mantem_a_marca_do_shell(self):
         self._salvar(logo=png("marca.png"))
-        self.assertContains(self._home(), self._logo_guardada(self.condominio))
-        self.assertContains(self._home(), self._logo_guardada(self.condominio))
+        self._marca_do_shell(self._home())
+        self._marca_do_shell(self._home())
+        self.assertNotContains(self._home(), self._logo_guardada(self.condominio))
 
-    def test_logo_horizontal_aparece_no_shell(self):
+    def test_logo_horizontal_nao_usa_a_logo_no_shell(self):
         self._salvar(logo=self._logo_png(nome="horizontal.png", largura=96, altura=32))
         resposta = self._home()
-        self.assertContains(resposta, self._logo_guardada(self.condominio))
-        self.assertContains(resposta, "eithra-logo-condominio-imagem--shell")
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
-    def test_logo_vertical_aparece_no_shell(self):
+    def test_logo_vertical_nao_usa_a_logo_no_shell(self):
         self._salvar(logo=self._logo_png(nome="vertical.png", largura=32, altura=96))
         resposta = self._home()
-        self.assertContains(resposta, self._logo_guardada(self.condominio))
-        self.assertContains(resposta, "eithra-logo-condominio-imagem--shell")
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
-    def test_logo_quadrada_aparece_no_shell(self):
+    def test_logo_quadrada_nao_usa_a_logo_no_shell(self):
         self._salvar(logo=self._logo_png(nome="quadrada.png", largura=64, altura=64))
         resposta = self._home()
-        self.assertContains(resposta, self._logo_guardada(self.condominio))
-        self.assertContains(resposta, "eithra-logo-condominio-imagem--shell")
+        self._marca_do_shell(resposta)
+        self.assertNotContains(resposta, self._logo_guardada(self.condominio))
 
     def test_nao_exibe_o_nome_do_condominio_ao_lado_da_marca(self):
         """A marca aparece sozinha: sem nome ao lado."""

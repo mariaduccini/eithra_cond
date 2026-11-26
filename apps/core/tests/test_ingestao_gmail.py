@@ -39,6 +39,7 @@ REFRESH = "refresh-de-teste-nao-vaza"
 CONTA = "portaria@exemplo.test"
 
 CONFIGURADO = {
+    "EITHRA_GMAIL_ATIVO": True,
     "EITHRA_GMAIL_CLIENT_ID": CLIENTE,
     "EITHRA_GMAIL_CLIENT_SECRET": SEGREDO,
     "EITHRA_GMAIL_REFRESH_TOKEN": REFRESH,
