@@ -22,6 +22,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
+from django.utils.formats import number_format
 
 from apps.core.arquivos import (
     ErroDeArquivo,
@@ -413,11 +414,14 @@ def criar_compra(
     numero_documento: str = "",
     observacao: str = "",
     manutencao_origem=None,
+    demanda_origem=None,
 ) -> Compra:
     """Abre a compra como rascunho.
 
     O rascunho não move estoque nem vale nada: é a compra sendo montada. Só a
-    confirmação aplica o destino das linhas.
+    confirmação aplica o destino das linhas. Quando a compra nasce de uma
+    demanda, a demanda guarda a lembrança de que ela foi registrada — o fato é
+    do estoque, e nada mais é copiado para lá.
     """
     compra = Compra(
         condominio=condominio,
@@ -427,12 +431,39 @@ def criar_compra(
         numero_documento=_texto(numero_documento),
         observacao=_texto_longo(observacao),
         manutencao_origem=manutencao_origem,
+        demanda_origem=demanda_origem,
         status=StatusCompra.RASCUNHO,
         criado_por=criado_por,
     )
     _validar(compra)
     compra.save()
+
+    if compra.demanda_origem_id:
+        _lembrar_compra_na_demanda(compra, criado_por)
+
     return compra
+
+
+def _lembrar_compra_na_demanda(compra: Compra, usuario) -> None:
+    """Registra, na demanda de origem, que a compra foi aberta.
+
+    O fato pertence ao estoque, e por isso o evento na demanda é só a lembrança
+    de que ele existiu — o histórico da compra não é copiado para lá. Sem
+    demanda de origem, não há onde lembrar, e nada acontece.
+    """
+    from apps.demandas import services as demandas_services
+
+    fornecedor = (
+        compra.fornecedor.nome_razao_social
+        if compra.fornecedor_id
+        else "Sem fornecedor"
+    )
+    descricao = (
+        f"Compra registrada: R$ "
+        f"{number_format(compra.total_calculado(), decimal_pos=2, force_grouping=True)}"
+        f" · {fornecedor}"
+    )
+    demandas_services.registrar_compra(compra.demanda_origem, usuario, descricao)
 
 
 @transaction.atomic
@@ -779,6 +810,7 @@ def editar_compra(
     numero_documento: str = "",
     observacao: str = "",
     manutencao_origem=None,
+    demanda_origem=None,
 ) -> Compra:
     """Atualiza o cabeçalho da compra, enquanto ela ainda é rascunho."""
     if not compra.pode_editar:
@@ -792,6 +824,7 @@ def editar_compra(
     compra.numero_documento = _texto(numero_documento)
     compra.observacao = _texto_longo(observacao)
     compra.manutencao_origem = manutencao_origem
+    compra.demanda_origem = demanda_origem
 
     _validar(compra)
     compra.save()

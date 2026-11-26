@@ -17,6 +17,7 @@ from django.db.models import Q
 
 from apps.cadastros.models import Fornecedor, LocalOperacional
 from apps.condominios.models import Condominio
+from apps.demandas.models import Demanda
 from apps.manutencoes.models import Manutencao
 
 from .constants import (
@@ -64,6 +65,17 @@ def _manutencoes_do_condominio(condominio, atual=None):
         return Manutencao.objects.none()
 
     queryset = Manutencao.objects.filter(condominio=condominio)
+    if atual is not None and getattr(atual, "pk", None):
+        return queryset.filter(Q(ativo=True) | Q(pk=atual.pk))
+    return queryset.filter(ativo=True)
+
+
+def _demandas_do_condominio(condominio, atual=None):
+    """As demandas do condomínio que ainda fazem sentido escolher."""
+    if condominio is None or not getattr(condominio, "pk", None):
+        return Demanda.objects.none()
+
+    queryset = Demanda.objects.filter(condominio=condominio)
     if atual is not None and getattr(atual, "pk", None):
         return queryset.filter(Q(ativo=True) | Q(pk=atual.pk))
     return queryset.filter(ativo=True)
@@ -415,6 +427,13 @@ class CompraForm(forms.Form):
         empty_label="Sem manutenção de origem",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    demanda_origem = forms.ModelChoiceField(
+        label="Demanda de origem",
+        queryset=Demanda.objects.none(),
+        required=False,
+        empty_label="Sem demanda de origem",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     observacao = forms.CharField(
         label="Observação",
         required=False,
@@ -450,6 +469,9 @@ class CompraForm(forms.Form):
         )
         self.fields["manutencao_origem"].queryset = _manutencoes_do_condominio(
             atual, getattr(compra, "manutencao_origem", None)
+        )
+        self.fields["demanda_origem"].queryset = _demandas_do_condominio(
+            atual, getattr(compra, "demanda_origem", None)
         )
         if compra is not None and compra.data_compra is None:
             self.fields["data_compra"].required = False

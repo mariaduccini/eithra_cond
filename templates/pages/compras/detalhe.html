@@ -130,6 +130,14 @@
               <span class="text-end">{{ compra.manutencao_origem }}</span>
             </div>
           {% endif %}
+          {% if compra.demanda_origem %}
+            <div class="d-flex justify-content-between gap-3 py-1">
+              <span class="text-body-secondary">Veio da demanda</span>
+              <span class="text-end">
+                <a href="{% url 'demandas:detalhe' compra.demanda_origem_pk %}">{{ compra.demanda_origem }}</a>
+              </span>
+            </div>
+          {% endif %}
           {% if compra.confirmada_em %}
             <div class="d-flex justify-content-between gap-3 py-1">
               <span class="text-body-secondary">Confirmada em</span>
@@ -634,6 +642,16 @@
               </label>
               {{ formulario_compra.manutencao_origem }}
               {% for erro in formulario_compra.manutencao_origem.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-6">
+              <label class="form-label" for="{{ formulario_compra.demanda_origem.id_for_label }}">
+                {{ formulario_compra.demanda_origem.label }}
+              </label>
+              {{ formulario_compra.demanda_origem }}
+              {% for erro in formulario_compra.demanda_origem.errors %}
                 <div class="text-danger small mt-1">{{ erro }}</div>
               {% endfor %}
             </div>

@@ -260,11 +260,18 @@ class ListagemDeDemandasTests(TestCase):
 
         for fora in ("Concluir demanda", "Iniciar", "Aguardar"):
             self.assertNotIn(fora, rotulos)
-        # A ordem do que fica é a da decisão: manutenção, comunicado, editar e
-        # cancelar — todos com ícone.
+        # A ordem do que fica é a da decisão: manutenção, compra, comunicado,
+        # editar e cancelar — todos com ícone. Registrar a compra da demanda vem
+        # logo depois de criar a manutenção.
         self.assertEqual(
             rotulos,
-            ["Criar manutenção", "Gerar comunicado", "Editar demanda", "Cancelar"],
+            [
+                "Criar manutenção",
+                "Registrar compra",
+                "Gerar comunicado",
+                "Editar demanda",
+                "Cancelar",
+            ],
         )
 
     def test_descricao_igual_ao_titulo_nao_vira_segunda_linha(self):

@@ -672,6 +672,19 @@ def registrar_manutencao(demanda, usuario, descricao: str) -> HistoricoDemanda:
     return _registrar(demanda, usuario, TipoEventoDemanda.MANUTENCAO, texto)
 
 
+@transaction.atomic
+def registrar_compra(demanda, usuario, descricao: str) -> HistoricoDemanda:
+    """Anota, na memória da demanda, que uma compra foi registrada para ela.
+
+    Como o comunicado e a manutenção, é um evento que a demanda recebe de fora
+    da própria operação: o fato pertence ao estoque, e por isso não se copia o
+    histórico da compra para cá — registra-se a lembrança de que ela existiu.
+    A autoridade sobre a compra continua sendo o domínio de estoque.
+    """
+    texto = _texto(descricao) or "Compra registrada"
+    return _registrar(demanda, usuario, TipoEventoDemanda.COMPRA, texto)
+
+
 # Quantos dias a resposta do morador continua à vista de quem responde pelo
 # condomínio. Passado esse tempo, ela já foi lida — ou não era mais notícia.
 DIAS_DO_RETORNO_DO_MORADOR = 30

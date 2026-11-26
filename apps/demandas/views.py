@@ -19,6 +19,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
 from apps.comunicacao.permissoes import pode_criar_comunicacao
@@ -27,6 +28,7 @@ from apps.core import audio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
+from apps.estoque.permissoes import pode_criar_compra
 from apps.manutencoes.permissoes import pode_criar_manutencao
 
 from . import movimentacao
@@ -866,6 +868,12 @@ def concluir(request, pk):
         )
 
     messages.success(request, "Demanda concluída.")
+    # "Registrar compra agora" conclui e já abre o formulário de compra da
+    # demanda. Quem não pediu isso segue para o histórico, como sempre.
+    if request.POST.get("registrar_compra"):
+        return redirect(
+            f"{reverse('compras:listagem')}?abrir=manual&demanda={demanda.pk}"
+        )
     return redirect(f"{reverse('demandas:detalhe', args=[demanda.pk])}?aba=historico")
 
 
@@ -1494,6 +1502,13 @@ def _render_detalhe(
         # uma etapa, e o aviso de manutenção aberta acompanha essa janela.
         "pode_concluir": pode_concluir,
         "manutencao_aberta": manutencao is not None,
+        # Uma demanda que pede compra, ainda sem compra ligada, oferece registrar
+        # a compra junto da conclusão. A demanda comum não muda de tela.
+        "oferecer_compra_ao_concluir": (
+            pode_concluir
+            and _demanda_e_de_compra(demanda)
+            and not demanda.compras.exists()
+        ),
         # O caminho direto para o morador que pediu: um ícone de WhatsApp que
         # abre a conversa com a mensagem já escrita. Só existe quando há a quem
         # escrever e quem escreve pode editar a demanda.
@@ -2144,6 +2159,18 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
                 "label": "Criar manutenção",
                 "icon": "bx-wrench",
                 "url": f"{reverse('manutencoes:listagem')}?demanda={demanda.pk}",
+            }
+        )
+
+    # Registrar a compra que a demanda pediu: o formulário de compra abre já com
+    # o condomínio, a observação e a demanda de origem preenchidos. Aparece para
+    # quem pode abrir compra no condomínio, logo depois de criar manutenção.
+    if pode_criar_compra(usuario, demanda.condominio):
+        acoes.append(
+            {
+                "label": "Registrar compra",
+                "icon": "bx-cart",
+                "url": f"{reverse('compras:listagem')}?abrir=manual&demanda={demanda.pk}",
             }
         )
 
@@ -2859,7 +2886,54 @@ def _relacionadas_para_tela(demanda, manutencao):
                 "url": reverse("manutencoes:detalhe", args=[manutencao.pk]),
             }
         )
+    compra = _compra_da_demanda(demanda)
+    if compra is not None:
+        relacionadas.append(
+            {
+                "titulo": (
+                    f"Compra: {_dinheiro_da_compra(compra)} · "
+                    f"{_fornecedor_da_compra(compra)}"
+                ),
+                "tipo": "Compra registrada",
+                "status": compra.get_status_display(),
+                "url": reverse("compras:detalhe", args=[compra.pk]),
+            }
+        )
     return relacionadas
+
+
+def _compra_da_demanda(demanda):
+    """A compra mais recente ligada a esta demanda, quando existe uma."""
+    return demanda.compras.order_by("-criado_em").first()
+
+
+def _dinheiro_da_compra(compra) -> str:
+    """O total da compra como a gestão o lê."""
+    return f"R$ {number_format(compra.total_calculado(), decimal_pos=2, force_grouping=True)}"
+
+
+def _fornecedor_da_compra(compra) -> str:
+    """O fornecedor da compra, ou a ausência dele."""
+    if not compra.fornecedor_id:
+        return "Sem fornecedor"
+    return compra.fornecedor.nome_razao_social
+
+
+# Os termos que dizem que a demanda pede uma compra, na fala de quem a abriu.
+TERMOS_DE_COMPRA = ("compra", "comprar", "aquisição", "aquisicao")
+
+
+def _demanda_e_de_compra(demanda) -> bool:
+    """Se a demanda pede uma compra, pela linguagem do título e da natureza.
+
+    A leitura é intencionalmente simples: basta o título ou a natureza falar de
+    compra. Ela nunca bloqueia nada — só decide se a tela oferece registrar a
+    compra junto da conclusão.
+    """
+    alvo = (
+        f"{demanda.titulo or ''} {demanda.get_tipo_problema_display() or ''}".lower()
+    )
+    return any(termo in alvo for termo in TERMOS_DE_COMPRA)
 
 
 def _resumo_da_atualizacao(

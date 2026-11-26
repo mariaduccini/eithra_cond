@@ -224,6 +224,10 @@ class TipoEventoDemanda(models.TextChoices):
     # cancelada. Como o comunicado, é um evento que a demanda recebe de fora: o
     # fato pertence à manutenção, e a demanda só lembra que ele aconteceu.
     MANUTENCAO = "manutencao", "Manutenção vinculada"
+    # Uma compra foi aberta a partir desta demanda. Como a manutenção, é um
+    # evento que a demanda recebe de fora: o fato pertence ao estoque, e a
+    # demanda só lembra que ele existiu, sem copiar o histórico de lá.
+    COMPRA = "compra", "Compra registrada"
     # O morador respondeu "Ficou resolvido?". Também vem de fora da operação — a
     # resposta é dele, não da gestão —, mas fica no histórico da demanda porque
     # é sobre ela, e é o que quem responde pelo condomínio vai querer reler.

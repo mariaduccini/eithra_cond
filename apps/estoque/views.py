@@ -35,6 +35,7 @@ from apps.condominios.models import Condominio
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage, obter_provider
+from apps.demandas.models import Demanda
 
 from .constants import (
     DestinoDoItem,
@@ -378,6 +379,7 @@ def criar_compra_view(request):
             numero_documento=dados["numero_documento"],
             observacao=dados["observacao"],
             manutencao_origem=dados["manutencao_origem"],
+            demanda_origem=dados["demanda_origem"],
         )
     except ErroDeEstoque as erro:
         messages.error(request, str(erro))
@@ -656,6 +658,7 @@ def editar_compra_view(request, pk):
             numero_documento=dados["numero_documento"],
             observacao=dados["observacao"],
             manutencao_origem=dados["manutencao_origem"],
+            demanda_origem=dados["demanda_origem"],
         )
     except ErroDeEstoque as erro:
         messages.error(request, str(erro))
@@ -1185,6 +1188,34 @@ def _render_importar_compra(request, condominios, *, formulario=None, status=200
     )
 
 
+def _iniciais_compra_da_demanda(request):
+    """O formulário de compra já aberto a partir do menu de uma demanda.
+
+    Quando o pedido vem de ``?demanda=<pk>``, o condomínio, a observação e a
+    demanda de origem chegam preenchidos — a compra nasce sabendo de onde veio.
+    A demanda só vale se esta pessoa pode registrar compras no condomínio dela.
+    """
+    bruto = request.GET.get("demanda")
+    if not bruto:
+        return None
+    try:
+        chave = uuid.UUID(str(bruto))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+    demanda = Demanda.objects.filter(
+        pk=chave, condominio__in=condominios_para_criar_compras(request.user)
+    ).first()
+    if demanda is None:
+        return None
+
+    return {
+        "condominio": demanda.condominio_id,
+        "observacao": demanda.titulo,
+        "demanda_origem": demanda.pk,
+    }
+
+
 def _render_compras(request, condominios, *, formulario=None, modal=None, status=200):
     """Monta a lista de compras com os filtros aplicados."""
     filtros = FiltroDeComprasForm(
@@ -1196,7 +1227,10 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
     pode_criar = condominios_para_criar_compras(request.user).exists()
 
     if formulario is None and pode_criar:
-        formulario = CompraForm(condominios=condominios_para_criar_compras(request.user))
+        formulario = CompraForm(
+            condominios=condominios_para_criar_compras(request.user),
+            initial=_iniciais_compra_da_demanda(request),
+        )
 
     contexto = {
         "compras": [_compra_para_linha(compra) for compra in pagina_compras],
@@ -1656,6 +1690,10 @@ def _compra_para_detalhe(compra) -> dict:
                 compra.manutencao_origem.titulo if compra.manutencao_origem_id else ""
             ),
             "manutencao_origem_pk": compra.manutencao_origem_id,
+            "demanda_origem": (
+                compra.demanda_origem.titulo if compra.demanda_origem_id else ""
+            ),
+            "demanda_origem_pk": compra.demanda_origem_id,
             "confirmada_em": _momento_por_extenso(compra.confirmada_em),
             "criado_por": _nome_de(compra.criado_por),
             "criado_em": _momento_por_extenso(compra.criado_em),

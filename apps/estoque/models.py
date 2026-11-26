@@ -539,6 +539,12 @@ class CompraQuerySet(models.QuerySet):
             return self.none()
         return self.filter(manutencao_origem_id=manutencao.pk)
 
+    def por_demanda(self, demanda):
+        """Compras ligadas a esta demanda."""
+        if demanda is None or not getattr(demanda, "pk", None):
+            return self.none()
+        return self.filter(demanda_origem_id=demanda.pk)
+
     def confirmadas(self):
         """Só o que já valeu."""
         return self.filter(status=StatusCompra.CONFIRMADA)
@@ -645,6 +651,15 @@ class Compra(models.Model):
         related_name="compras_originadas",
         verbose_name="Manutenção de origem",
         help_text="A que serviço a compra atende, quando atende. Não altera a manutenção.",
+    )
+    demanda_origem = models.ForeignKey(
+        "demandas.Demanda",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="compras",
+        verbose_name="Demanda de origem",
+        help_text="A demanda que pediu esta compra, quando veio de uma. Não altera a demanda.",
     )
     confirmada_em = models.DateTimeField(
         "Confirmada em",
@@ -810,6 +825,13 @@ class Compra(models.Model):
             erros["manutencao_origem"] = (
                 "A manutenção de origem não é deste condomínio."
             )
+
+        if (
+            self.demanda_origem_id
+            and self.condominio_id
+            and self.demanda_origem.condominio_id != self.condominio_id
+        ):
+            erros["demanda_origem"] = "A demanda de origem não é deste condomínio."
 
         if self.status == StatusCompra.CONFIRMADA and self.confirmada_em is None:
             erros["confirmada_em"] = (
