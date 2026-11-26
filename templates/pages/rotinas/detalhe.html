@@ -140,7 +140,7 @@
             {% for execucao in execucoes %}
               <li class="list-group-item">
                 <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
-                  <span class="fw-medium">{{ execucao.data_prevista }}</span>
+                  <a href="{% url 'rotinas:execucao' execucao.pk %}" class="fw-medium text-decoration-none">{{ execucao.data_prevista }}</a>
                   <span class="badge bg-label-{{ execucao.situacao_tom }}">
                     {{ execucao.situacao }}{% if execucao.atrasada %} · atrasada{% endif %}
                   </span>
