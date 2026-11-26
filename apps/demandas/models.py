@@ -716,8 +716,12 @@ class AcompanhamentoMorador(models.Model):
     pessoa = models.ForeignKey(
         Pessoa,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="acompanhamentos_de_demanda",
         verbose_name="Morador",
+        help_text="O morador que acompanha. Fica vazio quando a demanda não tem "
+        "morador identificado — a pré-visualização da gestão é um destes casos.",
     )
     token = models.UUIDField(
         "Token",
@@ -770,7 +774,8 @@ class AcompanhamentoMorador(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"Acompanhamento de {self.pessoa} · {self.demanda}"
+        morador = self.pessoa if self.pessoa_id else "sem morador identificado"
+        return f"Acompanhamento de {morador} · {self.demanda}"
 
     @property
     def respondido(self) -> bool:

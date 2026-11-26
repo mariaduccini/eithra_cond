@@ -70,6 +70,7 @@ from .forms import (
 from .models import AcompanhamentoMorador, Demanda, EvidenciaDemanda, peso_da_prioridade
 from .permissoes import (
     condominios_para_criar,
+    condominios_para_gerenciar,
     condominios_para_ver,
     pode_adicionar_observacao,
     pode_alterar_status,
@@ -1074,9 +1075,21 @@ def _acompanhamento_para_o_morador(acompanhamento):
     }
 
 
+def _e_gestao_do_condominio(usuario, condominio) -> bool:
+    """Diz se quem abre a página responde pela gestão deste condomínio.
+
+    É o que distingue o morador de quem está pré-visualizando: a faixa de
+    pré-visualização e a desativação da avaliação existem só para a gestão.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+    return condominios_para_gerenciar(usuario).filter(pk=condominio.pk).exists()
+
+
 def acompanhar_publico(request, token):
     """A demanda como o morador a acompanha, sem login."""
     acompanhamento = _acompanhamento_publico_ou_404(token)
+    gestao = _e_gestao_do_condominio(request.user, acompanhamento.demanda.condominio)
     return render(
         request,
         "pages/demandas/acompanhar_publico.html",
@@ -1085,8 +1098,32 @@ def acompanhar_publico(request, token):
             "logo_do_condominio": logo.endereco(acompanhamento.demanda.condominio),
             "token": acompanhamento.token,
             "limite_do_comentario": 500,
+            # A gestão pode abrir este endereço para ver o que o morador vê. A
+            # faixa avisa disso, e a avaliação fica desabilitada: quem responde
+            # "Ficou resolvido?" é o morador, nunca quem opera a demanda.
+            "previa_gestao": gestao,
         },
     )
+
+
+@login_required
+@require_POST
+def pre_visualizar_acompanhamento(request, pk):
+    """Leva a gestão à página pública, criando o acompanhamento se preciso.
+
+    Quem responde pela demanda abre esta porta para ver exatamente o que o
+    morador vê. Quando o acompanhamento ainda não existe, ele é criado aqui —
+    com o morador que pediu, ou sem morador quando a demanda não tem solicitante
+    —, e a página pública passa a existir. É um ato da gestão, e por isso o
+    acesso é um POST protegido pela mesma permissão de editar a demanda.
+    """
+    demanda = _demanda_para_editar(request, pk)
+    acompanhamento, _ = AcompanhamentoMorador.objects.get_or_create(
+        demanda=demanda,
+        pessoa=demanda.solicitante,
+        defaults={"criado_por": request.user},
+    )
+    return redirect("demandas:acompanhar_publico", token=acompanhamento.token)
 
 
 @require_POST
@@ -1099,6 +1136,15 @@ def avaliar(request, token):
     """
     acompanhamento = _acompanhamento_publico_ou_404(token)
     destino = reverse("demandas:acompanhar_publico", args=[acompanhamento.token])
+
+    # A avaliação é do morador. Quem responde pela gestão pode ver a página como
+    # ele a vê, mas não responde por ele: a tentativa não registra nada.
+    if _e_gestao_do_condominio(request.user, acompanhamento.demanda.condominio):
+        messages.info(
+            request,
+            "A avaliação é do morador. Esta é uma pré-visualização da gestão.",
+        )
+        return redirect(destino)
 
     if acompanhamento.demanda.status != StatusDemanda.CONCLUIDA:
         messages.error(request, "Esta demanda ainda não foi concluída.")
@@ -1371,6 +1417,9 @@ def _render_detalhe(
         # abre a conversa com a mensagem já escrita. Só existe quando há a quem
         # escrever e quem escreve pode editar a demanda.
         "aviso_ao_morador": _aviso_ao_morador(request, demanda, pode_editar),
+        # O caminho para a gestão ver a demanda como o morador a vê. Só existe
+        # para quem pode editar a demanda.
+        "previa_do_morador": _previa_do_morador(request, demanda, pode_editar),
         # A ação principal é contextual: acompanhar a manutenção em curso quando
         # ela existe; sem manutenção, o que sustenta o próximo passo é a própria
         # demanda — o próximo passo combinado ou registrar o que aconteceu.
@@ -2057,6 +2106,35 @@ def _link_do_acompanhamento(request, demanda):
     return request.build_absolute_uri(
         reverse("demandas:acompanhar_publico", args=[acompanhamento.token])
     )
+
+
+def _previa_do_morador(request, demanda, pode_editar):
+    """O ícone que abre a página do morador, para a gestão conferir o que ele vê.
+
+    Só existe para quem pode editar a demanda. Quando o acompanhamento já
+    existe, é um link direto para a página pública; quando ainda não existe, o
+    clique é um POST que cria o acompanhamento e leva à página. O morador nunca
+    passa por aqui: quem pré-visualiza responde pela demanda.
+    """
+    if not pode_editar:
+        return None
+
+    acompanhamento = (
+        AcompanhamentoMorador.objects.filter(demanda=demanda)
+        .order_by("criado_em")
+        .first()
+    )
+    if acompanhamento is not None:
+        return {
+            "url": reverse(
+                "demandas:acompanhar_publico", args=[acompanhamento.token]
+            ),
+            "post": False,
+        }
+    return {
+        "url": reverse("demandas:pre_visualizar_acompanhamento", args=[demanda.pk]),
+        "post": True,
+    }
 
 
 def _aviso_ao_morador(request, demanda, pode_editar):

@@ -76,6 +76,33 @@
           <i class="bx bxl-whatsapp" aria-hidden="true"></i>
         </a>
       {% endif %}
+      {% if previa_do_morador %}
+        {% comment %}O ícone que abre a demanda como o morador a vê. Quando o
+        acompanhamento já existe, é um link direto para a página pública; quando
+        ainda não existe, o clique é um POST que o cria e leva à página.{% endcomment %}
+        {% if previa_do_morador.post %}
+          <form method="post" action="{{ previa_do_morador.url }}" target="_blank" rel="noopener" class="d-inline-flex">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="eithra-acao-icone"
+              title="Ver como o morador vê"
+              aria-label="Ver como o morador vê">
+              <i class="bx bx-show" aria-hidden="true"></i>
+            </button>
+          </form>
+        {% else %}
+          <a
+            class="eithra-acao-icone"
+            href="{{ previa_do_morador.url }}"
+            target="_blank"
+            rel="noopener"
+            title="Ver como o morador vê"
+            aria-label="Ver como o morador vê">
+            <i class="bx bx-show" aria-hidden="true"></i>
+          </a>
+        {% endif %}
+      {% endif %}
       {% if mais_acoes %}
         <div class="dropdown">
           <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações">

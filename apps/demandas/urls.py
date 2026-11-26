@@ -33,6 +33,14 @@ urlpatterns = [
     path("<uuid:pk>/situacao/", views.mudar_status, name="mudar_status"),
     path("<uuid:pk>/observar/", views.observar, name="observar"),
     path("<uuid:pk>/acompanhamento/", views.acompanhar, name="acompanhar"),
+    # A pré-visualização da gestão: cria o acompanhamento do morador quando ele
+    # ainda não existe e leva à página pública, para a gestão ver o que o morador
+    # vê. É um ato da gestão, e por isso chega por POST.
+    path(
+        "<uuid:pk>/acompanhamento/previa/",
+        views.pre_visualizar_acompanhamento,
+        name="pre_visualizar_acompanhamento",
+    ),
     path("<uuid:pk>/evidencia/adicionar/", views.adicionar_evidencia, name="adicionar_evidencia"),
     path(
         "<uuid:pk>/evidencia/<uuid:evidencia_id>/arquivo/",

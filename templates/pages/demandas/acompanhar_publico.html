@@ -17,6 +17,13 @@ indexar: daí o noindex.
 {% endblock %}
 
 {% block public_content %}
+  {% if previa_gestao %}
+    <div class="alert alert-info d-flex align-items-center small mb-4" role="status">
+      <i class="bx bx-show me-2 flex-shrink-0" aria-hidden="true"></i>
+      <div>Pré-visualização: é assim que o morador vê esta demanda.</div>
+    </div>
+  {% endif %}
+
   <div class="text-center mb-4">
     {% if logo_do_condominio %}
       <img
@@ -45,42 +52,73 @@ indexar: daí o noindex.
   </dl>
 
   {% if acompanhamento.concluida and not acompanhamento.respondido %}
-    <form method="post" action="{% url 'demandas:avaliar' token %}" class="mb-4">
-      {% csrf_token %}
-      <p class="fw-medium text-center mb-3">Ficou resolvido?</p>
-      <div class="d-flex justify-content-center gap-4 mb-3">
-        <button
-          type="submit"
-          name="avaliacao"
-          value="resolvido"
-          class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
-          style="color: var(--bs-success);"
-          aria-label="Sim, resolvido">
-          <i class="bx bx-like" aria-hidden="true" style="font-size: 2.5rem;"></i>
-          <span class="small">Sim, resolvido</span>
-        </button>
-        <button
-          type="submit"
-          name="avaliacao"
-          value="nao_resolvido"
-          class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
-          style="color: var(--bs-danger);"
-          aria-label="Não foi resolvido">
-          <i class="bx bx-dislike" aria-hidden="true" style="font-size: 2.5rem;"></i>
-          <span class="small">Não foi resolvido</span>
-        </button>
+    {% if previa_gestao %}
+      {% comment %}A avaliação é do morador. Na pré-visualização, a pergunta
+      aparece como ele a vê, mas os botões ficam desabilitados.{% endcomment %}
+      <div class="mb-4">
+        <p class="fw-medium text-center mb-3">Ficou resolvido?</p>
+        <div class="d-flex justify-content-center gap-4 mb-3">
+          <button
+            type="button"
+            class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+            style="color: var(--bs-success);"
+            disabled
+            aria-label="Sim, resolvido">
+            <i class="bx bx-like" aria-hidden="true" style="font-size: 2.5rem;"></i>
+            <span class="small">Sim, resolvido</span>
+          </button>
+          <button
+            type="button"
+            class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+            style="color: var(--bs-danger);"
+            disabled
+            aria-label="Não foi resolvido">
+            <i class="bx bx-dislike" aria-hidden="true" style="font-size: 2.5rem;"></i>
+            <span class="small">Não foi resolvido</span>
+          </button>
+        </div>
+        <p class="small text-body-secondary text-center mb-0">
+          A avaliação é do morador. Esta é uma pré-visualização da gestão.
+        </p>
       </div>
-      <label class="form-label small text-body-secondary" for="comentario-do-morador">
-        Quer contar o que aconteceu? (opcional)
-      </label>
-      <textarea
-        id="comentario-do-morador"
-        name="comentario"
-        class="form-control"
-        rows="3"
-        maxlength="{{ limite_do_comentario }}"
-        placeholder="Escreva aqui, se quiser detalhar."></textarea>
-    </form>
+    {% else %}
+      <form method="post" action="{% url 'demandas:avaliar' token %}" class="mb-4">
+        {% csrf_token %}
+        <p class="fw-medium text-center mb-3">Ficou resolvido?</p>
+        <div class="d-flex justify-content-center gap-4 mb-3">
+          <button
+            type="submit"
+            name="avaliacao"
+            value="resolvido"
+            class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+            style="color: var(--bs-success);"
+            aria-label="Sim, resolvido">
+            <i class="bx bx-like" aria-hidden="true" style="font-size: 2.5rem;"></i>
+            <span class="small">Sim, resolvido</span>
+          </button>
+          <button
+            type="submit"
+            name="avaliacao"
+            value="nao_resolvido"
+            class="border-0 bg-transparent d-flex flex-column align-items-center gap-1"
+            style="color: var(--bs-danger);"
+            aria-label="Não foi resolvido">
+            <i class="bx bx-dislike" aria-hidden="true" style="font-size: 2.5rem;"></i>
+            <span class="small">Não foi resolvido</span>
+          </button>
+        </div>
+        <label class="form-label small text-body-secondary" for="comentario-do-morador">
+          Quer contar o que aconteceu? (opcional)
+        </label>
+        <textarea
+          id="comentario-do-morador"
+          name="comentario"
+          class="form-control"
+          rows="3"
+          maxlength="{{ limite_do_comentario }}"
+          placeholder="Escreva aqui, se quiser detalhar."></textarea>
+      </form>
+    {% endif %}
   {% elif acompanhamento.respondido %}
     <div class="alert alert-success d-flex align-items-start" role="alert">
       <i class="bx bx-check-circle icon-md me-2 flex-shrink-0" aria-hidden="true"></i>
