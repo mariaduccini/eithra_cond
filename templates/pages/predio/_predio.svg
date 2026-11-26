@@ -1,4 +1,4 @@
-<svg width="100%" viewBox="0 0 380 488" role="img"><title>Rio Vermelho Exclusive em ilustração, com status vivo por nível</title><desc>Torre branca e fina com varandas curvas e vidro verde, coroamento arredondado, base escalonada do 1º ao 8º, playground com piscina de borda infinita, portaria em pastilha verde no G1 e garagens G2 a G4 em corte. Bolinhas pulsam onde há pendência.</desc>
+<svg width="100%" viewBox="0 0 380 488" role="img" aria-label="Desenho do prédio com o status de cada nível">
 <rect x="0" y="0" width="380" height="390" rx="14" fill="#CDE7F6"/>
 <circle cx="320" cy="52" r="20" fill="#FFE3A3"/>
 <g transform="translate(58 70) scale(1)"><ellipse cx="0" cy="0" rx="26" ry="9" fill="#fff"/><ellipse cx="14" cy="-6" rx="15" ry="9" fill="#fff"/><ellipse cx="-12" cy="-4" rx="11" ry="7" fill="#fff"/></g>

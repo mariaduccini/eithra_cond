@@ -1870,6 +1870,28 @@
   padding-inline-start: 2.35rem;
 }
 
+/* A busca e o projeto dividem a mesma faixa: a busca cresce, o projeto tem
+   largura própria e, no aperto, os dois se empilham. */
+.eithra-busca-e-projeto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-busca-e-projeto .eithra-search-field {
+  flex: 1 1 16rem;
+}
+
+.eithra-search-projeto {
+  flex: 0 1 15rem;
+}
+
+.eithra-demanda-projeto {
+  margin-block-start: 0.25rem;
+  text-decoration: none;
+}
+
 .eithra-filter-button {
   min-inline-size: 8rem;
 }
@@ -6383,3 +6405,146 @@ a:not(.btn):not(.menu-link):hover {
   }
 }
 
+
+/* Prédio na tela larga: desenho à esquerda, na altura da tela, e o painel do
+   nível sempre aberto à direita. No celular nada muda: o painel abre por cima. */
+@media (min-width: 992px) {
+  .eithra-predio-layout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+  }
+  .eithra-predio-layout .eithra-predio {
+    max-inline-size: none;
+    position: sticky;
+    top: 1rem;
+  }
+  .eithra-predio-layout .eithra-predio-desenho svg {
+    inline-size: auto;
+    block-size: calc(100vh - 13rem);
+    min-block-size: 32rem;
+    max-inline-size: 100%;
+  }
+  .eithra-predio-layout .eithra-predio-painel {
+    background: transparent;
+  }
+  .eithra-predio-layout .eithra-predio-painel .offcanvas-header {
+    padding-inline: 0;
+  }
+  .eithra-predio-layout .eithra-predio-painel .offcanvas-body {
+    display: block !important;
+    padding-inline: 0;
+  }
+}
+.eithra-predio-chips {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .375rem;
+  margin-block-end: 1.25rem;
+}
+.eithra-predio-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  block-size: auto;
+  align-items: center;
+  gap: .375rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bs-gray-100, #f2f2f2);
+  padding: .25rem .75rem;
+  font-size: .8125rem;
+  color: var(--bs-body-color);
+}
+.eithra-predio-chip.selecionado {
+  background: var(--bs-primary-bg-subtle, #e7e7ff);
+  color: var(--bs-primary, #696cff);
+}
+.eithra-predio .area.selecionado {
+  fill: rgba(105, 108, 255, .08);
+}
+
+/* Dica ao passar o mouse num nível do prédio. */
+.eithra-predio-dica {
+  position: fixed;
+  z-index: 1090;
+  max-inline-size: 18rem;
+  padding: .625rem .75rem;
+  border-radius: .5rem;
+  background: #2f3349;
+  color: #fff;
+  font-size: .8125rem;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 .25rem 1rem rgba(0, 0, 0, .18);
+}
+.eithra-predio-dica ul {
+  margin: .25rem 0;
+  padding-inline-start: 1rem;
+}
+.eithra-predio-dica small {
+  opacity: .75;
+}
+
+/* -- Projetos ----------------------------------------------------------------
+   O detalhe do projeto é um documento, não uma pilha de cartões: as etapas se
+   separam por uma linha, e cada entrega é uma linha que se corrige no lugar. */
+
+.eithra-projeto-etapa {
+  padding-block: 1rem;
+  border-block-start: 1px solid #edf0f0;
+}
+
+.eithra-projeto-etapa-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem 1rem;
+  margin-block-end: .75rem;
+}
+
+.eithra-projeto-assunto {
+  inline-size: 12rem;
+}
+
+.eithra-projeto-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+  padding-block: .6rem;
+  border-block-start: 1px solid #f4f6f6;
+}
+
+.eithra-projeto-identidade {
+  flex: 1 1 12rem;
+  min-inline-size: 8rem;
+}
+
+.eithra-projeto-valores {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+
+.eithra-projeto-campo {
+  inline-size: 9rem;
+}
+
+.eithra-projeto-fornecedor {
+  inline-size: 12rem;
+}
+
+.eithra-projeto-demanda {
+  padding-block: .5rem;
+  border-block-start: 1px solid #f4f6f6;
+}
+
+@media (max-width: 991.98px) {
+  .eithra-projeto-campo,
+  .eithra-projeto-fornecedor,
+  .eithra-projeto-assunto {
+    inline-size: 100%;
+  }
+}

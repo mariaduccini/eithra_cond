@@ -10,15 +10,22 @@ foi tocado. Assim o painel não busca nada ao abrir: o que ele mostra já estava
 na página, e o toque é instantâneo.
 {% endcomment %}
 <div
-  class="offcanvas offcanvas-end eithra-predio-painel"
+  class="offcanvas-lg offcanvas-end eithra-predio-painel"
   tabindex="-1"
   id="painel-do-predio"
   aria-labelledby="painel-do-predio-titulo">
   <div class="offcanvas-header">
     <h2 class="offcanvas-title h5" id="painel-do-predio-titulo">Nível</h2>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Fechar"></button>
+    <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#painel-do-predio" aria-label="Fechar"></button>
   </div>
   <div class="offcanvas-body">
+    <div class="eithra-predio-chips d-none d-lg-flex" aria-label="Níveis do prédio">
+      {% for nivel in niveis_lista %}
+        <button type="button" class="eithra-predio-chip" data-nivel="{{ nivel.chave }}">
+          <span class="eithra-bolinha eithra-bolinha-{{ nivel.status }}" aria-hidden="true"></span>{{ nivel.titulo }}
+        </button>
+      {% endfor %}
+    </div>
     {% for nivel in niveis_lista %}
       <section class="eithra-predio-nivel" data-nivel="{{ nivel.chave }}" hidden>
         <p class="eithra-predio-nivel-titulo">{{ nivel.titulo }}</p>
