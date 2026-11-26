@@ -81,6 +81,8 @@ from apps.manutencoes.atencao import (
     obter_atencoes_de_manutencoes,
 )
 from apps.manutencoes.services import ErroDeManutencao
+from apps.rotinas.constants import SITUACOES_PENDENTES
+from apps.rotinas.models import ExecucaoRotina
 from apps.rotinas.services import ErroDeRotina
 
 # Quantas manutenções a Home mostra antes de oferecer "Ver todas". A lista
@@ -105,6 +107,10 @@ LIMITE_DO_MEU_DIA_NA_HOME = 3
 # O retorno dos moradores também é um aperitivo: as respostas "Não resolvido"
 # mais recentes, com o percentual do mês. O resto continua no módulo.
 LIMITE_DO_RETORNO_NA_HOME = 3
+
+# O que já venceu ou vence hoje abre o painel. A lista mostra oito itens; o
+# resto é revelado na própria Home, num "Ver mais" — nunca noutra página.
+LIMITE_DO_PRECISA_NA_HOME = 8
 
 # O que a tela mostra das leituras: só o que tem nome humano. Remetente,
 # assunto e momento já estão no cabeçalho; o resto vira linha rotulada.
@@ -170,17 +176,18 @@ def home(request):
     proximas = [item for item in atencao if item.tipo == TipoAtencao.PROXIMA]
 
     # A ordem é do domínio; aqui só se busca um item a mais para saber se há
-    # excedente, sem uma contagem à parte.
+    # excedente, sem uma contagem à parte. Com um condomínio só, o nome dele não
+    # se repete na lista: não distingue nada.
+    condominios_de_demanda = condominios_para_ver(request.user)
+    um_condominio = condominios_de_demanda.count() <= 1
     demandas = (
-        Demanda.objects.filter(
-            condominio__in=condominios_para_ver(request.user), ativo=True
-        )
+        Demanda.objects.filter(condominio__in=condominios_de_demanda, ativo=True)
         .abertas()
         .na_ordem_de_atencao()
         .select_related("condominio", "local")
     )
     linhas_de_demanda = [
-        _linha_de_demanda(item)
+        _linha_de_demanda(item, com_condominio=not um_condominio)
         for item in demandas[: LIMITE_DE_DEMANDAS_NA_HOME + 1]
     ]
 
@@ -189,7 +196,7 @@ def home(request):
     excecoes = []
     if pode_gerenciar_em_algum_condominio(request.user):
         excecoes = [
-            _linha_de_excecao(item)
+            _linha_de_excecao(item, com_condominio=not um_condominio)
             for item in obter_excecoes_de_demandas(usuario=request.user)[
                 : LIMITE_DE_EXCECOES_NA_HOME + 1
             ]
@@ -213,6 +220,16 @@ def home(request):
         )
         vencimentos_de_hoje = proximos_vencimentos[:LIMITE_DE_VENCIMENTOS_NA_HOME]
         tem_mais_vencimentos = len(proximos_vencimentos) > LIMITE_DE_VENCIMENTOS_NA_HOME
+
+    # O que "precisa de você": o que já venceu ou vence hoje. Reúne, sem repetir
+    # regra, o que cada módulo já responde — vencimentos próximos da governança,
+    # demandas com prazo (ou próxima ação) até hoje e atividades programadas
+    # atrasadas. Abre o painel para quem responde pelo condomínio; a lista
+    # completa fica na própria Home, num "Ver mais".
+    hoje = timezone.localdate()
+    precisa_de_voce = (
+        _precisa_de_voce(condominios_geridos, hoje) if condominios_geridos else []
+    )
 
     # O "Meu dia" na Home é o aperitivo de quem conduz a operação do dia: os
     # três primeiros itens do condomínio em vista. A leitura é a mesma da tela
@@ -258,10 +275,14 @@ def home(request):
         retorno_dos_moradores_do_dia = retorno
 
     # O marcador do topo conta o que precisa de atenção. Para a supervisão, esse
-    # número é o das ações dela; para os demais, segue a leitura das manutenções.
+    # número é o das ações dela — os blocos já cobrem tudo. Para quem responde
+    # pelo condomínio, soma-se ao que as manutenções já contam o que ainda faltava
+    # entrar: vencimentos próximos, prazos de hoje e atividades atrasadas.
     total_de_hoje = resumo.total - resumo.proximas
     if blocos_da_supervisao is not None:
         total_de_hoje = sum(len(bloco["itens"]) for bloco in blocos_da_supervisao)
+    elif condominios_geridos:
+        total_de_hoje += len(precisa_de_voce)
 
     return render(
         request,
@@ -291,6 +312,11 @@ def home(request):
             "tem_mais_excecoes": len(excecoes) > LIMITE_DE_EXCECOES_NA_HOME,
             "vencimentos_de_hoje": vencimentos_de_hoje,
             "tem_mais_vencimentos": tem_mais_vencimentos,
+            "precisa_de_voce": precisa_de_voce[:LIMITE_DO_PRECISA_NA_HOME],
+            "precisa_de_voce_restante": precisa_de_voce[LIMITE_DO_PRECISA_NA_HOME:],
+            "precisa_de_voce_excedente": max(
+                0, len(precisa_de_voce) - LIMITE_DO_PRECISA_NA_HOME
+            ),
             "meu_dia_itens": meu_dia_itens,
             "meu_dia_total": meu_dia_total,
             "tem_mais_meu_dia": tem_mais_meu_dia,
@@ -1097,6 +1123,115 @@ def acompanhar(request, origem, pk):
 # Apoio da tela
 # ---------------------------------------------------------------------------
 
+# O ícone de cada tipo de vencimento. A lista "Precisa de você" mostra o tipo
+# pelo desenho, não por uma palavra repetida na linha.
+_ICONE_DO_VENCIMENTO = {
+    "Contrato": "bx-file",
+    "Garantia": "bx-shield",
+    "Documento": "bx-file-blank",
+}
+
+
+def _quando_do_prazo(dias: int) -> str:
+    """"prazo hoje" quando é hoje; "venceu há X dias" quando já passou."""
+    if dias == 0:
+        return "prazo hoje"
+    if dias == -1:
+        return "venceu ontem"
+    return f"venceu há {abs(dias)} dias"
+
+
+def _precisa_de_voce(condominios, hoje) -> list[dict]:
+    """O que já venceu ou vence hoje, vencidos primeiro.
+
+    Reúne, sem repetir regra, o que cada módulo já responde: os vencimentos
+    próximos (contrato, garantia e documento), as demandas com prazo — ou prazo
+    da próxima ação — até hoje, e as atividades programadas atrasadas. Ordena
+    pelo que venceu primeiro; a tela só corta o topo.
+    """
+    itens = []
+    for condominio in condominios:
+        itens.extend(_precisa_de_voce_do_condominio(condominio, hoje))
+    itens.sort(key=lambda item: (item["dias"] >= 0, item["dias"], item["titulo"]))
+    return itens
+
+
+def _precisa_de_voce_do_condominio(condominio, hoje) -> list[dict]:
+    """Os itens de "Precisa de você" de um condomínio, já na linha da tela."""
+    itens = []
+
+    for vencimento in vencimentos_proximos(condominio):
+        dias = vencimento["dias"]
+        itens.append(
+            _item_do_precisa(
+                icone=_ICONE_DO_VENCIMENTO.get(vencimento["tipo"], "bx-file"),
+                titulo=vencimento["titulo"],
+                quando=vencimento["quando"],
+                dias=dias,
+                url=vencimento["destino"],
+            )
+        )
+
+    demandas = (
+        Demanda.objects.filter(condominio=condominio, ativo=True)
+        .abertas()
+        .filter(Q(prazo__lte=hoje) | Q(prazo_proxima_acao__lte=hoje))
+    )
+    for demanda in demandas:
+        datas = [
+            data
+            for data in (demanda.prazo, demanda.prazo_proxima_acao)
+            if data is not None and data <= hoje
+        ]
+        dias = (min(datas) - hoje).days if datas else 0
+        itens.append(
+            _item_do_precisa(
+                icone="bx-task",
+                titulo=demanda.titulo,
+                quando=_quando_do_prazo(dias),
+                dias=dias,
+                url=reverse("demandas:detalhe", args=[demanda.pk]),
+            )
+        )
+
+    atividades = ExecucaoRotina.objects.filter(
+        status__in=SITUACOES_PENDENTES,
+        condominio=condominio,
+        data_prevista__lt=hoje,
+    ).select_related("rotina")
+    for execucao in atividades:
+        dias = (execucao.data_prevista - hoje).days
+        itens.append(
+            _item_do_precisa(
+                icone="bx-calendar-check",
+                titulo=execucao.rotina.titulo,
+                quando=f"atrasada há {abs(dias)} dias",
+                dias=dias,
+                url=reverse("rotinas:execucao", args=[execucao.pk]),
+            )
+        )
+
+    return itens
+
+
+def _item_do_precisa(*, icone, titulo, quando, dias, url) -> dict:
+    """Uma linha da lista "Precisa de você", já pronta para o template.
+
+    O tom acompanha a urgência: o que já venceu pesa mais que o que vence hoje.
+    """
+    return {
+        "icone": icone,
+        "titulo": titulo,
+        "quando": quando,
+        "classe": (
+            "eithra-precisa-quando--vencido"
+            if dias < 0
+            else "eithra-precisa-quando--hoje"
+        ),
+        "dias": dias,
+        "url": url,
+    }
+
 
 def _linha_de_atencao(item) -> dict:
     """O pouco que a Home mostra de uma atenção, sem repetir o que a frase já diz.
@@ -1123,15 +1258,16 @@ def _linha_de_atencao(item) -> dict:
     }
 
 
-def _linha_de_demanda(demanda) -> dict:
+def _linha_de_demanda(demanda, *, com_condominio=True) -> dict:
     """O pouco que a Home mostra de uma demanda em aberto.
 
     A ordem e o corte vêm do domínio; aqui só se apresenta o que a linha
     precisa — o título e, em uma linha, onde a demanda acontece e o prazo,
     quando há. Nenhuma regra de prioridade ou de prazo é recalculada aqui: o
-    prazo aparece como a data registrada, sem juízo de atraso.
+    prazo aparece como a data registrada, sem juízo de atraso. Com um condomínio
+    só, o nome dele não entra: não distingue nada.
     """
-    contexto = [demanda.condominio.nome]
+    contexto = [demanda.condominio.nome] if com_condominio else []
     local = demanda.local_para_exibir
     if local:
         contexto.append(local)
@@ -1145,16 +1281,17 @@ def _linha_de_demanda(demanda) -> dict:
     }
 
 
-def _linha_de_excecao(item) -> dict:
+def _linha_de_excecao(item, *, com_condominio=True) -> dict:
     """O pouco que a Home mostra de uma exceção que pede decisão.
 
     O motivo e a ação vêm do domínio (``apps.demandas.excecoes``); aqui só se
     monta a linha — o título da demanda, o motivo, onde ela acontece e o que
     fazer. Nada aqui promete um botão que o domínio ainda não oferece: o único
-    destino é o contexto da demanda, onde a decisão acontece.
+    destino é o contexto da demanda, onde a decisão acontece. Com um condomínio
+    só, o nome dele não entra.
     """
     demanda = item.demanda
-    contexto = [demanda.condominio.nome]
+    contexto = [demanda.condominio.nome] if com_condominio else []
     local = demanda.local_para_exibir
     if local:
         contexto.append(local)

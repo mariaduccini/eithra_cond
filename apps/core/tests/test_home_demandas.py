@@ -91,7 +91,7 @@ class BlocoDeDemandasTests(BaseDaHomeComDemandasTests):
             self.home(), reverse("demandas:detalhe", args=[demanda.pk])
         )
 
-    def test_contexto_traz_condominio_local_e_prazo(self):
+    def test_contexto_traz_local_e_prazo_sem_repetir_condominio(self):
         local = criar_local(self.condominio, nome="Garagem")
         _demanda(
             self.condominio,
@@ -101,7 +101,8 @@ class BlocoDeDemandasTests(BaseDaHomeComDemandasTests):
             prazo=self.hoje + timedelta(days=3),
         )
         texto = self.texto_da_home()
-        self.assertIn("Alpha", texto)
+        # Com um condomínio só, o nome dele não distingue nada e não se repete.
+        self.assertNotIn("Alpha", texto)
         self.assertIn("Garagem", texto)
         self.assertIn(
             f"prazo {(self.hoje + timedelta(days=3)):%d/%m/%Y}", texto

@@ -4180,6 +4180,85 @@ a:not(.btn):not(.menu-link):hover {
   color: var(--eithra-texto-secundario, #6c7b80);
 }
 
+/* Precisa de você ---------------------------------------------------------
+   A lista que abre o painel: o que já venceu ou vence hoje, em linha compacta.
+   Não é moldura — é o primeiro assunto do dia, com o tipo pelo ícone e a
+   urgência pela cor do prazo. O ícone da ponta só convida ao clique. */
+.eithra-home-precisa {
+  margin-block-end: 2.25rem;
+  padding-block-end: 2.25rem;
+  border-block-end: 1px solid var(--eithra-divisor);
+}
+
+.eithra-precisa-item + .eithra-precisa-item {
+  border-block-start: 1px solid var(--eithra-divisor);
+}
+
+.eithra-precisa-corpo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block: 0.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.eithra-precisa-icone {
+  flex: 0 0 auto;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--eithra-texto-suave);
+}
+
+.eithra-precisa-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.eithra-precisa-titulo {
+  font-weight: 600;
+  color: var(--eithra-petroleo);
+}
+
+.eithra-precisa-quando {
+  font-size: 0.8125rem;
+}
+
+/* O que já venceu pesa em vermelho-claro; o que vence hoje, em laranja. */
+.eithra-precisa-quando--vencido {
+  color: var(--eithra-vermelho);
+}
+
+.eithra-precisa-quando--hoje {
+  color: var(--eithra-ambar);
+}
+
+.eithra-precisa-abrir {
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--eithra-texto-suave);
+}
+
+.eithra-precisa-corpo:hover .eithra-precisa-titulo,
+.eithra-precisa-corpo:focus .eithra-precisa-titulo {
+  text-decoration: underline;
+}
+
+.eithra-precisa-mais {
+  margin-block-start: 0.25rem;
+}
+
+.eithra-precisa-mais > summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--eithra-lilas-escuro);
+}
+
 /* Entrada suave: as seções sobem alguns pixels ao carregar, em cascata
    curta. Quem pediu menos movimento no sistema não recebe animação. */
 @keyframes eithra-rise {
