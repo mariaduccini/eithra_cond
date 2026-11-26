@@ -143,6 +143,11 @@ def pendencias_para(usuario):
     if usuario is None or not getattr(usuario, "is_authenticated", False):
         return ItemImportacaoHistorica.objects.none()
 
+    # Com a integração desligada não existe fila de e-mail: nada a decidir, e o
+    # bloco some das telas. A leitura manual passa a ser o caminho.
+    if not gmail.ativo():
+        return ItemImportacaoHistorica.objects.none()
+
     from apps.demandas.permissoes import condominios_para_criar
 
     condominios = condominios_para_criar(usuario)
@@ -163,6 +168,10 @@ def leitura_atual(item, *, provedor=None, interpretador=None):
     Devolve ``(leitura, falha)``: a leitura pronta para a tela, ou a falha que
     impediu de ler. Nenhum estado do item é tocado por aqui.
     """
+    # Integração desligada: nenhuma mensagem é recuperada e nenhuma leitura de
+    # IA de e-mail é disparada. A falha devolvida é o próprio desligamento.
+    if not gmail.ativo():
+        return None, "GmailDesligado"
     return _reconstruir(item, provedor=provedor, interpretador=interpretador)
 
 

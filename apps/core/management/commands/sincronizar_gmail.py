@@ -30,6 +30,7 @@ preservando o estado em que estiver. Reingestão não é reprocessamento.
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
@@ -51,9 +52,19 @@ from apps.core.gmail import (
 )
 from apps.core.models import ItemImportacaoHistorica, LoteImportacaoHistorica
 
+logger = logging.getLogger(__name__)
+
 # Quantas mensagens uma execução sem filtro declarado pode trazer. Existe para
 # que uma rodada nunca varra a caixa inteira por descuido.
 LIMITE_PADRAO = 100
+
+# O aviso de que a integração está desligada. É a mesma frase no log e na tela:
+# quem roda o comando por engano precisa entender que nada foi feito, e não
+# confundir o silêncio com uma caixa vazia.
+AVISO_GMAIL_DESLIGADO = (
+    "A leitura do Gmail está desligada (EITHRA_GMAIL_ATIVO=False). "
+    "Nada foi sincronizado; registre as mensagens manualmente."
+)
 
 
 @dataclass
@@ -116,6 +127,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **opcoes):
+        # O interruptor vem antes de tudo: com a integração desligada a execução
+        # não faz nada, avisa e termina — sem consultar credencial, sem tocar a
+        # rede e sem criar lote. É um no-op deliberado, não uma falha.
+        if not gmail.ativo():
+            logger.warning(AVISO_GMAIL_DESLIGADO)
+            self.stdout.write(self.style.WARNING(AVISO_GMAIL_DESLIGADO))
+            return
+
         if not gmail.configurado():
             raise CommandError(
                 "O acesso ao Gmail não está configurado neste ambiente. "

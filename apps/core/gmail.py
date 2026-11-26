@@ -234,6 +234,18 @@ def credenciais_do_ambiente() -> CredenciaisGmail | None:
     )
 
 
+def ativo() -> bool:
+    """Se a integração com o Gmail está ligada neste ambiente.
+
+    É o interruptor de cima: desligado (o padrão), nada da integração acontece —
+    o comando não roda, as telas e os blocos de e-mail somem e nenhuma leitura é
+    feita. Estar ligado não basta por si: ainda é preciso haver credencial para
+    falar com a API, e por isso ``configurado()`` continua sendo a pergunta sobre
+    a credencial.
+    """
+    return bool(getattr(settings, "EITHRA_GMAIL_ATIVO", False))
+
+
 def configurado() -> bool:
     """Se há credencial suficiente para falar com o Gmail.
 

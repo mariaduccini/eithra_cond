@@ -1,6 +1,26 @@
 """Backends de autenticação do Eithra."""
+from axes.backends import AxesStandaloneBackend
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
+
+
+class BackendDeBloqueio(AxesStandaloneBackend):
+    """A barreira do django-axes, tolerante a chamadas sem request.
+
+    Toda entrada real chega com um request, e é dele que o Axes tira o IP e a
+    sessão para contar as tentativas. O client de testes do Django, porém,
+    chama ``authenticate()`` sem request para conferir se uma senha entra ou
+    não — e sem request não há o que contar. Nesse caso, a chamada apenas segue
+    adiante pelos backends normais; em produção o bloqueio continua valendo,
+    porque o login sempre passa pela tela e sempre traz o request.
+    """
+
+    def authenticate(self, request, username=None, password=None, **kwargs):
+        if request is None:
+            return None
+        return super().authenticate(
+            request, username=username, password=password, **kwargs
+        )
 
 
 class EmailCaseInsensitiveBackend(ModelBackend):

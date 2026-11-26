@@ -24,8 +24,18 @@ SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# Sessão expira após 8 horas sem uso. O relógio conta da última requisição, e
+# não do login: SESSION_SAVE_EVERY_REQUEST renova o prazo a cada acesso, de modo
+# que quem está trabalhando não é expulso no meio — só quem ficou parado.
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_SAVE_EVERY_REQUEST = True
+
+# Nenhuma tela é embutida em iframe em produção. O valor já vem da base; fica
+# explícito aqui porque é uma decisão de segurança deste ambiente.
+X_FRAME_OPTIONS = "DENY"
+
 # HSTS.
-SECURE_HSTS_SECONDS = env.int("DJANGO_HSTS_SECONDS", default=31536000)
+SECURE_HSTS_SECONDS = env.int("DJANGO_HSTS_SECONDS", default=3600)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 # Preload mantido desligado por decisão consciente; o aviso security.W021
 # permanece conhecido nesta fase. Reavaliar somente quando: houver domínio

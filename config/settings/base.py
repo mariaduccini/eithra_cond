@@ -1,5 +1,6 @@
 """Configurações comuns a todos os ambientes do Eithra."""
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -85,7 +86,7 @@ LOCAL_APPS = [
     "apps.core",
 ]
 
-INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
+INSTALLED_APPS = DJANGO_APPS + ["axes"] + LOCAL_APPS
 
 # ---------------------------------------------------------------------------
 # Middleware
@@ -100,6 +101,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # O bloqueio de tentativas de senha é o último a olhar a requisição: ele
+    # precisa da sessão e da autenticação já resolvidas para reconhecer quem
+    # tentou entrar e de onde.
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -146,16 +151,45 @@ DATABASES: dict = {}
 AUTH_USER_MODEL = "accounts.User"
 
 AUTHENTICATION_BACKENDS = [
+    # A barreira de tentativas vem antes de qualquer back-end que autentique: a
+    # ela cabe recusar quem já estourou o limite, sem depender da senha.
+    "apps.accounts.backends.BackendDeBloqueio",
     "apps.accounts.backends.EmailCaseInsensitiveBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    # Mínimo de 10 caracteres: a senha do Eithra protege a operação de um
+    # condomínio inteiro, e a régua curta de 8 deixava passar o que não devia.
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 10},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+# ---------------------------------------------------------------------------
+# Proteção contra tentativa de invasão (django-axes)
+# ---------------------------------------------------------------------------
+# Cinco senhas erradas seguidas bloqueiam a combinação usuário+IP por meia hora.
+# O bloqueio é por combinação, e não só por IP: trancar o IP inteiro puniria uma
+# rede compartilhada por causa de uma pessoa, e trancar só o usuário deixaria a
+# conta aberta a tentativas vindas de vários lugares. As tentativas ficam
+# registradas (AccessAttempt/AccessLog) e visíveis no admin do Django.
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=30)
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+# O nome do campo de login do formulário é "username" (o e-mail viaja nesse
+# campo). Sem fixá-lo aqui, o Axes procuraria o campo "email" — que existe só no
+# modelo — e gravaria a tentativa sem usuário, deixando de reconhecer o próprio
+# bloqueio. Amarrando ao campo do formulário, quem tenta e quem é consultado
+# usam a mesma chave.
+AXES_USERNAME_FORM_FIELD = "username"
+# Acertar a senha depois zera o contador: quem lembrou não carrega as tentativas
+# antigas para a próxima vez.
+AXES_RESET_ON_SUCCESS = True
 
 # Quanto tempo vale o endereço de primeiro acesso: tempo de a gestão entregar e
 # a pessoa usar, sem ficar aberto para sempre. O endereço também deixa de valer
@@ -448,6 +482,13 @@ EITHRA_AUDIO_MAX_BYTES = env.int("EITHRA_AUDIO_MAX_BYTES", default=10 * 1024 * 1
 #
 # SEM essas variáveis, a leitura do Gmail fica indisponível (configurado() diz
 # que não) e o resto do sistema segue igual: não há erro 500 nem tela quebrada.
+#
+# O interruptor da integração. Desligado — o padrão —, a leitura do Gmail não
+# acontece: o comando de sincronização não roda, as telas e os blocos ligados a
+# e-mail somem e nenhuma chamada de IA de e-mail é feita. A supervisão passa a
+# registrar tudo manualmente. Só com esta chave ligada as variáveis abaixo têm
+# efeito.
+EITHRA_GMAIL_ATIVO = env.bool("EITHRA_GMAIL_ATIVO", default=False)
 EITHRA_GMAIL_CLIENT_ID = env("EITHRA_GMAIL_CLIENT_ID", default="").strip()
 EITHRA_GMAIL_CLIENT_SECRET = env("EITHRA_GMAIL_CLIENT_SECRET", default="").strip()
 EITHRA_GMAIL_REFRESH_TOKEN = env("EITHRA_GMAIL_REFRESH_TOKEN", default="").strip()
@@ -477,6 +518,12 @@ EITHRA_AUTOMATION_USER_EMAIL = env("EITHRA_AUTOMATION_USER_EMAIL", default="").s
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "accounts:login"
+
+# O endereço do admin do Django deixa de ser o "admin/" previsível: em produção
+# ele é escolhido por EITHRA_ADMIN_URL — um caminho difícil de adivinhar reduz a
+# varredura automática. O guarda-chuva das barras é feito na hora de montar a
+# rota (config/urls.py), para que o valor funcione com ou sem barras.
+EITHRA_ADMIN_URL = env("EITHRA_ADMIN_URL", default="admin/").strip() or "admin/"
 
 # ---------------------------------------------------------------------------
 # Cabeçalhos e cookies

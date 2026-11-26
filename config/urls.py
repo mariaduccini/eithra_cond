@@ -6,6 +6,17 @@ from django.urls import include, path
 
 from config import views
 
+
+def _endereco_do_admin() -> str:
+    """O caminho do admin, com barra no fim e sem barra no começo.
+
+    O valor vem de EITHRA_ADMIN_URL e é tratado como entrada do operador: com
+    ou sem barras, ele vira uma rota válida — nunca uma rota quebrada por causa
+    de uma barra a mais ou a menos.
+    """
+    return settings.EITHRA_ADMIN_URL.strip("/") + "/"
+
+
 urlpatterns = [
     path("", include("apps.core.urls")),
     path("conta/", include("apps.accounts.urls")),
@@ -20,7 +31,7 @@ urlpatterns = [
     path("governanca/", include("apps.governanca.urls")),
     path("comunidade/", include("apps.comunidade.urls")),
     path("portaria/", include("apps.portaria.urls")),
-    path("admin/", admin.site.urls),
+    path(_endereco_do_admin(), admin.site.urls),
 ]
 
 # Páginas de erro próprias (usam o mesmo shell visual do sistema).

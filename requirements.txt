@@ -8,3 +8,5 @@ Pillow==11.3.0
 # OCR local de comprovantes (imagem e PDF escaneado), sem nuvem.
 rapidocr-onnxruntime==1.4.4
 pypdfium2==5.15.2
+# Bloqueio de tentativas de senha (usuário+IP) e registro no admin.
+django-axes==9.1.0
