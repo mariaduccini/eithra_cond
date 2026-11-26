@@ -1,0 +1,61 @@
+{% comment %}O modal de conclusão de uma ocorrência, usado na tela da ocorrência e na
+   lista. Quem inclui decide o endereço: na tela da ocorrência ele já vem
+   apontado (`modal_action`); na lista ele fica vazio, e o próprio modal aprende
+   o endereço certo ao abrir, pelo ícone que o chamou.{% endcomment %}
+<div
+  class="modal fade"
+  id="modal-execucao-concluir"
+  tabindex="-1"
+  role="dialog"
+  aria-labelledby="modal-execucao-concluir-titulo"
+  aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <form
+      class="modal-content"
+      method="post"{% if modal_action %} action="{{ modal_action }}"{% endif %}>
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-body-secondary small">
+          <span class="fw-medium" data-ocorrencia-rotina>A ocorrência</span> foi feita.
+          Diga o que se encontrou.
+        </p>
+        <div class="mb-6">
+          <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
+            {{ formulario_conclusao.resultado.label }}
+          </label>
+          {{ formulario_conclusao.resultado }}
+          {% for erro in formulario_conclusao.resultado.errors %}
+            <div class="text-danger small mt-1">{{ erro }}</div>
+          {% endfor %}
+        </div>
+        <div class="mb-6">
+          <label class="form-label" for="{{ formulario_conclusao.data_execucao.id_for_label }}">
+            {{ formulario_conclusao.data_execucao.label }}
+          </label>
+          {{ formulario_conclusao.data_execucao }}
+          <div class="form-text">Informe o dia em que a verificação foi feita.</div>
+          {% for erro in formulario_conclusao.data_execucao.errors %}
+            <div class="text-danger small mt-1">{{ erro }}</div>
+          {% endfor %}
+        </div>
+        <div class="mb-0">
+          <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
+            {{ formulario_conclusao.observacao.label }}
+          </label>
+          {{ formulario_conclusao.observacao }}
+          {% for erro in formulario_conclusao.observacao.errors %}
+            <div class="text-danger small mt-1">{{ erro }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+        <button type="submit" class="btn btn-primary">Concluir</button>
+      </div>
+    </form>
+  </div>
+</div>

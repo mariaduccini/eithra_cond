@@ -23,6 +23,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from apps.cadastros.models import Equipamento, LocalOperacional
@@ -572,10 +573,14 @@ def tratar_item(request, execucao_pk, item_pk):
         ItemExecucaoChecklist.objects.filter(execucao=execucao), item_pk
     )
 
+    # Quem trata a tarefa pode mandar voltar para a lista de ocorrências; sem
+    # um destino confiável, a volta é a tela da ocorrência, como antes.
+    volta = _destino_de_volta(request) or reverse("rotinas:execucao", args=[execucao.pk])
+
     formulario = TratamentoDeItemForm(request.POST)
     if not formulario.is_valid():
         messages.error(request, _primeiro_erro(formulario))
-        return redirect("rotinas:execucao", pk=execucao.pk)
+        return redirect(volta)
 
     try:
         tratar_item_checklist(
@@ -586,10 +591,10 @@ def tratar_item(request, execucao_pk, item_pk):
         )
     except ErroDeRotina as erro:
         messages.error(request, str(erro))
-        return redirect("rotinas:execucao", pk=execucao.pk)
+        return redirect(volta)
 
     messages.success(request, "Tarefa registrada.")
-    return redirect("rotinas:execucao", pk=execucao.pk)
+    return redirect(volta)
 
 
 @login_required
@@ -859,6 +864,23 @@ def _obter_ou_404(queryset, pk):
         return get_object_or_404(queryset, pk=pk)
     except (ValidationError, ValueError, TypeError):
         raise Http404("Registro não encontrado.") from None
+
+
+def _destino_de_volta(request) -> str:
+    """Para onde voltar depois de um POST, quando quem postou diz o destino.
+
+    Só um endereço do próprio site é aceito — o `next` que vier de fora é
+    ignorado —, e a resposta é vazia quando não houver destino confiável, para
+    quem chamou seguir o caminho padrão.
+    """
+    proximo = request.POST.get("next") or ""
+    if proximo and url_has_allowed_host_and_scheme(
+        proximo,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return proximo
+    return ""
 
 
 def _checklist_autorizado(request, pk):
@@ -1175,6 +1197,9 @@ def _render_execucoes(request, condominios, *, status=200):
     acoes_disponiveis = {
         acao["chave"] for linha in linhas for acao in linha["acoes"]
     }
+    # "Concluir" tem ícone próprio na linha, fora do menu de ações; o formulário
+    # do modal de conclusão existe quando alguém na lista pode concluir.
+    pode_concluir_alguma = any(linha["pode_concluir"] for linha in linhas)
 
     contexto = {
         "execucoes": linhas,
@@ -1183,13 +1208,16 @@ def _render_execucoes(request, condominios, *, status=200):
         "total": pagina_execucoes.paginator.count,
         "mostrar_condominio": condominios.count() > 1,
         "filtros_ativos": bool(request.GET),
+        # Para onde voltar depois de tratar uma tarefa: a própria lista, no
+        # recorte em que a pessoa estava.
+        "proximo": request.get_full_path(),
         # Quem responde ou supervisiona chega ao cadastro das rotinas; a
         # operação entra pela lista de ocorrências dela e não volta para lá.
         "pode_ver_cadastro": pode_criar_em_algum_condominio(request.user),
         "acoes_disponiveis": acoes_disponiveis,
         "formulario_conclusao": (
             ConclusaoDeExecucaoForm(auto_id="concluir_%s")
-            if "concluir" in acoes_disponiveis
+            if pode_concluir_alguma
             else None
         ),
         "formulario_ignorar": (
@@ -1500,8 +1528,6 @@ def _acoes_da_execucao(execucao, usuario) -> list[dict]:
     acoes = []
     if pode_iniciar(usuario, execucao):
         acoes.append(acao("iniciar", "Iniciar", "bx-play-circle"))
-    if pode_concluir(usuario, execucao):
-        acoes.append(acao("concluir", "Concluir", "bx-check-circle"))
     if pode_ignorar(usuario, execucao):
         acoes.append(acao("ignorar", "Ignorar", "bx-slash-circle"))
     if pode_cancelar_execucao(usuario, execucao):
@@ -1516,6 +1542,25 @@ def _acoes_da_execucao(execucao, usuario) -> list[dict]:
 def _execucao_para_tela(execucao, usuario=None) -> dict:
     """A ocorrência como a linha da lista precisa dela."""
     progresso = execucao.progresso_do_checklist
+
+    # Só a lista precisa saber se a pessoa pode concluir e quais tarefas ainda
+    # seguram a conclusão; a ficha da rotina não carrega isso.
+    pode_concluir_agora = usuario is not None and pode_concluir(usuario, execucao)
+    itens_pendentes = []
+    if pode_concluir_agora and execucao.tem_item_obrigatorio_pendente:
+        itens_pendentes = [
+            {
+                "pk": item.pk,
+                "descricao": item.descricao,
+                "obrigatorio": item.obrigatorio,
+                "tratar_url": reverse(
+                    "rotinas:tratar_item", args=[execucao.pk, item.pk]
+                ),
+            }
+            for item in execucao.itens.all()
+            if not item.esta_tratado
+        ]
+
     return {
         "pk": execucao.pk,
         "rotina": execucao.rotina.titulo,
@@ -1533,7 +1578,10 @@ def _execucao_para_tela(execucao, usuario=None) -> dict:
         "observacao": execucao.observacao_execucao,
         "tem_checklist": progresso["total"] > 0,
         "checklist_percentual": progresso["percentual"],
+        "checklist_pendentes": progresso["pendentes"],
         "checklist_obrigatorio_pendente": execucao.tem_item_obrigatorio_pendente,
+        "pode_concluir": pode_concluir_agora,
+        "itens_pendentes": itens_pendentes,
         "demanda_gerada": (
             execucao.demanda_gerada.titulo if execucao.demanda_gerada_id else ""
         ),

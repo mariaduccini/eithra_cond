@@ -84,7 +84,7 @@
           </thead>
           <tbody>
             {% for execucao in execucoes %}
-              <tr>
+              <tr data-linha-url="{% url 'rotinas:execucao' execucao.pk %}" style="cursor: pointer;">
                 <td class="text-nowrap">
                   <a
                     href="{% url 'rotinas:execucao' execucao.pk %}"
@@ -94,9 +94,7 @@
                   {% endif %}
                 </td>
                 <td>
-                  <a
-                    href="{% url 'rotinas:detalhe' execucao.rotina_pk %}"
-                    class="fw-medium text-decoration-none">{{ execucao.rotina }}</a>
+                  <span class="fw-medium">{{ execucao.rotina }}</span>
                 </td>
                 {% if mostrar_condominio %}<td>{{ execucao.condominio }}</td>{% endif %}
                 <td>{{ execucao.responsavel }}</td>
@@ -111,7 +109,19 @@
                     </div>
                     {% if execucao.checklist_obrigatorio_pendente %}
                       <div class="small mt-1">
-                        <span class="badge bg-label-warning">tarefa obrigatória pendente</span>
+                        {% if execucao.pode_concluir %}
+                          <button
+                            type="button"
+                            class="badge bg-label-warning border-0"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-antes-de-concluir-{{ execucao.pk }}">
+                            {{ execucao.checklist_pendentes }} tarefa{{ execucao.checklist_pendentes|pluralize }} pendente{{ execucao.checklist_pendentes|pluralize }}
+                          </button>
+                        {% else %}
+                          <span class="badge bg-label-warning">
+                            {{ execucao.checklist_pendentes }} tarefa{{ execucao.checklist_pendentes|pluralize }} pendente{{ execucao.checklist_pendentes|pluralize }}
+                          </span>
+                        {% endif %}
                       </div>
                     {% endif %}
                   {% endif %}
@@ -138,8 +148,25 @@
                   {% endif %}
                 </td>
                 <td class="text-end text-nowrap">
+                  {% if execucao.pode_concluir %}
+                    <button
+                      type="button"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      data-bs-toggle="modal"
+                      {% if execucao.checklist_obrigatorio_pendente %}
+                        data-bs-target="#modal-antes-de-concluir-{{ execucao.pk }}"
+                      {% else %}
+                        data-bs-target="#modal-execucao-concluir"
+                        data-execucao-url="{% url 'rotinas:concluir' execucao.pk %}"
+                        data-execucao-rotina="{{ execucao.rotina }}"
+                      {% endif %}
+                      title="Concluir"
+                      aria-label="Concluir {{ execucao.rotina }}">
+                      <i class="bx bx-check-circle" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
                   {% if execucao.acoes %}
-                    <div class="dropdown">
+                    <div class="dropdown d-inline-block">
                       {% include "pages/rotinas/acoes_execucao.html" with alvo=execucao %}
                     </div>
                   {% endif %}
@@ -152,11 +179,9 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for execucao in execucoes %}
-          <div class="list-group-item">
+          <div class="list-group-item" data-linha-url="{% url 'rotinas:execucao' execucao.pk %}" style="cursor: pointer;">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <a
-                href="{% url 'rotinas:detalhe' execucao.rotina_pk %}"
-                class="fw-medium text-decoration-none">{{ execucao.rotina }}</a>
+              <span class="fw-medium">{{ execucao.rotina }}</span>
               <span class="badge bg-label-{{ execucao.situacao_tom }} flex-shrink-0">{{ execucao.situacao }}</span>
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
@@ -174,7 +199,19 @@
             </div>
             {% if execucao.checklist_obrigatorio_pendente %}
               <div class="small mt-1">
-                <span class="badge bg-label-warning">tarefa obrigatória pendente</span>
+                {% if execucao.pode_concluir %}
+                  <button
+                    type="button"
+                    class="badge bg-label-warning border-0"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-antes-de-concluir-{{ execucao.pk }}">
+                    {{ execucao.checklist_pendentes }} tarefa{{ execucao.checklist_pendentes|pluralize }} pendente{{ execucao.checklist_pendentes|pluralize }}
+                  </button>
+                {% else %}
+                  <span class="badge bg-label-warning">
+                    {{ execucao.checklist_pendentes }} tarefa{{ execucao.checklist_pendentes|pluralize }} pendente{{ execucao.checklist_pendentes|pluralize }}
+                  </span>
+                {% endif %}
               </div>
             {% endif %}
             {% if execucao.resultado %}
@@ -198,9 +235,30 @@
               <span class="text-body-secondary small">
                 {{ execucao.responsavel }}{% if mostrar_condominio %} · {{ execucao.condominio }}{% endif %}
               </span>
-              {% if execucao.acoes %}
-                <div class="dropdown">
-                  {% include "pages/rotinas/acoes_execucao.html" with alvo=execucao %}
+              {% if execucao.pode_concluir or execucao.acoes %}
+                <div class="d-flex align-items-center gap-1">
+                  {% if execucao.pode_concluir %}
+                    <button
+                      type="button"
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      data-bs-toggle="modal"
+                      {% if execucao.checklist_obrigatorio_pendente %}
+                        data-bs-target="#modal-antes-de-concluir-{{ execucao.pk }}"
+                      {% else %}
+                        data-bs-target="#modal-execucao-concluir"
+                        data-execucao-url="{% url 'rotinas:concluir' execucao.pk %}"
+                        data-execucao-rotina="{{ execucao.rotina }}"
+                      {% endif %}
+                      title="Concluir"
+                      aria-label="Concluir {{ execucao.rotina }}">
+                      <i class="bx bx-check-circle" aria-hidden="true"></i>
+                    </button>
+                  {% endif %}
+                  {% if execucao.acoes %}
+                    <div class="dropdown">
+                      {% include "pages/rotinas/acoes_execucao.html" with alvo=execucao %}
+                    </div>
+                  {% endif %}
                 </div>
               {% endif %}
             </div>
@@ -223,6 +281,103 @@
   Um modal por ação, e não um por linha: ao abrir, o modal aprende a
   ocorrência — o endereço que confirma a decisão e o nome da rotina.
   {% endcomment %}
+
+  {% comment %}
+  "Antes de concluir": quando a ocorrência ainda tem tarefa obrigatória
+  pendente, cada tarefa é resolvida aqui mesmo. As tarefas andam por POST e
+  volta-se para a listagem; depois de resolvidas, o ícone de concluir abre o
+  modal de conclusão comum.
+  {% endcomment %}
+  {% for execucao in execucoes %}
+    {% if execucao.pode_concluir and execucao.checklist_obrigatorio_pendente %}
+      <div
+        class="modal fade"
+        id="modal-antes-de-concluir-{{ execucao.pk }}"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="modal-antes-de-concluir-{{ execucao.pk }}-titulo"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="modal-antes-de-concluir-{{ execucao.pk }}-titulo">Antes de concluir</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                Falta registrar o desfecho das tarefas de
+                <span class="fw-medium">{{ execucao.rotina }}</span>. A ocorrência só encerra
+                quando não restar tarefa obrigatória pendente.
+              </p>
+              <ul class="list-group list-group-flush">
+                {% for item in execucao.itens_pendentes %}
+                  <li class="list-group-item px-0">
+                    <div class="d-flex justify-content-between align-items-center gap-3">
+                      <span>
+                        {{ item.descricao }}
+                        {% if item.obrigatorio %}
+                          <span class="badge bg-label-secondary ms-1">obrigatória</span>
+                        {% endif %}
+                      </span>
+                      <div class="d-flex align-items-center gap-1">
+                        <form method="post" action="{{ item.tratar_url }}" data-item-tratar>
+                          {% csrf_token %}
+                          <input type="hidden" name="next" value="{{ proximo }}">
+                          <input type="hidden" name="observacao" value="">
+                          <button
+                            type="submit"
+                            name="status"
+                            value="concluido"
+                            class="btn btn-icon btn-text-secondary rounded-pill"
+                            title="Feita"
+                            aria-label="Marcar como feita: {{ item.descricao }}">
+                            <i class="bx bx-check" aria-hidden="true"></i>
+                          </button>
+                          <button
+                            type="submit"
+                            name="status"
+                            value="nao_aplicavel"
+                            class="btn btn-icon btn-text-secondary rounded-pill"
+                            title="Não se aplica"
+                            aria-label="Marcar como não aplicável: {{ item.descricao }}">
+                            <i class="bx bx-minus-circle" aria-hidden="true"></i>
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="modal-footer d-flex flex-wrap justify-content-between gap-2">
+              <button
+                type="button"
+                class="btn btn-text-secondary btn-sm"
+                data-marcar-todas
+                data-proximo="{{ proximo }}">
+                Marcar todas como feitas
+              </button>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
+                {% if not execucao.checklist_obrigatorio_pendente %}
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-execucao-concluir"
+                    data-execucao-url="{% url 'rotinas:concluir' execucao.pk %}"
+                    data-execucao-rotina="{{ execucao.rotina }}">
+                    Concluir ocorrência
+                  </button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+
   {% if 'iniciar' in acoes_disponiveis %}
     <div
       class="modal fade"
@@ -254,61 +409,7 @@
   {% endif %}
 
   {% if formulario_conclusao %}
-    <div
-      class="modal fade"
-      id="modal-execucao-concluir"
-      tabindex="-1"
-      role="dialog"
-      aria-labelledby="modal-execucao-concluir-titulo"
-      aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <form class="modal-content" method="post">
-          {% csrf_token %}
-          <div class="modal-header">
-            <h5 class="modal-title" id="modal-execucao-concluir-titulo">Concluir ocorrência</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-body-secondary small">
-              <span class="fw-medium" data-ocorrencia-rotina>Esta ocorrência</span> foi feita.
-              Diga o que se encontrou.
-            </p>
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_conclusao.resultado.id_for_label }}">
-                {{ formulario_conclusao.resultado.label }}
-              </label>
-              {{ formulario_conclusao.resultado }}
-              {% for erro in formulario_conclusao.resultado.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-            <div class="mb-6">
-              <label class="form-label" for="{{ formulario_conclusao.data_execucao.id_for_label }}">
-                {{ formulario_conclusao.data_execucao.label }}
-              </label>
-              {{ formulario_conclusao.data_execucao }}
-              <div class="form-text">Informe o dia em que a verificação foi feita.</div>
-              {% for erro in formulario_conclusao.data_execucao.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-            <div class="mb-0">
-              <label class="form-label" for="{{ formulario_conclusao.observacao.id_for_label }}">
-                {{ formulario_conclusao.observacao.label }}
-              </label>
-              {{ formulario_conclusao.observacao }}
-              {% for erro in formulario_conclusao.observacao.errors %}
-                <div class="text-danger small mt-1">{{ erro }}</div>
-              {% endfor %}
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Voltar</button>
-            <button type="submit" class="btn btn-primary">Concluir</button>
-          </div>
-        </form>
-      </div>
-    </div>
+    {% include "pages/rotinas/_modal_concluir_execucao.html" %}
   {% endif %}
 
   {% if formulario_ignorar %}
@@ -531,6 +632,47 @@
         }
         modal.querySelectorAll("[data-ocorrencia-rotina]").forEach(function (alvo) {
           alvo.textContent = rotina;
+        });
+      });
+    });
+
+    // A linha inteira abre a ocorrência. Os controles de dentro da linha — os
+    // ícones, o menu e os links — continuam com o comportamento próprio.
+    document.querySelectorAll("[data-linha-url]").forEach(function (linha) {
+      linha.addEventListener("click", function (evento) {
+        if (evento.target.closest("a, button, form, input, select, textarea, label, [data-bs-toggle]")) {
+          return;
+        }
+        window.location.href = linha.getAttribute("data-linha-url");
+      });
+    });
+
+    // "Marcar todas como feitas" resolve cada pendente de uma vez, pelo mesmo
+    // endereço que o POST normal usa, e só então volta para a listagem.
+    document.querySelectorAll("[data-marcar-todas]").forEach(function (botao) {
+      botao.addEventListener("click", function (evento) {
+        evento.preventDefault();
+        var modal = botao.closest(".modal");
+        var formularios = Array.prototype.slice.call(
+          modal.querySelectorAll("form[data-item-tratar]")
+        );
+        var destino = botao.getAttribute("data-proximo");
+        if (!formularios.length) {
+          window.location.href = destino;
+          return;
+        }
+        Promise.all(
+          formularios.map(function (formulario) {
+            var dados = new FormData(formulario);
+            dados.set("status", "concluido");
+            return fetch(formulario.action, {
+              method: "POST",
+              body: dados,
+              credentials: "same-origin",
+            });
+          })
+        ).then(function () {
+          window.location.href = destino;
         });
       });
     });
