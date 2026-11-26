@@ -238,11 +238,31 @@
     {% endif %}
 
     {% comment %}
+      O balancete antigo da administradora anterior é lido por OCR, com menos
+      garantias: o mês não passa a valer num clique. A gestão confere os valores
+      na tela única e publica de lá.
+    {% endcomment %}
+    {% if layout_legado %}
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 class="h5 mb-2">Conferir e publicar</h2>
+          <p class="text-body-secondary mb-4">
+            Este é um balancete antigo da administradora anterior, lido por OCR.
+            Confira os valores e corrija o que for preciso antes de o mês passar
+            a valer.
+          </p>
+          <a class="btn btn-primary" href="{% url 'balancos:conferencia' importacao.pk %}">
+            <i class="bx bx-check-shield me-1" aria-hidden="true"></i> Conferir e publicar
+          </a>
+        </div>
+      </div>
+
+    {% comment %}
       Confirmar é a primeira vez que o mês passa a valer. O resumo curto vem
       antes do clique, e a confirmação em si acontece num modal: é uma decisão
       irreversível, e não deve acontecer por um toque distraído.
     {% endcomment %}
-    {% if pode_confirmar %}
+    {% elif pode_confirmar %}
       <div class="card mb-4">
         <div class="card-body">
           <h2 class="h5 mb-2">Confirmar balanço</h2>

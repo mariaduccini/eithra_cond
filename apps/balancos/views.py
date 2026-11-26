@@ -41,7 +41,11 @@ from apps.balancos.contratos import (
 )
 from apps.balancos.correcoes import ErroDeCorrecao
 from apps.balancos.evidencias import ErroDeEvidencia
+from apps.balancos.extrator_legado import (
+    montar_balanco_da_conferencia,
+)
 from apps.balancos.forms import (
+    ConferenciaDeBalancoForm,
     CorrecaoDeLancamentoForm,
     EdicaoDeEvidenciaForm,
     EvidenciaVisualForm,
@@ -70,9 +74,10 @@ from apps.balancos.services import (
     limite_de_upload,
     medir_detalhamento,
     pode_confirmar,
+    publicar_balanco_da_conferencia,
     receber_importacao,
 )
-from apps.balancos.validacao_financeira import TOLERANCIA
+from apps.balancos.validacao_financeira import TOLERANCIA, validar_balanco
 
 # Quantidade de recebimentos recentes mostrados. A lista é de apoio: o que
 # importa é o que acabou de chegar, não um arquivo morto.
@@ -162,6 +167,67 @@ def confirmar(request, pk):
         return redirect("balancos:detalhe", pk=importacao.pk)
 
     messages.success(request, "Balanço confirmado.")
+    return redirect("balancos:balanco", pk=balanco.pk)
+
+
+@login_required
+def conferencia(request, pk=None):
+    """A tela única de conferência, antes de o mês passar a valer.
+
+    Sem ``pk``, a tela abre vazia: é o mês lançado sem PDF. Com ``pk``, ela abre
+    com o que a leitura do balancete antigo propôs — e tudo continua editável.
+    As duas conferências automáticas avisam, mas quem publica é a gestão.
+    """
+    condominios = _condominios_autorizados(request)
+    importacao = _importacao_autorizada(request, pk) if pk else None
+    return _render_conferencia(request, condominios=condominios, importacao=importacao)
+
+
+@login_required
+@require_POST
+def publicar_conferencia(request, pk=None):
+    """Publica o mês conferido: é aqui que ele passa a valer."""
+    condominios = _condominios_autorizados(request)
+    importacao = _importacao_autorizada(request, pk) if pk else None
+    linhas = _linhas_do_formulario(request)
+    formulario = ConferenciaDeBalancoForm(request.POST, condominios=condominios)
+
+    if not formulario.is_valid():
+        return _render_conferencia(
+            request,
+            condominios=condominios,
+            importacao=importacao,
+            formulario=formulario,
+            linhas=linhas,
+            status=400,
+        )
+
+    dados = formulario.cleaned_data
+    try:
+        balanco = publicar_balanco_da_conferencia(
+            condominio=dados["condominio"],
+            usuario=request.user,
+            competencia=date(dados["ano"], dados["mes"], 1),
+            saldo_anterior=_valor_em_texto(dados["saldo_anterior"]),
+            receitas_total=_valor_em_texto(dados["receitas_total"]),
+            despesas_total=_valor_em_texto(dados["despesas_total"]),
+            saldo_final=_valor_em_texto(dados["saldo_final"]),
+            receitas=linhas["receitas"],
+            despesas=linhas["despesas"],
+            importacao=importacao,
+        )
+    except ErroDeConfirmacao as erro:
+        messages.error(request, str(erro))
+        return _render_conferencia(
+            request,
+            condominios=condominios,
+            importacao=importacao,
+            formulario=formulario,
+            linhas=linhas,
+            status=400,
+        )
+
+    messages.success(request, "Balanço publicado.")
     return redirect("balancos:balanco", pk=balanco.pk)
 
 
@@ -578,6 +644,213 @@ def _ligar_balancos_confirmados(importacoes) -> None:
             importacao.balanco_confirmado = encontrado
 
 
+# -- Conferência antes de publicar ---------------------------------------------
+#
+# A tela única reúne o que a leitura propôs — ou o que a gestão digita, no mês
+# sem PDF — e as duas conferências automáticas. Nada aqui decide pelo domínio:
+# publicar é uma chamada só, e quem responde por ela é o serviço.
+
+CAMPOS_DA_CONFERENCIA = (
+    "saldo_anterior",
+    "receitas_total",
+    "despesas_total",
+    "saldo_final",
+)
+
+
+def _render_conferencia(
+    request, *, condominios, importacao, formulario=None, linhas=None, status=200
+):
+    """Monta a tela de conferência com o proposto ou com o que foi digitado."""
+    proposta = _proposta_da_conferencia(importacao)
+    if formulario is None:
+        formulario = ConferenciaDeBalancoForm(
+            initial=proposta["inicial"], condominios=condominios
+        )
+
+    receitas = linhas["receitas"] if linhas else proposta["receitas"]
+    despesas = linhas["despesas"] if linhas else proposta["despesas"]
+    checagens = _checagens_da_conferencia(
+        valores=_valores_da_conferencia(formulario, proposta),
+        receitas=receitas,
+        despesas=despesas,
+    )
+
+    return render(
+        request,
+        "pages/balancos/conferencia.html",
+        {
+            "formulario": formulario,
+            "importacao": importacao,
+            "competencia": _competencia_da_conferencia(formulario, proposta),
+            "receitas": _linhas_para_tela(receitas),
+            "despesas": _linhas_para_tela(despesas),
+            "checagens": checagens,
+            "tem_divergencia": any(item["estado"] == "diverge" for item in checagens),
+        },
+        status=status,
+    )
+
+
+def _proposta_da_conferencia(importacao) -> dict:
+    """O que a leitura propôs para a tela — ou uma tela vazia, sem importação."""
+    if importacao is None or not importacao.resultado_extraido:
+        return {
+            "inicial": {"ano": timezone.localdate().year},
+            "receitas": [],
+            "despesas": [],
+        }
+
+    lido = de_dicionario(importacao.resultado_extraido)
+    competencia = _data_iso(lido.competencia)
+    return {
+        "inicial": {
+            "condominio": importacao.condominio_id,
+            "mes": competencia.month if competencia else None,
+            "ano": competencia.year if competencia else timezone.localdate().year,
+            "saldo_anterior": _numero_para_editar(lido.saldo_anterior),
+            "receitas_total": _numero_para_editar(lido.receitas_total),
+            "despesas_total": _numero_para_editar(lido.despesas_total),
+            "saldo_final": _numero_para_editar(lido.saldo_final),
+        },
+        "receitas": [(item.descricao_original, item.valor) for item in lido.receitas],
+        "despesas": [(item.descricao_original, item.valor) for item in lido.despesas],
+    }
+
+
+def _valores_da_conferencia(formulario, proposta) -> dict:
+    """Os quatro valores da conferência em texto, digitados ou propostos."""
+    valores = {}
+    for nome in CAMPOS_DA_CONFERENCIA:
+        bruto = (
+            formulario.data.get(nome)
+            if formulario.is_bound
+            else proposta["inicial"].get(nome)
+        )
+        valores[nome] = _valor_em_texto(texto_para_decimal(bruto))
+    return valores
+
+
+def _competencia_da_conferencia(formulario, proposta) -> str | None:
+    """Mês e ano por extenso do que está na tela, para o cabeçalho."""
+    if formulario.is_bound:
+        mes, ano = formulario.data.get("mes"), formulario.data.get("ano")
+    else:
+        mes, ano = proposta["inicial"].get("mes"), proposta["inicial"].get("ano")
+    try:
+        return f"{NOMES_DO_MES[int(mes)].capitalize()}/{int(ano)}"
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _linhas_para_tela(linhas) -> list[dict]:
+    """As linhas editáveis da tela: a descrição e o valor como se digita."""
+    return [
+        {"descricao": descricao, "valor": _numero_para_editar(valor)}
+        for descricao, valor in linhas
+    ]
+
+
+def _valor_em_texto(valor) -> str | None:
+    """O ``Decimal`` conferido como texto do contrato, ou ausência."""
+    return decimal_para_texto(valor) if valor is not None else None
+
+
+def _linhas_do_formulario(request) -> dict:
+    """Pareia descrição e valor de cada linha digitada, ignorando as vazias."""
+    return {
+        "receitas": _linhas_de(
+            request.POST.getlist("receita_descricao"),
+            request.POST.getlist("receita_valor"),
+        ),
+        "despesas": _linhas_de(
+            request.POST.getlist("despesa_descricao"),
+            request.POST.getlist("despesa_valor"),
+        ),
+    }
+
+
+def _linhas_de(descricoes, valores) -> list[tuple[str, str]]:
+    """Cada par descrição/valor válido, no texto decimal do contrato."""
+    linhas = []
+    for descricao, valor in zip(descricoes, valores):
+        nome = " ".join((descricao or "").split())
+        numero = texto_para_decimal(valor)
+        if not nome or numero is None or numero <= Decimal("0.00"):
+            continue
+        linhas.append((nome, decimal_para_texto(numero)))
+    return linhas
+
+
+def _checagens_da_conferencia(*, valores, receitas, despesas) -> list[dict]:
+    """As duas conferências automáticas: verdes, vermelhas — ou sem o que conferir.
+
+    A resposta vem da mesma validação que o domínio usa: monta-se o contrato com
+    o que está na tela e pede-se a ele que aponte o que não fecha. A referência
+    de cada apontamento diz a qual das duas conferências ele pertence.
+    """
+    lido = montar_balanco_da_conferencia(
+        competencia=None,
+        saldo_anterior=valores["saldo_anterior"],
+        receitas_total=valores["receitas_total"],
+        despesas_total=valores["despesas_total"],
+        saldo_final=valores["saldo_final"],
+        receitas=receitas,
+        despesas=despesas,
+    )
+    por_referencia: dict[str, list[str]] = {}
+    for item in validar_balanco(lido):
+        por_referencia.setdefault(item.referencia, []).append(item.mensagem)
+
+    tem_linhas = bool(receitas) or bool(despesas)
+    return [
+        _checagem(
+            "Saldos fecham",
+            "Saldo anterior + receitas − despesas = saldo final",
+            tem=all(valores[nome] is not None for nome in CAMPOS_DA_CONFERENCIA),
+            mensagens=por_referencia.get("saldo", []),
+        ),
+        _checagem(
+            "Linhas batem com os totais",
+            "A soma das linhas conferidas é igual aos totais informados",
+            tem=tem_linhas,
+            mensagens=(
+                por_referencia.get("receitas", []) + por_referencia.get("despesas", [])
+            ),
+        ),
+    ]
+
+
+def _checagem(titulo: str, descricao: str, *, tem: bool, mensagens: list[str]) -> dict:
+    """Um resultado de conferência: verde, vermelho ou sem o que conferir."""
+    if not tem:
+        return {
+            "titulo": titulo,
+            "descricao": descricao,
+            "estado": "sem_dados",
+            "icone": "bx-info-circle",
+            "tom": "secondary",
+            "mensagens": [],
+        }
+    if mensagens:
+        return {
+            "titulo": titulo,
+            "descricao": descricao,
+            "estado": "diverge",
+            "icone": "bx-error-circle",
+            "tom": "danger",
+            "mensagens": mensagens,
+        }
+    return {
+        "titulo": titulo,
+        "descricao": descricao,
+        "estado": "confere",
+        "icone": "bx-check-circle",
+        "tom": "success",
+        "mensagens": [],
+    }
+
+
 # -- Apresentação do que foi lido ----------------------------------------------
 #
 # A tela fala a língua da gestão, não a do contrato: valores em reais, datas em
@@ -668,6 +941,7 @@ def _contexto_do_detalhe(importacao):
         },
         "detalhamento": _detalhamento_para_tela(balanco) if lido else None,
         "pode_confirmar": confirma,
+        "layout_legado": importacao.layout_detectado == LayoutBalanco.LEGADO,
         "motivo_para_nao_confirmar": motivo,
         "pendencias": [_pendencia_para_tela(item) for item in (importacao.inconsistencias or [])],
         "motivo_recusa": None if lido else _motivo_para_tela(importacao),
@@ -1283,5 +1557,5 @@ def _motivo_para_tela(importacao) -> str:
             "Não foi possível ler este documento. Tente enviar de novo."
         )
     if importacao.layout_detectado == LayoutBalanco.LEGADO:
-        return "Este formato será processado pela leitura de documentos legados."
+        return "Este é um balancete antigo: quem o lê é a leitura de documentos legados."
     return "Ainda não foi possível reconhecer o formato deste documento."

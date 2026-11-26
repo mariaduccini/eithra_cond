@@ -68,6 +68,141 @@ class ImportacaoBalancoForm(forms.Form):
         return arquivo
 
 
+# -- Conferência antes de publicar ----------------------------------------------
+#
+# A tela única é onde a gestão confere o que foi lido — ou digita o mês que não
+# tem PDF — antes de o balanço passar a valer. Tudo é editável: os totais e as
+# linhas. Duas conferências automáticas ajudam, mas não trancam a porta: a
+# decisão de publicar continua sendo de quem responde pelo mês.
+
+NOMES_DOS_MESES = (
+    (1, "Janeiro"),
+    (2, "Fevereiro"),
+    (3, "Março"),
+    (4, "Abril"),
+    (5, "Maio"),
+    (6, "Junho"),
+    (7, "Julho"),
+    (8, "Agosto"),
+    (9, "Setembro"),
+    (10, "Outubro"),
+    (11, "Novembro"),
+    (12, "Dezembro"),
+)
+
+
+def _valor_do_campo(texto, *, rotulo: str, obrigatorio: bool):
+    """Lê um valor digitado pela gestão; devolve ``None`` quando ele é opcional.
+
+    O obrigatório é o total do mês: sem receitas e sem despesas não há o que
+    publicar. Saldos em branco continuam sendo ausência — e ausência é resposta
+    honesta, não zero inventado.
+    """
+    valor = texto_para_decimal(texto) if (texto or "").strip() else None
+    if valor is None:
+        if obrigatorio:
+            raise forms.ValidationError(f"Informe {rotulo} em reais, como 1.234,56.")
+        return None
+    if obrigatorio and valor <= ZERO:
+        raise forms.ValidationError(f"{rotulo.capitalize()} precisa ser maior que zero.")
+    return valor
+
+
+class ConferenciaDeBalancoForm(forms.Form):
+    """Os valores que a gestão confere antes de o mês passar a valer.
+
+    Vale para o balancete antigo conferido e para o mês lançado sem PDF. As
+    linhas de receitas e despesas viajam como listas à parte — são opcionais, e
+    a tela as pareia antes de entregar ao domínio.
+    """
+
+    condominio = forms.ModelChoiceField(
+        label="Condomínio",
+        queryset=Condominio.objects.none(),
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    mes = forms.ChoiceField(
+        label="Mês",
+        choices=NOMES_DOS_MESES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    ano = forms.IntegerField(
+        label="Ano",
+        min_value=2000,
+        max_value=2100,
+        widget=forms.NumberInput(attrs={"class": "form-control", "inputmode": "numeric"}),
+    )
+    saldo_anterior = forms.CharField(
+        label="Saldo anterior",
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "decimal", "placeholder": "0,00"}
+        ),
+    )
+    receitas_total = forms.CharField(
+        label="Total de receitas",
+        error_messages={"required": "Informe o total de receitas do mês."},
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "decimal", "placeholder": "0,00"}
+        ),
+    )
+    despesas_total = forms.CharField(
+        label="Total de despesas",
+        error_messages={"required": "Informe o total de despesas do mês."},
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "decimal", "placeholder": "0,00"}
+        ),
+    )
+    saldo_final = forms.CharField(
+        label="Saldo final",
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "decimal", "placeholder": "0,00"}
+        ),
+    )
+
+    def __init__(self, *args, condominios=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        permitidos = condominios if condominios is not None else Condominio.objects.none()
+        campo = self.fields["condominio"]
+        campo.queryset = permitidos
+
+        elegiveis = list(permitidos)
+        if len(elegiveis) == 1:
+            campo.initial = elegiveis[0].pk
+            campo.widget = forms.HiddenInput()
+
+    def clean_saldo_anterior(self):
+        return _valor_do_campo(
+            self.cleaned_data.get("saldo_anterior"),
+            rotulo="o saldo anterior",
+            obrigatorio=False,
+        )
+
+    def clean_receitas_total(self):
+        return _valor_do_campo(
+            self.cleaned_data.get("receitas_total"),
+            rotulo="o total de receitas",
+            obrigatorio=True,
+        )
+
+    def clean_despesas_total(self):
+        return _valor_do_campo(
+            self.cleaned_data.get("despesas_total"),
+            rotulo="o total de despesas",
+            obrigatorio=True,
+        )
+
+    def clean_saldo_final(self):
+        return _valor_do_campo(
+            self.cleaned_data.get("saldo_final"),
+            rotulo="o saldo final",
+            obrigatorio=False,
+        )
+
+
 # -- Correção do detalhamento ---------------------------------------------------
 #
 # A correção é uma decisão da gestão sobre o que a leitura trouxe. Os campos de

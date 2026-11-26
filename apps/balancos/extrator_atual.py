@@ -1670,7 +1670,7 @@ def _motivo_de_recusa(layout: str) -> str:
     A mensagem é para a gestão e diz o que vai acontecer, sem termo técnico.
     """
     if layout == LayoutBalanco.LEGADO:
-        return "Este formato será processado pela leitura de documentos legados."
+        return "Este é um balancete antigo: quem o lê é a leitura de documentos legados."
     return "Ainda não foi possível reconhecer o formato deste documento."
 
 

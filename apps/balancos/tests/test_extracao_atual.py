@@ -1532,7 +1532,7 @@ class RecusaDeLayoutTests(TestCase):
         self.assertFalse(resultado.processado)
         self.assertEqual(
             resultado.motivo,
-            "Este formato será processado pela leitura de documentos legados.",
+            "Este é um balancete antigo: quem o lê é a leitura de documentos legados.",
         )
         self.importacao.refresh_from_db()
         self.assertEqual(self.importacao.resultado_extraido, {})

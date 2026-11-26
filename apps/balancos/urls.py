@@ -8,6 +8,21 @@ app_name = "balancos"
 urlpatterns = [
     path("", views.importacoes, name="importacoes"),
     path("importar/", views.importar, name="importar"),
+    # Conferência antes de publicar: a tela única onde o mês passa a valer. Com
+    # um balancete lido, ela abre com o que a leitura propôs; sem ele, abre
+    # vazia, para o mês lançado à mão.
+    path("lancar-sem-pdf/", views.conferencia, name="lancar_sem_pdf"),
+    path(
+        "lancar-sem-pdf/publicar/",
+        views.publicar_conferencia,
+        name="publicar_sem_pdf",
+    ),
+    path("<uuid:pk>/conferencia/", views.conferencia, name="conferencia"),
+    path(
+        "<uuid:pk>/conferencia/publicar/",
+        views.publicar_conferencia,
+        name="publicar_conferencia",
+    ),
     path("<uuid:pk>/", views.detalhe, name="detalhe"),
     path("<uuid:pk>/arquivo/", views.acessar_arquivo, name="arquivo"),
     path("<uuid:pk>/excluir/", views.excluir, name="excluir"),

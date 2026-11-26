@@ -260,9 +260,12 @@ EITHRA_STORAGE_PROVIDER = env("EITHRA_STORAGE_PROVIDER", default="").strip().low
 # recusado: não existe queda silenciosa para outro lugar.
 BALANCOS_STORAGE_PROVIDER = env("BALANCOS_STORAGE_PROVIDER", default="")
 BALANCOS_STORAGE_BUCKET = env("BALANCOS_STORAGE_BUCKET", default="")
-# 50 MB. Um balanço real pode ter muitas páginas e vir com anexos; o limite
-# existe para recusar cedo um arquivo absurdo, não para apertar o uso.
-BALANCOS_MAX_UPLOAD_BYTES = env.int("BALANCOS_MAX_UPLOAD_BYTES", default=50 * 1024 * 1024)
+# 150 MB. Um balanço antigo pode vir escaneado, com muitas páginas e anexos; o
+# limite existe para recusar cedo um arquivo absurdo, não para apertar o uso. O
+# que passar de 20 MB é comprimido com o Ghostscript antes de ser guardado.
+BALANCOS_MAX_UPLOAD_BYTES = env.int(
+    "BALANCOS_MAX_UPLOAD_BYTES", default=150 * 1024 * 1024
+)
 # Validade do acesso temporário ao arquivo. Curta de propósito: é o suficiente
 # para abrir o documento, não para deixar um endereço circulando.
 BALANCOS_URL_ACESSO_SEGUNDOS = env.int("BALANCOS_URL_ACESSO_SEGUNDOS", default=60)

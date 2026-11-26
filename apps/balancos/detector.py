@@ -84,12 +84,33 @@ VARIANTES_ATUAL_CANONICO = {
     ),
 }
 
+# Marcadores textuais do balancete antigo. "Balancete" cobre o quadro
+# historico generico; "Metrica" e o nome da administradora anterior, e
+# "demonstrativo" o rotulo do resumo sintetico que ela emite. A normalizacao ja
+# remove acento, por isso a comparacao e feita sem eles. Reconhecer o rotulo nao
+# basta para classificar: sozinho ele nao decide nada — o conjunto de sinais e
+# que classifica, como no modelo atual.
+VARIANTES_LEGADO = {
+    "balancete": ("balancete",),
+    "metrica": ("metrica",),
+    "demonstrativo": ("demonstrativo",),
+}
+
 PESOS_LEGADO = {
     "balancete": 4,
+    "metrica": 4,
+    "demonstrativo": 4,
     "texto escasso": 2,
     "poucas paginas com texto": 1,
     "predominio visual": 2,
     "sem sinais fortes do atual": 1,
+}
+
+# Frase de auditoria de cada marcador textual legado, para a lista de evidencias.
+_DESCRICAO_DE_MARCADOR_LEGADO = {
+    "balancete": "Marcador historico de balancete encontrado.",
+    "metrica": "Marcador da administradora anterior (Metrica) encontrado.",
+    "demonstrativo": "Rotulo de demonstrativo sintetico encontrado.",
 }
 
 
@@ -273,9 +294,13 @@ def _coletar_evidencias(conteudo: bytes) -> EvidenciasColetadas:
 
     texto_total = " ".join(parte for parte in texto_paginas if parte).strip()
     marcadores_atual = _marcadores_encontrados(texto_total, VARIANTES_ATUAL_CANONICO)
-    marcadores_legado = []
-    if "balancete" in texto_total:
-        marcadores_legado.append("balancete")
+    marcadores_legado = _marcadores_encontrados(texto_total, VARIANTES_LEGADO)
+    # "Demonstrativo de contas" e o titulo de uma secao do modelo atual, e a
+    # busca por substring o confundiria com o rotulo do balancete antigo. Quando
+    # a frase completa do modelo atual aparece, o "demonstrativo" solto nao conta
+    # como sinal legado — quem o escreveu nao esta falando de layout antigo.
+    if "demonstrativo de contas" in texto_total:
+        marcadores_legado = [m for m in marcadores_legado if m != "demonstrativo"]
 
     return EvidenciasColetadas(
         texto_normalizado=texto_total,
@@ -367,9 +392,9 @@ def _pontuar_legado(evidencias: EvidenciasColetadas) -> tuple[int, list[str]]:
     score = 0
     itens: list[str] = []
 
-    if "balancete" in evidencias.marcadores_legado:
-        score += PESOS_LEGADO["balancete"]
-        itens.append("Marcador historico de balancete encontrado.")
+    for marcador in evidencias.marcadores_legado:
+        score += PESOS_LEGADO[marcador]
+        itens.append(_DESCRICAO_DE_MARCADOR_LEGADO.get(marcador, "Marcador historico encontrado."))
     if evidencias.densidade_textual <= LIMIAR_ESCASSEZ_LEGADO:
         score += PESOS_LEGADO["texto escasso"]
         itens.append("Pouco texto extraivel por pagina com texto.")

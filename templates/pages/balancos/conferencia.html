@@ -1,0 +1,377 @@
+{% extends "layouts/app.html" %}
+
+{# A tela única de conferência.
+
+   É aqui que o mês passa a valer: a gestão confere — ou digita — os totais e as
+   linhas, vê as duas conferências automáticas e publica. Um balancete antigo
+   chega com o que a leitura propôs, tudo editável; um mês sem PDF abre vazio. As
+   conferências avisam quando algo não fecha, mas nunca trancam a porta. #}
+
+{% block title %}Conferência do balanço · Balanços · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'balancos:importacoes' %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-1">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Balanços
+      </a>
+      <h1 class="h4 mb-1">Conferência do balanço</h1>
+      <p class="text-body-secondary mb-0">
+        {% if importacao %}
+          {{ importacao.condominio.nome }}{% if competencia %} · {{ competencia }}{% endif %}
+        {% else %}
+          Lançar mês sem PDF{% if competencia %} · {{ competencia }}{% endif %}
+        {% endif %}
+      </p>
+    </div>
+
+    {% if importacao %}
+      <div class="d-flex flex-wrap gap-2">
+        {% if importacao.storage_key %}
+          <a class="btn btn-label-secondary" href="{% url 'balancos:arquivo' importacao.pk %}">
+            <i class="bx bx-file me-1" aria-hidden="true"></i> Ver o arquivo
+          </a>
+        {% endif %}
+        <a class="btn btn-label-secondary" href="{% url 'balancos:detalhe' importacao.pk %}">
+          <i class="bx bx-show me-1" aria-hidden="true"></i> Ver a leitura
+        </a>
+      </div>
+    {% endif %}
+  </div>
+
+  {% comment %}
+    As duas conferências automáticas: a equação do saldo e a soma das linhas
+    contra os totais. Verde confirma, vermelho aponta o que não fecha, e o
+    neutro diz que ainda não há o que conferir — nunca um verde falso.
+  {% endcomment %}
+  <div class="card mb-4">
+    <div class="card-header">
+      <h2 class="h6 mb-0">Conferências automáticas</h2>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for checagem in checagens %}
+        <li class="list-group-item">
+          <div class="d-flex align-items-start gap-3">
+            <i class="bx {{ checagem.icone }} text-{{ checagem.tom }} fs-4" aria-hidden="true"></i>
+            <div>
+              <div class="fw-medium">
+                {{ checagem.titulo }}
+                <span class="badge bg-label-{{ checagem.tom }} ms-1">
+                  {% if checagem.estado == 'confere' %}Confere{% elif checagem.estado == 'diverge' %}Não confere{% else %}Sem o que conferir{% endif %}
+                </span>
+              </div>
+              <div class="text-body-secondary small">{{ checagem.descricao }}</div>
+              {% for mensagem in checagem.mensagens %}
+                <div class="text-{{ checagem.tom }} small mt-1">{{ mensagem }}</div>
+              {% endfor %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <form
+    method="post"
+    action="{% if importacao %}{% url 'balancos:publicar_conferencia' importacao.pk %}{% else %}{% url 'balancos:publicar_sem_pdf' %}{% endif %}"
+    novalidate>
+    {% csrf_token %}
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">O mês</h2>
+        <p class="text-body-secondary small mb-0">
+          Confira os valores e corrija o que for preciso antes de publicar.
+        </p>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          {% if formulario.condominio.is_hidden %}
+            {{ formulario.condominio }}
+          {% else %}
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ formulario.condominio.id_for_label }}">
+                {{ formulario.condominio.label }}
+              </label>
+              {{ formulario.condominio }}
+              {% for erro in formulario.condominio.errors %}
+                <div class="text-danger small mt-1">{{ erro }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.mes.id_for_label }}">{{ formulario.mes.label }}</label>
+            {{ formulario.mes }}
+            {% for erro in formulario.mes.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.ano.id_for_label }}">{{ formulario.ano.label }}</label>
+            {{ formulario.ano }}
+            {% for erro in formulario.ano.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.saldo_anterior.id_for_label }}">
+              {{ formulario.saldo_anterior.label }}
+            </label>
+            {{ formulario.saldo_anterior }}
+            {% for erro in formulario.saldo_anterior.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.saldo_final.id_for_label }}">
+              {{ formulario.saldo_final.label }}
+            </label>
+            {{ formulario.saldo_final }}
+            {% for erro in formulario.saldo_final.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.receitas_total.id_for_label }}">
+              {{ formulario.receitas_total.label }}
+            </label>
+            {{ formulario.receitas_total }}
+            {% for erro in formulario.receitas_total.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="{{ formulario.despesas_total.id_for_label }}">
+              {{ formulario.despesas_total.label }}
+            </label>
+            {{ formulario.despesas_total }}
+            {% for erro in formulario.despesas_total.errors %}
+              <div class="text-danger small mt-1">{{ erro }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% comment %}
+      As linhas são opcionais: quem só sabe os totais publica assim mesmo. Quando
+      existem, elas são conferidas contra os totais na segunda checagem.
+    {% endcomment %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">Receitas</h2>
+        <p class="text-body-secondary small mb-0">
+          As linhas que o documento trouxe — ou o que a gestão digitou. Podem ficar em branco.
+        </p>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 text-body-secondary small mb-2">
+          <div class="col-8">Descrição</div>
+          <div class="col-3">Valor</div>
+          <div class="col-1"></div>
+        </div>
+
+        <div id="linhas-de-receitas" class="d-flex flex-column gap-2">
+          {% for linha in receitas %}
+            <div class="row g-2 align-items-center eithra-linha">
+              <div class="col-8">
+                <input
+                  type="text"
+                  class="form-control"
+                  name="receita_descricao"
+                  value="{{ linha.descricao }}"
+                  autocomplete="off"
+                  aria-label="Descrição da receita">
+              </div>
+              <div class="col-3">
+                <input
+                  type="text"
+                  class="form-control"
+                  name="receita_valor"
+                  value="{{ linha.valor }}"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="0,00"
+                  aria-label="Valor da receita">
+              </div>
+              <div class="col-1 text-end">
+                <button
+                  type="button"
+                  class="btn btn-icon btn-text-danger rounded-pill"
+                  data-eithra-remover-linha
+                  title="Remover linha"
+                  aria-label="Remover linha">
+                  <i class="bx bx-x" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-sm btn-label-secondary mt-3"
+          data-eithra-adicionar-linha="linhas-de-receitas"
+          data-eithra-modelo="modelo-linha-receita">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Adicionar receita
+        </button>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">
+        <h2 class="h6 mb-1">Despesas</h2>
+        <p class="text-body-secondary small mb-0">
+          As linhas que o documento trouxe — ou o que a gestão digitou. Podem ficar em branco.
+        </p>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 text-body-secondary small mb-2">
+          <div class="col-8">Descrição</div>
+          <div class="col-3">Valor</div>
+          <div class="col-1"></div>
+        </div>
+
+        <div id="linhas-de-despesas" class="d-flex flex-column gap-2">
+          {% for linha in despesas %}
+            <div class="row g-2 align-items-center eithra-linha">
+              <div class="col-8">
+                <input
+                  type="text"
+                  class="form-control"
+                  name="despesa_descricao"
+                  value="{{ linha.descricao }}"
+                  autocomplete="off"
+                  aria-label="Descrição da despesa">
+              </div>
+              <div class="col-3">
+                <input
+                  type="text"
+                  class="form-control"
+                  name="despesa_valor"
+                  value="{{ linha.valor }}"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  placeholder="0,00"
+                  aria-label="Valor da despesa">
+              </div>
+              <div class="col-1 text-end">
+                <button
+                  type="button"
+                  class="btn btn-icon btn-text-danger rounded-pill"
+                  data-eithra-remover-linha
+                  title="Remover linha"
+                  aria-label="Remover linha">
+                  <i class="bx bx-x" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        <button
+          type="button"
+          class="btn btn-sm btn-label-secondary mt-3"
+          data-eithra-adicionar-linha="linhas-de-despesas"
+          data-eithra-modelo="modelo-linha-despesa">
+          <i class="bx bx-plus me-1" aria-hidden="true"></i> Adicionar despesa
+        </button>
+      </div>
+    </div>
+
+    {% if tem_divergencia %}
+      <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+        <i class="bx bx-error-circle fs-4" aria-hidden="true"></i>
+        <div>
+          Há uma conferência que não fecha. Os valores continuam publicáveis — a
+          decisão é de quem responde pelo mês —, mas vale revisar o que foi
+          apontado acima.
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="d-flex flex-wrap gap-2 mb-4">
+      <button type="submit" class="btn btn-primary">
+        <i class="bx bx-check me-1" aria-hidden="true"></i> Publicar
+      </button>
+      <a class="btn btn-label-secondary" href="{% url 'balancos:importacoes' %}">Cancelar</a>
+    </div>
+  </form>
+
+  {% comment %}
+    Modelos das linhas: o botão "Adicionar" clona o modelo certo para dentro da
+    lista. Os campos repetem o mesmo nome de propósito — o servidor pareia
+    descrição e valor pela ordem em que chegam.
+  {% endcomment %}
+  <template id="modelo-linha-receita">
+    <div class="row g-2 align-items-center eithra-linha">
+      <div class="col-8">
+        <input type="text" class="form-control" name="receita_descricao" autocomplete="off" placeholder="Descrição" aria-label="Descrição da receita">
+      </div>
+      <div class="col-3">
+        <input type="text" class="form-control" name="receita_valor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor da receita">
+      </div>
+      <div class="col-1 text-end">
+        <button type="button" class="btn btn-icon btn-text-danger rounded-pill" data-eithra-remover-linha title="Remover linha" aria-label="Remover linha">
+          <i class="bx bx-x" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <template id="modelo-linha-despesa">
+    <div class="row g-2 align-items-center eithra-linha">
+      <div class="col-8">
+        <input type="text" class="form-control" name="despesa_descricao" autocomplete="off" placeholder="Descrição" aria-label="Descrição da despesa">
+      </div>
+      <div class="col-3">
+        <input type="text" class="form-control" name="despesa_valor" inputmode="decimal" autocomplete="off" placeholder="0,00" aria-label="Valor da despesa">
+      </div>
+      <div class="col-1 text-end">
+        <button type="button" class="btn btn-icon btn-text-danger rounded-pill" data-eithra-remover-linha title="Remover linha" aria-label="Remover linha">
+          <i class="bx bx-x" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </template>
+{% endblock %}
+
+{% block scripts %}
+  {{ block.super }}
+  <script>
+    // As linhas de receitas e despesas são opcionais e de quantidade livre: o
+    // botão acrescenta um par descrição/valor, e o X tira a linha. O servidor
+    // pareia os dois campos que chegam na mesma ordem.
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll("[data-eithra-adicionar-linha]").forEach(function (botao) {
+        botao.addEventListener("click", function () {
+          var lista = document.getElementById(botao.dataset.eithraAdicionarLinha);
+          var modelo = document.getElementById(botao.dataset.eithraModelo);
+          if (!lista || !modelo) {
+            return;
+          }
+          lista.appendChild(modelo.content.cloneNode(true));
+        });
+      });
+
+      document.addEventListener("click", function (event) {
+        var remover = event.target.closest("[data-eithra-remover-linha]");
+        if (!remover) {
+          return;
+        }
+        var linha = remover.closest(".eithra-linha");
+        if (linha) {
+          linha.remove();
+        }
+      });
+    });
+  </script>
+{% endblock %}

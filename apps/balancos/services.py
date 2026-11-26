@@ -23,7 +23,7 @@ Já a confirmação é uma transação só, e é o único ponto do sistema onde 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -33,6 +33,7 @@ from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from apps.balancos import correcoes
+from apps.balancos.compressao_pdf import comprimir_pdf
 from apps.balancos.constants import (
     LayoutBalanco,
     ProcessamentoBalanco,
@@ -47,6 +48,7 @@ from apps.balancos.contratos import (
     TipoInconsistencia,
     de_dicionario,
     de_dicionario_validado,
+    para_dicionario,
     para_dicionario_validado,
     validar_dicionario,
     validar_dicionario_validado,
@@ -54,10 +56,14 @@ from apps.balancos.contratos import (
 from apps.balancos.correcoes import ErroDeCorrecao
 from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
 from apps.balancos.extrator_atual import ErroDeExtracao, extrair_balanco_atual
+from apps.balancos.extrator_legado import (
+    extrair_balanco_legado,
+    montar_balanco_da_conferencia,
+)
 from apps.balancos.models import BalancoMensal, DocumentoBalanco, ImportacaoBalanco
 from apps.balancos.normalizadores import decimal_para_texto, texto_para_decimal
 from apps.balancos.storage import ErroDeStorage, obter_provider
-from apps.balancos.validacao_financeira import TOLERANCIA
+from apps.balancos.validacao_financeira import TOLERANCIA, validar_balanco
 # O que é neutro mora na camada compartilhada. Estes nomes continuam acessíveis
 # por aqui para que os chamadores de balanços não precisem mudar de caminho.
 from apps.core.arquivos import (
@@ -199,6 +205,10 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
     """
     validar_arquivo(arquivo)
     conteudo = ler_conteudo(arquivo)
+    # Um PDF escaneado pode passar de 20 MB. Comprimir antes de calcular o hash
+    # faz com que o hash, o tamanho e o objeto guardado descrevam todos o mesmo
+    # arquivo — o comprimido —, e a duplicidade continua correta.
+    conteudo = comprimir_pdf(conteudo)
     sha256 = calcular_hash(conteudo)
 
     ja_recebida = verificar_duplicidade(condominio, sha256)
@@ -252,12 +262,22 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
     if importacao.layout_detectado == LayoutBalanco.ATUAL_CANONICO:
         # O documento é do modelo atual: os dados financeiros são lidos agora,
         # enquanto o arquivo já está em mãos — sem um segundo acesso ao storage.
-        # Legado e desconhecido seguem sem leitura: o motivo fica para a gestão.
+        # Desconhecido segue sem leitura: o motivo fica para a gestão.
         try:
             extrair_balanco_atual(importacao, conteudo=conteudo, provider=provider)
         except ErroDeExtracao:
             # A leitura falhou e já registrou o motivo na importação. O arquivo
             # continua no bucket: a tentativa pode ser refeita sem novo envio.
+            importacao.refresh_from_db()
+            return ResultadoDoRecebimento(importacao=importacao)
+    elif importacao.layout_detectado == LayoutBalanco.LEGADO:
+        # O balancete antigo da administradora anterior é escaneado: a leitura
+        # passa pelo OCR local e cobre só o demonstrativo sintético. A falha
+        # recebe o mesmo tratamento do modelo atual — o motivo fica registrado e
+        # o arquivo continua no bucket.
+        try:
+            extrair_balanco_legado(importacao, conteudo=conteudo, provider=provider)
+        except ErroDeExtracao:
             importacao.refresh_from_db()
             return ResultadoDoRecebimento(importacao=importacao)
 
@@ -394,11 +414,16 @@ def medir_detalhamento(balanco: BalancoExtraidoV1) -> DetalhamentoDasDespesas:
     )
 
 
-def pode_confirmar(importacao) -> tuple[bool, str]:
+def pode_confirmar(importacao, *, conferida: bool = False) -> tuple[bool, str]:
     """Diz se esta importação pode virar balanço, e por que não, quando não pode.
 
     A resposta é do domínio, não da tela: o botão só aparece quando esta função
     concorda, mas quem decide continua sendo ela.
+
+    ``conferida`` diz de onde a pergunta vem. A tela de conferência já mostrou os
+    valores à gestão e os deixou editar; o balancete antigo — lido por OCR, com
+    menos garantias — também pode virar balanço por ali. O caminho de um clique
+    segue reservado à leitura do modelo atual, que é a mais confiável.
     """
     if importacao.confirmado_em:
         return False, "Esta importação já foi confirmada."
@@ -406,7 +431,10 @@ def pode_confirmar(importacao) -> tuple[bool, str]:
         return False, "Uma importação descartada não vira balanço."
     if importacao.status != StatusImportacao.PRONTO:
         return False, "A leitura deste documento ainda não terminou."
-    if importacao.layout_detectado != LayoutBalanco.ATUAL_CANONICO:
+    formatos = (LayoutBalanco.ATUAL_CANONICO,)
+    if conferida:
+        formatos = (LayoutBalanco.ATUAL_CANONICO, LayoutBalanco.LEGADO)
+    if importacao.layout_detectado not in formatos:
         return False, "Este documento ainda não foi lido pelo Eithra."
     if not importacao.resultado_extraido:
         return False, "A leitura deste documento não produziu dados."
@@ -427,7 +455,9 @@ def pode_confirmar(importacao) -> tuple[bool, str]:
     return True, ""
 
 
-def confirmar_importacao(importacao, *, usuario) -> BalancoMensal:
+def confirmar_importacao(
+    importacao, *, usuario, conferida: bool = False
+) -> BalancoMensal:
     """Transforma uma importação pronta no balanço do mês, em uma transação.
 
     É o único ponto do sistema onde um ``BalancoMensal`` nasce. Ou tudo
@@ -452,7 +482,7 @@ def confirmar_importacao(importacao, *, usuario) -> BalancoMensal:
                 raise ErroDeConfirmacao("Esta importação já foi confirmada.")
             return existente
 
-        confirma, motivo = pode_confirmar(bloqueada)
+        confirma, motivo = pode_confirmar(bloqueada, conferida=conferida)
         if not confirma:
             raise ErroDeConfirmacao(motivo)
 
@@ -503,9 +533,37 @@ def _versao_vigente(condominio, competencia) -> BalancoMensal | None:
 
 def _criar_balanco(importacao, competencia, *, usuario, agora) -> BalancoMensal:
     """Monta e grava o balanço do mês, com os totais oficiais do documento."""
-    lido = de_dicionario(importacao.resultado_extraido)
+    return _montar_balanco(
+        condominio=importacao.condominio,
+        competencia=competencia,
+        dados_lidos=importacao.resultado_extraido,
+        inconsistencias=list(importacao.inconsistencias or []),
+        # O layout real é preservado: é ele que diz, na transparência, de onde o
+        # mês veio — o balancete antigo da administradora anterior não vira "atual".
+        layout=importacao.layout_detectado,
+        usuario=usuario,
+        agora=agora,
+    )
+
+
+def _montar_balanco(
+    *,
+    condominio,
+    competencia,
+    dados_lidos: dict,
+    inconsistencias: list,
+    layout: str,
+    usuario,
+    agora,
+) -> BalancoMensal:
+    """Constrói e grava o ``BalancoMensal`` a partir de uma leitura já conferida.
+
+    É o único construtor do agregado: tanto a confirmação de uma importação
+    quanto o lançamento conferido passam por aqui, para não existirem duas
+    versões da mesma validação.
+    """
+    lido = de_dicionario(dados_lidos)
     detalhamento = medir_detalhamento(lido)
-    inconsistencias = list(importacao.inconsistencias or [])
 
     validado = BalancoValidadoV1(
         competencia=lido.competencia,
@@ -519,20 +577,20 @@ def _criar_balanco(importacao, competencia, *, usuario, agora) -> BalancoMensal:
         percentual_detalhamento=detalhamento.percentual,
         confirmado_com_ressalvas=_tem_ressalvas(detalhamento, inconsistencias),
         confirmado_em=agora.isoformat(),
-        leitura=importacao.resultado_extraido,
+        leitura=dados_lidos,
     )
     dados_validados = para_dicionario_validado(validado)
     validar_dicionario_validado(dados_validados)
 
     balanco = BalancoMensal(
-        condominio=importacao.condominio,
+        condominio=condominio,
         competencia=competencia,
         versao=1,
         status=StatusBalanco.VALIDADO,
         status_processamento=ProcessamentoBalanco.CONCLUIDO,
-        layout_detectado=LayoutBalanco.ATUAL_CANONICO,
+        layout_detectado=layout,
         schema_versao=SCHEMA_VERSAO,
-        dados_extraidos=importacao.resultado_extraido,
+        dados_extraidos=dados_lidos,
         dados_validados=dados_validados,
         inconsistencias=inconsistencias,
         resumo=_resumo_do_balanco(lido, validado, inconsistencias),
@@ -542,6 +600,97 @@ def _criar_balanco(importacao, competencia, *, usuario, agora) -> BalancoMensal:
     )
     _gravar(balanco)
     return balanco
+
+
+def publicar_balanco_da_conferencia(
+    *,
+    condominio,
+    usuario,
+    competencia,
+    saldo_anterior,
+    receitas_total,
+    despesas_total,
+    saldo_final,
+    receitas,
+    despesas,
+    importacao=None,
+) -> BalancoMensal:
+    """Publica o mês a partir do que a gestão conferiu na tela única.
+
+    Vale para o balancete antigo conferido e para o mês lançado sem PDF. Quando
+    há uma importação por trás, a leitura conferida substitui o que o OCR havia
+    proposto e o mês nasce pelo mesmo caminho da confirmação — a importação
+    continua sendo o objeto transitório. Sem importação, o balanço nasce do que
+    a gestão digitou, marcado como lançamento manual.
+    """
+    if competencia is None:
+        raise ErroDeConfirmacao("Informe o mês e o ano do balanço.")
+    if not receitas_total:
+        raise ErroDeConfirmacao("Informe o total de receitas do mês.")
+    if not despesas_total:
+        raise ErroDeConfirmacao("Informe o total de despesas do mês.")
+
+    lido = montar_balanco_da_conferencia(
+        competencia=competencia,
+        saldo_anterior=saldo_anterior,
+        receitas_total=receitas_total,
+        despesas_total=despesas_total,
+        saldo_final=saldo_final,
+        receitas=receitas,
+        despesas=despesas,
+    )
+    dados = para_dicionario(lido)
+    inconsistencias = [asdict(item) for item in validar_balanco(lido)]
+
+    if importacao is not None:
+        return _publicar_conferencia_da_importacao(
+            importacao,
+            dados=dados,
+            inconsistencias=inconsistencias,
+            usuario=usuario,
+        )
+
+    agora = timezone.now()
+    with transaction.atomic():
+        if _versao_vigente(condominio, competencia) is not None:
+            raise ErroDeConfirmacao(
+                "Já existe balanço confirmado para esta competência."
+            )
+        return _montar_balanco(
+            condominio=condominio,
+            competencia=competencia,
+            dados_lidos=dados,
+            inconsistencias=inconsistencias,
+            layout=LayoutBalanco.DESCONHECIDO,
+            usuario=usuario,
+            agora=agora,
+        )
+
+
+def _publicar_conferencia_da_importacao(
+    importacao, *, dados: dict, inconsistencias: list, usuario
+) -> BalancoMensal:
+    """Guarda a leitura conferida na importação e confirma o mês por ela."""
+    with transaction.atomic():
+        bloqueada = ImportacaoBalanco.objects.select_for_update().get(
+            pk=importacao.pk
+        )
+        bloqueada.resultado_extraido = dados
+        bloqueada.inconsistencias = inconsistencias
+        bloqueada.schema_versao = SCHEMA_VERSAO
+        bloqueada.status = StatusImportacao.PRONTO
+        bloqueada.erro_processamento = ""
+        bloqueada.save(
+            update_fields=[
+                "resultado_extraido",
+                "inconsistencias",
+                "schema_versao",
+                "status",
+                "erro_processamento",
+                "atualizado_em",
+            ]
+        )
+    return confirmar_importacao(bloqueada, usuario=usuario, conferida=True)
 
 
 def _criar_documento(balanco, importacao) -> DocumentoBalanco:

@@ -23,8 +23,13 @@ from apps.balancos.constants import (
 )
 from apps.balancos.contratos import SCHEMA_VALIDADO, SCHEMA_VERSAO, de_dicionario_validado
 from apps.balancos.extrator_atual import extrair_balanco_atual
+from apps.balancos.extrator_legado import extrair_balanco_legado
 from apps.balancos.models import BalancoMensal, EvidenciaVisualBalanco, ImportacaoBalanco
-from apps.balancos.services import ErroDeConfirmacao, confirmar_importacao
+from apps.balancos.services import (
+    ErroDeConfirmacao,
+    confirmar_importacao,
+    publicar_balanco_da_conferencia,
+)
 from apps.balancos.storage import ErroDeStorage
 from apps.balancos.tests.apoio import (
     CONTEUDO_PDF,
@@ -47,6 +52,7 @@ from apps.balancos.tests.test_extracao_atual import (
     pdf_com_leitura_acima_do_declarado,
     pdf_do_modelo_atual,
 )
+from apps.balancos.tests.test_extracao_legado import texto_do_balancete
 from apps.condominios.constants import Papel
 from apps.condominios.models import Condominio
 
@@ -865,7 +871,7 @@ class DetalheTests(BaseTelasTests):
 
         self.assertContains(
             resposta,
-            "Este formato será processado pela leitura de documentos legados.",
+            "Este é um balancete antigo: quem o lê é a leitura de documentos legados.",
         )
 
     @override_settings(SUPABASE_SERVICE_ROLE_KEY=SEGREDO)
@@ -873,6 +879,71 @@ class DetalheTests(BaseTelasTests):
         importacao = self._importacao_lida()
         resposta = self._abrir(importacao, self.sindica)
         self.assertNotContains(resposta, SEGREDO)
+
+
+class ConferenciaDoBalanceteAntigoTests(BaseTelasTests):
+    """O balancete antigo passa pela tela de conferência — não vira mês num clique.
+
+    A leitura por OCR tem menos garantias: a gestão confere os valores e publica
+    de lá. O caminho de um clique continua reservado ao modelo atual.
+    """
+
+    def _importacao_legada(self, condominio=None, criado_por=None):
+        importacao = self.importacao_em(
+            condominio or self.condominio_a, criado_por=criado_por
+        )
+        importacao.layout_detectado = LayoutBalanco.LEGADO
+        importacao.save(update_fields=["layout_detectado", "atualizado_em"])
+        extrair_balanco_legado(
+            importacao, conteudo=gerar_pdf_textual(texto_do_balancete())
+        )
+        importacao.refresh_from_db()
+        return importacao
+
+    def test_o_detalhe_oferece_a_conferencia_no_lugar_do_clique(self):
+        importacao = self._importacao_legada()
+        self.client.force_login(self.sindica)
+        resposta = self.client.get(reverse("balancos:detalhe", args=[importacao.pk]))
+
+        self.assertContains(resposta, "Conferir e publicar")
+        self.assertContains(
+            resposta, reverse("balancos:conferencia", args=[importacao.pk])
+        )
+        self.assertNotContains(
+            resposta, reverse("balancos:confirmar", args=[importacao.pk])
+        )
+
+    def test_a_confirmacao_num_clique_recusa_o_balancete_antigo(self):
+        importacao = self._importacao_legada()
+        self.client.force_login(self.sindica)
+        resposta = self.client.post(
+            reverse("balancos:confirmar", args=[importacao.pk]), follow=True
+        )
+
+        self.assertContains(resposta, "Este documento ainda não foi lido pelo Eithra.")
+        self.assertEqual(BalancoMensal.objects.count(), 0)
+
+    def test_publicar_pela_conferencia_cria_o_mes_do_balancete_antigo(self):
+        importacao = self._importacao_legada()
+        balanco = publicar_balanco_da_conferencia(
+            condominio=self.condominio_a,
+            usuario=self.sindica,
+            competencia=date(2026, 8, 1),
+            saldo_anterior="119495.71",
+            receitas_total="63836.20",
+            despesas_total="70130.98",
+            saldo_final="113200.93",
+            receitas=[("Taxa condominial", "63836.20")],
+            despesas=[("Folha de pagamento", "70130.98")],
+            importacao=importacao,
+        )
+
+        self.assertEqual(balanco.layout_detectado, LayoutBalanco.LEGADO)
+        self.assertEqual(balanco.condominio, self.condominio_a)
+        self.assertEqual(balanco.competencia, date(2026, 8, 1))
+        importacao.refresh_from_db()
+        self.assertEqual(importacao.layout_detectado, LayoutBalanco.LEGADO)
+        self.assertIsNotNone(importacao.confirmado_em)
 
 
 class BaseConfirmacaoTests(BaseTelasTests):

@@ -8,13 +8,27 @@
       <h1 class="h4 mb-1">Balanços</h1>
       <p class="text-body-secondary mb-0">Arquivos recebidos da administração.</p>
     </div>
-    <button
-      type="button"
-      class="btn btn-primary"
-      data-bs-toggle="modal"
-      data-bs-target="#importar-balanco">
-      <i class="bx bx-upload me-1" aria-hidden="true"></i> Importar balanço
-    </button>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      {% comment %}
+        O mês sem PDF: quando o balancete nunca chegou, a gestão digita os
+        valores na mesma tela de conferência e publica. Ícone sem borda — é uma
+        alternativa à importação, não a ação principal.
+      {% endcomment %}
+      <a
+        class="btn btn-icon btn-text-secondary rounded-pill"
+        href="{% url 'balancos:lancar_sem_pdf' %}"
+        title="Lançar mês sem PDF"
+        aria-label="Lançar mês sem PDF">
+        <i class="bx bx-plus-circle" aria-hidden="true"></i>
+      </a>
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#importar-balanco">
+        <i class="bx bx-upload me-1" aria-hidden="true"></i> Importar balanço
+      </button>
+    </div>
   </div>
 
   {% if balancos_confirmados %}

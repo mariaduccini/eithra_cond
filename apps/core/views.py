@@ -23,11 +23,16 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.balancos.constants import StatusBalanco
+from apps.balancos.constants import LayoutBalanco, StatusBalanco
 from apps.balancos.models import BalancoMensal
 from apps.balancos.permissoes import (
     condominios_para_ler,
     condominios_para_ler_publicados,
+)
+from apps.balancos.privacidade import (
+    ROTULO_PRIVADO,
+    linha_privada,
+    linha_para_o_morador,
 )
 from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.condominios import logo
@@ -568,6 +573,7 @@ def transparencia(request, pk):
             "naturezas": naturezas,
             "receitas_por_tipo": receitas_por_tipo,
             "gasto_por_unidade": gasto_por_unidade,
+            "fonte_do_balanco": _fonte_do_balanco(balanco),
         },
     )
 
@@ -663,6 +669,20 @@ def _dados_validados_do_balanco(balanco) -> dict:
     return dados if isinstance(dados, dict) else {}
 
 
+def _fonte_do_balanco(balanco) -> str:
+    """De onde veio este mês, dito numa linha para quem lê o demonstrativo.
+
+    O balancete antigo da administradora anterior e o mês lançado à mão não
+    podem se apresentar ao morador como o balanço mensal de sempre: a frase de
+    fonte diz o que aquele número é.
+    """
+    if balanco.layout_detectado == LayoutBalanco.LEGADO:
+        return "Fonte: balancete da administradora anterior"
+    if balanco.layout_detectado == LayoutBalanco.DESCONHECIDO:
+        return "Lançado pela síndica"
+    return "Fonte: balanço mensal confirmado pela gestão"
+
+
 def _balanco_para_transparencia(usuario, pk):
     """Autoriza gestão em dados confirmados e moradores só no que foi publicado."""
     return get_object_or_404(_balancos_visiveis(usuario), pk=pk)
@@ -726,7 +746,12 @@ def _lancamentos_publicos(leitura) -> list[dict]:
         categoria = item.get("categoria_eithra") or "nao_classificado"
         resultado.append(
             {
-                "descricao": item.get("descricao") or "Despesa sem descrição",
+                # A linha que identifica pessoa ou unidade não vai ao morador
+                # como está: o valor continua, o nome vira "Outras despesas".
+                "descricao": (
+                    linha_para_o_morador(item.get("descricao"))
+                    or "Despesa sem descrição"
+                ),
                 "valor": _moeda_da_home(valor),
                 "data": data,
                 "fornecedor": item.get("fornecedor") or "",
@@ -780,21 +805,51 @@ def _evolucao_financeira(balancos, balanco_atual) -> list[dict]:
 
 
 def _categorias_publicas(leitura) -> list[dict]:
-    """Mostra categorias agregadas, sem revelar lançamentos ou documentos."""
+    """Mostra categorias agregadas, sem revelar lançamentos ou documentos.
+
+    A linha que identifica pessoa ou unidade não vira rótulo privado: o valor
+    dela sai da categoria de origem e entra em "Outras despesas". O dinheiro
+    continua no total — o que muda é o nome que o morador lê.
+    """
+    from apps.balancos import correcoes
     from apps.balancos.categorias import rotulo
 
-    categorias = []
+    acumulado: dict[str, Decimal] = {}
     for item in leitura.get("categorias") or []:
         valor = _decimal_financeiro(item.get("total"))
         if valor is None or valor <= 0:
             continue
-        categorias.append(
-            {
-                "codigo": item.get("categoria", ""),
-                "nome": rotulo(item.get("categoria", "")),
-                "_valor": valor,
-            }
-        )
+        codigo = item.get("categoria", "")
+        acumulado[codigo] = acumulado.get(codigo, Decimal("0.00")) + valor
+
+    retirado = Decimal("0.00")
+    for item in correcoes.despesas_efetivas(leitura):
+        if not linha_privada(item.get("descricao")):
+            continue
+        valor = _decimal_financeiro(item.get("valor"))
+        if valor is None or valor <= 0:
+            continue
+        codigo = item.get("categoria_eithra") or "outros"
+        disponivel = acumulado.get(codigo, Decimal("0.00"))
+        parcial = min(disponivel, valor)
+        if parcial > 0:
+            acumulado[codigo] = disponivel - parcial
+            if acumulado[codigo] <= 0:
+                del acumulado[codigo]
+            retirado += parcial
+    if retirado > 0:
+        chave = "outras_despesas"
+        acumulado[chave] = acumulado.get(chave, Decimal("0.00")) + retirado
+
+    categorias = [
+        {
+            "codigo": codigo,
+            "nome": ROTULO_PRIVADO if codigo == "outras_despesas" else rotulo(codigo),
+            "_valor": valor,
+        }
+        for codigo, valor in acumulado.items()
+        if valor > 0
+    ]
     categorias.sort(key=lambda item: item["_valor"], reverse=True)
     return [
         {

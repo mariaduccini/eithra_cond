@@ -610,7 +610,8 @@ class ImportacaoBalanco(models.Model):
             return self.get_status_display(), "danger"
         if (
             self.status == StatusImportacao.PRONTO
-            and self.layout_detectado == LayoutBalanco.ATUAL_CANONICO
+            and self.layout_detectado
+            in (LayoutBalanco.ATUAL_CANONICO, LayoutBalanco.LEGADO)
             and self.resultado_extraido
         ):
             return "Aguardando confirmação", "primary"
