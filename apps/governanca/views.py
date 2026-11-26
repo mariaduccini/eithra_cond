@@ -18,6 +18,7 @@ garantia que precisa dizer o que cobre é do domínio, e a tela apenas mostra, e
 linguagem humana, o motivo da recusa.
 """
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -28,12 +29,14 @@ from django.urls import reverse
 from django.utils.formats import number_format
 from django.views.decorators.http import require_POST
 
+from apps.cadastros.models import Fornecedor
 from apps.condominios import logo
+from apps.condominios.acesso import condominios_do_usuario
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
 
 from . import arquivos, services
-from .constants import SituacaoVigencia
+from .constants import SituacaoVigencia, StatusProjeto, TipoItemProjeto
 from .forms import (
     ContratoForm,
     DocumentoForm,
@@ -45,6 +48,8 @@ from .models import (
     ContratoFornecedor,
     DocumentoOperacional,
     Garantia,
+    Projeto,
+    ProjetoItem,
     TipoContrato,
     TipoDocumento,
 )
@@ -52,11 +57,29 @@ from .permissoes import (
     condominios_para_ver,
     pode_gerenciar_tipos,
     pode_operar,
+    pode_ver_governanca,
 )
 from .vencimentos import agrupar_por_faixa, coletar_vencimentos
 
 # Como cada situação de vigência aparece escrita na tela.
 ROTULO_POR_SITUACAO = dict(SituacaoVigencia.choices)
+
+# Como cada situação de projeto aparece na tela: o tom do selo e o ícone do
+# toque que faz a entrega andar.
+TOM_POR_STATUS_PROJETO = {
+    StatusProjeto.EM_ESTUDO: "info",
+    StatusProjeto.EM_ANDAMENTO: "primary",
+    StatusProjeto.AGUARDANDO: "warning",
+    StatusProjeto.CONCLUIDO: "success",
+    StatusProjeto.CANCELADO: "secondary",
+}
+ICONE_POR_STATUS_PROJETO = {
+    StatusProjeto.AGUARDANDO: "bx-time",
+    StatusProjeto.EM_ESTUDO: "bx-search",
+    StatusProjeto.EM_ANDAMENTO: "bx-loader-circle",
+    StatusProjeto.CONCLUIDO: "bx-check-circle",
+    StatusProjeto.CANCELADO: "bx-x-circle",
+}
 
 
 # -- Contratos ------------------------------------------------------------------
@@ -771,6 +794,122 @@ def vencimentos(request):
     return render(request, "pages/governanca/vencimentos.html", contexto)
 
 
+# -- Projetos -------------------------------------------------------------------
+#
+# A obra tocada aos poucos: o AVCB, a troca de bombas, a reforma do hall. A tela
+# responde a duas perguntas — quanto já se pensou gastar e quanto falta —, e
+# deixa a linha da entrega ser corrigida no lugar onde ela é lida. O progresso e
+# os totais não são guardados: são lidos do que as entregas dizem agora.
+
+
+@login_required
+def projetos(request):
+    """Os projetos do condomínio em vista."""
+    visiveis = _condominios_dos_projetos(request)
+    atual = _condominio_atual(request, visiveis)
+    return _render_projetos(request, visiveis, atual)
+
+
+@login_required
+def projeto(request, pk):
+    """Um projeto, suas etapas, as entregas de cada uma e as demandas ligadas."""
+    visiveis = _condominios_dos_projetos(request)
+    alvo = _obter_ou_404(Projeto.objects.filter(condominio__in=visiveis), pk)
+    return _render_projeto(request, visiveis, alvo)
+
+
+@login_required
+@require_POST
+def avancar_item(request, pk, item_pk):
+    """O toque que faz a entrega andar um passo no ciclo do andamento."""
+    alvo, item = _item_para_operar(request, pk, item_pk)
+    services.avancar_status_item(item=item)
+    messages.success(request, "Situação da entrega atualizada.")
+    return redirect("projetos:detalhe", pk=alvo.pk)
+
+
+@login_required
+@require_POST
+def cancelar_item(request, pk, item_pk):
+    """Tira a entrega do ciclo, sem apagar a linha."""
+    alvo, item = _item_para_operar(request, pk, item_pk)
+    services.cancelar_item(item=item)
+    messages.success(request, "Entrega cancelada.")
+    return redirect("projetos:detalhe", pk=alvo.pk)
+
+
+@login_required
+@require_POST
+def editar_valores_item(request, pk, item_pk):
+    """Grava, na própria linha, o previsto, o contratado e o fornecedor."""
+    alvo, item = _item_para_operar(request, pk, item_pk)
+    try:
+        services.definir_valores_item(
+            item=item,
+            valor_previsto=_decimal_ou_none(request.POST.get("valor_previsto")),
+            valor_contratado=_decimal_ou_none(request.POST.get("valor_contratado")),
+            fornecedor=_fornecedor_do_projeto(request.POST.get("fornecedor"), alvo),
+        )
+    except services.ErroDeGovernanca as erro:
+        messages.error(request, str(erro))
+        return redirect("projetos:detalhe", pk=alvo.pk)
+    messages.success(request, "Valores da entrega atualizados.")
+    return redirect("projetos:detalhe", pk=alvo.pk)
+
+
+@login_required
+@require_POST
+def abrir_demanda(request, pk, item_pk):
+    """Abre, nesta etapa, uma demanda já ligada ao projeto."""
+    alvo, item = _item_para_operar(request, pk, item_pk)
+    try:
+        demanda = services.abrir_demanda_na_etapa(
+            projeto=alvo,
+            etapa=item,
+            criado_por=request.user,
+            titulo=request.POST.get("titulo", ""),
+        )
+    except services.ErroDeGovernanca as erro:
+        messages.error(request, str(erro))
+        return redirect("projetos:detalhe", pk=alvo.pk)
+    messages.success(request, "Demanda aberta e ligada ao projeto.")
+    return redirect("demandas:detalhe", pk=demanda.pk)
+
+
+def _render_projetos(request, visiveis, atual):
+    """A lista: nome, situação, progresso e os dois totais de cada projeto."""
+    linhas = [
+        _projeto_para_tela(projeto)
+        for projeto in Projeto.objects.do_condominio(atual).ativos()
+    ]
+    contexto = {**_base_dos_projetos(visiveis, atual), "projetos": linhas}
+    return render(request, "pages/governanca/projetos.html", contexto)
+
+
+def _render_projeto(request, visiveis, alvo):
+    """O detalhe: o topo com os totais, as etapas e as demandas ligadas."""
+    contexto = {
+        **_base_dos_projetos(visiveis, alvo.condominio),
+        "projeto": _projeto_para_tela(alvo),
+        "etapas": _etapas_para_tela(alvo),
+        "demandas": _demandas_do_projeto(alvo),
+        "fornecedores": Fornecedor.objects.filter(
+            condominio=alvo.condominio
+        ).order_by("nome_razao_social"),
+    }
+    return render(request, "pages/governanca/projeto.html", contexto)
+
+
+def _base_dos_projetos(visiveis, atual) -> dict:
+    """O que as telas de projeto precisam: o condomínio em vista e o seletor."""
+    return {
+        "condominios": visiveis,
+        "condominio_atual": atual,
+        "logo_do_condominio": logo.endereco(atual),
+        "mostrar_seletor": visiveis.count() > 1,
+    }
+
+
 # -- Autorização e contexto -----------------------------------------------------
 #
 # Toda pergunta passa pelo domínio. Quem não enxerga o módulo recebe 404 — não
@@ -874,6 +1013,69 @@ def _eh_uuid(valor) -> bool:
     return True
 
 
+def _condominios_dos_projetos(request):
+    """Os condomínios cujos projetos esta pessoa acompanha, ou a recusa devida.
+
+    Quem responde pelo condomínio e quem supervisiona acompanham a obra; o
+    morador acessa o prédio, mas não os projetos. Por isso a fronteira aqui não
+    é o acesso: quem acessa o condomínio e não responde por ele recebe 403 — a
+    tela existe para essa pessoa, a decisão não é dela. Quem não acessa
+    condomínio nenhum recebe 404.
+    """
+    if not condominios_do_usuario(request.user).exists():
+        raise Http404("Nenhum condomínio disponível.")
+    visiveis = condominios_para_ver(request.user)
+    if not visiveis.exists():
+        raise PermissionDenied(
+            "Esta pessoa não acompanha os projetos deste condomínio."
+        )
+    return visiveis
+
+
+def _projeto_para_operar(request, pk):
+    """O projeto que esta pessoa mantém agora, ou a recusa devida."""
+    visiveis = _condominios_dos_projetos(request)
+    alvo = _obter_ou_404(Projeto.objects.filter(condominio__in=visiveis), pk)
+    if not pode_operar(request.user, alvo.condominio):
+        raise PermissionDenied("Esta pessoa não mantém os projetos deste condomínio.")
+    return alvo
+
+
+def _item_para_operar(request, pk, item_pk):
+    """A entrega ou etapa que esta pessoa mantém, dentro de um projeto que mantém."""
+    alvo = _projeto_para_operar(request, pk)
+    item = _obter_ou_404(ProjetoItem.objects.filter(projeto=alvo), item_pk)
+    return alvo, item
+
+
+def _decimal_ou_none(valor):
+    """Lê um valor digitado na linha. Vazio é vazio; a vírgula vira ponto."""
+    texto = (valor or "").strip()
+    if not texto:
+        return None
+    normalizado = texto.replace(".", "").replace(",", ".") if "," in texto else texto
+    try:
+        return Decimal(normalizado)
+    except (InvalidOperation, ValueError) as erro:
+        raise services.ErroDeGovernanca("O valor informado não é um número.") from erro
+
+
+def _fornecedor_do_projeto(valor, projeto):
+    """O fornecedor escolhido na linha, se houver; recusa o de outro prédio."""
+    if not valor:
+        return None
+    fornecedor = None
+    if _eh_uuid(valor):
+        fornecedor = Fornecedor.objects.filter(
+            condominio=projeto.condominio, pk=valor
+        ).first()
+    if fornecedor is None:
+        raise services.ErroDeGovernanca(
+            "O fornecedor escolhido não é deste condomínio."
+        )
+    return fornecedor
+
+
 def _destino(view_name, condominio) -> str:
     """Volta para a tela preservando o condomínio em vista."""
     return f"{reverse(view_name)}?condominio={condominio.pk}"
@@ -947,6 +1149,123 @@ def _moeda(valor) -> str:
     if valor is None:
         return ""
     return f"R$ {number_format(valor, decimal_pos=2, force_grouping=True)}"
+
+
+# -- Projetos na tela -----------------------------------------------------------
+
+
+def _projeto_para_tela(projeto) -> dict:
+    """O projeto como a lista e o topo do detalhe o leem."""
+    return {
+        "pk": projeto.pk,
+        "nome": projeto.nome,
+        "identificacao": projeto.identificacao,
+        "descricao": projeto.descricao,
+        "status": projeto.get_status_display(),
+        "status_valor": projeto.status,
+        "status_tom": TOM_POR_STATUS_PROJETO.get(projeto.status, "secondary"),
+        "progresso": projeto.progresso,
+        "previsto_total": _moeda(projeto.previsto_total),
+        "contratado_total": _moeda(projeto.contratado_total),
+        "entregas_concluidas": projeto.entregas_concluidas,
+        "total_de_entregas": projeto.total_de_entregas,
+    }
+
+
+def _soma_de_valores(itens, campo) -> Decimal:
+    """Soma um valor nas linhas, ignorando o que ainda não tem resposta."""
+    return sum(
+        (getattr(item, campo) or Decimal("0") for item in itens), Decimal("0")
+    )
+
+
+def _valor_editavel(valor) -> str:
+    """O valor como o campo de edição o recebe. Vazio continua vazio."""
+    if valor is None:
+        return ""
+    return f"{valor:.2f}"
+
+
+def _entrega_para_tela(entrega) -> dict:
+    """Uma entrega: o nome, o selo do andamento e o que se edita na linha."""
+    return {
+        "pk": entrega.pk,
+        "nome": entrega.nome,
+        "descricao": entrega.descricao,
+        "status": entrega.get_status_display(),
+        "status_valor": entrega.status,
+        "icone": ICONE_POR_STATUS_PROJETO.get(entrega.status, "bx-circle"),
+        "tom": TOM_POR_STATUS_PROJETO.get(entrega.status, "secondary"),
+        "valor_previsto": _valor_editavel(entrega.valor_previsto),
+        "valor_contratado": _valor_editavel(entrega.valor_contratado),
+        "fornecedor": entrega.fornecedor_id,
+        "cancelada": entrega.status == StatusProjeto.CANCELADO,
+        "projeto_pk": entrega.projeto_id,
+        "url_avancar": reverse(
+            "projetos:avancar_item", args=[entrega.projeto_id, entrega.pk]
+        ),
+        "url_cancelar": reverse(
+            "projetos:cancelar_item", args=[entrega.projeto_id, entrega.pk]
+        ),
+        "url_valores": reverse(
+            "projetos:editar_valores_item", args=[entrega.projeto_id, entrega.pk]
+        ),
+    }
+
+
+def _etapa_para_tela(etapa, entregas) -> dict:
+    """Uma etapa: o nome, o subtotal dos valores e as suas entregas."""
+    concluidas = sum(1 for e in entregas if e.status == StatusProjeto.CONCLUIDO)
+    previsto = _soma_de_valores(entregas, "valor_previsto") + (
+        etapa.valor_previsto or Decimal("0")
+    )
+    contratado = _soma_de_valores(entregas, "valor_contratado") + (
+        etapa.valor_contratado or Decimal("0")
+    )
+    return {
+        "pk": etapa.pk,
+        "nome": etapa.nome,
+        "descricao": etapa.descricao,
+        "entregas": [_entrega_para_tela(entrega) for entrega in entregas],
+        "total": len(entregas),
+        "concluidas": concluidas,
+        "previsto_subtotal": _moeda(previsto),
+        "contratado_subtotal": _moeda(contratado),
+        "url_demanda": reverse(
+            "projetos:abrir_demanda", args=[etapa.projeto_id, etapa.pk]
+        ),
+    }
+
+
+def _etapas_para_tela(projeto) -> list[dict]:
+    """As etapas do projeto, cada uma com as suas entregas e o subtotal."""
+    itens = list(
+        projeto.itens.select_related("fornecedor").order_by("ordem", "nome")
+    )
+    entregas_por_etapa = {}
+    etapas = []
+    for item in itens:
+        if item.tipo == TipoItemProjeto.ETAPA:
+            etapas.append(item)
+        elif item.parent_id:
+            entregas_por_etapa.setdefault(item.parent_id, []).append(item)
+    return [
+        _etapa_para_tela(etapa, entregas_por_etapa.get(etapa.pk, []))
+        for etapa in etapas
+    ]
+
+
+def _demandas_do_projeto(projeto) -> list[dict]:
+    """As demandas ligadas ao projeto, com o link para cada uma."""
+    return [
+        {
+            "pk": vinculo.demanda_id,
+            "titulo": vinculo.demanda.titulo,
+            "status": vinculo.demanda.get_status_display(),
+            "url": reverse("demandas:detalhe", args=[vinculo.demanda_id]),
+        }
+        for vinculo in projeto.demandas_vinculadas.select_related("demanda")
+    ]
 
 
 def _classificacao_do_contrato(contrato) -> str:

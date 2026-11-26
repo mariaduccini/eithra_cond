@@ -1,0 +1,175 @@
+{% extends "layouts/app.html" %}
+
+{# O projeto como um documento, e não uma pilha de cartões: o topo diz os
+   totais e o quanto já foi entregue; cada etapa é uma seção com o seu subtotal,
+   e as entregas são linhas que se corrigem no lugar onde são lidas. O progresso
+   não é guardado — é o que as entregas dizem agora. #}
+
+{% block title %}{{ projeto.nome }} · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a href="{% url 'projetos:lista' %}{% if mostrar_seletor %}?condominio={{ condominio_atual.pk }}{% endif %}" class="eithra-detalhe-voltar">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Projetos
+      </a>
+      <h1 class="h4 mb-1 mt-1">{{ projeto.nome }}</h1>
+      {% if projeto.identificacao %}<p class="text-body-secondary mb-1">{{ projeto.identificacao }}</p>{% endif %}
+      <p class="text-body-secondary mb-0">
+        Previsto {{ projeto.previsto_total|default:"—" }}
+        <span aria-hidden="true">·</span> Contratado {{ projeto.contratado_total|default:"—" }}
+        <span aria-hidden="true">·</span> Concluídas {{ projeto.entregas_concluidas }} de {{ projeto.total_de_entregas }}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge bg-label-{{ projeto.status_tom }}">{{ projeto.status }}</span>
+      {% include "pages/cadastros/_seletor_condominio.html" %}
+    </div>
+  </div>
+
+  {% if projeto.descricao %}
+    <p class="mb-4">{{ projeto.descricao }}</p>
+  {% endif %}
+
+  {% for etapa in etapas %}
+    <section class="eithra-projeto-etapa">
+      <header class="eithra-projeto-etapa-topo">
+        <div>
+          <h2 class="h6 mb-0">{{ etapa.nome }}</h2>
+          <div class="text-body-secondary small">
+            Previsto {{ etapa.previsto_subtotal }}
+            <span aria-hidden="true">·</span> Contratado {{ etapa.contratado_subtotal }}
+            <span aria-hidden="true">·</span> Concluídas {{ etapa.concluidas }} de {{ etapa.total }}
+          </div>
+        </div>
+        <form class="d-flex align-items-center gap-2 ms-auto" method="post" action="{{ etapa.url_demanda }}">
+          {% csrf_token %}
+          <label class="visually-hidden" for="assunto-etapa-{{ etapa.pk }}">Assunto da demanda a abrir nesta etapa</label>
+          <input
+            type="text"
+            name="titulo"
+            id="assunto-etapa-{{ etapa.pk }}"
+            class="form-control form-control-sm eithra-projeto-assunto"
+            placeholder="Assunto (opcional)">
+          <button type="submit" class="btn btn-sm btn-label-secondary text-nowrap">
+            <i class="bx bx-plus me-1" aria-hidden="true"></i>Abrir demanda nesta etapa
+          </button>
+        </form>
+      </header>
+
+      {% for entrega in etapa.entregas %}
+        <div class="eithra-projeto-linha">
+          {% comment %}O toque que faz a entrega andar: sem borda, com o ícone
+          dizendo em que ponto ela está. A aparência muda a cada toque, na ordem
+          aguardando → em estudo → em andamento → concluído.{% endcomment %}
+          <form method="post" action="{{ entrega.url_avancar }}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="eithra-acao-icone text-{{ entrega.tom }}"
+              title="{{ entrega.status }} — toque para avançar"
+              aria-label="Avançar a situação de {{ entrega.nome }} (agora: {{ entrega.status }})">
+              <i class="bx {{ entrega.icone }}" aria-hidden="true"></i>
+            </button>
+          </form>
+
+          <div class="eithra-projeto-identidade">
+            <div class="fw-medium">{{ entrega.nome }}</div>
+            <div class="text-body-secondary small">{{ entrega.status }}</div>
+          </div>
+
+          {% comment %}Valor previsto, valor contratado e fornecedor editáveis na
+          própria linha, salvando ao sair do campo.{% endcomment %}
+          <form class="eithra-projeto-valores" method="post" action="{{ entrega.url_valores }}" data-eithra-salva-ao-mudar>
+            {% csrf_token %}
+            <label class="visually-hidden" for="previsto-{{ entrega.pk }}">Valor previsto de {{ entrega.nome }}</label>
+            <input
+              type="text"
+              inputmode="decimal"
+              name="valor_previsto"
+              id="previsto-{{ entrega.pk }}"
+              value="{{ entrega.valor_previsto }}"
+              class="form-control form-control-sm eithra-projeto-campo"
+              placeholder="Previsto">
+            <label class="visually-hidden" for="contratado-{{ entrega.pk }}">Valor contratado de {{ entrega.nome }}</label>
+            <input
+              type="text"
+              inputmode="decimal"
+              name="valor_contratado"
+              id="contratado-{{ entrega.pk }}"
+              value="{{ entrega.valor_contratado }}"
+              class="form-control form-control-sm eithra-projeto-campo"
+              placeholder="Contratado">
+            <label class="visually-hidden" for="fornecedor-{{ entrega.pk }}">Fornecedor de {{ entrega.nome }}</label>
+            <select name="fornecedor" id="fornecedor-{{ entrega.pk }}" class="form-select form-select-sm eithra-projeto-fornecedor">
+              <option value="">Sem fornecedor</option>
+              {% for fornecedor in fornecedores %}
+                <option value="{{ fornecedor.pk }}" {% if fornecedor.pk == entrega.fornecedor %}selected{% endif %}>{{ fornecedor.nome_razao_social }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="visually-hidden">Salvar</button>
+          </form>
+
+          <div class="dropdown">
+            <button
+              type="button"
+              class="eithra-acao-icone"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              title="Mais ações"
+              aria-label="Mais ações para {{ entrega.nome }}">
+              <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <form method="post" action="{{ entrega.url_cancelar }}">
+                  {% csrf_token %}
+                  <button type="submit" class="dropdown-item">
+                    <i class="bx bx-x-circle me-1" aria-hidden="true"></i>Cancelar entrega
+                  </button>
+                </form>
+              </li>
+            </ul>
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-body-secondary small mb-0">Nenhuma entrega nesta etapa ainda.</p>
+      {% endfor %}
+    </section>
+  {% empty %}
+    {% include "components/state.html" with state_icon="bx-list-ul" state_title="Nenhuma etapa neste projeto" state_message="As etapas e as entregas deste projeto aparecem aqui quando forem registradas." %}
+  {% endfor %}
+
+  <section class="eithra-projeto-etapa">
+    <header class="eithra-projeto-etapa-topo">
+      <div>
+        <h2 class="h6 mb-0">Demandas do projeto</h2>
+        <div class="text-body-secondary small">O que, no dia a dia, move esta obra.</div>
+      </div>
+    </header>
+    {% if demandas %}
+      <ul class="list-unstyled mb-0">
+        {% for demanda in demandas %}
+          <li class="eithra-projeto-demanda">
+            <a class="text-decoration-none" href="{{ demanda.url }}">{{ demanda.titulo }}</a>
+            <span class="text-body-secondary small ms-2">{{ demanda.status }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-body-secondary small mb-0">Nenhuma demanda ligada a este projeto ainda.</p>
+    {% endif %}
+  </section>
+
+  <script>
+    // "Salva ao sair do campo": assim que um valor ou o fornecedor muda, a
+    // própria linha se envia. Sem botão para esquecer de apertar.
+    document.querySelectorAll("[data-eithra-salva-ao-mudar]").forEach(function (formulario) {
+      formulario.querySelectorAll("input, select").forEach(function (campo) {
+        campo.addEventListener("change", function () {
+          formulario.requestSubmit();
+        });
+      });
+    });
+  </script>
+{% endblock %}

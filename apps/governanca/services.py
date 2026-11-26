@@ -30,8 +30,10 @@ from apps.core.constants import (
     ResultadoImportacaoHistorica,
 )
 from apps.core.models import ItemImportacaoHistorica, VinculoImportacaoHistorica
+from apps.demandas.models import Demanda
 from apps.estoque.models import ItemCompra
 
+from .constants import StatusProjeto
 from .models import (
     ContratoEquipamento,
     ContratoFornecedor,
@@ -46,6 +48,9 @@ from .models import (
     GarantiaEquipamento,
     GarantiaItemCompra,
     GarantiaManutencao,
+    Projeto,
+    ProjetoDemanda,
+    ProjetoItem,
     TipoContrato,
     TipoDocumento,
 )
@@ -676,3 +681,107 @@ def definir_ativo_documento(*, documento: DocumentoOperacional, ativo: bool):
     documento.ativo = bool(ativo)
     documento.save(update_fields=["ativo", "atualizado_em"])
     return documento
+
+
+# -- Projetos -------------------------------------------------------------------
+#
+# O projeto é a obra tocada aos poucos: etapas que se abrem em entregas, cada
+# uma com o seu valor e o seu fornecedor. O andamento de uma entrega é um toque
+# que a faz andar — aguardando, em estudo, em andamento, concluída —, e o
+# progresso do projeto é a leitura disso, nunca um campo guardado. Cancelar não
+# é um passo do ciclo: é uma saída, e por isso vive à parte.
+
+# A ordem em que um toque faz a entrega andar. Do último passo, o toque volta ao
+# primeiro — é o que permite desfazer um engano sem abrir mão da leitura simples.
+ORDEM_DO_ANDAMENTO = (
+    StatusProjeto.AGUARDANDO,
+    StatusProjeto.EM_ESTUDO,
+    StatusProjeto.EM_ANDAMENTO,
+    StatusProjeto.CONCLUIDO,
+)
+
+
+def proximo_status(status: str) -> str:
+    """O próximo passo do andamento, na ordem; do último, volta ao primeiro."""
+    if status not in ORDEM_DO_ANDAMENTO:
+        return ORDEM_DO_ANDAMENTO[0]
+    indice = ORDEM_DO_ANDAMENTO.index(status)
+    return ORDEM_DO_ANDAMENTO[(indice + 1) % len(ORDEM_DO_ANDAMENTO)]
+
+
+@transaction.atomic
+def avancar_status_item(*, item: ProjetoItem) -> ProjetoItem:
+    """Faz a entrega andar um passo na ordem do ciclo do andamento."""
+    item.status = proximo_status(item.status)
+    item.save(update_fields=["status", "atualizado_em"])
+    return item
+
+
+@transaction.atomic
+def cancelar_item(*, item: ProjetoItem) -> ProjetoItem:
+    """Tira a entrega do ciclo sem apagá-la: cancelado é uma saída, não um passo."""
+    item.status = StatusProjeto.CANCELADO
+    item.save(update_fields=["status", "atualizado_em"])
+    return item
+
+
+@transaction.atomic
+def definir_valores_item(
+    *,
+    item: ProjetoItem,
+    valor_previsto,
+    valor_contratado,
+    fornecedor=None,
+) -> ProjetoItem:
+    """Grava o previsto, o contratado e o fornecedor direto na linha da entrega.
+
+    Vazio é vazio: um campo sem resposta fica nulo, e não vira zero — a soma do
+    projeto só enxerga o que existe.
+    """
+    _conferir_mesmo_condominio(
+        [fornecedor],
+        item.projeto.condominio_id,
+        "O fornecedor escolhido não é deste condomínio.",
+    )
+    item.valor_previsto = valor_previsto
+    item.valor_contratado = valor_contratado
+    item.fornecedor = fornecedor
+    item.save(
+        update_fields=[
+            "valor_previsto",
+            "valor_contratado",
+            "fornecedor",
+            "atualizado_em",
+        ]
+    )
+    return item
+
+
+@transaction.atomic
+def abrir_demanda_na_etapa(
+    *,
+    projeto: Projeto,
+    etapa: ProjetoItem,
+    criado_por,
+    titulo: str = "",
+) -> Demanda:
+    """Abre uma demanda já ligada ao projeto, com o título prefixado pela etapa.
+
+    A etapa é o contexto do trabalho: a demanda nasce sabendo a que parte da
+    obra ela serve. O vínculo é explícito, em ``ProjetoDemanda`` — a demanda
+    continua sendo a mesma coisa de sempre, só passa a alimentar o projeto.
+    """
+    from apps.demandas.services import criar_demanda
+
+    _exigir_condominio(projeto.condominio)
+    _exigir_autor(criado_por)
+    assunto = (titulo or "").strip()
+    titulo_final = f"{etapa.nome}: {assunto}" if assunto else etapa.nome
+    demanda = criar_demanda(
+        condominio=projeto.condominio,
+        criado_por=criado_por,
+        titulo=titulo_final,
+        descricao=f"Aberta a partir do projeto {projeto.nome}, na etapa {etapa.nome}.",
+    )
+    ProjetoDemanda.objects.create(projeto=projeto, demanda=demanda)
+    return demanda

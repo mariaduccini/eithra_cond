@@ -23,6 +23,7 @@ from apps.demandas.tests.apoio import (
     criar_pessoa,
     criar_vinculo,
 )
+from apps.governanca.models import Projeto, ProjetoDemanda
 
 
 class DetalheDaDemandaTests(TestCase):
@@ -164,3 +165,41 @@ class DetalheDaDemandaTests(TestCase):
         )
         self.assertIn(".eithra-cartao", css)
         self.assertIn("border: 1px solid var(--eithra-divisor", css)
+
+
+class ProjetoNaDemandaTests(TestCase):
+    """O vínculo com um projeto aparece na demanda de forma discreta."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Fernanda")
+        criar_vinculo(self.gestao, self.condominio, papel=Papel.SINDICA)
+        self.client.force_login(self.gestao)
+        self.demanda = criar_demanda(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Reunir pranchas do AVCB",
+        )
+        self.projeto = Projeto.objects.create(
+            condominio=self.condominio,
+            nome="Regularização do AVCB",
+            criado_por=self.gestao,
+        )
+
+    def _abrir(self):
+        resposta = self.client.get(
+            reverse("demandas:detalhe", args=[self.demanda.pk])
+        )
+        self.assertEqual(resposta.status_code, 200)
+        return resposta.content.decode()
+
+    def test_sem_vinculo_nao_ha_chip_de_projeto(self):
+        self.assertNotIn("Projeto: Regularização do AVCB", self._abrir())
+
+    def test_o_chip_do_projeto_aparece_na_demanda_ligada(self):
+        ProjetoDemanda.objects.create(projeto=self.projeto, demanda=self.demanda)
+        conteudo = self._abrir()
+        self.assertIn("Projeto: Regularização do AVCB", conteudo)
+        self.assertIn(
+            reverse("projetos:detalhe", args=[self.projeto.pk]), conteudo
+        )

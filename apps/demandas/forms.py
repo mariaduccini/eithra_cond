@@ -32,6 +32,7 @@ from apps.accounts.models import User
 from apps.cadastros.models import Equipamento, LocalOperacional
 from apps.comunidade.models import Pessoa, VinculoPessoaUnidade
 from apps.condominios.models import Condominio
+from apps.governanca.models import Projeto
 
 from . import derivacao, interpretacao
 from .constants import (
@@ -105,6 +106,20 @@ def _equipamentos_entre(condominios):
     if condominios is None:
         return Equipamento.objects.none()
     return Equipamento.objects.filter(
+        condominio__in=condominios,
+        ativo=True,
+    ).order_by("nome")
+
+
+def _projetos_entre(condominios):
+    """Os projetos elegíveis entre os condomínios em vista.
+
+    Só os que estão em andamento: projeto encerrado não é uma lente útil para
+    recortar a lista de demandas.
+    """
+    if condominios is None:
+        return Projeto.objects.none()
+    return Projeto.objects.filter(
         condominio__in=condominios,
         ativo=True,
     ).order_by("nome")
@@ -930,6 +945,13 @@ class FiltroDeDemandasForm(forms.Form):
         empty_label="Todos os equipamentos",
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
+    projeto = forms.ModelChoiceField(
+        label="Projeto",
+        queryset=Projeto.objects.none(),
+        required=False,
+        empty_label="Todos os projetos",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
     tipo_problema = forms.ChoiceField(
         label="Tipo de problema",
         choices=(),
@@ -1000,6 +1022,7 @@ class FiltroDeDemandasForm(forms.Form):
         )
         self.fields["local"].queryset = _locais_entre(condominios)
         self.fields["equipamento"].queryset = _equipamentos_entre(condominios)
+        self.fields["projeto"].queryset = _projetos_entre(condominios)
         self.fields["tipo_problema"].choices = [
             ("", "Todos os tipos de problema")
         ] + list(TipoProblema.choices)

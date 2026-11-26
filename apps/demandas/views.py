@@ -1613,7 +1613,7 @@ def _base_da_listagem(request, condominios, filtros):
     queryset = Demanda.objects.filter(
         condominio__in=condominios, ativo=True
     ).select_related("condominio", "responsavel", "local", "equipamento").prefetch_related(
-        "acompanhamentos"
+        "acompanhamentos", "projetos_vinculados__projeto"
     )
 
     if filtros.is_valid():
@@ -1635,6 +1635,10 @@ def _base_da_listagem(request, condominios, filtros):
         # equipamento, o que é infiltração, o que tem risco de segurança.
         if dados["equipamento"]:
             queryset = queryset.filter(equipamento=dados["equipamento"])
+        if dados["projeto"]:
+            queryset = queryset.filter(
+                projetos_vinculados__projeto=dados["projeto"]
+            ).distinct()
         if dados["tipo_problema"]:
             queryset = queryset.filter(tipo_problema=dados["tipo_problema"])
         if dados["impacto"]:
@@ -2602,6 +2606,22 @@ def _avaliacao_do_morador_para_tela(demanda):
     }
 
 
+def _projeto_do_vinculo(demanda):
+    """O projeto a que a demanda pertence, quando houver.
+
+    Uma demanda pode alimentar mais de um projeto; na tela cabe o primeiro, sem
+    virar coluna — é um chip discreto, ao lado do resto. Nada aparece quando não
+    há vínculo.
+    """
+    vinculo = next(iter(demanda.projetos_vinculados.all()), None)
+    if vinculo is None:
+        return None
+    return {
+        "nome": vinculo.projeto.nome,
+        "url": reverse("projetos:detalhe", args=[vinculo.projeto_id]),
+    }
+
+
 def _demanda_para_tela(demanda, usuario=None):
     """A demanda como a linha da lista precisa dela.
 
@@ -2692,6 +2712,9 @@ def _demanda_para_tela(demanda, usuario=None):
         ),
         # O aviso da janela de conclusão: há serviço em curso ligado à demanda.
         "manutencao_aberta": pode_concluir and _manutencao_da_demanda(demanda) is not None,
+        # O projeto a que a demanda pertence, quando houver: um chip discreto
+        # na linha e no detalhe, e o endereço para abri-lo.
+        "projeto": _projeto_do_vinculo(demanda),
         # O menu de três pontos guarda só o que é raro — as mesmas ações, com os
         # mesmos ícones, do topo do detalhe.
         "acoes": _acoes_da_linha(demanda, usuario),

@@ -79,6 +79,16 @@ NAVIGATION = [
         "visivel_para": pode_ver_alguma_manutencao,
     },
     {
+        # A obra tocada aos poucos — o AVCB, a troca de bombas, a reforma do
+        # hall. Entra ao lado do dia a dia da operação, porque é o que a gestão
+        # acompanha com prazos, valores e entregas. O menu não autoriza — a view
+        # é que decide.
+        "label": "Projetos",
+        "view_name": "projetos:lista",
+        "icon": "bx-briefcase-alt-2",
+        "visivel_para": pode_ver_governanca_em_algum,
+    },
+    {
         "label": "Comunicação",
         "view_name": "comunicacao:listagem",
         "icon": "bx-megaphone",

@@ -26,6 +26,7 @@ contabilidade.
 """
 import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -1990,6 +1991,51 @@ class Projeto(models.Model):
         if erros:
             raise ValidationError(erros)
 
+    # -- Leitura do andamento ---------------------------------------------------
+    #
+    # O progresso e os totais são leituras, nunca campos guardados: mudam a cada
+    # entrega que avança ou valor que se corrige, e um campo precisaria ser
+    # reescrito por alguém a cada vez. A régua do progresso é simples e dita:
+    # quantas entregas já foram concluídas sobre o total de entregas.
+
+    @property
+    def entregas(self):
+        """As entregas do projeto — as linhas que se concluem uma a uma."""
+        return self.itens.filter(tipo=TipoItemProjeto.ENTREGA)
+
+    @property
+    def total_de_entregas(self) -> int:
+        """Quantas entregas o projeto tem, somadas todas as etapas."""
+        return self.entregas.count()
+
+    @property
+    def entregas_concluidas(self) -> int:
+        """Quantas entregas já foram concluídas."""
+        return self.entregas.filter(status=StatusProjeto.CONCLUIDO).count()
+
+    @property
+    def progresso(self) -> int:
+        """O andamento em porcentagem de entregas concluídas. Sem entregas, zero."""
+        total = self.total_de_entregas
+        if not total:
+            return 0
+        return round(self.entregas_concluidas * 100 / total)
+
+    def _soma_de_valores(self, campo: str) -> Decimal:
+        """Soma um valor em todos os itens do projeto, ignorando os vazios."""
+        total = self.itens.aggregate(soma=models.Sum(campo))["soma"]
+        return total or Decimal("0")
+
+    @property
+    def previsto_total(self) -> Decimal:
+        """Quanto se estima gastar no projeto, somadas as etapas e entregas."""
+        return self._soma_de_valores("valor_previsto")
+
+    @property
+    def contratado_total(self) -> Decimal:
+        """Quanto já foi contratado no projeto, somadas as etapas e entregas."""
+        return self._soma_de_valores("valor_contratado")
+
 
 class ProjetoItem(models.Model):
     """Uma etapa do projeto, ou uma entrega dentro de uma etapa.
@@ -2046,6 +2092,35 @@ class ProjetoItem(models.Model):
         blank=True,
         default="",
         help_text="O que se sabe sobre este item e não cabe nos outros campos.",
+    )
+    # O dinheiro da obra mora na entrega, não no projeto: é a linha que se
+    # contrata e se paga. O que o projeto tem é a soma — do previsto e do
+    # contratado —, lida na hora. Vazio não é zero: um valor ausente é uma
+    # pergunta ainda sem resposta, e não um gasto de nada.
+    valor_previsto = models.DecimalField(
+        "Valor previsto",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Quanto se estima gastar nesta entrega.",
+    )
+    valor_contratado = models.DecimalField(
+        "Valor contratado",
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Quanto foi de fato contratado para esta entrega.",
+    )
+    fornecedor = models.ForeignKey(
+        Fornecedor,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="itens_de_projeto",
+        verbose_name="Fornecedor",
+        help_text="Quem executa esta entrega, quando já se sabe.",
     )
     criado_em = models.DateTimeField("Criado em", auto_now_add=True)
     atualizado_em = models.DateTimeField("Atualizado em", auto_now=True)

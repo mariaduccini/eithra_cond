@@ -30,6 +30,11 @@
           {% if demanda.equipamento %}
             <span class="eithra-chip eithra-chip--neutro"><i class="bx bx-cog" aria-hidden="true"></i>{{ demanda.equipamento }}</span>
           {% endif %}
+          {% if demanda.projeto %}
+            <a class="eithra-chip eithra-chip--neutro" href="{{ demanda.projeto.url }}">
+              <i class="bx bx-briefcase-alt-2" aria-hidden="true"></i>Projeto: {{ demanda.projeto.nome }}
+            </a>
+          {% endif %}
         </div>
       </div>
     </div>

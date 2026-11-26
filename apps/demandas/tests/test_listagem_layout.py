@@ -29,6 +29,7 @@ from apps.demandas.tests.apoio import (
     criar_pessoa,
     criar_vinculo,
 )
+from apps.governanca.models import Projeto, ProjetoDemanda
 
 TITULO_LONGO = (
     "Vazamento persistente na prumada do banheiro social do apartamento 302 "
@@ -511,3 +512,42 @@ class FiltrosRapidosDaListagemTests(TestCase):
             self._titulos(self._abrir()),
             ["Atrasada", "Vence em 3 dias", "Sem prazo"],
         )
+
+
+class ProjetoNaListagemTests(TestCase):
+    """O vínculo com um projeto na lista: um chip discreto e um filtro."""
+
+    def setUp(self):
+        self.condominio = criar_condominio("Alpha")
+        self.gestao = criar_pessoa("gestao@exemplo.test", "Gestão")
+        criar_vinculo(self.gestao, self.condominio, papel=Papel.SINDICA)
+        self.client.force_login(self.gestao)
+        self.projeto = Projeto.objects.create(
+            condominio=self.condominio,
+            nome="Regularização do AVCB",
+            criado_por=self.gestao,
+        )
+        self.ligada = criar_demanda(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Reunir pranchas do AVCB",
+        )
+        self.solta = criar_demanda(
+            condominio=self.condominio,
+            criado_por=self.gestao,
+            titulo="Trocar lâmpada do corredor",
+        )
+        ProjetoDemanda.objects.create(projeto=self.projeto, demanda=self.ligada)
+
+    def _abrir(self, **parametros):
+        resposta = self.client.get(reverse("demandas:listagem"), parametros)
+        self.assertEqual(resposta.status_code, 200)
+        return resposta
+
+    def test_o_chip_do_projeto_aparece_na_linha(self):
+        self.assertContains(self._abrir(), "Projeto: Regularização do AVCB")
+
+    def test_o_filtro_de_projeto_recorta_a_lista(self):
+        resposta = self._abrir(projeto=str(self.projeto.pk))
+        self.assertContains(resposta, "Reunir pranchas do AVCB")
+        self.assertNotContains(resposta, "Trocar lâmpada do corredor")

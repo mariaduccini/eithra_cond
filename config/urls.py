@@ -29,6 +29,7 @@ urlpatterns = [
     path("compras/", include("apps.estoque.urls_compras")),
     path("cadastros/", include("apps.cadastros.urls")),
     path("governanca/", include("apps.governanca.urls")),
+    path("projetos/", include("apps.governanca.urls_projetos")),
     path("comunidade/", include("apps.comunidade.urls")),
     path("portaria/", include("apps.portaria.urls")),
     path(_endereco_do_admin(), admin.site.urls),

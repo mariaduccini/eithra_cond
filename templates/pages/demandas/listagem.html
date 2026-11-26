@@ -46,18 +46,26 @@
   </div>
 
   {% comment %}
-    A busca é o único recorte à mão. Os filtros finos continuam existindo no
-    backend — indicadores e endereços antigos ainda os usam —, mas não ocupam
-    mais a tela: a operação pediu uma lista limpa. O que está em vigor, a aba e
-    a ordenação, viaja escondido com a busca, para procurar não desfazer o que
-    já foi ajustado; trocar o termo recomeça na primeira página.
+    A busca e o projeto são os recortes à mão. Os outros filtros finos continuam
+    existindo no backend — indicadores e endereços antigos ainda os usam —, mas
+    não ocupam mais a tela: a operação pediu uma lista limpa. O que está em
+    vigor, a aba e a ordenação, viaja escondido, para procurar não desfazer o
+    que já foi ajustado; trocar o termo recomeça na primeira página. A busca não
+    exige Enter, e o projeto se aplica ao ser escolhido — quem cuida disso é o
+    controlador comum das listagens.
   {% endcomment %}
-  <form method="get" class="card eithra-filter-shell mb-3" role="search">
+  <form method="get" class="card eithra-filter-shell mb-3" role="search" data-eithra-filtros>
     <div class="card-body">
-      <div class="eithra-search-field">
-        <i class="bx bx-search" aria-hidden="true"></i>
-        <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
-        {{ filtros.busca }}
+      <div class="eithra-busca-e-projeto">
+        <div class="eithra-search-field">
+          <i class="bx bx-search" aria-hidden="true"></i>
+          <label class="visually-hidden" for="{{ filtros.busca.id_for_label }}">{{ filtros.busca.label }}</label>
+          {{ filtros.busca }}
+        </div>
+        <div class="eithra-search-projeto">
+          <label class="visually-hidden" for="{{ filtros.projeto.id_for_label }}">{{ filtros.projeto.label }}</label>
+          {{ filtros.projeto }}
+        </div>
       </div>
       {% if aba %}<input type="hidden" name="aba" value="{{ aba }}">{% endif %}
       {% if ordenacao.valor %}<input type="hidden" name="ordenar" value="{{ ordenacao.valor }}">{% endif %}
@@ -166,6 +174,13 @@
                   o ícone discreto acima.{% endcomment %}
                   {% if demanda.descricao_curta %}
                     <div class="eithra-demanda-contexto small text-body-secondary eithra-duas-linhas" title="{{ demanda.descricao_completa }}">{{ demanda.descricao_curta }}</div>
+                  {% endif %}
+                  {% comment %}O vínculo com um projeto é discreto: não vira coluna, só
+                  lembra que aquela demanda move uma obra maior.{% endcomment %}
+                  {% if demanda.projeto %}
+                    <a class="eithra-chip eithra-chip--neutro eithra-demanda-projeto small" href="{{ demanda.projeto.url }}">
+                      <i class="bx bx-briefcase-alt-2" aria-hidden="true"></i>Projeto: {{ demanda.projeto.nome }}
+                    </a>
                   {% endif %}
                 </td>
                 <td class="eithra-col-local small"><div class="eithra-duas-linhas" title="{{ demanda.local }}">{{ demanda.local }}</div></td>
