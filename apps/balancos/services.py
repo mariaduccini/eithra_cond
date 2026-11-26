@@ -54,7 +54,11 @@ from apps.balancos.contratos import (
     validar_dicionario_validado,
 )
 from apps.balancos.correcoes import ErroDeCorrecao
-from apps.balancos.detector import ErroDeDeteccaoDeLayout, detectar_layout_balanco
+from apps.balancos.detector import (
+    ErroDeDeteccaoDeLayout,
+    _baixar_pdf_privado,
+    detectar_layout_balanco,
+)
 from apps.balancos.extrator_atual import ErroDeExtracao, extrair_balanco_atual
 from apps.balancos.extrator_legado import (
     extrair_balanco_legado,
@@ -246,8 +250,10 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
         return ResultadoDoRecebimento(importacao=importacao)
 
     try:
-        detectar_layout_balanco(importacao, provider=provider)
+        _detectar_e_ler(importacao, conteudo=conteudo, provider=provider)
     except (ErroDeStorage, ErroDeDeteccaoDeLayout):
+        # A falha técnica já ficou registrada na importação; o recebimento
+        # devolve o estado real em vez de estourar para a tela.
         importacao.refresh_from_db()
         return ResultadoDoRecebimento(importacao=importacao)
     except DatabaseError:
@@ -259,29 +265,71 @@ def receber_importacao(*, condominio, usuario, arquivo) -> ResultadoDoRecebiment
             pass
         raise
 
+    return ResultadoDoRecebimento(importacao=importacao)
+
+
+def _detectar_e_ler(importacao, *, conteudo: bytes, provider) -> None:
+    """Detecta o layout do documento em mãos e lê o que a leitura permitir.
+
+    Nenhum ``BalancoMensal`` nasce aqui. A falha de detecção sobe (o chamador
+    decide como registrar); a falha de leitura já fica gravada na importação e o
+    arquivo continua no bucket, para que a tentativa possa ser refeita sem um
+    novo envio.
+    """
+    detectar_layout_balanco(importacao, conteudo=conteudo, provider=provider)
+
     if importacao.layout_detectado == LayoutBalanco.ATUAL_CANONICO:
         # O documento é do modelo atual: os dados financeiros são lidos agora,
-        # enquanto o arquivo já está em mãos — sem um segundo acesso ao storage.
-        # Desconhecido segue sem leitura: o motivo fica para a gestão.
+        # enquanto o arquivo já está em mãos.
         try:
             extrair_balanco_atual(importacao, conteudo=conteudo, provider=provider)
         except ErroDeExtracao:
-            # A leitura falhou e já registrou o motivo na importação. O arquivo
-            # continua no bucket: a tentativa pode ser refeita sem novo envio.
             importacao.refresh_from_db()
-            return ResultadoDoRecebimento(importacao=importacao)
     elif importacao.layout_detectado == LayoutBalanco.LEGADO:
         # O balancete antigo da administradora anterior é escaneado: a leitura
-        # passa pelo OCR local e cobre só o demonstrativo sintético. A falha
-        # recebe o mesmo tratamento do modelo atual — o motivo fica registrado e
-        # o arquivo continua no bucket.
+        # passa pelo OCR local e cobre só o demonstrativo sintético.
         try:
             extrair_balanco_legado(importacao, conteudo=conteudo, provider=provider)
         except ErroDeExtracao:
             importacao.refresh_from_db()
-            return ResultadoDoRecebimento(importacao=importacao)
 
-    return ResultadoDoRecebimento(importacao=importacao)
+
+class ErroDeReleitura(Exception):
+    """Motivo pelo qual a releitura de uma importação não pode acontecer."""
+
+
+def pode_reler(importacao) -> bool:
+    """Se faz sentido repetir a leitura sobre o arquivo já guardado.
+
+    Vale só para o que ainda não tem leitura e não tem desfecho. Um balanço já
+    confirmado — ou a importação já lida — não é relido: repetir a leitura não
+    pode mexer em um mês que já passou a valer.
+    """
+    return bool(importacao.pode_reler)
+
+
+def reler_importacao(importacao, *, provider=None) -> None:
+    """Repete a detecção e a leitura sobre o arquivo já guardado.
+
+    Não há novo upload e nada é substituído: a releitura serve para a importação
+    que ficou sem leitura — por exemplo, um balancete escaneado reconhecido
+    depois que o OCR local passou a existir. Importação com desfecho é recusada.
+    """
+    if not pode_reler(importacao):
+        raise ErroDeReleitura(
+            "Esta importação já tem leitura ou já foi confirmada; ela não é relida."
+        )
+
+    provider = provider or obter_provider()
+    try:
+        conteudo, _ = _baixar_pdf_privado(importacao, provider=provider)
+    except ErroDeDeteccaoDeLayout as erro:
+        importacao.status = StatusImportacao.ERRO
+        importacao.erro_processamento = str(erro)
+        importacao.save(update_fields=["status", "erro_processamento", "atualizado_em"])
+        raise
+
+    _detectar_e_ler(importacao, conteudo=conteudo, provider=provider)
 
 
 def gerar_acesso_temporario(importacao, *, validade_segundos: int | None = None) -> str:

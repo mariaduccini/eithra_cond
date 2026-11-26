@@ -24,6 +24,7 @@ urlpatterns = [
         name="publicar_conferencia",
     ),
     path("<uuid:pk>/", views.detalhe, name="detalhe"),
+    path("<uuid:pk>/reler/", views.reler, name="reler"),
     path("<uuid:pk>/arquivo/", views.acessar_arquivo, name="arquivo"),
     path("<uuid:pk>/excluir/", views.excluir, name="excluir"),
     path("<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),

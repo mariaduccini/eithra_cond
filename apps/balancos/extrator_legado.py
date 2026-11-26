@@ -379,8 +379,12 @@ def _texto_suficiente(texto: str) -> bool:
     return len(texto.strip()) >= 40 and len(linhas_uteis) >= 3
 
 
-def _texto_por_ocr(conteudo: bytes) -> str:
-    """Reaproveita o OCR local do estoque, limitado às páginas da fase 1."""
+def _texto_por_ocr(conteudo: bytes, *, paginas: int = PAGINAS_DA_FASE_1) -> str:
+    """Reaproveita o OCR local do estoque, limitado às páginas pedidas.
+
+    O extrator lê o demonstrativo inteiro (as páginas da fase 1); o detector de
+    layout só precisa do rótulo do documento e pede uma página só.
+    """
     from apps.estoque import leitura_compra
 
     if not leitura_compra.ocr_disponivel():
@@ -394,18 +398,18 @@ def _texto_por_ocr(conteudo: bytes) -> str:
     motor = leitura_compra._motor_ocr()
     documento = pypdfium2.PdfDocument(io.BytesIO(conteudo))
     try:
-        paginas: list[str] = []
-        total = min(len(documento), PAGINAS_DA_FASE_1)
+        paginas_lidas: list[str] = []
+        total = min(len(documento), max(1, paginas))
         for indice in range(total):
             bitmap = documento[indice].render(scale=2)
             imagem = leitura_compra._ajustar_para_ocr(bitmap.to_pil().convert("RGB"))
             resultado, _confianca = motor(imagem)
-            paginas.append(
+            paginas_lidas.append(
                 leitura_compra._texto_de_blocos(
                     leitura_compra._blocos_do_resultado(resultado)
                 )
             )
-        return "\n".join(paginas).strip()
+        return "\n".join(paginas_lidas).strip()
     except ErroDeExtracao:
         raise
     except Exception as erro:  # pragma: no cover - depende do motor instalado

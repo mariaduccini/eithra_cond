@@ -33,7 +33,7 @@ from apps.balancos.tests.apoio import (
 from apps.condominios.models import Condominio
 
 
-def detectar_layout_de_mentira(importacao, *, provider=None):
+def detectar_layout_de_mentira(importacao, *, provider=None, conteudo=None):
     """Fecha a importação como pronta, sem exercitar o detector real aqui."""
     importacao.layout_detectado = LayoutBalanco.DESCONHECIDO
     importacao.status = StatusImportacao.PRONTO

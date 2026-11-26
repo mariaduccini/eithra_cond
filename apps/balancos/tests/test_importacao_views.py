@@ -164,7 +164,7 @@ def pdf_com_grupos_confirmavel() -> bytes:
     )
 
 
-def detectar_layout_de_mentira(importacao, *, provider=None):
+def detectar_layout_de_mentira(importacao, *, provider=None, conteudo=None):
     """Fecha a importação como pronta para os testes de tela."""
     importacao.layout_detectado = LayoutBalanco.DESCONHECIDO
     importacao.status = StatusImportacao.PRONTO
@@ -529,12 +529,11 @@ class ListagemTests(BaseTelasTests):
         self.assertContains(resposta, "Aguardando confirmação")
         self.assertNotContains(resposta, "Pronto para a próxima etapa")
 
-    def test_diz_que_ainda_nao_ha_leitura(self):
-        """Sem leitura não há o que confirmar, e a linha diz isso sem rodeio.
+    def test_sem_leitura_oferece_ler_de_novo_e_o_arquivo_original(self):
+        """Sem leitura, a linha oferece reler e o arquivo original.
 
-        Também não se oferece uma ação de leitura: não existe operação segura de
-        reprocessamento exposta, e um botão que não lê nada seria promessa vazia.
-        O que sobra é o arquivo original e a exclusão.
+        A releitura é segura: ela roda sobre o arquivo já guardado, então o que
+        sobra é o PDF original, a releitura e a exclusão.
         """
         importacao = self.importacao_em(self.condominio_a)
         resposta = self._lista()
@@ -544,8 +543,9 @@ class ListagemTests(BaseTelasTests):
         self.assertContains(
             resposta, reverse("balancos:excluir", args=[importacao.pk])
         )
+        self.assertContains(resposta, reverse("balancos:reler", args=[importacao.pk]))
+        self.assertContains(resposta, "Ler de novo")
         self.assertNotContains(resposta, "Ver dados")
-        self.assertNotContains(resposta, "Ler dados")
 
     def test_a_coluna_de_acoes_se_identifica_e_fica_centralizada(self):
         """A coluna de ações tem cabeçalho visível — não um rótulo só para leitor."""

@@ -35,6 +35,10 @@ from apps.balancos.storage import ErroDeStorage, obter_provider
 
 PAGINAS_PADRAO = 15
 
+# O que fica registrado quando o balancete veio todo escaneado e o ambiente nao
+# tem OCR local: sem ele, a camada textual nao existe e nao ha o que ler.
+AVISO_SEM_OCR = "PDF escaneado: OCR local não instalado"
+
 # Densidade textual, medida em caracteres por pagina COM texto. E o sinal que
 # substitui a contagem absoluta de caracteres: um PDF longo com muitos anexos
 # escaneados nao deve parecer "pobre em texto" so porque a amostra e grande, nem
@@ -130,6 +134,7 @@ class ResultadoDeteccaoLayout:
     tempo_download_ms: int
     tempo_leitura_ms: int
     tempo_total_ms: int
+    aviso: str = ""
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,7 @@ class EvidenciasColetadas:
     marcadores_atual: list[str]
     marcadores_legado: list[str]
     tempo_leitura_ms: int
+    aviso: str = ""
 
     @property
     def proporcao_paginas_com_texto(self) -> float:
@@ -165,11 +171,15 @@ class EvidenciasColetadas:
         return self.caracteres_extraidos / self.paginas_com_texto
 
 
-def detectar_layout_balanco(importacao, *, provider=None) -> ResultadoDeteccaoLayout:
+def detectar_layout_balanco(
+    importacao, *, provider=None, conteudo: bytes | None = None
+) -> ResultadoDeteccaoLayout:
     """Le o PDF privado e grava o layout detectado na importacao.
 
     A deteccao e idempotente: reexecutar sobre o mesmo arquivo produz o mesmo
-    resultado, sem criar objeto novo e sem tocar em ``BalancoMensal``.
+    resultado, sem criar objeto novo e sem tocar em ``BalancoMensal``. O
+    ``conteudo`` pode ser passado pronto por quem ja o tem em maos, para nao
+    baixar o mesmo arquivo duas vezes.
     """
     importacao.status = StatusImportacao.PROCESSANDO
     importacao.erro_processamento = ""
@@ -177,7 +187,12 @@ def detectar_layout_balanco(importacao, *, provider=None) -> ResultadoDeteccaoLa
 
     inicio_total = time.monotonic()
     try:
-        conteudo, tempo_download_ms = _baixar_pdf_privado(importacao, provider=provider)
+        if conteudo is None:
+            conteudo, tempo_download_ms = _baixar_pdf_privado(
+                importacao, provider=provider
+            )
+        else:
+            tempo_download_ms = 0
         resultado = detectar_layout_do_pdf(
             conteudo,
             tempo_download_ms=tempo_download_ms,
@@ -190,7 +205,9 @@ def detectar_layout_balanco(importacao, *, provider=None) -> ResultadoDeteccaoLa
 
     importacao.layout_detectado = resultado.layout
     importacao.status = StatusImportacao.PRONTO
-    importacao.erro_processamento = ""
+    # O aviso (por exemplo, balancete escaneado sem OCR local) fica no motivo do
+    # processamento: nao e falha de recebimento, mas diz por que nao ha leitura.
+    importacao.erro_processamento = resultado.aviso
     importacao.save(
         update_fields=[
             "layout_detectado",
@@ -210,6 +227,7 @@ def detectar_layout_balanco(importacao, *, provider=None) -> ResultadoDeteccaoLa
         tempo_download_ms=resultado.tempo_download_ms,
         tempo_leitura_ms=resultado.tempo_leitura_ms,
         tempo_total_ms=tempo_total_ms,
+        aviso=resultado.aviso,
     )
 
 
@@ -230,7 +248,34 @@ def detectar_layout_do_pdf(
         tempo_download_ms=tempo_download_ms,
         tempo_leitura_ms=evidencias.tempo_leitura_ms,
         tempo_total_ms=tempo_download_ms + evidencias.tempo_leitura_ms,
+        aviso=evidencias.aviso,
     )
+
+
+def _texto_de_ocr_da_abertura(conteudo: bytes) -> tuple[str, str]:
+    """Texto da primeira pagina pelo OCR local, ou o motivo de nao haver texto.
+
+    So e chamada quando o PDF nao tem camada textual nenhuma e ha imagens: e o
+    caso do balancete escaneado. Reaproveita o caminho de OCR do extrator
+    legado, limitado a uma pagina — o detector so precisa reconhecer o rotulo do
+    documento, nao le-lo. Devolve o texto e, quando nao houver como reconhecer,
+    o aviso que fica registrado na importacao.
+    """
+    if not conteudo:
+        return "", ""
+    from apps.estoque import leitura_compra
+
+    if not leitura_compra.ocr_disponivel():
+        return "", AVISO_SEM_OCR
+
+    # Import tardio: o extrator legado importa este modulo no topo, e um import
+    # direto aqui fecharia o ciclo.
+    from apps.balancos.extrator_legado import ErroDeExtracao, _texto_por_ocr
+
+    try:
+        return _texto_por_ocr(conteudo, paginas=1), ""
+    except ErroDeExtracao:
+        return "", ""
 
 
 def _baixar_pdf_privado(importacao, *, provider=None) -> tuple[bytes, int]:
@@ -293,6 +338,15 @@ def _coletar_evidencias(conteudo: bytes) -> EvidenciasColetadas:
         imagens_detectadas += _contar_imagens(pagina)
 
     texto_total = " ".join(parte for parte in texto_paginas if parte).strip()
+    aviso = ""
+    if not texto_total and imagens_detectadas:
+        # PDF so de imagem: nao ha camada textual para ler. O OCR local da
+        # abertura devolve o rotulo do documento — e, sem OCR instalado, o aviso
+        # que explica por que ele segue desconhecido.
+        texto_ocr, aviso = _texto_de_ocr_da_abertura(conteudo)
+        if texto_ocr:
+            texto_total = _normalizar(texto_ocr)
+
     marcadores_atual = _marcadores_encontrados(texto_total, VARIANTES_ATUAL_CANONICO)
     marcadores_legado = _marcadores_encontrados(texto_total, VARIANTES_LEGADO)
     # "Demonstrativo de contas" e o titulo de uma secao do modelo atual, e a
@@ -312,6 +366,7 @@ def _coletar_evidencias(conteudo: bytes) -> EvidenciasColetadas:
         marcadores_atual=marcadores_atual,
         marcadores_legado=marcadores_legado,
         tempo_leitura_ms=int((time.monotonic() - inicio) * 1000),
+        aviso=aviso,
     )
 
 

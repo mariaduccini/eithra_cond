@@ -1422,7 +1422,7 @@ class ExtracaoDaImportacaoTests(TestCase):
 # -- Fluxo de recebimento -------------------------------------------------------
 
 
-def detectar_como_atual(importacao, *, provider=None):
+def detectar_como_atual(importacao, *, provider=None, conteudo=None):
     """Fecha a importação como modelo atual, sem exercitar o detector real."""
     importacao.layout_detectado = LayoutBalanco.ATUAL_CANONICO
     importacao.status = StatusImportacao.PRONTO
@@ -1433,7 +1433,7 @@ def detectar_como_atual(importacao, *, provider=None):
     return None
 
 
-def detectar_como_desconhecido(importacao, *, provider=None):
+def detectar_como_desconhecido(importacao, *, provider=None, conteudo=None):
     """Fecha a importação como não reconhecida, sem exercitar o detector real."""
     importacao.layout_detectado = LayoutBalanco.DESCONHECIDO
     importacao.status = StatusImportacao.PRONTO

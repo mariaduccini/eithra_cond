@@ -629,5 +629,17 @@ class ImportacaoBalanco(models.Model):
         """Tom visual da situação. O texto é que informa; a cor só ajuda."""
         return self._situacao_e_tom()[1]
 
+    @property
+    def pode_reler(self) -> bool:
+        """Se a leitura pode ser repetida sobre o arquivo já guardado.
+
+        Vale para a importação que ficou sem leitura — status pronto ou erro,
+        sem resultado e sem desfecho. O balanço confirmado não é relido, e uma
+        importação já lida não precisa disso: repetir não muda o que já existe.
+        """
+        if self.confirmado_em or self.descartado_em or self.resultado_extraido:
+            return False
+        return self.status in (StatusImportacao.PRONTO, StatusImportacao.ERRO)
+
     def __str__(self) -> str:
         return f"{self.nome_original} · {self.get_status_display()}"

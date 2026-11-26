@@ -40,6 +40,7 @@ from apps.balancos.contratos import (
     de_dicionario_validado,
 )
 from apps.balancos.correcoes import ErroDeCorrecao
+from apps.balancos.detector import ErroDeDeteccaoDeLayout
 from apps.balancos.evidencias import ErroDeEvidencia
 from apps.balancos.extrator_legado import (
     montar_balanco_da_conferencia,
@@ -66,6 +67,7 @@ from apps.balancos.permissoes import (
 from apps.balancos.services import (
     ErroDeConfirmacao,
     ErroDeExclusao,
+    ErroDeReleitura,
     confirmar_importacao,
     corrigir_balanco,
     excluir_importacao,
@@ -76,6 +78,7 @@ from apps.balancos.services import (
     pode_confirmar,
     publicar_balanco_da_conferencia,
     receber_importacao,
+    reler_importacao,
 )
 from apps.balancos.validacao_financeira import TOLERANCIA, validar_balanco
 
@@ -148,6 +151,38 @@ def detalhe(request, pk):
         "pages/balancos/importacao_detalhe.html",
         _contexto_do_detalhe(importacao),
     )
+
+
+@login_required
+@require_POST
+def reler(request, pk):
+    """Repete a detecção e a leitura sobre o arquivo já guardado.
+
+    Nada é reenviado: o PDF continua no storage e só é lido de novo. Serve para
+    a importação que ficou sem leitura. Um mês já confirmado não é relido.
+    """
+    importacao = _importacao_autorizada(request, pk)
+    try:
+        reler_importacao(importacao)
+    except ErroDeReleitura as erro:
+        messages.warning(request, str(erro))
+    except ErroDeDeteccaoDeLayout:
+        messages.error(
+            request,
+            "Não foi possível ler o arquivo desta importação. O motivo ficou "
+            "registrado na própria importação.",
+        )
+    else:
+        importacao.refresh_from_db()
+        if importacao.resultado_extraido:
+            messages.success(request, "A leitura foi refeita a partir do arquivo recebido.")
+        else:
+            messages.warning(
+                request,
+                "A leitura foi tentada de novo, mas o documento continua sem "
+                "leitura automática.",
+            )
+    return redirect("balancos:importacoes")
 
 
 @login_required

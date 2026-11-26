@@ -132,6 +132,22 @@
                     </a>
                   {% endif %}
 
+                  {% if importacao.pode_reler %}
+                    <form
+                      class="d-inline"
+                      method="post"
+                      action="{% url 'balancos:reler' importacao.pk %}">
+                      {% csrf_token %}
+                      <button
+                        type="submit"
+                        class="btn btn-icon btn-text-secondary rounded-pill"
+                        title="Ler de novo"
+                        aria-label="Ler de novo a partir do arquivo recebido">
+                        <i class="bx bx-refresh" aria-hidden="true"></i>
+                      </button>
+                    </form>
+                  {% endif %}
+
                   {% if not importacao.balanco_confirmado and not importacao.confirmado_em %}
                     <form
                       class="d-inline"
