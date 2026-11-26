@@ -81,14 +81,14 @@ class JanelaDaProximaAcaoTests(TestCase):
     def _abrir(self):
         resposta = self.client.get(
             reverse("demandas:detalhe", args=[self.demanda.pk]),
-            {"abrir": "acompanhamento"},
+            {"abrir": "atualizar"},
         )
         self.assertEqual(resposta.status_code, 200)
         return resposta
 
     def _janela(self, resposta=None):
         html = (resposta or self._abrir()).content.decode()
-        inicio = html.index('id="atualizar-acompanhamento"')
+        inicio = html.index('id="atualizar-demanda"')
         return html[inicio : html.index("</form>", inicio)]
 
     def _salvar(self, **campos):

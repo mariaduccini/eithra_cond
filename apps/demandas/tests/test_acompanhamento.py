@@ -511,12 +511,9 @@ class TelaDaDemandaTests(BaseDoAcompanhamento):
         self.assertIn("Aguardando fornecedor", conteudo)
         # As colunas continuam as mesmas: o acompanhamento não virou uma delas.
         for cabecalho in (
-            "Código",
-            "Título",
-            "Descrição",
+            "Demanda",
             "Local",
             "Prioridade",
-            "Prazo",
             "Responsável",
             "Situação",
             "Ações",

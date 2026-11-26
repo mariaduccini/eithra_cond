@@ -345,4 +345,4 @@ class IconeNaTelaTests(BaseDeConclusao):
         self.assertContains(detalhe, "Registrar atualização")
 
         listagem = self.client.get(reverse("demandas:listagem"))
-        self.assertContains(listagem, "Registrar atualização")
+        self.assertContains(listagem, "Contar novidade")

@@ -41,29 +41,29 @@ class ModalDeAcompanhamentoTests(TestCase):
     def _abrir(self):
         resposta = self.client.get(
             reverse("demandas:detalhe", args=[self.demanda.pk]),
-            {"abrir": "acompanhamento"},
+            {"abrir": "atualizar"},
         )
         self.assertEqual(resposta.status_code, 200)
         return resposta
 
     def _janela(self, resposta=None):
-        """O trecho da janela do acompanhamento, recortado do resto da página."""
+        """O trecho da janela da atualização, recortado do resto da página."""
         html = (resposta or self._abrir()).content.decode()
-        inicio = html.index('id="atualizar-acompanhamento"')
+        inicio = html.index('id="atualizar-demanda"')
         return html[inicio : html.index("</form>", inicio)]
 
     # -- a janela continua sendo a mesma porta ---------------------------------
 
     def test_a_janela_abre_pela_mesma_acao(self):
-        """`?abrir=acompanhamento` devolve a tela com a janela já aberta."""
+        """`?abrir=atualizar` devolve a tela com a janela já aberta."""
         resposta = self._abrir()
-        self.assertEqual(resposta.context["modal_aberto"], "acompanhamento")
-        self.assertContains(resposta, 'id="atualizar-acompanhamento"')
+        self.assertEqual(resposta.context["modal_aberto"], "atualizar")
+        self.assertContains(resposta, 'id="atualizar-demanda"')
         self.assertContains(resposta, "eithra-modal-reaberto")
 
     def test_o_formulario_posta_no_mesmo_endereco(self):
         janela = self._janela()
-        destino = reverse("demandas:acompanhar", args=[self.demanda.pk])
+        destino = reverse("demandas:atualizar", args=[self.demanda.pk])
         self.assertIn(f'action="{destino}?aba=visao_geral"', janela)
         self.assertIn('method="post"', janela)
 
@@ -78,10 +78,10 @@ class ModalDeAcompanhamentoTests(TestCase):
         """Uma coluna no celular, duas no desktop — o par vem do próprio tema."""
         janela = self._janela()
         self.assertIn("row g-3", janela)
-        self.assertEqual(janela.count("col-12 col-lg-6"), 7)
+        self.assertEqual(janela.count("col-12 col-lg-6"), 8)
         # O respiro entre os campos vem do vão da grade, não de margem em cada um.
         self.assertNotIn("mb-6", janela)
-        self.assertEqual(janela.count("mb-0"), 7)
+        self.assertEqual(janela.count("mb-0"), 10)
 
     def test_a_janela_nao_cria_card_interno(self):
         janela = self._janela()
@@ -91,13 +91,13 @@ class ModalDeAcompanhamentoTests(TestCase):
     def test_o_cabecalho_identifica_a_demanda_em_uma_linha(self):
         resposta = self._abrir()
         janela = self._janela(resposta)
-        self.assertIn("Atualizar acompanhamento", janela)
+        self.assertIn("Registrar atualização", janela)
         self.assertIn(resposta.context["demanda"]["referencia"], janela)
 
     def test_o_rodape_tem_uma_acao_principal(self):
         janela = self._janela()
         self.assertIn("Cancelar", janela)
-        self.assertIn("Salvar acompanhamento", janela)
+        self.assertIn("Continuar", janela)
         self.assertEqual(janela.count('type="submit"'), 1)
 
     # -- nada foi removido -----------------------------------------------------
