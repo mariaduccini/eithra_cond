@@ -53,6 +53,9 @@ class BaseDoFluxo(TestCase):
 
     def rascunho(self, **campos):
         campos.setdefault("data_compra", None)
+        # O rascunho destes testes existe para receber um documento: é esse o
+        # caminho que permite abrir a compra ainda sem data nem fornecedor.
+        campos.setdefault("tem_documento", True)
         return criar_compra(
             condominio=self.condominio,
             criado_por=self.gestao,

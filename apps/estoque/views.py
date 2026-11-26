@@ -19,6 +19,7 @@ from datetime import date
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied, ValidationError
 from django.db import transaction
@@ -53,6 +54,7 @@ from .forms import (
     ImportarCompraForm,
     ItemCompraForm,
     ItemEstoqueForm,
+    MarcarReembolsoCompraForm,
     MovimentacaoEstoqueForm,
     ReembolsoCompraForm,
     SaidaParaManutencaoForm,
@@ -67,7 +69,9 @@ from .permissoes import (
     pode_cancelar_compra,
     pode_confirmar_compra,
     pode_editar_compra,
+    pode_excluir_compra,
     pode_gerenciar_itens,
+    pode_marcar_reembolso,
     pode_registrar_movimento,
     pode_registrar_reembolso,
     pode_registrar_saida_para_manutencao,
@@ -89,6 +93,7 @@ from .services import (
     editar_item,
     editar_item_compra,
     incluir_item_extraido,
+    marcar_reembolso_compra,
     marcar_reembolso_realizado,
     registrar_movimentacao,
     registrar_saida_para_manutencao,
@@ -868,6 +873,51 @@ def cancelar(request, pk):
     return redirect("compras:detalhe", pk=compra.pk)
 
 
+@login_required
+@require_POST
+def excluir_rascunho(request, pk):
+    """Apaga de vez um rascunho que ainda não virou nada."""
+    compra = _compra_para_excluir(request, pk)
+    compra.delete()
+    messages.success(request, "Rascunho excluído.")
+    return redirect("compras:listagem")
+
+
+@login_required
+@require_POST
+def marcar_reembolso_compra_view(request, pk):
+    """Marca a compra para reembolso direto da lista, sem passar pela edição."""
+    compra = _compra_autorizada(request, pk)
+    if not pode_marcar_reembolso(request.user, compra):
+        raise PermissionDenied("Esta pessoa não pode marcar este reembolso.")
+
+    formulario = MarcarReembolsoCompraForm(
+        request.POST,
+        condominio=compra.condominio,
+        total=compra.total_calculado(),
+    )
+    if not formulario.is_valid():
+        erros = " ".join(
+            erro for lista in formulario.errors.values() for erro in lista
+        )
+        messages.error(request, erros or "Revise os dados do reembolso.")
+        return redirect("compras:listagem")
+
+    dados = formulario.cleaned_data
+    try:
+        marcar_reembolso_compra(
+            compra=compra,
+            reembolso_para=dados["reembolso_para"],
+            valor_reembolso=dados["valor_reembolso"],
+            observacao_reembolso=dados["observacao_reembolso"],
+        )
+    except ErroDeEstoque as erro:
+        messages.error(request, str(erro))
+    else:
+        messages.success(request, "Reembolso marcado como pendente.")
+    return redirect("compras:listagem")
+
+
 # -- AutorizaÃ§Ã£o ----------------------------------------------------------------
 #
 # Toda pergunta passa pelo domÃ­nio. Quem nÃ£o enxerga o mÃ³dulo nÃ£o descobre que o
@@ -950,6 +1000,14 @@ def _compra_para_cancelar(request, pk):
     compra = _compra_autorizada(request, pk)
     if not pode_cancelar_compra(request.user, compra):
         raise PermissionDenied("Esta pessoa nÃ£o pode cancelar esta compra.")
+    return compra
+
+
+def _compra_para_excluir(request, pk):
+    """Resolve a compra e exige, no backend, o direito de apagÃ¡-la."""
+    compra = _compra_autorizada(request, pk)
+    if not pode_excluir_compra(request.user, compra):
+        raise PermissionDenied("Esta pessoa nÃ£o pode excluir esta compra.")
     return compra
 
 
@@ -1223,7 +1281,9 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
         condominios=condominios,
         fornecedores=Fornecedor.objects.filter(condominio__in=condominios, ativo=True),
     )
-    pagina_compras = paginar_do_pedido(_compras_filtradas(condominios, filtros), request.GET)
+    chip = _chip_da_listagem(request)
+    recorte = _compras_do_chip(_compras_filtradas(condominios, filtros), chip)
+    pagina_compras = paginar_do_pedido(recorte, request.GET)
     pode_criar = condominios_para_criar_compras(request.user).exists()
 
     if formulario is None and pode_criar:
@@ -1233,7 +1293,9 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
         )
 
     contexto = {
-        "compras": [_compra_para_linha(compra) for compra in pagina_compras],
+        "compras": [
+            _compra_para_linha(compra, request.user) for compra in pagina_compras
+        ],
         "pagina_compras": pagina_compras,
         "filtros": filtros,
         "filtros_ativos": tem_filtros(filtros),
@@ -1242,6 +1304,18 @@ def _render_compras(request, condominios, *, formulario=None, modal=None, status
         "formulario_compra": formulario,
         "modal_aberto": modal or request.GET.get("abrir"),
         "mostrar_condominio": condominios.count() > 1,
+        "chips": _chips_da_listagem(request, condominios, chip),
+        "chip_ativo": chip,
+        "pessoas_reembolso": (
+            get_user_model()
+            .objects.filter(
+                is_active=True,
+                acessos_condominio__condominio__in=condominios,
+                acessos_condominio__ativo=True,
+            )
+            .distinct()
+            .order_by("full_name", "email")
+        ),
     }
     return render(request, "pages/compras/listagem.html", contexto, status=status)
 
@@ -1468,6 +1542,89 @@ def _compras_filtradas(condominios, filtros):
     return queryset.recentes()
 
 
+# Os recortes que a gestão olha primeiro na lista de compras.
+CHIPS_DE_COMPRAS = ("rascunhos", "reembolso", "confirmadas")
+
+
+def _chip_da_listagem(request) -> str:
+    """O chip ativo, só se ele existir. Um valor estranho não muda a lista."""
+    chip = request.GET.get("chip")
+    return chip if chip in CHIPS_DE_COMPRAS else ""
+
+
+def _compras_do_chip(queryset, chip):
+    """Aplica o recorte do chip escolhido sobre a lista já filtrada."""
+    if chip == "rascunhos":
+        return queryset.filter(status=StatusCompra.RASCUNHO)
+    if chip == "reembolso":
+        return queryset.filter(status_reembolso=StatusReembolso.PENDENTE)
+    if chip == "confirmadas":
+        hoje = timezone.localdate()
+        return queryset.filter(
+            status=StatusCompra.CONFIRMADA,
+            data_compra__year=hoje.year,
+            data_compra__month=hoje.month,
+        )
+    return queryset
+
+
+def _chips_da_listagem(request, condominios, chip_ativo):
+    """Os três recortes, com o total de cada um e o link que os aplica."""
+    base = Compra.objects.filter(condominio__in=condominios)
+    hoje = timezone.localdate()
+    definicao = (
+        (
+            "rascunhos",
+            "Rascunhos",
+            "bx-edit",
+            "muted",
+            base.filter(status=StatusCompra.RASCUNHO).count(),
+        ),
+        (
+            "reembolso",
+            "Reembolso pendente",
+            "bx-wallet",
+            "warning",
+            base.filter(status_reembolso=StatusReembolso.PENDENTE).count(),
+        ),
+        (
+            "confirmadas",
+            "Confirmadas no mês",
+            "bx-check-circle",
+            "success",
+            base.filter(
+                status=StatusCompra.CONFIRMADA,
+                data_compra__year=hoje.year,
+                data_compra__month=hoje.month,
+            ).count(),
+        ),
+    )
+    return [
+        {
+            "chave": chave,
+            "titulo": titulo,
+            "icone": icone,
+            "tom": tom,
+            "total": total,
+            "ativo": chave == chip_ativo,
+            "url": _url_do_chip(request, chave, chip_ativo),
+        }
+        for chave, titulo, icone, tom, total in definicao
+    ]
+
+
+def _url_do_chip(request, chave, chip_ativo) -> str:
+    """O link do chip, preservando os filtros já aplicados na lista."""
+    parametros = request.GET.copy()
+    parametros.pop("page", None)
+    if chave == chip_ativo:
+        parametros.pop("chip", None)
+    else:
+        parametros["chip"] = chave
+    consulta = parametros.urlencode()
+    return f"?{consulta}" if consulta else "?"
+
+
 def _pode_retirar_para_alguma(usuario, manutencoes, item) -> bool:
     """Diz se hÃ¡ alguma manutenÃ§Ã£o alcanÃ§Ã¡vel para a retirada deste item."""
     return any(
@@ -1661,7 +1818,20 @@ def _movimento_para_tela(movimento, item) -> dict:
     }
 
 
-def _compra_para_linha(compra) -> dict:
+def _resumo_da_compra(compra) -> str:
+    """O que a compra é, em uma linha: fornecedor, primeiro item ou observação."""
+    if compra.fornecedor_id:
+        return compra.fornecedor.nome_razao_social
+    item = compra.itens.first()
+    if item is not None:
+        return item.descricao
+    observacao = (compra.observacao or "").strip()
+    if observacao:
+        return observacao
+    return "Rascunho sem dados"
+
+
+def _compra_para_linha(compra, usuario=None) -> dict:
     """A compra como a linha da lista precisa dela."""
     total = getattr(compra, "total", None)
     if total is None:
@@ -1669,6 +1839,7 @@ def _compra_para_linha(compra) -> dict:
     return {
         "pk": compra.pk,
         "data": _data_por_extenso(compra.data_compra),
+        "resumo": _resumo_da_compra(compra),
         "condominio": compra.condominio.nome,
         "fornecedor": (
             compra.fornecedor.nome_razao_social if compra.fornecedor else "Sem fornecedor"
@@ -1677,6 +1848,12 @@ def _compra_para_linha(compra) -> dict:
         "total": _dinheiro(total),
         "status": compra.get_status_display(),
         "status_tom": TOM_POR_STATUS_COMPRA.get(compra.status, "secondary"),
+        "pode_cancelar": usuario is not None and pode_cancelar_compra(usuario, compra),
+        "pode_excluir": usuario is not None and pode_excluir_compra(usuario, compra),
+        "pode_marcar_reembolso": usuario is not None
+        and pode_marcar_reembolso(usuario, compra),
+        "pode_pagar_reembolso": usuario is not None
+        and pode_registrar_reembolso(usuario, compra),
     }
 
 

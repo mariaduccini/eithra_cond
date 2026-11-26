@@ -1,14 +1,13 @@
 {% extends "layouts/app.html" %}
 
 {# As compras do condomínio: o que foi adquirido, de quem e por quanto. Cada
-   linha abre a compra; não há botão "visualizar". #}
+   linha abre a compra; as ações do dia a dia ficam à mão, sem sair da lista. #}
 
 {% block title %}Compras · Eithra{% endblock %}
 
 {% block content %}
   <header class="eithra-pagina-topo">
     <div class="eithra-pagina-topo-texto">
-      <span class="eithra-eyebrow">Operação</span>
       <h1 class="eithra-pagina-titulo">Compras</h1>
       <p class="eithra-pagina-sub">
         O que o condomínio adquiriu{% if total %} · {{ total }} em vista{% endif %}.
@@ -21,9 +20,23 @@
     {% endif %}
   </header>
 
+  <div class="eithra-chips-filtro mb-3" role="group" aria-label="Filtros rápidos">
+    {% for chip in chips %}
+      <a
+        class="eithra-chip-filtro eithra-chip-filtro--{{ chip.tom }}{% if chip.ativo %} is-ativo{% endif %}{% if not chip.total %} is-vazio{% endif %}"
+        href="{{ chip.url }}"
+        {% if chip.ativo %}aria-current="true"{% endif %}>
+        <i class="bx {{ chip.icone }}" aria-hidden="true"></i>
+        <span>{{ chip.titulo }}</span>
+        <span class="eithra-chip-filtro-contador">{{ chip.total }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
   <div class="card eithra-filter-shell mb-4">
     <div class="card-body">
       <form method="get" class="row g-3 align-items-end" data-eithra-filtros>
+        {% if chip_ativo %}<input type="hidden" name="chip" value="{{ chip_ativo }}">{% endif %}
         {% if mostrar_condominio %}
           <div class="col-6 col-lg-2">
             <label class="form-label small" for="{{ filtros.condominio.id_for_label }}">
@@ -71,6 +84,7 @@
               <th scope="col">Fornecedor</th>
               <th scope="col" class="text-end">Total</th>
               <th scope="col">Situação</th>
+              <th scope="col" class="text-end"><span class="visually-hidden">Ações</span></th>
             </tr>
           </thead>
           <tbody>
@@ -79,7 +93,7 @@
                 <td>
                   <a
                     href="{% url 'compras:detalhe' compra.pk %}"
-                    class="fw-medium text-decoration-none">{{ compra.data }}</a>
+                    class="fw-medium text-decoration-none">{{ compra.data }} · {{ compra.resumo }}</a>
                   {% if compra.documento %}
                     <div class="text-body-secondary small">{{ compra.documento }}</div>
                   {% endif %}
@@ -90,6 +104,75 @@
                 <td>
                   <span class="badge bg-label-{{ compra.status_tom }}">{{ compra.status }}</span>
                 </td>
+                <td class="text-end">
+                  <div class="d-inline-flex align-items-center gap-1">
+                    <a
+                      href="{% url 'compras:detalhe' compra.pk %}"
+                      class="eithra-acao-icone"
+                      title="Abrir"
+                      aria-label="Abrir a compra {{ compra.resumo }}">
+                      <i class="bx bx-show" aria-hidden="true"></i>
+                    </a>
+                    {% if compra.pode_cancelar or compra.pode_excluir or compra.pode_marcar_reembolso or compra.pode_pagar_reembolso %}
+                      <div class="dropdown d-inline-block">
+                        <button
+                          class="btn btn-icon btn-text-secondary rounded-pill"
+                          type="button"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          aria-label="Mais ações da compra {{ compra.resumo }}">
+                          <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                          {% if compra.pode_cancelar %}
+                            <li>
+                              <form method="post" action="{% url 'compras:cancelar' compra.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item">
+                                  <i class="bx bx-x-circle me-2" aria-hidden="true"></i>Cancelar compra
+                                </button>
+                              </form>
+                            </li>
+                          {% endif %}
+                          {% if compra.pode_excluir %}
+                            <li>
+                              <form
+                                method="post"
+                                action="{% url 'compras:excluir' compra.pk %}"
+                                onsubmit="return confirm('Excluir este rascunho sem itens?');">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item">
+                                  <i class="bx bx-trash me-2" aria-hidden="true"></i>Excluir rascunho
+                                </button>
+                              </form>
+                            </li>
+                          {% endif %}
+                          {% if compra.pode_marcar_reembolso %}
+                            <li>
+                              <button
+                                type="button"
+                                class="dropdown-item"
+                                data-bs-toggle="modal"
+                                data-bs-target="#marcar-reembolso-{{ compra.pk }}">
+                                <i class="bx bx-wallet me-2" aria-hidden="true"></i>Marcar reembolso
+                              </button>
+                            </li>
+                          {% endif %}
+                          {% if compra.pode_pagar_reembolso %}
+                            <li>
+                              <form method="post" action="{% url 'compras:marcar_reembolso_realizado' compra.pk %}">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item">
+                                  <i class="bx bx-check-double me-2" aria-hidden="true"></i>Reembolso pago
+                                </button>
+                              </form>
+                            </li>
+                          {% endif %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                  </div>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -98,9 +181,11 @@
 
       <div class="list-group list-group-flush d-lg-none">
         {% for compra in compras %}
-          <a href="{% url 'compras:detalhe' compra.pk %}" class="list-group-item list-group-item-action">
+          <div class="list-group-item">
             <div class="d-flex justify-content-between align-items-start gap-2">
-              <span class="fw-medium">{{ compra.data }}</span>
+              <a href="{% url 'compras:detalhe' compra.pk %}" class="fw-medium text-decoration-none">
+                {{ compra.data }} · {{ compra.resumo }}
+              </a>
               <span class="badge bg-label-{{ compra.status_tom }} flex-shrink-0">{{ compra.status }}</span>
             </div>
             <div class="text-body-secondary small mt-1">
@@ -109,12 +194,79 @@
             <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
               {% if mostrar_condominio %}<span class="text-body-secondary small">{{ compra.condominio }}</span>{% endif %}
               <span class="fw-medium small">{{ compra.total }}</span>
+              <span class="ms-auto d-inline-flex align-items-center gap-1">
+                <a
+                  href="{% url 'compras:detalhe' compra.pk %}"
+                  class="eithra-acao-icone"
+                  title="Abrir"
+                  aria-label="Abrir a compra {{ compra.resumo }}">
+                  <i class="bx bx-show" aria-hidden="true"></i>
+                </a>
+                {% if compra.pode_cancelar or compra.pode_excluir or compra.pode_marcar_reembolso or compra.pode_pagar_reembolso %}
+                  <div class="dropdown d-inline-block">
+                    <button
+                      class="btn btn-icon btn-text-secondary rounded-pill"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Mais ações da compra {{ compra.resumo }}">
+                      <i class="bx bx-dots-vertical-rounded" aria-hidden="true"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      {% if compra.pode_cancelar %}
+                        <li>
+                          <form method="post" action="{% url 'compras:cancelar' compra.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                              <i class="bx bx-x-circle me-2" aria-hidden="true"></i>Cancelar compra
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+                      {% if compra.pode_excluir %}
+                        <li>
+                          <form
+                            method="post"
+                            action="{% url 'compras:excluir' compra.pk %}"
+                            onsubmit="return confirm('Excluir este rascunho sem itens?');">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                              <i class="bx bx-trash me-2" aria-hidden="true"></i>Excluir rascunho
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+                      {% if compra.pode_marcar_reembolso %}
+                        <li>
+                          <button
+                            type="button"
+                            class="dropdown-item"
+                            data-bs-toggle="modal"
+                            data-bs-target="#marcar-reembolso-{{ compra.pk }}">
+                            <i class="bx bx-wallet me-2" aria-hidden="true"></i>Marcar reembolso
+                          </button>
+                        </li>
+                      {% endif %}
+                      {% if compra.pode_pagar_reembolso %}
+                        <li>
+                          <form method="post" action="{% url 'compras:marcar_reembolso_realizado' compra.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item">
+                              <i class="bx bx-check-double me-2" aria-hidden="true"></i>Reembolso pago
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+                    </ul>
+                  </div>
+                {% endif %}
+              </span>
             </div>
-          </a>
+          </div>
         {% endfor %}
       </div>
     {% else %}
-      {% if filtros_ativos %}
+      {% if filtros_ativos or chip_ativo %}
         {% include "components/state.html" with state_icon="bx-search" state_title="Nenhum resultado encontrado" state_message="Nenhuma compra deste condomínio corresponde aos filtros aplicados. Limpe os filtros para ver a lista inteira." %}
       {% else %}
         {% include "components/state.html" with state_icon="bx-cart" state_title="Nenhuma compra registrada" state_message="Quando houver uma compra, registre aqui e acompanhe até confirmar." %}
@@ -124,6 +276,61 @@
       {% include "components/paginacao.html" with page_obj=pagina_compras %}
     </div>
   </div>
+
+  {% for compra in compras %}
+    {% if compra.pode_marcar_reembolso %}
+      <div
+        class="modal fade"
+        id="marcar-reembolso-{{ compra.pk }}"
+        tabindex="-1"
+        role="dialog"
+        aria-labelledby="marcar-reembolso-titulo-{{ compra.pk }}"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <form class="modal-content" method="post" action="{% url 'compras:marcar_reembolso' compra.pk %}" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="marcar-reembolso-titulo-{{ compra.pk }}">Marcar reembolso</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                {{ compra.data }} · {{ compra.resumo }}
+              </p>
+              <div class="mb-4">
+                <label class="form-label" for="reembolso-para-{{ compra.pk }}">Reembolsar para</label>
+                <select class="form-select" id="reembolso-para-{{ compra.pk }}" name="reembolso_para" required>
+                  <option value="">Selecione um usuário</option>
+                  {% for pessoa in pessoas_reembolso %}
+                    <option value="{{ pessoa.pk }}">{{ pessoa.full_name|default:pessoa.email }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-4">
+                <label class="form-label" for="reembolso-valor-{{ compra.pk }}">Valor do reembolso</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="reembolso-valor-{{ compra.pk }}"
+                  name="valor_reembolso"
+                  min="0.01"
+                  step="0.01"
+                  required>
+              </div>
+              <div class="mb-0">
+                <label class="form-label" for="reembolso-obs-{{ compra.pk }}">Observação do reembolso</label>
+                <textarea class="form-control" id="reembolso-obs-{{ compra.pk }}" name="observacao_reembolso" rows="2" maxlength="500"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Marcar reembolso</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
 
   {% if pode_criar and formulario_compra %}
     <div

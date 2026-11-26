@@ -283,6 +283,39 @@ def pode_cancelar_compra(usuario, compra) -> bool:
     ).exists()
 
 
+def pode_excluir_compra(usuario, compra) -> bool:
+    """Diz se a pessoa pode apagar este rascunho agora.
+
+    Apagar só alcança rascunho que ainda não virou nada: sem itens, não há o que
+    perder. Quem responde pelo condomínio decide, como no cancelamento. O que já
+    foi montado não se apaga — cancela-se.
+    """
+    if not pode_cancelar_compra(usuario, compra):
+        return False
+
+    return not compra.itens.exists()
+
+
+def pode_marcar_reembolso(usuario, compra) -> bool:
+    """Diz se a pessoa pode marcar esta compra para reembolso agora.
+
+    Marcar não move dinheiro: só registra que alguém pagou e precisa ser
+    reembolsado. Vale enquanto não houver reembolso nenhum e a compra não
+    estiver cancelada.
+    """
+    from .constants import StatusReembolso
+
+    if not pode_ver_compra(usuario, compra):
+        return False
+    if compra.status == StatusCompra.CANCELADA:
+        return False
+    if compra.status_reembolso != StatusReembolso.NAO_SOLICITADO:
+        return False
+    return condominios_para_gerenciar_compras(usuario).filter(
+        pk=compra.condominio_id
+    ).exists()
+
+
 def pode_registrar_reembolso(usuario, compra) -> bool:
     """Só a gestão do condomínio registra que o dinheiro foi devolvido."""
     from .constants import StatusReembolso

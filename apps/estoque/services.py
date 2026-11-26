@@ -415,6 +415,7 @@ def criar_compra(
     observacao: str = "",
     manutencao_origem=None,
     demanda_origem=None,
+    tem_documento: bool = False,
 ) -> Compra:
     """Abre a compra como rascunho.
 
@@ -422,7 +423,21 @@ def criar_compra(
     confirmação aplica o destino das linhas. Quando a compra nasce de uma
     demanda, a demanda guarda a lembrança de que ela foi registrada — o fato é
     do estoque, e nada mais é copiado para lá.
+
+    A compra não nasce vazia: exige ao menos a data, o fornecedor ou um
+    documento — o que sozinho já diz que houve uma compra. Sem nenhum deles, um
+    rascunho fantasma apareceria na lista sem nada que o explique.
     """
+    if not (
+        data_compra
+        or fornecedor
+        or _texto(numero_documento)
+        or tem_documento
+    ):
+        raise ErroDeEstoque(
+            "Informe a data, o fornecedor ou um documento para abrir a compra."
+        )
+
     compra = Compra(
         condominio=condominio,
         fornecedor=fornecedor,
@@ -473,6 +488,7 @@ def criar_compra_com_documento(*, condominio, criado_por, arquivo, tipo_document
         condominio=condominio,
         criado_por=criado_por,
         data_compra=None,
+        tem_documento=True,
     )
     documento = adicionar_documento_compra(
         compra=compra,
@@ -859,6 +875,38 @@ def configurar_reembolso_compra(
         if precisa_reembolso
         else StatusReembolso.NAO_SOLICITADO
     )
+    compra.reembolsado_em = None
+    _validar(compra)
+    compra.save()
+    return compra
+
+
+@transaction.atomic
+def marcar_reembolso_compra(
+    *,
+    compra: Compra,
+    reembolso_para,
+    valor_reembolso,
+    observacao_reembolso: str = "",
+) -> Compra:
+    """Marca a compra para reembolso direto da lista, sem passar pela edição.
+
+    A compra já confirmada continua valendo: o que muda é só a intenção de
+    devolver o dinheiro a quem pagou. O reembolso fica pendente até que alguém
+    registre que ele foi pago.
+    """
+    compra = Compra.objects.select_for_update().get(pk=compra.pk)
+    if compra.status == StatusCompra.CANCELADA:
+        raise ErroDeEstoque("Uma compra cancelada não recebe reembolso.")
+    if compra.status_reembolso != StatusReembolso.NAO_SOLICITADO:
+        raise ErroDeEstoque("Esta compra já tem um reembolso registrado.")
+
+    compra.comprada_por_outra_pessoa = True
+    compra.precisa_reembolso = True
+    compra.reembolso_para = reembolso_para
+    compra.valor_reembolso = _dinheiro(valor_reembolso)
+    compra.observacao_reembolso = _texto_longo(observacao_reembolso)
+    compra.status_reembolso = StatusReembolso.PENDENTE
     compra.reembolsado_em = None
     _validar(compra)
     compra.save()

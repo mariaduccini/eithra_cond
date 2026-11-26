@@ -625,6 +625,56 @@ class ReembolsoCompraForm(forms.Form):
         return dados
 
 
+class MarcarReembolsoCompraForm(forms.Form):
+    """Marca uma compra para reembolso direto da lista, sem passar pela edição."""
+
+    reembolso_para = forms.ModelChoiceField(
+        label="Reembolsar para",
+        queryset=get_user_model().objects.none(),
+        empty_label="Selecione um usuário",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    valor_reembolso = forms.DecimalField(
+        label="Valor do reembolso",
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "min": "0.01", "step": "0.01"}
+        ),
+    )
+    observacao_reembolso = forms.CharField(
+        label="Observação do reembolso",
+        required=False,
+        max_length=500,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+    )
+
+    def __init__(self, *args, condominio=None, total=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if condominio is not None:
+            self.fields["reembolso_para"].queryset = (
+                get_user_model()
+                .objects.filter(
+                    is_active=True,
+                    acessos_condominio__condominio=condominio,
+                    acessos_condominio__ativo=True,
+                )
+                .distinct()
+                .order_by("full_name", "email")
+            )
+        self.total_compra = total
+
+    def clean_valor_reembolso(self):
+        valor = self.cleaned_data["valor_reembolso"]
+        if valor <= 0:
+            raise forms.ValidationError("O valor precisa ser maior que zero.")
+        if self.total_compra is not None and valor > self.total_compra:
+            raise forms.ValidationError(
+                "O reembolso não pode superar o total da compra."
+            )
+        return valor
+
+
 class CadastrarItemExtraidoForm(forms.Form):
     """Revisa nome e categoria antes de criar um item no catálogo canônico."""
 

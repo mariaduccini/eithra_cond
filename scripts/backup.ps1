@@ -247,6 +247,19 @@ try {
 
     # (f) Sucesso.
     Gravar-Log ("Backup criptografado concluido com sucesso: $arquivoZip ({0:N0} bytes)." -f (Get-Item -LiteralPath $arquivoZip).Length)
+
+    # (g) Limpeza de rascunhos de compra que nunca viraram nada. Falha aqui nao
+    # derruba o backup: a limpeza e acessoria, o zip ja esta gravado.
+    try {
+        Push-Location $raizProjeto
+        try {
+            $saidaLimpeza = & python manage.py limpar_rascunhos_vazios 2>&1
+        } finally { Pop-Location }
+        Gravar-Log ("Limpeza de rascunhos vazios: {0}" -f (($saidaLimpeza | Out-String).Trim()))
+    }
+    catch {
+        Gravar-Log ("Falha ao limpar rascunhos vazios: {0}" -f $_.Exception.Message) 'ERRO'
+    }
 }
 catch {
     Gravar-Log ("ERRO no backup: {0}" -f $_.Exception.Message) 'ERRO'

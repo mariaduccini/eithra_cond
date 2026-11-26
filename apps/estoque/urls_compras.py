@@ -63,9 +63,15 @@ urlpatterns = [
     ),
     path("<uuid:pk>/confirmar/", views.confirmar, name="confirmar"),
     path(
+        "<uuid:pk>/reembolso/",
+        views.marcar_reembolso_compra_view,
+        name="marcar_reembolso",
+    ),
+    path(
         "<uuid:pk>/reembolso/realizado/",
         views.marcar_reembolso_realizado_view,
         name="marcar_reembolso_realizado",
     ),
+    path("<uuid:pk>/excluir/", views.excluir_rascunho, name="excluir"),
     path("<uuid:pk>/cancelar/", views.cancelar, name="cancelar"),
 ]

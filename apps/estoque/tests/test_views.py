@@ -14,6 +14,7 @@ from apps.condominios.constants import Papel
 from apps.estoque.constants import (
     DestinoDoItem,
     StatusCompra,
+    StatusReembolso,
     TipoMovimentacaoEstoque,
 )
 from apps.estoque.models import Compra, ItemEstoque, MovimentacaoEstoque
@@ -321,3 +322,94 @@ class ComprasTests(BaseDeTelas):
             resposta.context["item"]["ultima_compra"],
             date.today().strftime("%d/%m/%Y"),
         )
+
+
+class RascunhoVazioTests(BaseDeTelas):
+    """Abrir a compra e sair sem salvar não deixa rascunho fantasma."""
+
+    def test_abrir_o_formulario_nao_cria_compra(self):
+        resposta = self.client.get(reverse("compras:criar"))
+        self.assertEqual(resposta.status_code, 200)
+        self.assertEqual(Compra.objects.count(), 0)
+
+    def test_salvar_sem_dados_nao_cria_compra(self):
+        resposta = self.client.post(
+            reverse("compras:criar"), {"condominio": str(self.condominio.pk)}
+        )
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(Compra.objects.count(), 0)
+
+
+class AcoesDaListagemTests(BaseDeTelas):
+    """Excluir rascunho e o ciclo do reembolso, direto da lista."""
+
+    def _confirmada(self, **campos):
+        compra = self._compra(**campos)
+        self.client.post(
+            reverse("compras:adicionar_linha", args=[compra.pk]),
+            {
+                "descricao": "Lâmpada",
+                "unidade": "unidade",
+                "quantidade": "2",
+                "valor_unitario": "10.00",
+                "destino": DestinoDoItem.USO_IMEDIATO,
+            },
+        )
+        self.client.post(reverse("compras:confirmar", args=[compra.pk]))
+        compra.refresh_from_db()
+        return compra
+
+    def _colega(self):
+        colega = criar_pessoa("outra@exemplo.test", "Outra Pessoa")
+        criar_vinculo(colega, self.condominio, papel=Papel.MORADOR)
+        return colega
+
+    def test_excluir_apaga_rascunho_sem_itens(self):
+        compra = self._compra()
+        resposta = self.client.post(reverse("compras:excluir", args=[compra.pk]))
+        self.assertEqual(resposta.status_code, 302)
+        self.assertFalse(Compra.objects.filter(pk=compra.pk).exists())
+
+    def test_excluir_nao_apaga_compra_confirmada(self):
+        compra = self._confirmada()
+        resposta = self.client.post(reverse("compras:excluir", args=[compra.pk]))
+        self.assertEqual(resposta.status_code, 403)
+        self.assertTrue(Compra.objects.filter(pk=compra.pk).exists())
+
+    def test_marcar_reembolso_grava_os_campos(self):
+        compra = self._confirmada()
+        colega = self._colega()
+
+        resposta = self.client.post(
+            reverse("compras:marcar_reembolso", args=[compra.pk]),
+            {
+                "reembolso_para": str(colega.pk),
+                "valor_reembolso": "20.00",
+                "observacao_reembolso": "Paguei no cartão",
+            },
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        compra.refresh_from_db()
+        self.assertEqual(compra.status_reembolso, StatusReembolso.PENDENTE)
+        self.assertTrue(compra.precisa_reembolso)
+        self.assertEqual(compra.reembolso_para_id, colega.pk)
+        self.assertEqual(compra.valor_reembolso, Decimal("20.00"))
+        self.assertIsNone(compra.reembolsado_em)
+
+    def test_pagar_reembolso_grava_a_data(self):
+        compra = self._confirmada()
+        colega = self._colega()
+        self.client.post(
+            reverse("compras:marcar_reembolso", args=[compra.pk]),
+            {"reembolso_para": str(colega.pk), "valor_reembolso": "20.00"},
+        )
+
+        resposta = self.client.post(
+            reverse("compras:marcar_reembolso_realizado", args=[compra.pk])
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        compra.refresh_from_db()
+        self.assertEqual(compra.status_reembolso, StatusReembolso.REEMBOLSADO)
+        self.assertIsNotNone(compra.reembolsado_em)
