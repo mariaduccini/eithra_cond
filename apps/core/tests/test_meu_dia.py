@@ -199,7 +199,7 @@ class VazioDoMeuDiaTests(BaseDoMeuDiaTests):
 
 
 class MenuDoMeuDiaTests(BaseDoMeuDiaTests):
-    """O item de menu existe só para quem conduz o dia."""
+    """O item de menu existe para quem conduz ou acompanha o dia."""
 
     def _home(self, usuario):
         self.client.force_login(usuario)
@@ -218,5 +218,92 @@ class MenuDoMeuDiaTests(BaseDoMeuDiaTests):
         criar_vinculo(porteiro, self.condominio, Papel.PORTEIRO)
         self.assertContains(self._home(porteiro), 'href="/meu-dia/"')
 
-    def test_gestao_nao_ve_o_item_de_menu(self):
-        self.assertNotContains(self._home(self.gestao), 'href="/meu-dia/"')
+    def test_gestao_ve_o_item_de_menu(self):
+        """A síndica acompanha o dia da equipe: o item aparece para ela."""
+        self.assertContains(self._home(self.gestao), 'href="/meu-dia/"')
+
+    def test_morador_nao_ve_o_item_de_menu(self):
+        morador = criar_pessoa("morador@exemplo.test", "Morador")
+        criar_vinculo(morador, self.condominio, Papel.MORADOR)
+        self.assertNotContains(self._home(morador), 'href="/meu-dia/"')
+
+
+class AcompanharODiaDaEquipeTests(BaseDoMeuDiaTests):
+    """A administradora e a síndica acompanham o dia de quem executa.
+
+    Elas não conduzem o próprio dia: veem o dia da equipe pelo parâmetro
+    ``?pessoa=``, limitado ao condomínio em vista. Quem executa nunca sai do
+    próprio dia — o parâmetro é ignorado para ele.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.supervisora = criar_pessoa("super@exemplo.test", "Sueli Supervisora")
+        criar_vinculo(self.supervisora, self.condominio, Papel.SUPERVISORA)
+
+    def _pagina(self, usuario, **parametros):
+        self.client.force_login(usuario)
+        return self.client.get(reverse("core:meu_dia"), parametros or None)
+
+    def test_a_sindica_ve_o_proprio_dia_sem_escolha(self):
+        self._manutencao(self.gestao, "Assinar contrato", data_prevista=self.hoje)
+        resposta = self._pagina(self.gestao)
+        self.assertContains(resposta, "Ver o dia de:")
+        self.assertNotContains(resposta, "Você está vendo o dia de")
+
+    def test_a_sindica_ve_o_dia_da_supervisora(self):
+        self._manutencao(
+            self.supervisora, "Vistoria do salão", data_prevista=self.hoje
+        )
+        resposta = self._pagina(self.gestao, pessoa=self.supervisora.pk)
+        self.assertContains(resposta, "Vistoria do salão")
+        self.assertContains(resposta, "Você está vendo o dia de")
+        self.assertContains(resposta, "Sueli Supervisora (Supervisão)")
+
+    def test_a_supervisora_nao_ve_o_dia_de_outra_pessoa(self):
+        """Para quem executa, o parâmetro é ignorado: só o próprio dia."""
+        self._manutencao(
+            self.supervisora, "Vistoria do salão", data_prevista=self.hoje
+        )
+        self._manutencao(self.gestao, "Assinar contrato", data_prevista=self.hoje)
+        resposta = self._pagina(self.supervisora, pessoa=self.gestao.pk)
+        self.assertContains(resposta, "Vistoria do salão")
+        self.assertNotContains(resposta, "Assinar contrato")
+        self.assertNotContains(resposta, "Você está vendo o dia de")
+        self.assertNotContains(resposta, "Ver o dia de:")
+
+    def test_pessoa_de_outro_condominio_responde_404(self):
+        outro = criar_condominio("Beta")
+        forasteiro = criar_pessoa("forasteiro@exemplo.test", "Forasteiro")
+        criar_vinculo(forasteiro, outro, Papel.SUPERVISORA)
+
+        resposta = self._pagina(self.gestao, pessoa=forasteiro.pk)
+
+        self.assertEqual(resposta.status_code, 404)
+
+    def test_o_seletor_lista_so_a_equipe_do_condominio(self):
+        self._manutencao(self.supervisora, "Vistoria", data_prevista=self.hoje)
+        resposta = self._pagina(self.gestao)
+        self.assertContains(resposta, "Eu")
+        self.assertContains(resposta, "Sueli Supervisora (Supervisão)")
+        self.assertContains(resposta, "Operador (Operacional)")
+        # A gestão não é equipe: não aparece como opção de leitura.
+        self.assertNotContains(resposta, "Gestão (Síndico(a))")
+
+
+class BlocoDoMeuDiaNaHomeTests(BaseDoMeuDiaTests):
+    """O bloco "Meu dia" da Home continua só para quem executa."""
+
+    def test_a_gestao_nao_recebe_o_bloco_na_home(self):
+        self._manutencao(self.gestao, "Assinar contrato", data_prevista=self.hoje)
+        self.client.force_login(self.gestao)
+        self.assertNotContains(
+            self.client.get(reverse("core:home")), "O que é seu para fazer hoje."
+        )
+
+    def test_a_operacao_recebe_o_bloco_na_home(self):
+        self._manutencao(self.operador, "Ajustar portão", data_prevista=self.hoje)
+        self.client.force_login(self.operador)
+        self.assertContains(
+            self.client.get(reverse("core:home")), "O que é seu para fazer hoje."
+        )

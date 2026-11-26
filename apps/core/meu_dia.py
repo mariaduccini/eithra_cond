@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from apps.condominios.acesso import condominios_com_papel
 from apps.condominios.constants import Papel
+from apps.condominios.models import AcessoUsuarioCondominio
 from apps.demandas.models import Demanda
 from apps.demandas.permissoes import condominios_para_ver as demandas_que_vejo
 from apps.manutencoes.models import Manutencao
@@ -31,6 +32,11 @@ from apps.rotinas.permissoes import condominios_para_ver as rotinas_que_vejo
 PAPEIS_DO_MEU_DIA = frozenset(
     {Papel.SUPERVISORA, Papel.OPERACIONAL, Papel.PORTEIRO}
 )
+
+# Quem acompanha o dia da equipe: a administradora e a síndica. Elas respondem
+# pelo condomínio e, por isso, enxergam o dia de quem executa — sem conduzir o
+# próprio dia. Não é um "meu dia" delas: é a leitura do dia de outra pessoa.
+PAPEIS_QUE_ACOMPANHAM = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
 
 TIPO_ROTINA = "rotina"
 TIPO_MANUTENCAO = "manutencao"
@@ -62,13 +68,63 @@ class ItemDoMeuDia:
 
 
 def condominios_do_meu_dia(usuario):
-    """Os condomínios em que a pessoa conduz o dia, na ordem alfabética."""
-    return condominios_com_papel(usuario, PAPEIS_DO_MEU_DIA).order_by("nome")
+    """Os condomínios em que a pessoa tem o dia em vista, na ordem alfabética.
+
+    Reúne quem conduz o próprio dia — supervisão, operação e portaria — e quem
+    acompanha o dia da equipe — administradora e síndica. A leitura de cada dia
+    é a mesma; muda quem está em vista.
+    """
+    return condominios_com_papel(
+        usuario, PAPEIS_DO_MEU_DIA | PAPEIS_QUE_ACOMPANHAM
+    ).order_by("nome")
 
 
 def pode_ver_meu_dia(usuario) -> bool:
-    """Diz se a pessoa tem o dia a conduzir em algum condomínio."""
+    """Diz se a pessoa tem o dia a conduzir ou a acompanhar em algum condomínio."""
     return condominios_do_meu_dia(usuario).exists()
+
+
+def pode_acompanhar_o_dia(usuario, condominio) -> bool:
+    """Diz se a pessoa acompanha o dia da equipe neste condomínio.
+
+    É o recorte da administradora e da síndica: só quem responde pelo condomínio
+    escolhe de quem é o dia que está vendo. Sem condomínio, a resposta é negar.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return False
+    return condominios_com_papel(usuario, PAPEIS_QUE_ACOMPANHAM).filter(
+        pk=condominio.pk
+    ).exists()
+
+
+def equipe_do_condominio(condominio) -> list[dict]:
+    """Quem executa o dia neste condomínio, para a gestão acompanhar.
+
+    São os vínculos ativos de supervisão, operação e portaria, ordenados por
+    papel e nome. Cada pessoa traz o rótulo que o seletor mostra — o nome e o
+    papel entre parênteses. Sem condomínio, a equipe é vazia.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return []
+
+    acessos = (
+        AcessoUsuarioCondominio.objects.filter(
+            condominio=condominio,
+            ativo=True,
+            papel__in=PAPEIS_DO_MEU_DIA,
+            usuario__is_active=True,
+        )
+        .select_related("usuario")
+        .order_by("papel", "usuario__full_name")
+    )
+    return [
+        {
+            "id": str(acesso.usuario_id),
+            "nome": acesso.usuario.full_name or str(acesso.usuario),
+            "rotulo": f"{acesso.usuario} ({acesso.get_papel_display()})",
+        }
+        for acesso in acessos
+    ]
 
 
 def itens_do_meu_dia(usuario, condominio, hoje=None) -> list[ItemDoMeuDia]:

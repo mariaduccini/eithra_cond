@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q, Sum
@@ -28,7 +29,9 @@ from apps.balancos.permissoes import (
     condominios_para_ler,
     condominios_para_ler_publicados,
 )
+from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.condominios import logo
+from apps.condominios.acesso import condominios_com_papel
 from apps.core import email_acoes
 from apps.core.acompanhamento import (
     GESTO_ATUALIZAR,
@@ -40,7 +43,13 @@ from apps.core.acompanhamento import (
     registrar_atualizacao,
 )
 from apps.core.email_interpretacao import Consequencia
-from apps.core.meu_dia import condominios_do_meu_dia, itens_do_meu_dia
+from apps.core.meu_dia import (
+    PAPEIS_DO_MEU_DIA,
+    condominios_do_meu_dia,
+    equipe_do_condominio,
+    itens_do_meu_dia,
+    pode_acompanhar_o_dia,
+)
 from apps.core.supervisao import (
     ORIGEM_DEMANDA,
     ORIGEM_MANUTENCAO,
@@ -202,9 +211,12 @@ def home(request):
 
     # O "Meu dia" na Home é o aperitivo de quem conduz a operação do dia: os
     # três primeiros itens do condomínio em vista. A leitura é a mesma da tela
-    # (apps.core.meu_dia); aqui só se corta o topo. Quem não conduz o dia não
-    # recebe o bloco — a leitura devolve vazio e nada é desenhado.
-    meu_dia_condominios = list(condominios_do_meu_dia(request.user))
+    # (apps.core.meu_dia); aqui só se corta o topo. Só quem conduz o próprio dia
+    # recebe o bloco — a administradora e a síndica acompanham o dia da equipe
+    # na tela, mas o bloco da Home continua sendo de quem executa.
+    meu_dia_condominios = list(
+        condominios_com_papel(request.user, PAPEIS_DO_MEU_DIA).order_by("nome")
+    )
     meu_dia_itens = []
     meu_dia_total = 0
     tem_mais_meu_dia = False
@@ -291,10 +303,28 @@ def meu_dia(request):
     responde com o que já responde e a leitura reúne (``apps.core.meu_dia``).
     Aqui só se resolve o condomínio em vista — o mesmo do resto do sistema, com
     a escolha do endereço conferida contra a lista autorizada — e se apresenta.
+
+    Quem responde pelo condomínio — administradora e síndica — pode ver o dia de
+    alguém da equipe pelo parâmetro ``?pessoa=``. Para os demais, o parâmetro é
+    ignorado e a tela mostra o próprio dia: ninguém lê o dia alheio por engano.
     """
     condominios = list(condominios_do_meu_dia(request.user))
     condominio = _condominio_da_home(request, condominios)
-    itens = itens_do_meu_dia(request.user, condominio)
+
+    # A escolha de quem ver só existe para quem acompanha o dia da equipe neste
+    # condomínio; os demais nunca saem do próprio dia.
+    pode_acompanhar = pode_acompanhar_o_dia(request.user, condominio)
+    equipe = equipe_do_condominio(condominio) if pode_acompanhar else []
+    pessoa_escolhida = (
+        _pessoa_do_dia_escolhida(request, equipe) if pode_acompanhar else None
+    )
+    pessoa_vista = request.user
+    if pessoa_escolhida is not None:
+        pessoa_vista = get_object_or_404(
+            get_user_model(), pk=pessoa_escolhida["id"]
+        )
+
+    itens = itens_do_meu_dia(pessoa_vista, condominio)
     return render(
         request,
         "pages/core/meu_dia.html",
@@ -306,8 +336,30 @@ def meu_dia(request):
             "itens": itens,
             "total": len(itens),
             "saudacao": _saudacao_do_dia(),
+            # O seletor e a faixa de pré-visualização existem só para quem
+            # acompanha o dia da equipe.
+            "pode_acompanhar": pode_acompanhar,
+            "equipe": equipe,
+            "pessoa_escolhida": pessoa_escolhida,
         },
     )
+
+
+def _pessoa_do_dia_escolhida(request, equipe):
+    """A pessoa cujo dia a gestão quer ver, ou None quando é o próprio dia.
+
+    Um id fora da equipe do condomínio — e que não seja o próprio pedinte — não
+    existe para esta tela: a resposta é 404, para não revelar quem está fora do
+    alcance de quem pergunta. Um parâmetro vazio ou ilegível não escolhe
+    ninguém: a tela segue no próprio dia.
+    """
+    pedido = (request.GET.get("pessoa") or "").strip()
+    if not pedido or pedido == str(request.user.pk):
+        return None
+    membro = next((item for item in equipe if item["id"] == pedido), None)
+    if membro is None:
+        raise Http404("Pessoa não encontrada na equipe do condomínio.")
+    return membro
 
 
 def _saudacao_do_dia() -> str:
