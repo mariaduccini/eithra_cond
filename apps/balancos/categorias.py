@@ -135,6 +135,11 @@ REGRAS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "horas extras",
             "adicional noturno",
             "convencao coletiva",
+            "mao de obra",
+            "locacao de mao de obra",
+            "terceirizacao",
+            "terceirizada",
+            "prestacao de servicos com locacao",
         ),
     ),
     (
@@ -304,7 +309,11 @@ def _primeira_correspondencia(texto: str | None) -> str | None:
 
     for categoria, termos in REGRAS:
         for termo in termos:
-            padrao = rf"(?<![a-z0-9]){re.escape(termo)}(?![a-z0-9])"
+            if termo in ("obra", "obras"):
+                # "mão de obra" é Pessoal: o "obra" solto não pode levar a Obras.
+                padrao = rf"(?<![a-z0-9])(?<!mao de ){re.escape(termo)}(?![a-z0-9])"
+            else:
+                padrao = rf"(?<![a-z0-9]){re.escape(termo)}(?![a-z0-9])"
             if re.search(padrao, alvo):
                 return categoria
 

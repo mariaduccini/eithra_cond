@@ -363,6 +363,27 @@ def _registrar(
     )
 
 
+def registrar_revisao_automatica(
+    leitura: dict, *, tipo: str, justificativa: str, quando=None
+) -> None:
+    """Acrescenta ao histórico uma revisão feita pelo próprio sistema.
+
+    A reclassificação automática não tem autor humano: quem responde é o Eithra.
+    A revisão entra no mesmo histórico das correções, para que a mudança fique
+    rastreável ao lado das decisões da gestão — e não se confunda com elas.
+    """
+    _registrar(
+        leitura,
+        tipo=tipo,
+        lancamento_id="",
+        lancamento="",
+        mudancas=[],
+        justificativa=justificativa,
+        usuario=None,
+        quando=quando,
+    )
+
+
 def normalizar_justificativa(texto: str) -> str:
     """Deixa a justificativa limpa e recusa o vazio — correção sem porquê não entra."""
     justificativa = " ".join((texto or "").split())
