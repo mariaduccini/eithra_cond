@@ -9,7 +9,7 @@
 6. **Pense e escreva em português, com frases curtas.** Nada de rascunho longo antes de editar: edite cedo e deixe os testes mostrarem os problemas.
 7. **Testes:** rode só os módulos indicados, sempre com `.\test-local.ps1 --noinput --keepdb apps.<modulo>`. Nunca rode a suíte inteira. Falhas fora dos módulos indicados já existiam: não corrija.
 8. **Comandos longos:** espere o resultado. Não deixe teste rodando em segundo plano enquanto faz outra coisa.
-9. **Uma entrega por conversa.** Se chegar um segundo pedido na mesma conversa, termine o primeiro (com commit) e responda: "Abra uma conversa nova para o próximo pedido."
+9. **Vários pedidos na mesma conversa: um de cada vez, na ordem.** Termine o pedido atual com testes, commit e push. Só então comece o próximo: rode `git status` (tem que estar limpo) e `git log -1 --oneline`, e siga sem pedir licença. Cada pedido tem o seu commit e o seu resumo; nunca junte dois pedidos num commit só.
 
 ## Git
 - Antes de começar, confira com `git branch --show-current` que está em `main`. Se não estiver, pare e avise.
