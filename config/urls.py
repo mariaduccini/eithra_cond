@@ -18,6 +18,9 @@ def _endereco_do_admin() -> str:
 
 
 urlpatterns = [
+    # O manifest do aplicativo instalável. Fica na raiz e sem exigir entrada:
+    # o navegador do celular o busca ao "Adicionar à tela inicial".
+    path("manifest.webmanifest", views.manifest, name="manifest"),
     path("", include("apps.core.urls")),
     path("conta/", include("apps.accounts.urls")),
     path("balancos/", include("apps.balancos.urls")),
@@ -41,7 +44,8 @@ handler404 = views.page_not_found_view
 handler500 = views.server_error_view
 
 # No desenvolvimento o provedor local guarda os arquivos sob MEDIA_ROOT, e é o
-# próprio Django que os serve. Em produção quem serve é o provedor remoto, e
-# esta rota nem existe.
-if settings.DEBUG:
+# próprio Django que os serve. Quem também serve é o acesso remoto
+# (config.settings.remoto): lá o armazenamento é local, mas a depuração está
+# desligada — sem esta rota, as logos e as fotos não apareceriam no celular.
+if settings.DEBUG or getattr(settings, "EITHRA_SERVIR_MEDIA", False):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

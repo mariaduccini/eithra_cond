@@ -8,6 +8,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {# A cor do sistema colora a barra do navegador no celular, e o manifest é o
+    que permite "Adicionar à tela inicial" abrir o Eithra como aplicativo. #}
+    <meta name="theme-color" content="#36545b" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>{% block title %}Eithra{% endblock %}</title>
     <meta name="description" content="Eithra — gestão condominial" />
     {% block extra_head %}{% endblock %}
