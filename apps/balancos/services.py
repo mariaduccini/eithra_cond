@@ -308,14 +308,23 @@ def pode_reler(importacao) -> bool:
     return bool(importacao.pode_reler)
 
 
-def reler_importacao(importacao, *, provider=None) -> None:
+def reler_importacao(importacao, *, provider=None, permitir_relida=False) -> None:
     """Repete a detecção e a leitura sobre o arquivo já guardado.
 
     Não há novo upload e nada é substituído: a releitura serve para a importação
     que ficou sem leitura — por exemplo, um balancete escaneado reconhecido
     depois que o OCR local passou a existir. Importação com desfecho é recusada.
+
+    ``permitir_relida`` é a exceção explícita para a leitura legada que rodou e
+    não rendeu lançamento nenhum: a importação tem resultado, mas vazio, e a
+    releitura é exatamente o que corrige isso. Nem assim um balanço confirmado é
+    relido — a confirmação continua sendo o fim da linha.
     """
-    if not pode_reler(importacao):
+    if importacao.confirmado_em or importacao.descartado_em:
+        raise ErroDeReleitura(
+            "Esta importação já foi confirmada ou descartada; ela não é relida."
+        )
+    if not permitir_relida and not pode_reler(importacao):
         raise ErroDeReleitura(
             "Esta importação já tem leitura ou já foi confirmada; ela não é relida."
         )

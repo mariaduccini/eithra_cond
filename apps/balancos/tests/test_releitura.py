@@ -137,3 +137,31 @@ class ComandoRelerImportacoesTests(BaseDoBalanceteTests):
 
         reler.assert_called_once()
         self.assertEqual(reler.call_args.args[0].pk, desconhecida.pk)
+
+
+class ComandoRelerLegadoSemLinhasTests(BaseDoBalanceteTests):
+    """O --legado-sem-linhas relê só o legado sem lançamento, nunca o confirmado."""
+
+    def test_rele_o_legado_sem_lancamentos(self):
+        sem_linhas = self.importacao(layout=LayoutBalanco.LEGADO)
+
+        with patch(
+            "apps.balancos.management.commands.reler_importacoes.reler_importacao"
+        ) as reler:
+            call_command("reler_importacoes", "--legado-sem-linhas")
+
+        reler.assert_called_once()
+        self.assertEqual(reler.call_args.args[0].pk, sem_linhas.pk)
+        self.assertTrue(reler.call_args.kwargs["permitir_relida"])
+
+    def test_nao_toca_em_importacao_confirmada(self):
+        confirmada = self.importacao(layout=LayoutBalanco.LEGADO)
+        confirmada.confirmado_em = timezone.now()
+        confirmada.save(update_fields=["confirmado_em", "atualizado_em"])
+
+        with patch(
+            "apps.balancos.management.commands.reler_importacoes.reler_importacao"
+        ) as reler:
+            call_command("reler_importacoes", "--legado-sem-linhas")
+
+        reler.assert_not_called()
