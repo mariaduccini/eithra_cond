@@ -31,6 +31,7 @@ urlpatterns = [
     path("<uuid:pk>/atualizar/", views.atualizar, name="atualizar"),
     path("<uuid:pk>/concluir/", views.concluir, name="concluir"),
     path("<uuid:pk>/situacao/", views.mudar_status, name="mudar_status"),
+    path("<uuid:pk>/responsavel/", views.mudar_responsavel, name="mudar_responsavel"),
     path("<uuid:pk>/observar/", views.observar, name="observar"),
     path("<uuid:pk>/acompanhamento/", views.acompanhar, name="acompanhar"),
     # A pré-visualização da gestão: cria o acompanhamento do morador quando ele

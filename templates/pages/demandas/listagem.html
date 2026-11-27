@@ -367,7 +367,7 @@
       aria-hidden="{% if modal_aberto == 'criar' %}false{% else %}true{% endif %}"
       {% if modal_aberto == 'criar' %}data-eithra-descartar="{{ descartar_url }}"{% endif %}>
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg eithra-modal-wizard">
-        <form class="modal-content" method="post" action="{% url 'demandas:criar' %}" novalidate>
+        <form class="modal-content" method="post" action="{% url 'demandas:criar' %}" enctype="multipart/form-data" novalidate>
           {% csrf_token %}
           <div class="modal-header">
             <div>
@@ -630,6 +630,37 @@
                   </div>
                 </div>
               </div>
+
+              {% comment %}O clipe dos anexos: a foto, o PDF ou o vídeo escolhidos
+              aqui viajam no mesmo envio que cria a demanda — e o que não for
+              registrado não deixa nada guardado. As miniaturas mostram o que foi
+              escolhido antes de confirmar, e cada uma se remove sem sair da
+              janela.{% endcomment %}
+              <div class="mt-3">
+                <div class="fw-medium mb-2">Anexos (opcional)</div>
+                <div class="eithra-clipe">
+                  <input
+                    type="file"
+                    name="evidencias"
+                    id="id_evidencias_registro"
+                    class="eithra-clipe-entrada"
+                    accept="{{ limites_evidencia.aceite }}"
+                    multiple>
+                  <button
+                    type="button"
+                    class="eithra-acao-icone"
+                    data-eithra-clipe="#id_evidencias_registro"
+                    title="Anexar foto, documento ou vídeo"
+                    aria-label="Anexar foto, documento ou vídeo">
+                    <i class="bx bx-paperclip" aria-hidden="true"></i>
+                  </button>
+                  <span class="eithra-clipe-texto">
+                    {{ limites_evidencia.formatos }}, até {{ limites_evidencia.foto }} por foto,
+                    {{ limites_evidencia.documento }} por documento e {{ limites_evidencia.video }} por vídeo.
+                  </span>
+                </div>
+                <div class="eithra-miniaturas" data-eithra-miniaturas="#id_evidencias_registro" hidden></div>
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -745,6 +776,11 @@
   para um botão que não está na tela.{% endcomment %}
   {% if voz_disponivel %}
     <script src="{% static 'js/eithra-ditar.js' %}"></script>
+  {% endif %}
+  {% comment %}O clipe e as miniaturas do registro: quem registra a demanda pode
+  escolher a prova no mesmo envio que a cria.{% endcomment %}
+  {% if pode_criar %}
+    <script src="{% static 'js/eithra-anexos.js' %}"></script>
   {% endif %}
   {% if pode_concluir_alguma %}
     <script>

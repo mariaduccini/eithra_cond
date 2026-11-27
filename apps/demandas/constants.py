@@ -163,23 +163,32 @@ class TipoMidiaEvidencia(models.TextChoices):
     """O que a evidência é, do ponto de vista de quem vai olhar.
 
     Foto e vídeo são a mesma coisa — prova do que se sabe — ditas em duas
-    linguagens. O tipo existe porque a tela mostra cada uma do seu jeito:
-    miniatura e ampliação para a foto, reprodução sob ação para o vídeo.
+    linguagens. O documento é a terceira: uma proposta, um laudo ou uma nota
+    que sustenta a demanda sem ser uma imagem. O tipo existe porque a tela
+    mostra cada um do seu jeito: miniatura e ampliação para a foto, reprodução
+    sob ação para o vídeo, e uma linha com o nome e o tamanho para o documento.
     """
 
     FOTO = "foto", "Foto"
     VIDEO = "video", "Vídeo"
+    DOCUMENTO = "documento", "Documento"
 
 
 # O que a evidência pode ser, no banco e na borda. A mesma lista serve à
 # validação do upload e à restrição do modelo, para que aplicação e banco não
 # divirjam sobre o que é uma evidência aceita.
+#
+# HEIC e HEIF não entram aqui de propósito: a foto de celular é convertida para
+# JPG ainda na borda, e o que o banco conhece é o tipo guardado — nunca o
+# formato de origem. O que o seletor de arquivo oferece é maior do que esta
+# lista, e é dito em ``ACEITE_DE_EVIDENCIA``.
 MIMES_DE_EVIDENCIA = (
     "image/jpeg",
     "image/png",
     "image/webp",
     "video/mp4",
     "video/webm",
+    "application/pdf",
 )
 
 

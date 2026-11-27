@@ -336,6 +336,12 @@ DEMANDAS_MAX_FOTO_BYTES = env.int(
 DEMANDAS_MAX_VIDEO_BYTES = env.int(
     "DEMANDAS_MAX_VIDEO_BYTES", default=25 * 1024 * 1024
 )
+# 20 MB por documento. A proposta, o laudo ou a nota em PDF sustentam a demanda
+# e costumam ser maiores que uma foto; o limite dá espaço ao documento real sem
+# abrir a porta para um arquivo de trabalho disfarçado.
+DEMANDAS_MAX_DOCUMENTO_BYTES = env.int(
+    "DEMANDAS_MAX_DOCUMENTO_BYTES", default=20 * 1024 * 1024
+)
 # Quantos arquivos a gestão pode anexar numa mesma atualização. Em excesso, o
 # histórico vira galeria e deixa de ser memória.
 DEMANDAS_MAX_EVIDENCIAS_POR_ENVIO = env.int(

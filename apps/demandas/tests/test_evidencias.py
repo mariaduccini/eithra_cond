@@ -16,7 +16,7 @@ from django.urls import reverse
 
 from apps.condominios.constants import Papel
 from apps.demandas.constants import StatusDemanda, TipoEventoDemanda, TipoMidiaEvidencia
-from apps.demandas.models import EvidenciaDemanda
+from apps.demandas.models import Demanda, EvidenciaDemanda
 from apps.demandas.services import alterar_status, criar_demanda
 from apps.demandas.tests.apoio import (
     StorageDeMentira,
@@ -24,8 +24,11 @@ from apps.demandas.tests.apoio import (
     criar_condominio,
     criar_pessoa,
     criar_vinculo,
+    foto_grande,
+    heic,
     jpg,
     mp4,
+    pdf,
     png,
     webm,
 )
@@ -444,3 +447,104 @@ class VisualizacaoDoDetalheTests(BaseDeEvidencias):
         self.assertEqual(resposta.status_code, 200)
         self.assertFalse(resposta.context["tem_evidencias"])
         self.assertNotContains(resposta, 'id="ver-evidencia"')
+
+
+class FormatosNovosTests(BaseDeEvidencias):
+    """A foto de celular vira JPG e o PDF entra como documento."""
+
+    def test_foto_heic_e_guardada_como_jpg(self):
+        demanda = self._demanda()
+
+        resposta = self._anexar(heic(), demanda=demanda)
+
+        self.assertEqual(resposta.status_code, 302)
+        evidencia = EvidenciaDemanda.objects.get()
+        self.assertEqual(evidencia.tipo_midia, TipoMidiaEvidencia.FOTO)
+        self.assertEqual(evidencia.mime_type, "image/jpeg")
+        self.assertTrue(evidencia.storage_key.endswith(".jpg"))
+        self.assertTrue(
+            self.provider.objetos[evidencia.storage_key].startswith(b"\xff\xd8\xff")
+        )
+
+    def test_pdf_e_guardado_como_documento(self):
+        demanda = self._demanda()
+
+        resposta = self._anexar(pdf(), demanda=demanda)
+
+        self.assertEqual(resposta.status_code, 302)
+        evidencia = EvidenciaDemanda.objects.get()
+        self.assertEqual(evidencia.tipo_midia, TipoMidiaEvidencia.DOCUMENTO)
+        self.assertEqual(evidencia.mime_type, "application/pdf")
+
+    def test_pdf_abre_pela_rota_protegida(self):
+        demanda = self._demanda()
+        self._anexar(pdf(), demanda=demanda)
+        evidencia = EvidenciaDemanda.objects.get()
+
+        resposta = self.client.get(
+            reverse("demandas:evidencia_arquivo", args=[demanda.pk, evidencia.pk])
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertIn(evidencia.storage_key, resposta["Location"])
+
+    def test_exe_renomeado_para_pdf_e_recusado(self):
+        """O nome diz PDF, o conteúdo não: quem decide é o conteúdo."""
+        demanda = self._demanda()
+        disfarce = pdf(
+            nome="proposta.pdf",
+            conteudo=b"MZ\x90\x00" + b"\x00" * 64,
+            content_type="application/pdf",
+        )
+
+        resposta = self._anexar(disfarce, demanda=demanda)
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(EvidenciaDemanda.objects.count(), 0)
+        self.assertEqual(self.provider.objetos, {})
+
+    def test_foto_grande_e_reduzida_e_aceita(self):
+        """Passar do limite não perde a prova: a foto é reduzida e guardada."""
+        demanda = self._demanda()
+        arquivo = foto_grande()
+
+        with override_settings(DEMANDAS_MAX_FOTO_BYTES=arquivo.size // 3):
+            resposta = self._anexar(arquivo, demanda=demanda)
+
+        self.assertEqual(resposta.status_code, 302)
+        evidencia = EvidenciaDemanda.objects.get()
+        self.assertEqual(evidencia.mime_type, "image/jpeg")
+        self.assertLess(evidencia.tamanho_bytes, arquivo.size)
+
+
+class AnexoNoRegistroTests(BaseDeEvidencias):
+    """Anexar ao registrar: a prova entra no mesmo envio que cria a demanda."""
+
+    def _registrar(self, arquivos=()):
+        return self.client.post(
+            reverse("demandas:criar"),
+            {
+                "condominio": str(self.condominio.pk),
+                "relato": RELATO,
+                "titulo": RELATO,
+                "evidencias": list(arquivos),
+            },
+        )
+
+    def test_registrar_com_dois_anexos_cria_a_demanda_e_as_evidencias(self):
+        resposta = self._registrar([png(marca="a"), pdf()])
+
+        self.assertEqual(resposta.status_code, 302)
+        self.assertEqual(Demanda.objects.count(), 1)
+        self.assertEqual(EvidenciaDemanda.objects.count(), 2)
+        self.assertEqual(len(self.provider.objetos), 2)
+
+    def test_registro_recusado_nao_deixa_arquivo_no_storage(self):
+        """O primeiro arquivo sobe ao bucket e o segundo é recusado: o conjunto
+        não vingou, então nada pode ficar guardado."""
+        resposta = self._registrar([png(), arquivo_qualquer()])
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(Demanda.objects.count(), 0)
+        self.assertEqual(EvidenciaDemanda.objects.count(), 0)
+        self.assertEqual(self.provider.objetos, {})

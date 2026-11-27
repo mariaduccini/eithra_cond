@@ -24,7 +24,10 @@ from django.views.decorators.http import require_POST
 
 from apps.comunicacao.permissoes import pode_criar_comunicacao
 from apps.condominios import logo
+from apps.condominios.constants import Papel
+from apps.condominios.models import AcessoUsuarioCondominio
 from apps.core import audio
+from apps.core.arquivos import formatar_tamanho
 from apps.core.filtros import tem_filtros
 from apps.core.paginacao import paginar_do_pedido
 from apps.core.storage import ErroDeStorage
@@ -79,6 +82,7 @@ from .permissoes import (
     pode_alterar_status,
     pode_editar_demanda,
     status_permitidos_para,
+    usuarios_elegiveis_como_responsavel,
     usuarios_elegiveis_entre,
 )
 from .services import (
@@ -313,23 +317,51 @@ def criar(request):
         )
 
     dados = formulario.cleaned_data
-    demanda = criar_demanda(
-        condominio=dados["condominio"],
-        criado_por=request.user,
-        titulo=dados["titulo"],
-        descricao=dados["descricao"],
-        prioridade=dados["prioridade"],
-        responsavel=dados["responsavel"],
-        prazo=dados["prazo"],
-        local=dados["local"],
-        local_contexto=dados.get("local_contexto") or "",
-        equipamento=dados.get("equipamento"),
-        tipo_problema=dados.get("tipo_problema"),
-        impacto=dados.get("impacto"),
-        risco=dados.get("risco"),
-        solicitante=dados.get("solicitante"),
-        classificacao_sugerida=dados.get("classificacao_sugerida"),
-    )
+    # O anexo do registro viaja junto do envio que cria a demanda — a mesma
+    # tela, o mesmo clique. Se o arquivo for recusado, nada fica: nem a demanda
+    # sem a prova, nem o objeto sem dono no bucket.
+    arquivos = request.FILES.getlist("evidencias")
+    try:
+        with transaction.atomic():
+            demanda = criar_demanda(
+                condominio=dados["condominio"],
+                criado_por=request.user,
+                titulo=dados["titulo"],
+                descricao=dados["descricao"],
+                prioridade=dados["prioridade"],
+                responsavel=dados["responsavel"],
+                prazo=dados["prazo"],
+                local=dados["local"],
+                local_contexto=dados.get("local_contexto") or "",
+                equipamento=dados.get("equipamento"),
+                tipo_problema=dados.get("tipo_problema"),
+                impacto=dados.get("impacto"),
+                risco=dados.get("risco"),
+                solicitante=dados.get("solicitante"),
+                classificacao_sugerida=dados.get("classificacao_sugerida"),
+            )
+            if arquivos:
+                evento = registrar_evidencia_anexada(
+                    demanda=demanda, usuario=request.user
+                )
+                anexar_evidencias(
+                    demanda=demanda,
+                    arquivos=arquivos,
+                    usuario=request.user,
+                    evento=evento,
+                )
+    except (ErroDeDemanda, ErroDeEvidencia, ErroDeStorage) as erro:
+        formulario.add_error(None, str(erro))
+        return _render_listagem(
+            request,
+            _condominios_para_ver(request),
+            formulario=formulario,
+            modal="criar",
+            registro_etapa="revisao",
+            revisao=_resumo_do_registro(formulario, request.user),
+            status=400,
+        )
+
     messages.success(request, "Demanda registrada.")
     # A demanda recém-criada é uma demanda ativa: quem acabou de registrá-la
     # volta para o recorte operacional, onde ela aparece — sem filtros herdados
@@ -786,6 +818,106 @@ def mudar_status(request, pk):
         return redirect("demandas:detalhe", pk=demanda.pk)
 
     messages.success(request, "Situação atualizada.")
+    return redirect("demandas:detalhe", pk=demanda.pk)
+
+
+# Os alvos curtos do responsável, na ordem em que a tela os oferece. Cada um
+# resolve para quem está pedindo ou para um papel do condomínio — nunca para um
+# identificador que venha do navegador.
+ALVOS_DE_RESPONSAVEL = (
+    ("eu", "Eu"),
+    ("administradora", "Administradora"),
+    ("supervisao", "Supervisão"),
+)
+PAPEIS_DE_ADMINISTRACAO = frozenset({Papel.ADMINISTRADORA, Papel.SINDICA})
+
+
+def _pessoa_com_papel(condominio, papeis):
+    """A primeira pessoa ativa com algum destes papéis no condomínio, ou nada.
+
+    A escolha é determinística — os papéis estão ordenados por nome —, para a
+    mesma demanda apontar sempre para a mesma pessoa enquanto o vínculo existir.
+    """
+    acesso = (
+        AcessoUsuarioCondominio.objects.select_related("usuario")
+        .filter(
+            condominio=condominio,
+            ativo=True,
+            papel__in=papeis,
+            usuario__is_active=True,
+        )
+        .order_by("usuario__full_name", "usuario__email")
+        .first()
+    )
+    return acesso.usuario if acesso else None
+
+
+def _pessoa_do_alvo(usuario, demanda, alvo):
+    """A pessoa que o rótulo curto aponta, dentro deste condomínio."""
+    if alvo == "eu":
+        # Assumir só vale para quem já pode acompanhar este condomínio.
+        if usuarios_elegiveis_como_responsavel(demanda.condominio).filter(
+            pk=usuario.pk
+        ).exists():
+            return usuario
+        return None
+    if alvo == "administradora":
+        return _pessoa_com_papel(demanda.condominio, PAPEIS_DE_ADMINISTRACAO)
+    if alvo == "supervisao":
+        return _pessoa_com_papel(demanda.condominio, {Papel.SUPERVISORA})
+    return None
+
+
+def _responsaveis_disponiveis(usuario, demanda):
+    """Os chips de responsável que este condomínio oferece, com o atual marcado."""
+    disponiveis = []
+    for alvo, rotulo in ALVOS_DE_RESPONSAVEL:
+        pessoa = _pessoa_do_alvo(usuario, demanda, alvo)
+        if pessoa is None:
+            continue
+        disponiveis.append(
+            {
+                "alvo": alvo,
+                "rotulo": rotulo,
+                "nome": _nome_de(pessoa),
+                "atual": pessoa.pk == demanda.responsavel_id,
+            }
+        )
+    return disponiveis
+
+
+@login_required
+@require_POST
+def mudar_responsavel(request, pk):
+    """Troca quem responde pela demanda, em um toque.
+
+    O alvo chega como um rótulo curto — "eu", "administradora", "supervisão" — e
+    é resolvido aqui, pelos papéis que existem neste condomínio. Quem muda só o
+    responsável não toca no resto: o histórico registra uma decisão, e não o ato
+    de abrir e salvar a demanda.
+    """
+    demanda = _demanda_para_observar(request, pk)
+    alvo = _pessoa_do_alvo(request.user, demanda, request.POST.get("alvo", ""))
+    if alvo is None:
+        messages.error(request, "Não encontrei essa pessoa neste condomínio.")
+        return redirect("demandas:detalhe", pk=demanda.pk)
+
+    try:
+        editar_demanda(
+            demanda=demanda,
+            usuario=request.user,
+            titulo=demanda.titulo,
+            descricao=demanda.descricao or "",
+            prioridade=demanda.prioridade,
+            responsavel=alvo,
+            prazo=demanda.prazo,
+            local=demanda.local,
+        )
+    except ErroDeDemanda as erro:
+        messages.error(request, str(erro))
+        return redirect("demandas:detalhe", pk=demanda.pk)
+
+    messages.success(request, "Responsável atualizado.")
     return redirect("demandas:detalhe", pk=demanda.pk)
 
 
@@ -1543,6 +1675,21 @@ def _render_detalhe(
         "mais_acoes": _mais_acoes_da_demanda(
             demanda, request.user, permitidos, manutencao
         ),
+        # Os atalhos do dia a dia: a barra do celular e os ícones ao lado do
+        # título, os mesmos nos dois lugares, cada um só quando a pessoa pode
+        # fazê-lo.
+        "acoes_rapidas": _acoes_rapidas(
+            request, demanda, permitidos, tem_evidencias=bool(provas)
+        ),
+        # As sugestões do momento — regras, não IA —, que aparecem acima da
+        # barra quando a demanda pede um empurrão.
+        "sugestoes_do_momento": _sugestoes_do_momento(
+            request,
+            demanda,
+            permitidos,
+            tem_evidencias=bool(provas),
+            pode_observar=pode_observar,
+        ),
         "formulario_demanda": formulario
         or DemandaForm(condominio=demanda.condominio, initial=_iniciais_da_demanda(demanda)),
         "formulario_status": formulario_status
@@ -2237,6 +2384,192 @@ def _mais_acoes_da_demanda(demanda, usuario, permitidos, manutencao):
     return acoes
 
 
+# As situações que a barra rápida oferece como chips: começar, esperar e
+# encerrar. Cancelar e reabrir continuam no menu de sempre — são raras.
+ROTULO_DA_SITUACAO_RAPIDA = {
+    StatusDemanda.EM_ANDAMENTO: "Em andamento",
+    StatusDemanda.AGUARDANDO: "Aguardando",
+    StatusDemanda.CONCLUIDA: "Concluir",
+}
+SITUACOES_RAPIDAS = tuple(ROTULO_DA_SITUACAO_RAPIDA)
+
+# A régua das sugestões — regras, não leitura de IA: quantos dias parada fazem
+# a demanda pedir notícia, e quanto tempo esperando faz valer a cobrança.
+DIAS_SEM_MOVIMENTO = 7
+DIAS_ESPERANDO = 15
+
+
+def _dias_desde_o_ultimo_movimento(demanda) -> int:
+    """Há quantos dias a demanda não se move (ou desde que foi criada)."""
+    evento = demanda.ultima_movimentacao
+    momento = evento.data_hora if evento is not None else demanda.criado_em
+    return max(0, (timezone.now() - momento).days)
+
+
+def _situacoes_rapidas(permitidos, demanda) -> list[dict]:
+    """Os chips de situação da barra rápida, na ordem do dia a dia."""
+    if demanda.esta_encerrada:
+        return []
+    alcancaveis = {situacao for situacao, _ in acoes_de_status(permitidos, demanda)}
+    return [
+        {
+            "valor": situacao,
+            "rotulo": ROTULO_DA_SITUACAO_RAPIDA[situacao],
+            "icone": ICONE_DA_SITUACAO.get(situacao, "bx-circle"),
+            # Concluir não muda a situação de imediato: pede só a confirmação e o
+            # anexo opcional, na janela de sempre.
+            "conclui": situacao == StatusDemanda.CONCLUIDA,
+        }
+        for situacao in SITUACOES_RAPIDAS
+        if situacao in alcancaveis
+    ]
+
+
+def _sugestoes_do_momento(
+    request, demanda, permitidos, *, tem_evidencias, pode_observar
+) -> list[dict]:
+    """Até três atalhos por regra — sem IA —, conforme o estado da demanda.
+
+    A ordem é a da urgência do que falta: assumir quem não tem dono, cobrar quem
+    espera há tempo, dar notícia de uma demanda parada, anexar o orçamento do
+    fornecedor e, por fim, concluir o que já anda. Cada sugestão é uma ação só.
+    """
+    if demanda.esta_encerrada:
+        return []
+
+    destino = reverse("demandas:detalhe", args=[demanda.pk])
+    dias = _dias_desde_o_ultimo_movimento(demanda)
+    sugestoes = []
+
+    if (
+        pode_observar
+        and demanda.responsavel_id is None
+        and _pessoa_do_alvo(request.user, demanda, "eu") is not None
+    ):
+        sugestoes.append(
+            {
+                "rotulo": "Assumir",
+                "icone": "bx-user-plus",
+                "tipo": "post",
+                "valor": "eu",
+                "url": reverse("demandas:mudar_responsavel", args=[demanda.pk]),
+            }
+        )
+
+    if (
+        pode_observar
+        and demanda.status == StatusDemanda.AGUARDANDO
+        and dias > DIAS_ESPERANDO
+    ):
+        sugestoes.append(
+            {
+                "rotulo": "Cobrar",
+                "icone": "bx-time-five",
+                "tipo": "link",
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral&rascunho="
+                f"{quote('Cobrado em ' + timezone.localdate().strftime('%d/%m'))}",
+            }
+        )
+
+    if pode_observar and dias > DIAS_SEM_MOVIMENTO:
+        sugestoes.append(
+            {
+                "rotulo": "Dar notícia",
+                "icone": "bx-message-rounded-dots",
+                "tipo": "link",
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral",
+            }
+        )
+
+    if (
+        pode_observar
+        and demanda.aguardando_tipo == AguardandoTipo.FORNECEDOR
+        and not tem_evidencias
+    ):
+        sugestoes.append(
+            {
+                "rotulo": "Anexar orçamento",
+                "icone": "bx-paperclip",
+                "tipo": "modal",
+                "modal": "#adicionar-evidencia",
+            }
+        )
+
+    if pode_observar and StatusDemanda.CONCLUIDA in permitidos:
+        sugestoes.append(
+            {
+                "rotulo": "Concluir",
+                "icone": "bx-check-circle",
+                "tipo": "modal",
+                "modal": "#concluir-demanda",
+            }
+        )
+
+    return sugestoes[:3]
+
+
+def _acoes_rapidas(request, demanda, permitidos, *, tem_evidencias) -> dict:
+    """Os atalhos do dia a dia: a barra do celular e os ícones do cabeçalho.
+
+    São as mesmas ações nos dois lugares — atualizar, anexar, mover a situação e
+    trocar o responsável —, cada uma só quando a pessoa pode fazê-la. O que
+    vive no menu de três pontos continua lá.
+    """
+    pode_observar = pode_adicionar_observacao(request.user, demanda)
+    destino = reverse("demandas:detalhe", args=[demanda.pk])
+    situacoes = _situacoes_rapidas(permitidos, demanda)
+    responsaveis = _responsaveis_disponiveis(request.user, demanda) if pode_observar else []
+
+    itens = []
+    if pode_observar and not demanda.esta_encerrada:
+        itens.append(
+            {
+                "chave": "atualizar",
+                "rotulo": "Atualizar",
+                "icone": "bx-message-rounded-add",
+                "tipo": "link",
+                "url": f"{destino}?abrir=atualizar&aba=visao_geral",
+            }
+        )
+    if pode_observar:
+        itens.append(
+            {
+                "chave": "anexar",
+                "rotulo": "Anexar",
+                "icone": "bx-paperclip",
+                "tipo": "modal",
+                "modal": "#adicionar-evidencia",
+            }
+        )
+    if situacoes:
+        itens.append(
+            {
+                "chave": "situacao",
+                "rotulo": "Situação",
+                "icone": "bx-transfer",
+                "tipo": "modal",
+                "modal": "#situacao-rapida",
+            }
+        )
+    if responsaveis:
+        itens.append(
+            {
+                "chave": "responsavel",
+                "rotulo": "Responsável",
+                "icone": "bx-user-check",
+                "tipo": "modal",
+                "modal": "#responsavel-rapido",
+            }
+        )
+
+    return {
+        "itens": itens,
+        "situacoes": situacoes,
+        "responsaveis": responsaveis,
+        "tem_evidencias": tem_evidencias,
+    }
+
+
 def _link_do_acompanhamento(request, demanda):
     """O endereço público do acompanhamento, criando o vínculo na primeira vez.
 
@@ -2891,8 +3224,10 @@ def _evidencia_para_tela(evidencia):
     return {
         "pk": evidencia.pk,
         "eh_video": evidencia.tipo_midia == TipoMidiaEvidencia.VIDEO,
+        "eh_documento": evidencia.tipo_midia == TipoMidiaEvidencia.DOCUMENTO,
         "tipo": evidencia.get_tipo_midia_display(),
         "nome": evidencia.nome_original,
+        "tamanho": formatar_tamanho(evidencia.tamanho_bytes),
     }
 
 

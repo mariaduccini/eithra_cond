@@ -4,8 +4,13 @@ Reúne só o que os testes repetem: condomínios, pessoas, vínculos, demandas e
 arquivos de prova que o domínio aceita. Nenhum dado real entra aqui — nomes,
 e-mails, títulos e mídias são de teste.
 """
+import io
+import os
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+
+from PIL import Image
 
 from apps.cadastros.constants import TipoLocal
 from apps.cadastros.models import Equipamento, LocalOperacional
@@ -17,8 +22,10 @@ from apps.condominios.models import AcessoUsuarioCondominio, Condominio
 # legítimo, um contêiner WEBP e um storage em memória: repetir isso aqui criaria
 # uma segunda versão do mesmo arquivo de teste.
 from apps.balancos.tests.apoio import (  # noqa: F401  (reexportado aos testes)
+    CONTEUDO_PDF,
     StorageDeMentira,
     jpg,
+    pdf,
     png,
     webp,
 )
@@ -99,3 +106,30 @@ def webm(nome="evidencia.webm", marca=""):
 def arquivo_qualquer(nome="anotacao.txt", conteudo=b"isto nao e uma prova visual"):
     """Um arquivo que não é foto nem vídeo, para exercitar a recusa."""
     return SimpleUploadedFile(nome, conteudo, content_type="text/plain")
+
+
+# -- Foto de celular e foto grande -----------------------------------------------
+# A câmera do celular costuma produzir HEIC, que o banco não guarda: o domínio o
+# reconhece pela marca do contêiner e o converte para JPG antes de gravar. A foto
+# grande existe para exercitar a redução — o conteúdo é aleatório de propósito,
+# porque assim ele comprime mal e passa folgado de qualquer limite de teste.
+
+
+def heic(nome="evidencia.heic", lado=64):
+    """Uma foto de celular em HEIC, gerada na hora. Nenhuma foto real entra aqui."""
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    imagem = Image.new("RGB", (lado, lado), (54, 84, 91))
+    saida = io.BytesIO()
+    imagem.save(saida, format="HEIF")
+    return SimpleUploadedFile(nome, saida.getvalue(), content_type="image/heic")
+
+
+def foto_grande(lado=2400, nome="foto-grande.png"):
+    """Um PNG sem compressão útil, que passa do limite e precisa ser reduzido."""
+    imagem = Image.new("RGB", (lado, lado))
+    imagem.frombytes(os.urandom(lado * lado * 3))
+    saida = io.BytesIO()
+    imagem.save(saida, format="PNG")
+    return SimpleUploadedFile(nome, saida.getvalue(), content_type="image/png")

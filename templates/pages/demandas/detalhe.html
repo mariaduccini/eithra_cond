@@ -108,6 +108,32 @@
           </a>
         {% endif %}
       {% endif %}
+      {% comment %}Os mesmos atalhos da barra do celular, ao lado do título no
+      computador. "Atualizar" não se repete aqui porque é o mesmo "Contar
+      novidade" acima.{% endcomment %}
+      {% if acoes_rapidas.itens %}
+        <div class="eithra-detalhe-acoes-rapidas d-none d-md-inline-flex">
+          {% for item in acoes_rapidas.itens %}
+            {% if item.chave != 'atualizar' %}
+              {% if item.tipo == 'link' %}
+                <a class="eithra-acao-icone" href="{{ item.url }}" title="{{ item.rotulo }}" aria-label="{{ item.rotulo }}">
+                  <i class="bx {{ item.icone }}" aria-hidden="true"></i>
+                </a>
+              {% else %}
+                <button
+                  type="button"
+                  class="eithra-acao-icone"
+                  data-bs-toggle="modal"
+                  data-bs-target="{{ item.modal }}"
+                  title="{{ item.rotulo }}"
+                  aria-label="{{ item.rotulo }}">
+                  <i class="bx {{ item.icone }}" aria-hidden="true"></i>
+                </button>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
       {% if mais_acoes %}
         <div class="dropdown">
           <button class="btn btn-icon btn-text-secondary rounded-pill" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mais ações">
@@ -362,6 +388,17 @@
                               <i class="bx bx-play" aria-hidden="true"></i>
                               <span class="visually-hidden">Assistir ao vídeo anexado</span>
                             </button>
+                          {% elif evidencia.eh_documento %}
+                            <a
+                              class="eithra-doc"
+                              href="{% url 'demandas:evidencia_arquivo' demanda.pk evidencia.pk %}"
+                              target="_blank"
+                              rel="noopener"
+                              title="Abrir {{ evidencia.nome|default:'documento' }}">
+                              <i class="bx bx-file" aria-hidden="true"></i>
+                              <span class="eithra-doc-nome">{{ evidencia.nome|default:'Documento' }}</span>
+                              {% if evidencia.tamanho %}<span class="eithra-doc-tamanho">{{ evidencia.tamanho }}</span>{% endif %}
+                            </a>
                           {% else %}
                             <button
                               type="button"
@@ -664,18 +701,32 @@
               tela confundiriam o rótulo de cada um.{% endcomment %}
               {% if pode_adicionar_evidencia %}
                 <div class="border-top mt-3 pt-3">
-                  <label class="form-label" for="id_evidencias_atualizacao">Provas deste relato</label>
-                  <input
-                    type="file"
-                    name="evidencias"
-                    id="id_evidencias_atualizacao"
-                    class="form-control"
-                    accept="{{ limites_evidencia.aceite }}"
-                    multiple>
-                  <div class="form-text">
-                    Deixe em branco se não houver o que mostrar. {{ limites_evidencia.formatos }},
-                    até {{ limites_evidencia.foto }} por foto e {{ limites_evidencia.video }} por vídeo.
+                  <div class="form-label">Provas deste relato</div>
+                  {% comment %}O mesmo clipe do registro, no envio que confirma:
+                  o arquivo só pode viajar junto do que se confirma, e as
+                  miniaturas mostram o que foi escolhido antes de enviar.{% endcomment %}
+                  <div class="eithra-clipe">
+                    <input
+                      type="file"
+                      name="evidencias"
+                      id="id_evidencias_atualizacao"
+                      class="eithra-clipe-entrada"
+                      accept="{{ limites_evidencia.aceite }}"
+                      multiple>
+                    <button
+                      type="button"
+                      class="eithra-acao-icone"
+                      data-eithra-clipe="#id_evidencias_atualizacao"
+                      title="Anexar foto, documento ou vídeo"
+                      aria-label="Anexar foto, documento ou vídeo">
+                      <i class="bx bx-paperclip" aria-hidden="true"></i>
+                    </button>
+                    <span class="eithra-clipe-texto">
+                      Deixe em branco se não houver o que mostrar. {{ limites_evidencia.formatos }},
+                      até {{ limites_evidencia.foto }} por foto, {{ limites_evidencia.documento }} por documento e {{ limites_evidencia.video }} por vídeo.
+                    </span>
                   </div>
+                  <div class="eithra-miniaturas" data-eithra-miniaturas="#id_evidencias_atualizacao" hidden></div>
                   {% for erro in formulario_evidencia.errors.evidencias %}
                     <div class="text-danger small mt-1">{{ erro }}</div>
                   {% endfor %}
@@ -823,7 +874,7 @@
             arquivo é que isto não mexe no ciclo da demanda. Os formatos e os limites
             vêm do próprio campo, que os lê da configuração — nada é repetido aqui.{% endcomment %}
             <p class="text-body-secondary small eithra-modal-nota">
-              Anexe fotos ou um vídeo curto que mostrem o que foi relatado. Isto fica no
+              Anexe fotos, um PDF ou um vídeo curto que mostrem o que foi relatado. Isto fica no
               histórico desta demanda e não muda a situação dela.
             </p>
             {% include "pages/cadastros/_campo.html" with campo=formulario_evidencia.evidencias classe="mb-0" %}
@@ -868,6 +919,132 @@
       </div>
     </div>
   {% endif %}
+
+  {% comment %}Chips de situação da barra rápida. Cada um é um envio curto, e o
+  "Concluir" não move nada sozinho: abre a janela de conclusão, que pede só a
+  confirmação e o anexo opcional.{% endcomment %}
+  {% if acoes_rapidas.situacoes %}
+    <div class="modal fade" id="situacao-rapida" tabindex="-1" role="dialog" aria-labelledby="situacao-rapida-titulo" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="situacao-rapida-titulo">Situação</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="small text-body-secondary mb-2">Agora: {{ demanda.status }}</div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for situacao in acoes_rapidas.situacoes %}
+                {% if situacao.conclui %}
+                  <button
+                    type="button"
+                    class="eithra-chip-opcao"
+                    data-bs-dismiss="modal"
+                    data-bs-toggle="modal"
+                    data-bs-target="#concluir-demanda">
+                    <i class="bx {{ situacao.icone }}" aria-hidden="true"></i>{{ situacao.rotulo }}
+                  </button>
+                {% else %}
+                  <form method="post" action="{% url 'demandas:mudar_status' demanda.pk %}" class="d-inline-flex">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="{{ situacao.valor }}">
+                    <button type="submit" class="eithra-chip-opcao">
+                      <i class="bx {{ situacao.icone }}" aria-hidden="true"></i>{{ situacao.rotulo }}
+                    </button>
+                  </form>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% comment %}Chips de responsável: só os papéis que existem neste condomínio, e
+  o nome de quem responde agora aparece no title de cada um. O alvo viaja como
+  rótulo curto e é resolvido no backend — nunca um identificador do navegador.{% endcomment %}
+  {% if acoes_rapidas.responsaveis %}
+    <div class="modal fade" id="responsavel-rapido" tabindex="-1" role="dialog" aria-labelledby="responsavel-rapido-titulo" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title" id="responsavel-rapido-titulo">Responsável</h5>
+              <div class="eithra-modal-identidade">{{ demanda.referencia }} <span aria-hidden="true">·</span> {{ demanda.assunto_curto }}</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="small text-body-secondary mb-2">Agora: {{ demanda.responsavel|default:"Ninguém ainda" }}</div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for pessoa in acoes_rapidas.responsaveis %}
+                <form method="post" action="{% url 'demandas:mudar_responsavel' demanda.pk %}" class="d-inline-flex">
+                  {% csrf_token %}
+                  <input type="hidden" name="alvo" value="{{ pessoa.alvo }}">
+                  <button
+                    type="submit"
+                    class="eithra-chip-opcao{% if pessoa.atual %} is-active{% endif %}"
+                    title="{{ pessoa.nome }}">
+                    <i class="bx bx-user" aria-hidden="true"></i>{{ pessoa.rotulo }}
+                  </button>
+                </form>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% comment %}A barra rápida do celular: as ações do dia a dia no polegar, sem
+  passar pelo menu. Acima dela, até três sugestões por regra — sem IA —, e cada
+  uma faz a ação num toque. No computador esta barra não aparece: as mesmas
+  ações ficam no cabeçalho.{% endcomment %}
+  {% if acoes_rapidas.itens %}
+    <nav class="eithra-barra-rapida d-md-none" aria-label="Ações rápidas da demanda">
+      {% if sugestoes_do_momento %}
+        <div class="eithra-sugestoes" role="group" aria-label="Sugestões">
+          {% for sugestao in sugestoes_do_momento %}
+            {% if sugestao.tipo == 'post' %}
+              <form method="post" action="{{ sugestao.url }}" class="d-inline-flex">
+                {% csrf_token %}
+                <input type="hidden" name="alvo" value="{{ sugestao.valor }}">
+                <button type="submit" class="eithra-sugestao">
+                  <i class="bx {{ sugestao.icone }}" aria-hidden="true"></i>{{ sugestao.rotulo }}
+                </button>
+              </form>
+            {% elif sugestao.tipo == 'modal' %}
+              <button type="button" class="eithra-sugestao" data-bs-toggle="modal" data-bs-target="{{ sugestao.modal }}">
+                <i class="bx {{ sugestao.icone }}" aria-hidden="true"></i>{{ sugestao.rotulo }}
+              </button>
+            {% else %}
+              <a class="eithra-sugestao" href="{{ sugestao.url }}">
+                <i class="bx {{ sugestao.icone }}" aria-hidden="true"></i>{{ sugestao.rotulo }}
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="eithra-barra-itens">
+        {% for item in acoes_rapidas.itens %}
+          {% if item.tipo == 'link' %}
+            <a class="eithra-barra-item" href="{{ item.url }}">
+              <i class="bx {{ item.icone }}" aria-hidden="true"></i><span>{{ item.rotulo }}</span>
+            </a>
+          {% else %}
+            <button type="button" class="eithra-barra-item" data-bs-toggle="modal" data-bs-target="{{ item.modal }}">
+              <i class="bx {{ item.icone }}" aria-hidden="true"></i><span>{{ item.rotulo }}</span>
+            </button>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </nav>
+    <div class="eithra-barra-espaco d-md-none" aria-hidden="true"></div>
+  {% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -877,6 +1054,11 @@
   botão que não está na tela.{% endcomment %}
   {% if voz_disponivel %}
     <script src="{% static 'js/eithra-ditar.js' %}"></script>
+  {% endif %}
+  {% comment %}O clipe e as miniaturas dos anexos só fazem sentido para quem pode
+  guardar uma prova.{% endcomment %}
+  {% if pode_adicionar_evidencia %}
+    <script src="{% static 'js/eithra-anexos.js' %}"></script>
   {% endif %}
   {% if tem_evidencias %}
     <script>

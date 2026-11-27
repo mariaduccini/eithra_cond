@@ -828,7 +828,7 @@ class _VariosArquivos(forms.FileField):
 
 
 class EvidenciaDaDemandaForm(forms.Form):
-    """Recebe as fotos e os vídeos que sustentam o que se sabe da demanda.
+    """Recebe as fotos, os documentos e os vídeos que sustentam o que se sabe.
 
     Uma atualização pode trazer mais de um arquivo, e a pergunta é a mesma para
     todos: o que prova o que foi relatado. Nada aqui decide o tipo real — ele é
@@ -837,8 +837,10 @@ class EvidenciaDaDemandaForm(forms.Form):
     """
 
     evidencias = _VariosArquivos(
-        label="Fotos ou vídeos",
-        error_messages={"required": "Escolha ao menos uma foto ou um vídeo."},
+        label="Fotos, documentos ou vídeos",
+        error_messages={
+            "required": "Escolha ao menos uma foto, um documento ou um vídeo."
+        },
         widget=_VariosArquivosInput(attrs={"class": "form-control"}),
     )
 
@@ -847,8 +849,8 @@ class EvidenciaDaDemandaForm(forms.Form):
         limites = limites_legiveis()
         self.fields["evidencias"].widget.attrs["accept"] = ACEITE_DE_EVIDENCIA
         self.fields["evidencias"].help_text = (
-            f"{limites['formatos']}. Até {limites['foto']} por foto e "
-            f"{limites['video']} por vídeo."
+            f"{limites['formatos']}. Até {limites['foto']} por foto, "
+            f"{limites['documento']} por documento e {limites['video']} por vídeo."
         )
 
     def arquivos_enviados(self) -> list:
@@ -889,8 +891,8 @@ class ConclusaoDaDemandaForm(forms.Form):
         limites = limites_legiveis()
         self.fields["evidencias"].widget.attrs["accept"] = ACEITE_DE_EVIDENCIA
         self.fields["evidencias"].help_text = (
-            f"{limites['formatos']}. Até {limites['foto']} por foto e "
-            f"{limites['video']} por vídeo."
+            f"{limites['formatos']}. Até {limites['foto']} por foto, "
+            f"{limites['documento']} por documento e {limites['video']} por vídeo."
         )
 
     def clean_texto(self):

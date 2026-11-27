@@ -6548,3 +6548,202 @@ a:not(.btn):not(.menu-link):hover {
     inline-size: 100%;
   }
 }
+
+/* Anexos da demanda: o clipe, as miniaturas e o documento guardado --------- */
+/* O PDF guardado é uma linha de arquivo — ícone sem borda, nome e tamanho —,
+   que abre o arquivo pela mesma rota protegida da foto. */
+.eithra-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-block-size: 2.75rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.75rem;
+  color: var(--eithra-grafite, #2f4146);
+  text-decoration: none;
+}
+
+.eithra-doc:hover,
+.eithra-doc:focus-visible {
+  background-color: var(--eithra-lilas-claro, #eee9f6);
+  color: var(--eithra-lilas-profundo, #58487c);
+}
+
+.eithra-doc .bx {
+  font-size: 1.5rem;
+  color: var(--eithra-petroleo, #36545b);
+}
+
+.eithra-doc-nome {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.eithra-doc-tamanho {
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* O clipe que escolhe o arquivo: ícone sem borda de 44px ao lado do texto que
+   explica o que se aceita. A entrada de arquivo fica escondida. */
+.eithra-clipe {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eithra-clipe-entrada {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.eithra-clipe-texto {
+  color: var(--eithra-texto-suave, #637075);
+  font-size: 0.8125rem;
+}
+
+/* As miniaturas do que foi escolhido, antes de confirmar: cada uma se remove
+   com um toque e some do envio. */
+.eithra-miniaturas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+}
+
+.eithra-miniatura {
+  position: relative;
+  inline-size: 4.25rem;
+  block-size: 4.25rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #fafbfb;
+}
+
+.eithra-miniatura img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.eithra-miniatura-arquivo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  block-size: 100%;
+  padding: 0.25rem;
+  color: var(--eithra-petroleo, #36545b);
+  font-size: 1.5rem;
+  text-align: center;
+}
+
+.eithra-miniatura-nome {
+  font-size: 0.625rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  color: var(--eithra-texto-suave, #637075);
+}
+
+.eithra-miniatura-tirar {
+  position: absolute;
+  inset-block-start: 0.125rem;
+  inset-inline-end: 0.125rem;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(47, 65, 70, 0.75);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* A barra rápida do celular: fixa no rodapé, ícones sem borda com rótulo
+   curto. Vive só abaixo de 768px — no computador as mesmas ações ficam no
+   cabeçalho, ao lado do título. */
+.eithra-barra-rapida {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 1040;
+  padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--eithra-divisor, #e5ebeb);
+  background: var(--eithra-papel, #ffffff);
+  box-shadow: 0 -0.25rem 1rem rgba(47, 65, 70, 0.08);
+}
+
+.eithra-sugestoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-block-end: 0.5rem;
+}
+
+.eithra-sugestao {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--eithra-divisor, #e5ebeb);
+  border-radius: 999px;
+  background: var(--eithra-teal-suave, #e7f4f3);
+  color: var(--eithra-teal-escuro, #12595d);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.eithra-barra-itens {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 0.25rem;
+}
+
+.eithra-barra-item {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+  min-block-size: 3rem;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: none;
+  color: var(--eithra-grafite, #2f4146);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.eithra-barra-item .bx {
+  font-size: 1.375rem;
+  color: var(--eithra-petroleo, #36545b);
+}
+
+.eithra-barra-item:hover,
+.eithra-barra-item:focus-visible {
+  background: var(--eithra-lilas-claro, #eee9f6);
+  color: var(--eithra-lilas-profundo, #58487c);
+}
+
+/* O respiro embaixo do conteúdo, para a barra fixa não cobrir a última linha. */
+.eithra-barra-espaco {
+  block-size: 5.5rem;
+}
