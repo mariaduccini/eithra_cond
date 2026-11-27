@@ -28,6 +28,11 @@
         </button>
       {% endif %}
       {% if pode_corrigir %}
+        <a
+          href="{% url 'balancos:classificar_despesas' balanco.pk %}"
+          class="btn btn-label-secondary">
+          <i class="bx bx-purchase-tag-alt me-1" aria-hidden="true"></i> Despesas a classificar
+        </a>
         <button
           class="btn btn-label-secondary"
           type="button"

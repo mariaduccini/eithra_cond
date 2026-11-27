@@ -36,7 +36,7 @@ from decimal import Decimal
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from apps.balancos.categorias import CategoriaEithra, categorizar
+from apps.balancos.categorias import CategoriaEithra, categorizar, sistema_para
 from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.contratos import (
     SCHEMA_VERSAO,
@@ -449,6 +449,7 @@ def _varrer(texto: str) -> _VarreduraLegada:
     """
     varredura = _VarreduraLegada()
     secao: str | None = None
+    grupo: str | None = None
 
     for bruta in (texto or "").splitlines():
         linha = normalizar_espacos(bruta)
@@ -485,9 +486,19 @@ def _varrer(texto: str) -> _VarreduraLegada:
             if nome not in varredura.secoes:
                 varredura.secoes.append(nome)
             secao = nome
+            grupo = None
             continue
 
-        if secao is None or valor is None:
+        if valor is None:
+            # Uma linha sem valor em maiúsculas é o título do bloco que vem a
+            # seguir: guardá-lo como agrupamento é o que permite dizer de que
+            # grupo cada despesa veio — sem deixar o grupo decidir sozinho o que
+            # a descrição já diz.
+            if _parece_titulo_de_grupo(bruta):
+                grupo = linha
+            continue
+
+        if secao is None:
             continue
 
         descricao = _descricao_da_linha(linha)
@@ -499,7 +510,7 @@ def _varrer(texto: str) -> _VarreduraLegada:
             )
         else:
             varredura.despesas.append(
-                _montar_despesa(descricao, valor, metodo=METODO_LEGADO)
+                _montar_despesa(descricao, valor, grupo=grupo, metodo=METODO_LEGADO)
             )
 
     return varredura
@@ -539,6 +550,22 @@ def _descricao_da_linha(linha: str) -> str:
     return normalizar_espacos(resto).strip(" -.:;·|")
 
 
+def _parece_titulo_de_grupo(bruta: str) -> bool:
+    """Diz se a linha é o título de um agrupamento, sem valor.
+
+    O título de grupo do balancete antigo vem em maiúsculas e sozinho — sem
+    valor ao lado. É o que permite guardar de que bloco a despesa veio, sem
+    confundir um lançamento com o seu cabeçalho.
+    """
+    texto = normalizar_espacos(bruta)
+    letras = [caractere for caractere in texto if caractere.isalpha()]
+    if not letras:
+        return False
+    if texto.upper() != texto:
+        return False
+    return 1 <= len(texto.split()) <= 8
+
+
 def _montar_receita(descricao: str, valor: str | None, *, metodo: str) -> ReceitaExtraida:
     """Uma linha de receita do demonstrativo, com a procedência do que a originou."""
     return ReceitaExtraida(
@@ -553,23 +580,31 @@ def _montar_receita(descricao: str, valor: str | None, *, metodo: str) -> Receit
     )
 
 
-def _montar_despesa(descricao: str, valor: str | None, *, metodo: str) -> DespesaExtraida:
+def _montar_despesa(
+    descricao: str,
+    valor: str | None,
+    *,
+    metodo: str,
+    grupo: str | None = None,
+) -> DespesaExtraida:
     """Uma linha de despesa do demonstrativo, com a categoria do Eithra ao lado.
 
-    O que não encontra regra no catálogo vira "Outros": a pergunta "de que
-    natureza é este gasto" continua sem resposta, mas o valor não desaparece dos
-    agregados por falta de classificação.
+    A descrição decide primeiro e o grupo do documento é a pista de reserva: só
+    quando a linha não diz nada por si. O que não encontra regra no catálogo vira
+    "Outros": a pergunta "de que natureza é este gasto" continua sem resposta,
+    mas o valor não desaparece dos agregados por falta de classificação.
     """
-    categoria = categorizar(descricao)
+    categoria = categorizar(descricao, categoria_original=grupo)
     if categoria == CategoriaEithra.NAO_CLASSIFICADO:
         categoria = CategoriaEithra.OUTROS
     return DespesaExtraida(
         descricao_original=descricao,
         descricao_normalizada=chave_de_comparacao(descricao),
         valor=valor or "0.00",
-        categoria_original=descricao,
+        categoria_original=grupo or descricao,
         categoria_eithra=categoria,
         natureza=classificar_natureza(descricao, categoria_eithra=categoria),
+        sistema=sistema_para(descricao),
         procedencia=Procedencia(
             secao="despesas", trecho=descricao, metodo=metodo
         ),

@@ -43,7 +43,12 @@ from django.conf import settings
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from apps.balancos.categorias import CategoriaEithra, categorizar, rotulo
+from apps.balancos.categorias import (
+    CategoriaEithra,
+    categorizar,
+    rotulo,
+    sistema_para,
+)
 from apps.balancos.constants import LayoutBalanco, StatusImportacao
 from apps.balancos.contratos import (
     SCHEMA_VERSAO,
@@ -907,18 +912,20 @@ def _criar_despesa(
     procedencia: Procedencia,
 ) -> DespesaExtraida:
     """Monta a despesa preservando o agrupamento do documento ao lado do Eithra."""
+    fornecedor = _fornecedor_candidato(descricao)
     categoria_eithra = categorizar(descricao, categoria_original=grupo)
     return DespesaExtraida(
         descricao_original=descricao,
         descricao_normalizada=chave_desc,
         valor=decimal_para_texto(valor),
         data=_data_do_lancamento(descricao),
-        fornecedor_candidato=_fornecedor_candidato(descricao),
+        fornecedor_candidato=fornecedor,
         documento=_documento_do_lancamento(descricao),
         parcela=texto_para_parcela(descricao),
         categoria_original=grupo,
         categoria_eithra=categoria_eithra,
         natureza=classificar_natureza(descricao, categoria_eithra=categoria_eithra),
+        sistema=sistema_para(descricao, fornecedor=fornecedor),
         confianca=Confianca.ALTA,
         procedencia=procedencia,
     )

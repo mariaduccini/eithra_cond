@@ -1,0 +1,106 @@
+{% extends "layouts/app.html" %}
+
+{% block title %}Despesas a classificar · {{ competencia }} · Eithra{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+      <a
+        href="{% url 'balancos:balanco' balanco.pk %}"
+        class="text-body-secondary text-decoration-none small d-inline-flex align-items-center mb-2">
+        <i class="bx bx-chevron-left" aria-hidden="true"></i> Voltar ao balanço
+      </a>
+      <h1 class="h4 mb-1">Despesas a classificar</h1>
+      <p class="text-body-secondary mb-0">{{ subtitulo }}</p>
+    </div>
+  </div>
+
+  <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+    <i class="bx bx-info-circle mt-1" aria-hidden="true"></i>
+    <div class="small">
+      A sugestão é apenas uma proposta — nada muda no balanço enquanto você não
+      confirmar. Confirmar guarda a regra para os próximos meses. Nenhum valor é
+      alterado.
+    </div>
+  </div>
+
+  {% if linhas %}
+    <div class="card">
+      <div class="card-body">
+        <p class="text-body-secondary small mb-3">
+          {{ linhas|length }} despesa{{ linhas|length|pluralize }} ainda sem categoria.
+        </p>
+
+        <div class="d-flex flex-column gap-3">
+          {% for linha in linhas %}
+            <div class="border rounded-3 p-3">
+              <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+                <div>
+                  <div class="fw-semibold">{{ linha.descricao }}</div>
+                  <div class="text-body-secondary small">
+                    {% if linha.grupo %}Grupo: {{ linha.grupo }} · {% endif %}
+                    Hoje: {{ linha.categoria }}
+                  </div>
+                </div>
+                <div class="fw-semibold">R$ {{ linha.valor }}</div>
+              </div>
+
+              {% if linha.sugestao %}
+                <p class="small mb-2">
+                  <span class="badge bg-label-primary">Sugestão</span>
+                  <span class="ms-1">{{ linha.sugestao_rotulo }}</span>
+                  <span class="text-body-secondary">
+                    {% if linha.sugestao_origem == "regra" %}(regra aprendida){% elif linha.sugestao_origem == "ia" %}(sugestão da IA){% endif %}
+                  </span>
+                </p>
+              {% else %}
+                <p class="text-body-secondary small mb-2">Sem sugestão — escolha uma categoria.</p>
+              {% endif %}
+
+              <form
+                method="post"
+                action="{% url 'balancos:classificar_confirmar' balanco.pk %}"
+                class="d-flex flex-wrap gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="lancamento_id" value="{{ linha.id }}">
+                <input type="hidden" name="versao" value="{{ versao }}">
+
+                {% if linha.sugestao %}
+                  <button
+                    type="submit"
+                    name="categoria"
+                    value="{{ linha.sugestao }}"
+                    class="btn btn-sm btn-primary">
+                    <i class="bx bx-check me-1" aria-hidden="true"></i>
+                    Confirmar {{ linha.sugestao_rotulo }}
+                  </button>
+                {% endif %}
+
+                {% for categoria in categorias %}
+                  {% if categoria.codigo != linha.sugestao %}
+                    <button
+                      type="submit"
+                      name="categoria"
+                      value="{{ categoria.codigo }}"
+                      class="eithra-chip btn btn-sm btn-label-secondary">
+                      {{ categoria.rotulo }}
+                    </button>
+                  {% endif %}
+                {% endfor %}
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="card">
+      <div class="card-body text-center py-5">
+        <i class="bx bx-check-circle display-5 text-success" aria-hidden="true"></i>
+        <p class="text-body-secondary mb-0 mt-2">
+          Nada a classificar neste mês. Todas as despesas já têm categoria.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+{% endblock %}

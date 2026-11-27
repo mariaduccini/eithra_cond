@@ -45,6 +45,18 @@ urlpatterns = [
         views.adicionar_lancamento,
         name="adicionar_lancamento",
     ),
+    # Despesas a classificar: a fila curta do que ficou em aberto, com a
+    # sugestão ao lado. Confirmar aqui é o mesmo que corrigir a categoria.
+    path(
+        "mes/<uuid:pk>/classificar/",
+        views.classificar_despesas,
+        name="classificar_despesas",
+    ),
+    path(
+        "mes/<uuid:pk>/classificar/confirmar/",
+        views.confirmar_classificacao,
+        name="classificar_confirmar",
+    ),
     # Evidências visuais: a foto entra, é ajustada, sai — e é aberta por um
     # acesso curto, gerado na hora. Nada disso é REST: são decisões da gestão.
     path(

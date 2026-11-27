@@ -156,6 +156,10 @@ class DespesaExtraida:
     categoria_original: str | None = None
     categoria_eithra: str = CategoriaEithra.NAO_CLASSIFICADO
     natureza: str = NaturezaDespesa.NAO_DETERMINADA
+    # O sistema do prédio que a despesa alcança, quando dá para dizer. É uma
+    # lente a mais sobre a mesma despesa — nunca substitui a categoria nem toca
+    # no valor.
+    sistema: str | None = None
     confianca: str = Confianca.MEDIA
     procedencia: Procedencia = field(default_factory=Procedencia)
 
@@ -482,6 +486,7 @@ def de_dicionario(dados) -> BalancoExtraidoV1:
                     "categoria_eithra", CategoriaEithra.NAO_CLASSIFICADO
                 ),
                 natureza=item.get("natureza", NaturezaDespesa.NAO_DETERMINADA),
+                sistema=item.get("sistema"),
                 confianca=item.get("confianca", Confianca.MEDIA),
                 procedencia=Procedencia(**(item.get("procedencia") or {})),
             )

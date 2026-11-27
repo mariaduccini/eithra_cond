@@ -309,6 +309,20 @@ class MarcarNaoDespesaForm(_FormularioComJustificativa):
     lancamento_id = forms.CharField(widget=forms.HiddenInput())
 
 
+class ClassificarDespesaForm(forms.Form):
+    """Confirma a categoria de uma linha em aberto, em um toque.
+
+    A categoria vem do próprio botão da tela — a sugestão, ou o chip que a
+    gestão escolheu —, e a justificativa é do sistema, não de quem clica: a
+    decisão aqui é sobre a categoria, e o registro de por quê fica com a tela.
+    Nenhum valor é editado por aqui: a confirmação só classifica.
+    """
+
+    lancamento_id = forms.CharField(widget=forms.HiddenInput())
+    versao = forms.CharField(required=False, widget=forms.HiddenInput())
+    categoria = forms.ChoiceField(choices=CategoriaEithra.choices)
+
+
 # -- Evidência visual -----------------------------------------------------------
 #
 # A foto explica um lançamento, uma categoria ou o destaque do mês. O vínculo

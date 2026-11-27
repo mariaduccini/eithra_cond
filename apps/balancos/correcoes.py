@@ -60,6 +60,7 @@ CAMPO_LIDO = {
     "categoria_eithra": "categoria_eithra",
     "natureza": "natureza",
     "grupo": "categoria_original",
+    "sistema": "sistema",
 }
 
 
@@ -123,6 +124,7 @@ def _efetiva(despesa: dict) -> dict:
         or CategoriaEithra.NAO_CLASSIFICADO,
         "natureza": correcao.get("natureza", despesa.get("natureza"))
         or NaturezaDespesa.NAO_DETERMINADA,
+        "sistema": correcao.get("sistema", despesa.get("sistema")) or "",
         "grupo": correcao.get("grupo", despesa.get("categoria_original")),
         "data": despesa.get("data"),
         "fornecedor": despesa.get("fornecedor_candidato"),
@@ -138,6 +140,7 @@ def _efetiva(despesa: dict) -> dict:
             "valor": despesa.get("valor"),
             "categoria_eithra": despesa.get("categoria_eithra"),
             "natureza": despesa.get("natureza"),
+            "sistema": despesa.get("sistema"),
             "grupo": despesa.get("categoria_original"),
         },
     }
@@ -189,6 +192,7 @@ def aplicar_correcao(
     campos: dict,
     justificativa: str,
     usuario,
+    condominio=None,
     quando=None,
 ) -> list[dict]:
     """Aplica uma correção a um lançamento, sem tocar no que foi lido.
@@ -197,6 +201,9 @@ def aplicar_correcao(
     justificativa é obrigatória, e cada campo alterado fica registrado no
     histórico com o antes e o depois. Devolver um campo ao valor lido apaga a
     decisão daquele campo — o histórico, não.
+
+    Quando a categoria (ou o sistema) muda, a decisão vira uma regra aprendida:
+    o mês seguinte reconhece a mesma despesa e já nasce classificada.
     """
     despesas = leitura.setdefault("despesas", [])
     identificar_despesas(despesas)
@@ -241,7 +248,45 @@ def aplicar_correcao(
         usuario=usuario,
         quando=quando,
     )
+    _aprender_regra(condominio, despesa, mudancas, usuario)
     return mudancas
+
+
+def _aprender_regra(
+    condominio, despesa: dict, mudancas: list[dict], usuario
+) -> None:
+    """Guarda como regra a classificação que a gestão acabou de decidir.
+
+    Só a categoria e o sistema viram regra: preço, descrição e data são do
+    documento e não se aprendem. Sem condomínio não há onde guardar — o mês é
+    corrigido e nada mais.
+    """
+    if condominio is None or not getattr(condominio, "pk", None):
+        return
+    campos_mudados = {mudanca["campo"] for mudanca in mudancas}
+    if not campos_mudados & {"categoria_eithra", "sistema"}:
+        return
+
+    from apps.balancos.categorias import chave_da_regra
+    from apps.balancos.models import OrigemRegra, RegraClassificacao
+
+    efetiva = _efetiva(despesa)
+    chave = chave_da_regra(
+        descricao=efetiva["descricao"], fornecedor=efetiva.get("fornecedor")
+    )
+    if not chave:
+        return
+
+    RegraClassificacao.objects.update_or_create(
+        condominio=condominio,
+        chave=chave,
+        defaults={
+            "categoria": efetiva["categoria_eithra"],
+            "sistema": efetiva.get("sistema") or "",
+            "origem": OrigemRegra.CORRECAO,
+            "criada_por": usuario if getattr(usuario, "pk", None) else None,
+        },
+    )
 
 
 def marcar_como_nao_despesa(
@@ -291,13 +336,16 @@ def adicionar_lancamento(
     grupo: str,
     justificativa: str,
     usuario,
+    condominio=None,
     quando=None,
 ) -> str:
     """Acrescenta um lançamento que o documento não trouxe.
 
     Ele nasce marcado como manual e sem procedência: o Eithra não finge que leu
     o que não leu. A identidade é própria, para que a correção seguinte alcance
-    exatamente esta linha.
+    exatamente esta linha. Como toda correção, o lançamento acrescentado também
+    vira regra — a mesma despesa não precisa ser digitada de novo no mês
+    seguinte.
     """
     despesas = leitura.setdefault("despesas", [])
     identificar_despesas(despesas)
@@ -306,6 +354,8 @@ def adicionar_lancamento(
     if not descricao:
         raise ErroDeCorrecao("Informe a descrição do lançamento.")
     justificativa = normalizar_justificativa(justificativa)
+
+    from apps.balancos.categorias import sistema_para
 
     novo = {
         "id": f"{PREFIXO_MANUAL}{uuid.uuid4().hex[:12]}",
@@ -316,6 +366,7 @@ def adicionar_lancamento(
         "categoria_eithra": categoria_eithra,
         "natureza": natureza,
         "categoria_original": grupo or "",
+        "sistema": sistema_para(descricao) or "",
     }
     despesas.append(novo)
 
@@ -334,6 +385,7 @@ def adicionar_lancamento(
         usuario=usuario,
         quando=quando,
     )
+    _aprender_regra(condominio, novo, [{"campo": "categoria_eithra"}], usuario)
     return novo["id"]
 
 
@@ -482,6 +534,7 @@ def _despesa_efetiva(item: dict) -> DespesaExtraida:
         categoria_original=efetiva["grupo"] or None,
         categoria_eithra=efetiva["categoria_eithra"],
         natureza=efetiva["natureza"],
+        sistema=efetiva["sistema"] or None,
         confianca=item.get("confianca") or "media",
     )
 

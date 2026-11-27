@@ -19,6 +19,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.balancos.categorias import CategoriaEithra, SistemaManutencao
 from apps.balancos.constants import (
     LayoutBalanco,
     ProcessamentoBalanco,
@@ -206,6 +207,85 @@ class BalancoMensal(models.Model):
         if not self.competencia:
             return "Balanço sem competência"
         return f"Balanço {self.competencia:%m/%Y} v{self.versao} · {self.get_status_display()}"
+
+
+class OrigemRegra(models.TextChoices):
+    """De onde veio uma regra de classificação."""
+
+    CORRECAO = "correcao", "Correção da gestão"
+    IA_CONFIRMADA = "ia_confirmada", "Sugestão da IA confirmada"
+
+
+class RegraClassificacao(models.Model):
+    """O que o condomínio ensinou sobre como classificar um lançamento.
+
+    Toda correção manual de categoria vira uma regra: no mês seguinte, a mesma
+    despesa — o mesmo fornecedor, ou a mesma descrição sem números nem datas —
+    já nasce classificada, sem repetir a pergunta. A regra nunca decide valor
+    nem total: ela responde só à pergunta "a que categoria isto pertence", e é
+    por isso que ela pode ser aplicada a um mês inteiro sem tocar no que o
+    documento declarou.
+
+    A chave é normalizada sem números nem datas para que "Taxa 01/2026" e
+    "Taxa 02/2026" sejam a mesma regra. Quando a linha traz um fornecedor, é
+    ele que vira a chave: é a pista mais estável entre meses.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    condominio = models.ForeignKey(
+        Condominio,
+        on_delete=models.CASCADE,
+        related_name="regras_classificacao",
+        verbose_name="condomínio",
+    )
+    chave = models.CharField(
+        "chave",
+        max_length=255,
+        help_text="Fornecedor ou descrição sem números nem datas.",
+    )
+    categoria = models.CharField(
+        "categoria", max_length=30, choices=CategoriaEithra.choices
+    )
+    sistema = models.CharField(
+        "sistema",
+        max_length=30,
+        choices=SistemaManutencao.choices,
+        blank=True,
+        default="",
+    )
+    origem = models.CharField(
+        "origem",
+        max_length=20,
+        choices=OrigemRegra.choices,
+        default=OrigemRegra.CORRECAO,
+    )
+    criada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="regras_classificacao_criadas",
+        verbose_name="criada por",
+    )
+    criada_em = models.DateTimeField("criada em", auto_now_add=True)
+    atualizada_em = models.DateTimeField("atualizada em", auto_now=True)
+
+    class Meta:
+        verbose_name = "regra de classificação"
+        verbose_name_plural = "regras de classificação"
+        ordering = ["-atualizada_em"]
+        constraints = [
+            # Uma regra por chave, por condomínio: aprender de novo atualiza a
+            # mesma regra, em vez de criar uma segunda resposta para a mesma
+            # pergunta.
+            models.UniqueConstraint(
+                fields=["condominio", "chave"],
+                name="regra_unica_por_condominio_e_chave",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.chave} → {self.get_categoria_display()}"
 
 
 class DocumentoBalanco(models.Model):

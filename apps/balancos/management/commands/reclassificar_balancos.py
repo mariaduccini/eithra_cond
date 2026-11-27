@@ -23,7 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.balancos import correcoes, services
-from apps.balancos.categorias import categorizar, rotulo
+from apps.balancos.categorias import categoria_para, rotulo
 from apps.balancos.constants import StatusBalanco
 from apps.balancos.contratos import de_dicionario_validado
 from apps.balancos.models import BalancoMensal
@@ -33,13 +33,15 @@ from apps.balancos.normalizadores import texto_para_decimal
 MOTIVO_DA_REVISAO = "Reclassificação automática de categorias em {data}"
 
 
-def reclassificar_leitura(leitura: dict) -> list[dict]:
+def reclassificar_leitura(leitura: dict, *, condominio=None) -> list[dict]:
     """Relê a categoria de cada lançamento que a gestão não corrigiu à mão.
 
     Devolve, em ordem, o que mudaria: descrição, categoria antiga, nova e valor.
     O lançamento corrigido à mão fica de fora — aí quem classificou foi a
-    gestão, e a regra não passa por cima. Nada é gravado: quem decide é o
-    comando.
+    gestão, e a regra não passa por cima. A releitura usa as mesmas pistas da
+    leitura: a regra que o condomínio já ensinou, o fornecedor com contrato, as
+    palavras da descrição e, por último, o grupo do documento. Nada é gravado:
+    quem decide é o comando.
     """
     mudancas = []
     for despesa in leitura.get("despesas") or []:
@@ -48,9 +50,12 @@ def reclassificar_leitura(leitura: dict) -> list[dict]:
             continue
 
         antiga = despesa.get("categoria_eithra")
-        nova = categorizar(
-            despesa.get("descricao_original") or "",
+        nova = categoria_para(
+            condominio,
+            descricao=despesa.get("descricao_original") or "",
             categoria_original=despesa.get("categoria_original"),
+            fornecedor=despesa.get("fornecedor_candidato"),
+            documento=despesa.get("documento"),
         )
         if nova != antiga:
             despesa["categoria_eithra"] = nova
@@ -108,7 +113,7 @@ class Command(BaseCommand):
         for balanco in balancos:
             validado = de_dicionario_validado(balanco.dados_validados)
             leitura = validado.leitura or {}
-            mudancas = reclassificar_leitura(leitura)
+            mudancas = reclassificar_leitura(leitura, condominio=balanco.condominio)
             if not mudancas:
                 continue
 

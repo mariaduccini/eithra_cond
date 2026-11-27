@@ -25,7 +25,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.balancos import correcoes, evidencias
+from apps.balancos import classificacao, correcoes, evidencias
+from apps.balancos.categorias import CategoriaEithra
 from apps.balancos.categorias import rotulo as rotulo_da_categoria
 from apps.balancos.constants import (
     LayoutBalanco,
@@ -46,6 +47,7 @@ from apps.balancos.extrator_legado import (
     montar_balanco_da_conferencia,
 )
 from apps.balancos.forms import (
+    ClassificarDespesaForm,
     ConferenciaDeBalancoForm,
     CorrecaoDeLancamentoForm,
     EdicaoDeEvidenciaForm,
@@ -344,6 +346,92 @@ def adicionar_lancamento(request, pk):
         justificativa=dados["justificativa"],
         versao=dados["versao"],
     )
+
+
+# -- Despesas a classificar -----------------------------------------------------
+#
+# A leitura classifica o que as palavras alcançam; o que sobra é a fila curta
+# desta tela. A sugestão é só uma proposta — a confirmação é que decide, e é ela
+# que vira regra. Nenhum valor é tocado: a linha continua valendo o que valia.
+
+JUSTIFICATIVA_DA_CLASSIFICACAO = (
+    "Classificação confirmada na lista de despesas a classificar."
+)
+
+
+@login_required
+def classificar_despesas(request, pk):
+    """A fila curta do que ficou em A classificar ou Outros, com sugestões.
+
+    Quem responde pelo balanço é quem classifica: a mesma permissão da correção.
+    A sugestão vem marcada como sugestão, nunca como decisão tomada.
+    """
+    instancia = _balanco_para_corrigir(request, pk)
+    validado = de_dicionario_validado(instancia.dados_validados)
+    leitura = validado.leitura or {}
+    linhas = classificacao.linhas_a_classificar(
+        leitura, condominio=instancia.condominio
+    )
+    versao = instancia.atualizado_em.isoformat() if instancia.atualizado_em else ""
+    return render(
+        request,
+        "pages/balancos/classificar.html",
+        {
+            "balanco": instancia,
+            "competencia": _competencia_por_extenso(validado.competencia),
+            "subtitulo": (
+                f"{instancia.condominio.nome} / "
+                f"{_competencia_por_extenso(validado.competencia)}"
+            ),
+            "linhas": linhas,
+            "categorias": [
+                {"codigo": categoria.value, "rotulo": categoria.label}
+                for categoria in CategoriaEithra
+                if categoria not in classificacao.CATEGORIAS_EM_ABERTO
+            ],
+            "versao": versao,
+        },
+    )
+
+
+@login_required
+@require_POST
+def confirmar_classificacao(request, pk):
+    """Confirma a categoria de uma linha e transforma a decisão em regra.
+
+    A confirmação é uma correção como outra qualquer: passa pelo mesmo caminho,
+    guarda quem decidiu e regrava o detalhamento. A diferença é que aqui a
+    categoria muda e, com isso, a regra nasce — o mês seguinte já nasce
+    classificado. Nenhum valor é alterado.
+    """
+    instancia = _balanco_para_corrigir(request, pk)
+    formulario = ClassificarDespesaForm(request.POST)
+    if not formulario.is_valid():
+        return _voltar_para_classificacao(request, instancia, _primeiro_erro(formulario))
+    dados = formulario.cleaned_data
+    try:
+        corrigir_balanco(
+            instancia,
+            acao="corrigir",
+            usuario=request.user,
+            campos={"categoria_eithra": dados["categoria"]},
+            lancamento_id=dados["lancamento_id"],
+            justificativa=JUSTIFICATIVA_DA_CLASSIFICACAO,
+            versao=dados["versao"],
+        )
+    except ErroDeCorrecao as erro:
+        return _voltar_para_classificacao(request, instancia, str(erro))
+
+    messages.success(
+        request, "Despesa classificada. A regra foi guardada para os próximos meses."
+    )
+    return redirect("balancos:classificar_despesas", pk=instancia.pk)
+
+
+def _voltar_para_classificacao(request, instancia, aviso: str):
+    """Recusa a classificação sem mudar nada e volta para a fila, dizendo por quê."""
+    messages.error(request, aviso)
+    return redirect("balancos:classificar_despesas", pk=instancia.pk)
 
 
 @login_required

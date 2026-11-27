@@ -866,6 +866,7 @@ def corrigir_balanco(
                 campos=campos or {},
                 justificativa=justificativa,
                 usuario=usuario,
+                condominio=bloqueado.condominio,
             )
         elif acao == "nao_despesa":
             correcoes.marcar_como_nao_despesa(
@@ -879,6 +880,7 @@ def corrigir_balanco(
                 leitura,
                 usuario=usuario,
                 justificativa=justificativa,
+                condominio=bloqueado.condominio,
                 **(campos or {}),
             )
         else:
