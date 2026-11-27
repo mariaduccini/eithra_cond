@@ -52,6 +52,8 @@ from apps.demandas.models import Demanda
 from apps.manutencoes.models import Manutencao
 
 from .constants import (
+    TIPOS_DE_ENTREGA,
+    TRANSPORTADORA_CORREIOS,
     ContextoAcessoPortaria,
     IntencaoPortaria,
     MeioAutorizacaoPortaria,
@@ -73,6 +75,20 @@ PALAVRAS_DE_CHEGADA = (
     "chegando",
     "acabou de chegar",
     "acabaram de chegar",
+    "esta aqui",
+    "ta aqui",
+    "esta na portaria",
+    "ta na portaria",
+    "aqui embaixo",
+    "quer subir",
+    "quer entrar",
+    "veio ver",
+    "veio para",
+    "veio pra",
+    "tem uma visita",
+    "tem um visitante",
+    "tem um entregador",
+    "subindo",
 )
 
 PALAVRAS_DE_SAIDA = (
@@ -154,6 +170,39 @@ PALAVRAS_DE_VISITANTE = (
     "amigo",
     "familiar",
     "parente",
+)
+
+# Quem chega trazendo algo, e não visitando: entregador e transportadora. Quem
+# chega assim não tem nome de pessoa — o nome é a transportadora, quando dita.
+PALAVRAS_DE_ENTREGA = (
+    "entregador",
+    "entrega",
+    "delivery",
+    "ifood",
+    "rappi",
+    "motoboy",
+    "correios",
+    "sedex",
+    "mercado livre",
+    "shopee",
+    "amazon",
+    "pacote",
+    "encomenda",
+)
+
+# "correios" e "sedex" não são só entrega: são a transportadora Correios.
+PALAVRAS_DE_CORREIOS = ("correios", "sedex")
+
+# O que a entrega dizia sem nomear quem entrega. A transportadora (iFood,
+# Correios) continua nomeável: ela é o nome de quem chega na entrega.
+PALAVRAS_DE_ENTREGA_GENERICAS = ("entrega", "delivery", "motoboy", "pacote", "encomenda")
+
+# Palavras que já nomeiam quem chega: visita, serviço ou entrega. Com uma delas
+# — ou com uma unidade — a fala é chegada mesmo sem o verbo "chegou" (§D1).
+PALAVRAS_DE_TIPO_DE_ACESSO = (
+    frozenset(PALAVRAS_DE_VISITANTE)
+    | frozenset(PALAVRAS_DE_PRESTADOR)
+    | frozenset(PALAVRAS_DE_ENTREGA)
 )
 
 # Palavras que dizem que há um serviço, mas não qual: nomeiam a natureza do
@@ -272,10 +321,16 @@ PALAVRAS_QUE_NAO_SAO_NOME = (
             "saida", "chegada",
             "rapaz", "moco", "moca", "homem", "mulher", "senhor", "senhora",
             "garoto", "garota", "motorista", "entregador",
+            "oi", "ola", "bom", "boa", "dia", "tarde", "noite", "olha", "ei",
+            "tipo", "ta", "ai", "embaixo", "subir", "entrar", "ver", "quer",
+            "tem", "pro", "pra", "visita", "aqui", "ali", "gente", "pessoal",
+            "ok",
         }
     )
     | frozenset(PALAVRAS_DE_PRESTADOR)
     | frozenset(PALAVRAS_DE_VISITANTE)
+    | frozenset(PALAVRAS_DE_ENTREGA_GENERICAS)
+    | frozenset(PAPEIS_DO_SOLICITANTE)
 )
 
 # Números que podem ser unidade. Dois dígitos já bastam ("sala 12"); um só não,
@@ -332,6 +387,29 @@ def interpretar(texto_falado: str | None, *, condominio=None) -> Intencao:
     return _ler_problema(secundarias)
 
 
+def corrigir_tipo(intencao: Intencao, tipo: str) -> None:
+    """Troca o tipo de acesso lido pelo que a portaria corrigiu nos chips.
+
+    Quem vê quem está na frente é a portaria; a leitura só ouve a fala. A
+    correção muda apenas o tipo: o resto da leitura continua sendo o de agora.
+    Um valor fora do vocabulário do domínio não muda nada.
+    """
+    if not tipo:
+        return
+    try:
+        rotulo = TipoAcessoPortaria(tipo).label
+    except ValueError:
+        return
+    intencao.entidades["tipo_acesso"] = Entidade(
+        campo="tipo_acesso",
+        valor=tipo,
+        rotulo=rotulo,
+        confianca=Confianca.ALTA,
+        estado=Estado.DECLARADA,
+        motivo="A portaria corrigiu o tipo de quem chegou.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Sinais
 # ---------------------------------------------------------------------------
@@ -348,7 +426,23 @@ def _sinais_do_texto(lido: str) -> list[str]:
         sinais.append(IntencaoPortaria.AUTORIZACAO)
     if texto.contem(lido, PALAVRAS_DE_PROBLEMA):
         sinais.append(IntencaoPortaria.RELATO_DE_PROBLEMA)
+    if not sinais and _parece_chegada(lido):
+        sinais.append(IntencaoPortaria.CHEGADA)
     return sinais
+
+
+def _parece_chegada(lido: str) -> bool:
+    """Chegada sem o verbo: uma unidade ou um tipo de quem chega já basta.
+
+    O porteiro fala "Visita pro 302, Ana" sem dizer "chegou". Se a fala não
+    indica saída nem problema, e nomeia quem chega (visita, serviço, entrega)
+    ou traz um número que pode ser unidade, ela é uma chegada.
+    """
+    if texto.contem(lido, PALAVRAS_DE_SAIDA) or texto.contem(lido, PALAVRAS_DE_PROBLEMA):
+        return False
+    if texto.contem(lido, PALAVRAS_DE_TIPO_DE_ACESSO):
+        return True
+    return bool(PADRAO_DE_NUMERO.search(lido))
 
 
 def _status_da_fala(lido: str) -> Entidade:
@@ -380,12 +474,13 @@ def _status_da_fala(lido: str) -> Entidade:
 
 
 def _tipo_de_acesso(lido: str, empresa: Entidade, servico: Entidade) -> Entidade:
-    """Visitante ou prestador — sempre com um valor, nunca vazio.
+    """Visita, serviço ou entrega — sempre com um valor, nunca vazio.
 
-    O que a fala diz vem primeiro: "técnico" ou "visita" têm nome, e nomeá-los é
-    declarar. Sem isso, o cadastro ajuda a decidir — um serviço do condomínio ou
-    uma empresa conhecida são serviço, não visita. É inferência, e a origem diz
-    isso: o cadastro sustenta, a fala não disse.
+    O que a fala diz vem primeiro: "técnico", "visita" ou "entregador" têm
+    nome, e nomeá-los é declarar. A entrega vem depois da visita: quem entrega
+    não visita. Sem isso, o cadastro ajuda a decidir — um serviço do condomínio
+    ou uma empresa conhecida são serviço, não visita. É inferência, e a origem
+    diz isso: o cadastro sustenta, a fala não disse.
     """
     if texto.contem(lido, PALAVRAS_DE_PRESTADOR):
         return Entidade(
@@ -404,6 +499,20 @@ def _tipo_de_acesso(lido: str, empresa: Entidade, servico: Entidade) -> Entidade
             confianca=Confianca.ALTA,
             estado=Estado.DECLARADA,
             motivo="A fala indicou visita.",
+        )
+    if texto.contem(lido, PALAVRAS_DE_ENTREGA):
+        entrega = (
+            TipoAcessoPortaria.CORREIOS
+            if texto.contem(lido, PALAVRAS_DE_CORREIOS)
+            else TipoAcessoPortaria.DELIVERY
+        )
+        return Entidade(
+            campo="tipo_acesso",
+            valor=entrega.value,
+            rotulo=entrega.label,
+            confianca=Confianca.ALTA,
+            estado=Estado.DECLARADA,
+            motivo="A fala indicou entrega.",
         )
     if servico.existe:
         return Entidade(
@@ -948,7 +1057,43 @@ def _completar_pelo_esperado(esperado, *, unidade, pessoa) -> tuple[Entidade, En
         unidade = _entidade_de_unidade(autorizacao.unidade)
     if not pessoa.existe and getattr(autorizacao, "pessoa_id", None):
         pessoa = _entidade_de_pessoa(autorizacao.pessoa)
+    elif pessoa.existe and not pessoa.confirmada:
+        # O primeiro nome basta para reconhecer quem a portaria já esperava:
+        # "Mariana chegou" confirma a visita esperada de "Mariana Lopes".
+        confirmada = _pessoa_do_esperado(autorizacao, pessoa.valor)
+        if confirmada.existe:
+            pessoa = confirmada
     return unidade, pessoa
+
+
+def _pessoa_do_esperado(autorizacao, dita: str) -> Entidade:
+    """Quem a visita esperada nomeia, quando o primeiro nome confere.
+
+    Só o primeiro nome é comparado: é assim que a portaria fala. O esperado é
+    uma visita de hoje, com hora — ele confirma a pessoa, e não o contrário.
+    """
+    if not dita:
+        return Entidade()
+    esperado_primeiro = _primeiro_nome(autorizacao.nome_para_exibir)
+    if not esperado_primeiro or esperado_primeiro != _primeiro_nome(dita):
+        return Entidade()
+    if getattr(autorizacao, "pessoa_id", None):
+        return _entidade_de_pessoa(autorizacao.pessoa)
+    rotulo = autorizacao.nome_para_exibir
+    return Entidade(
+        campo="pessoa",
+        valor=rotulo,
+        rotulo=rotulo,
+        confianca=Confianca.ALTA,
+        estado=Estado.CONFIRMADA,
+        motivo="Confere com a visita que a portaria já esperava.",
+    )
+
+
+def _primeiro_nome(nome: str) -> str:
+    """O primeiro nome, normalizado — como a portaria chama alguém."""
+    partes = texto.normalizar(nome or "").split()
+    return partes[0] if partes else ""
 
 
 def _contexto_da_chegada(
@@ -1060,6 +1205,22 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
     unidade, ambiguas = _unidade_da_fala(lido, condominio)
     servico = _servico_do_condominio(lido, condominio)
     solicitante = _solicitante_da_fala(lido, condominio)
+    tipo = _tipo_de_acesso(lido, empresa, servico)
+    entrega = tipo.valor in TIPOS_DE_ENTREGA
+    if entrega:
+        # Quem entrega não tem nome de pessoa: o nome é a transportadora, se
+        # dita. Sem pessoa, a entrega continua sendo uma leitura de chegada.
+        pessoa = Entidade()
+        if not empresa.existe and tipo.valor == TipoAcessoPortaria.CORREIOS.value:
+            # "Sedex" é Correios: a transportadora é o nome de quem chega.
+            empresa = Entidade(
+                campo="empresa",
+                valor=TRANSPORTADORA_CORREIOS,
+                rotulo=TRANSPORTADORA_CORREIOS,
+                confianca=Confianca.MEDIA,
+                estado=Estado.DECLARADA,
+                motivo="A fala indicou encomenda dos Correios.",
+            )
     esperado, _ = _esperado_agora(
         pessoa=pessoa, empresa=empresa, unidade=unidade, condominio=condominio
     )
@@ -1069,7 +1230,6 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
         esperado, unidade=unidade, pessoa=pessoa
     )
 
-    tipo = _tipo_de_acesso(lido, empresa, servico)
     contexto = _contexto_da_chegada(
         unidade=unidade,
         esperado=esperado,
@@ -1079,7 +1239,7 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
         tipo=tipo,
     )
 
-    if not pessoa.existe and not empresa.existe:
+    if not entrega and not pessoa.existe and not empresa.existe:
         faltantes.append("pessoa")
     if not unidade.existe and not _vai_para_o_condominio(contexto):
         faltantes.append("unidade")
@@ -1122,7 +1282,7 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
         confianca=_confianca_do_critico(
             entidades,
             faltantes,
-            _criticos_da_chegada(contexto, pessoa, empresa, servico, solicitante),
+            _criticos_da_chegada(contexto, pessoa, empresa, servico, solicitante, tipo),
         ),
         resumo=_resumo_da_chegada(entidades),
         entidades=entidades,
@@ -1138,7 +1298,7 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
     )
 
 
-def _criticos_da_chegada(contexto, pessoa, empresa, servico, solicitante) -> tuple:
+def _criticos_da_chegada(contexto, pessoa, empresa, servico, solicitante, tipo) -> tuple:
     """O que não pode ficar em dúvida nesta chegada (§22).
 
     São duas coisas: para onde a chegada vai — a unidade, e só quando a fala
@@ -1147,11 +1307,16 @@ def _criticos_da_chegada(contexto, pessoa, empresa, servico, solicitante) -> tup
     empresa, em quem chegou, no serviço ou em quem chamou, e exigir unidade aí
     seria inventar um caminho que a fala não deu.
 
+    Na entrega, quem nomeia é a transportadora, se dita: quem entrega não tem
+    nome de pessoa, e cobrar um seria cobrar o que a fala nunca teria.
+
     Quem nomeia vem em ordem de firmeza: a empresa tem cadastro, a pessoa
     também, e o serviço e o chamado dizem menos de quem chegou do que os dois
     primeiros.
     """
     onde = () if _vai_para_o_condominio(contexto) else ("unidade",)
+    if tipo.valor in TIPOS_DE_ENTREGA:
+        return onde + (("empresa",) if empresa.existe else ())
     if empresa.existe:
         quem = ("empresa",)
     elif pessoa.existe:
@@ -1431,52 +1596,132 @@ def _ler_problema(secundarias) -> Intencao:
 # ---------------------------------------------------------------------------
 
 
+# Até onde vai um nome de pessoa: "Ana Paula Souza" tem três palavras, e uma
+# quarta já é frase. Passado o limite, o que vem não é mais o nome de quem
+# chegou.
+PALAVRAS_DO_NOME = 3
+
+
 def _nome_em_volta_do_verbo(original: str, verbos) -> str:
-    """O nome que a fala coloca antes ou depois do verbo que o anuncia.
+    """O nome que a fala coloca em volta do verbo que o anuncia — ou junto dele.
 
     "Chegou Carlos" traz o nome depois; "Carlos do 902 saiu" traz antes. As
     duas formas são a mesma coisa dita em ordens diferentes, e por isso as duas
     são procuradas — com o "antes" primeiro, que é onde o português costuma
-    pôr o sujeito.
+    pôr o sujeito. Quando a fala não tem verbo ("visita pro 501, Carlos"), o
+    nome ainda está junto da palavra que anuncia a chegada, e é ali que a
+    leitura procura.
     """
-    return _nome_antes_do_verbo(original, verbos) or _nome_depois_do_verbo(
-        original, verbos
+    palavras = _palavras_do_verbo(verbos)
+    nome = _nome_antes_do_verbo(original, palavras) or _nome_depois_do_verbo(
+        original, palavras
     )
+    return nome or _nome_junto_do_tipo(original)
+
+
+def _palavras_do_verbo(verbos) -> frozenset:
+    """As palavras dos verbos, soltas: "está aqui" conta como "está" e "aqui"."""
+    palavras = set()
+    for verbo in verbos:
+        for palavra in str(verbo).split():
+            palavras.add(texto.normalizar(palavra))
+    return frozenset(palavras)
 
 
 def _nome_depois_do_verbo(original: str, verbos) -> str:
-    """O nome que vem depois do verbo — sem janela de tantos tokens.
+    """O nome que vem depois do verbo, até três palavras seguidas.
 
-    "Chegou Carlos" nomeia logo depois do verbo; "chegou o técnico da Atlas"
-    não nomeia ninguém, porque o que vem depois da ligação é a empresa e não
-    uma pessoa. A leitura avança enquanto a fala ainda não chegou a um limite
-    ("para", "que", "com") e para na ligação da empresa: era essa parada que
-    uma janela fixa não conseguia dar, e por isso "Atlas" se perdia.
+    "Chegou Carlos" nomeia logo depois do verbo; "chegou Ana Paula Souza" nomeia
+    inteiro. A leitura avança enquanto a fala não chegou a um limite ("para",
+    "que", "com") nem à ligação de uma empresa, e para no que já não é nome.
     """
     tokens = _tokens(original)
     for indice, token in enumerate(tokens):
         if texto.normalizar(token) not in verbos:
             continue
-        for seguinte in tokens[indice + 1 :]:
-            normalizado = texto.normalizar(seguinte)
-            if normalizado in LIMITES_DO_NOME or normalizado in CONECTORES_DE_EMPRESA:
-                break
-            if _serve_como_nome(seguinte):
-                return seguinte
-        return ""
+        return _nome_a_frente(tokens, indice + 1)
     return ""
 
 
 def _nome_antes_do_verbo(original: str, verbos) -> str:
+    """O nome antes do verbo, até três palavras, na ordem em que se escreve."""
     tokens = _tokens(original)
     for indice, token in enumerate(tokens):
         if texto.normalizar(token) not in verbos:
             continue
+        colhidas: list[str] = []
         for anterior in reversed(tokens[:indice]):
             if _serve_como_nome(anterior):
-                return anterior
-        return ""
+                colhidas.append(anterior)
+                if len(colhidas) == PALAVRAS_DO_NOME:
+                    break
+            elif colhidas:
+                break
+        return " ".join(reversed(colhidas))
     return ""
+
+
+def _nome_junto_do_tipo(original: str) -> str:
+    """O nome que a fala dá depois de anunciar quem chega, sem verbo.
+
+    "visita pro 501, Carlos" diz o tipo primeiro e o nome no fim. Depois da
+    palavra que anuncia a chegada — visita, visitante, convidado — a leitura
+    segue até o primeiro nome; depois do artigo ("o Carlos"), o nome tem de vir
+    colado. Em ambos os casos a inicial maiúscula é o sinal de que ali começa
+    um nome próprio: "o elevador" não nomeia ninguém.
+    """
+    tokens = _tokens(original)
+    for indice, token in enumerate(tokens):
+        normalizado = texto.normalizar(token)
+        if normalizado in PALAVRAS_DE_VISITANTE:
+            nome = _primeiro_nome_adiante(tokens, indice + 1)
+            if nome:
+                return nome
+        elif normalizado in ("o", "a"):
+            nome = _nome_imediatamente(tokens, indice + 1)
+            if nome:
+                return nome
+    return ""
+
+
+def _primeiro_nome_adiante(tokens: list[str], inicio: int) -> str:
+    """O primeiro nome próprio adiante, saltando o que não é nome."""
+    for indice in range(inicio, len(tokens)):
+        if _serve_como_nome_proprio(tokens[indice]):
+            return _nome_a_frente(tokens, indice)
+    return ""
+
+
+def _nome_imediatamente(tokens: list[str], inicio: int) -> str:
+    """O nome próprio que começa exatamente ali, sem saltar nada."""
+    if inicio < len(tokens) and _serve_como_nome_proprio(tokens[inicio]):
+        return _nome_a_frente(tokens, inicio)
+    return ""
+
+
+def _serve_como_nome_proprio(token: str) -> bool:
+    """Um nome de pessoa de verdade — com inicial maiúscula."""
+    return token[:1].isupper() and _serve_como_nome(token)
+
+
+def _nome_a_frente(tokens: list[str], inicio: int) -> str:
+    """O nome a partir de um ponto, até três palavras seguidas.
+
+    Salta o que não é nome antes de começar ("chegou o Carlos"), mas para no
+    limite da frase e na ligação de uma empresa — ali não vem mais um nome.
+    """
+    colhidas: list[str] = []
+    for seguinte in tokens[inicio:]:
+        normalizado = texto.normalizar(seguinte)
+        if _serve_como_nome(seguinte):
+            colhidas.append(seguinte)
+            if len(colhidas) == PALAVRAS_DO_NOME:
+                break
+        elif colhidas:
+            break
+        elif normalizado in LIMITES_DO_NOME or normalizado in CONECTORES_DE_EMPRESA:
+            break
+    return " ".join(colhidas)
 
 
 def _tokens(original: str) -> list[str]:

@@ -447,6 +447,9 @@ def confirmar_relato(request):
     relato = _relato_do_pedido(request)
     escolha = (request.POST.get("acao") or "").strip()
     intencao = interpretacao.interpretar(relato, condominio=condominio)
+    # A portaria pode ter corrigido o tipo nos chips da leitura: a correção vale
+    # para esta confirmação e só para ela — o resto é a reinterpretação de agora.
+    interpretacao.corrigir_tipo(intencao, _tipo_corrigido_do_pedido(request))
 
     if escolha not in ROTULOS_DE_ACAO or _escolha_executavel(intencao) != escolha:
         messages.error(
@@ -545,6 +548,15 @@ ROTULOS_DE_ACAO = {
     "ocorrencia": "Criar demanda",
 }
 
+# Os três chips que corrigem o tipo de quem chega, com um toque. "Serviço"
+# cobre prestador, técnico e fornecedor: o que a portaria distingue no dia a
+# dia é se é visita, entrega ou serviço — não o rótulo fino do cadastro.
+TIPOS_PARA_CORRIGIR = (
+    {"valor": TipoAcessoPortaria.VISITANTE.value, "rotulo": "Visita", "icone": "bx-user"},
+    {"valor": TipoAcessoPortaria.DELIVERY.value, "rotulo": "Entrega", "icone": "bx-package"},
+    {"valor": TipoAcessoPortaria.PRESTADOR.value, "rotulo": "Serviço", "icone": "bx-wrench"},
+)
+
 
 def _relato_do_pedido(request) -> str:
     """O relato desta rodada, já com a resposta curta da pergunta anterior.
@@ -560,6 +572,18 @@ def _relato_do_pedido(request) -> str:
     if not relato:
         return respondendo
     return f"{relato} {respondendo}"
+
+
+def _tipo_corrigido_do_pedido(request) -> str:
+    """O tipo que a portaria tocou nos chips da leitura, se for válido.
+
+    A correção é um toque a mais; um valor que não existe no domínio é
+    ignorado, e a leitura segue como veio.
+    """
+    escolhido = (request.POST.get("tipo_corrigido") or "").strip()
+    if escolhido in TipoAcessoPortaria.values:
+        return escolhido
+    return ""
 
 
 def _proposta_do_relato(relato, condominio):
@@ -974,6 +998,9 @@ def _render_painel(
         # Os tipos que são entrega — e não pessoa. A tela usa esta lista para
         # saber quando oferecer a leitura da etiqueta; a origem é única.
         "tipos_de_entrega": TIPOS_DE_ENTREGA,
+        # Os chips que corrigem o tipo de quem chega na própria leitura, antes
+        # de confirmar. A origem é única: a mesma lista que a leitura usa.
+        "tipos_para_corrigir": TIPOS_PARA_CORRIGIR,
         # A encomenda em uma etapa: as transportadoras em botões e as instruções
         # de entrega vêm do domínio, não de uma lista escrita na tela.
         "transportadoras": TRANSPORTADORAS_DE_ENTREGA,

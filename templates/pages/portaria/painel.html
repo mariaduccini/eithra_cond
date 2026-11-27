@@ -212,6 +212,26 @@
                   {% endif %}
                   <input type="hidden" name="relato" value="{{ relato }}">
                   <input type="hidden" name="acao" value="{{ proposta.acao.chave }}">
+                  {% if proposta.acao.chave == 'chegada' %}
+                    {% comment %}Quem está na frente da portaria vê quem chegou;
+                    a leitura só ouve a fala. Três chips corrigem o tipo com um
+                    toque, e o tipo escolhido viaja escondido — sem escolha, a
+                    leitura segue como veio.{% endcomment %}
+                    <div class="eithra-situacao-relato eithra-portaria-corrigir-tipo" role="group" aria-label="Corrigir o tipo de quem chegou">
+                      <div class="d-flex flex-wrap gap-2">
+                        {% for tipo in tipos_para_corrigir %}
+                          <input
+                            type="radio"
+                            class="btn-check"
+                            name="tipo_corrigido"
+                            id="tipo-corrigido-{{ tipo.valor }}"
+                            value="{{ tipo.valor }}"
+                            autocomplete="off">
+                          <label class="eithra-chip-opcao" for="tipo-corrigido-{{ tipo.valor }}"><i class="bx {{ tipo.icone }}" aria-hidden="true"></i>{{ tipo.rotulo }}</label>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
                   <button type="submit" class="btn btn-primary">
                     <i class="bx bx-check-circle" aria-hidden="true"></i>{{ proposta.acao.rotulo }}
                   </button>

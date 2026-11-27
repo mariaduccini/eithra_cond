@@ -9,7 +9,7 @@ from apps.comunidade.models import Pessoa
 from apps.comunidade.tests import apoio as comunidade_apoio
 from apps.condominios.constants import Papel
 from apps.demandas.models import Demanda
-from apps.portaria.constants import HORA_DE_ABERTURA
+from apps.portaria.constants import HORA_DE_ABERTURA, TipoAcessoPortaria
 from apps.portaria.forms import AutorizacaoPortariaForm, ChegadaNaoPrevistaForm
 from apps.portaria.models import AcessoPortaria, AutorizacaoPortaria
 from apps.portaria.tests import apoio
@@ -1885,6 +1885,56 @@ class PortariaRelatoTests(TestCase):
         acesso = AcessoPortaria.objects.get(nome="Carlos")
         self.assertIsNotNone(acesso.entrada_em)
         self.assertEqual(acesso.unidade_id, self.unidade.pk)
+
+    def test_tipo_corrigido_troca_o_tipo_lido(self):
+        """Um toque em "Visita" grava visita — mesmo tendo lido entrega."""
+        resposta = self._confirmar(
+            "Chegou uma encomenda do iFood pro 301",
+            "chegada",
+            tipo_corrigido=TipoAcessoPortaria.VISITANTE.value,
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        acesso = AcessoPortaria.objects.get(nome="iFood")
+        self.assertEqual(acesso.tipo_acesso, TipoAcessoPortaria.VISITANTE)
+
+    def test_tipo_corrigido_invalido_e_ignorado(self):
+        """Um valor fora do domínio não muda o tipo que a leitura encontrou."""
+        resposta = self._confirmar(
+            "Chegou uma encomenda do iFood pro 301",
+            "chegada",
+            tipo_corrigido="nao-existe",
+        )
+
+        self.assertEqual(resposta.status_code, 302)
+        acesso = AcessoPortaria.objects.get(nome="iFood")
+        self.assertEqual(acesso.tipo_acesso, TipoAcessoPortaria.DELIVERY)
+
+    def test_chegada_de_visitante_nao_vaza_texto_de_encomenda(self):
+        """Registrada uma visita, nem a mensagem nem a linha tratam-na como entrega."""
+        dados = {
+            "condominio": str(self.condominio.pk),
+            "relato": "Chegou Carlos, visita do 301",
+            "acao": "chegada",
+        }
+        resposta = self.client.post(
+            reverse("portaria:confirmar"), dados, follow=True
+        )
+
+        mensagem = " ".join(str(m) for m in resposta.context["messages"]).casefold()
+        self.assertIn("carlos entrou", mensagem)
+        self.assertNotIn("encomenda", mensagem)
+        self.assertNotIn("whatsapp", mensagem)
+
+        # O painel sempre traz o caminho da encomenda e o aviso por WhatsApp; o
+        # que a visita não pode receber é esse texto na própria linha de "Aqui
+        # agora". A linha é uma só: o Carlos recém-registrado.
+        html = resposta.content.decode()
+        inicio = html.index("eithra-portaria-linha")
+        linha = html[inicio : html.index("</li>", inicio)].casefold()
+        self.assertNotIn("encomenda", linha)
+        self.assertNotIn("whatsapp", linha)
+        self.assertNotIn("data-eithra-avisar", linha)
 
     def test_confirmar_saida_fecha_a_presenca(self):
         acesso = apoio.criar_acesso(

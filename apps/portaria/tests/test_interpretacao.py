@@ -160,6 +160,124 @@ class TipoDeAcessoTests(LeituraDaFalaTests):
         self.assertEqual(tipo.confianca, Confianca.MEDIA)
 
 
+class QuemEstaChegandoTests(LeituraDaFalaTests):
+    """A portaria diz quem chegou de muitos jeitos: a leitura vê a pessoa, a
+    unidade e o tipo mesmo quando o verbo "chegou" não aparece (§D1–D3)."""
+
+    def test_chegada_com_o_verbo_e_a_unidade(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="302")
+
+        leitura = self._ler("Ana chegou pro 302")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(leitura.entidade("pessoa").valor, "Ana")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
+        )
+
+    def test_saudacao_nao_vira_nome_e_o_nome_tem_tres_palavras(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="302")
+
+        leitura = self._ler("Oi, a Ana Paula está aqui pro 302")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(leitura.entidade("pessoa").valor, "Ana Paula")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
+        )
+
+    def test_chegada_sem_o_verbo_chegou(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="501")
+
+        leitura = self._ler("visita pro 501, Carlos")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(leitura.entidade("pessoa").valor, "Carlos")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
+        )
+
+    def test_entregador_do_delivery_nao_tem_nome_de_pessoa(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="1102")
+
+        leitura = self._ler("tem um entregador do iFood pro 1102")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        pessoa = leitura.entidade("pessoa")
+        self.assertTrue(pessoa is None or not pessoa.existe)
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.DELIVERY
+        )
+
+    def test_sedex_vira_correios(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="704")
+
+        leitura = self._ler("chegou sedex para o 704")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.CORREIOS
+        )
+
+    def test_saudacao_nao_vira_o_nome_do_tecnico(self):
+        cadastros_apoio.criar_fornecedor(
+            self.condominio,
+            nome_razao_social="Atlas Elevadores Ltda.",
+            nome_fantasia="Atlas",
+        )
+
+        leitura = self._ler("bom dia, o técnico da Atlas chegou")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertNotIn("pessoa", leitura.entidades)
+        self.assertEqual(leitura.entidade("empresa").valor, "Atlas")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.PRESTADOR
+        )
+
+    def test_saida_com_unidade_e_nome(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="902")
+
+        leitura = self._ler("Carlos do 902 saiu")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.SAIDA)
+        self.assertEqual(leitura.entidade("pessoa").valor, "Carlos")
+
+    def test_o_primeiro_nome_confere_com_a_visita_esperada_hoje(self):
+        unidade = apoio.comunidade_apoio.criar_unidade(
+            self.condominio, identificador="302"
+        )
+        apoio.criar_autorizacao(
+            self.condominio, self.usuario, nome="Mariana Lopes", unidade=unidade
+        )
+
+        leitura = self._ler("Mariana chegou pro 302")
+
+        pessoa = leitura.entidade("pessoa")
+        self.assertTrue(pessoa.confirmada)
+        self.assertEqual(pessoa.valor, "Mariana Lopes")
+
+    def test_corrigir_tipo_troca_o_tipo_lido(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="1102")
+        leitura = self._ler("tem um entregador do iFood pro 1102")
+
+        interpretacao.corrigir_tipo(leitura, TipoAcessoPortaria.VISITANTE.value)
+
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
+        )
+
+    def test_corrigir_tipo_ignora_valor_invalido(self):
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="302")
+        leitura = self._ler("Ana chegou pro 302")
+
+        interpretacao.corrigir_tipo(leitura, "nao-existe")
+
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
+        )
+
+
 class AmbiguidadeDeUnidadeTests(LeituraDaFalaTests):
     """Dois cadastros para o mesmo número: o Eithra pergunta, não escolhe (§22)."""
 
