@@ -277,6 +277,30 @@ class QuemEstaChegandoTests(LeituraDaFalaTests):
             leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.VISITANTE
         )
 
+    def test_entrega_nomeia_a_transportadora_sem_a_ligacao(self):
+        """Chegou ifood pro 1102" nomeia quem entrega tanto quanto "do iFood"."""
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="1102")
+
+        leitura = self._ler("chegou ifood pro 1102")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(leitura.entidade("empresa").valor, "ifood")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.DELIVERY
+        )
+
+    def test_entrega_sem_transportadora_ainda_e_uma_chegada(self):
+        """Sem transportadora dita, a própria entrega é o nome de quem chegou."""
+        apoio.comunidade_apoio.criar_unidade(self.condominio, identificador="1102")
+
+        leitura = self._ler("tem uma entrega pro 1102")
+
+        self.assertEqual(leitura.tipo, IntencaoPortaria.CHEGADA)
+        self.assertEqual(leitura.entidade("empresa").valor, "Entrega")
+        self.assertEqual(
+            leitura.entidade("tipo_acesso").valor, TipoAcessoPortaria.DELIVERY
+        )
+
 
 class AmbiguidadeDeUnidadeTests(LeituraDaFalaTests):
     """Dois cadastros para o mesmo número: o Eithra pergunta, não escolhe (§22)."""

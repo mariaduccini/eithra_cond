@@ -1910,6 +1910,15 @@ class PortariaRelatoTests(TestCase):
         acesso = AcessoPortaria.objects.get(nome="iFood")
         self.assertEqual(acesso.tipo_acesso, TipoAcessoPortaria.DELIVERY)
 
+    def test_leitura_de_entrega_sem_ligacao_mostra_os_chips(self):
+        """A entrega como o porteiro fala chega ao painel com os três chips."""
+        resposta = self._entender("chegou ifood pro 301")
+
+        html = resposta.content.decode()
+        self.assertIn("tipo-corrigido-visitante", html)
+        self.assertIn("tipo-corrigido-delivery", html)
+        self.assertIn("tipo-corrigido-prestador", html)
+
     def test_chegada_de_visitante_nao_vaza_texto_de_encomenda(self):
         """Registrada uma visita, nem a mensagem nem a linha tratam-na como entrega."""
         dados = {

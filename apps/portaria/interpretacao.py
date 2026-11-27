@@ -197,6 +197,15 @@ PALAVRAS_DE_CORREIOS = ("correios", "sedex")
 # Correios) continua nomeável: ela é o nome de quem chega na entrega.
 PALAVRAS_DE_ENTREGA_GENERICAS = ("entrega", "delivery", "motoboy", "pacote", "encomenda")
 
+# Os nomes que dizem quem entrega mesmo sem ligação: "chegou ifood pro 1102"
+# nomeia a transportadora tanto quanto "chegou do ifood". "Mercado Livre" são
+# duas palavras, e por isso não entra solto nesta lista.
+PALAVRAS_DE_TRANSPORTADORA = ("ifood", "rappi", "amazon", "shopee")
+
+# Sem transportadora dita, a entrega continua sendo uma chegada: quem chega é a
+# própria entrega, e é esse o nome que o painel anuncia na falta de outro.
+NOME_DE_ENTREGA_SEM_TRANSPORTADORA = "Entrega"
+
 # Palavras que já nomeiam quem chega: visita, serviço ou entrega. Com uma delas
 # — ou com uma unidade — a fala é chegada mesmo sem o verbo "chegou" (§D1).
 PALAVRAS_DE_TIPO_DE_ACESSO = (
@@ -783,6 +792,23 @@ def _serve_como_empresa(token: str) -> bool:
     return _serve_como_nome(token)
 
 
+def _transportadora_da_fala(original: str) -> str:
+    """O nome de quem entrega, dito mesmo sem a ligação.
+
+    "chegou ifood pro 1102" nomeia a transportadora tanto quanto "chegou do
+    ifood": quem entrega não precisa de preposição para ser nomeado. O nome
+    volta como foi escrito — é ele que aparece na portaria.
+    """
+    tokens = _tokens(original)
+    for indice, token in enumerate(tokens):
+        if texto.normalizar(token) in PALAVRAS_DE_TRANSPORTADORA:
+            return token
+        if texto.normalizar(token) == "mercado" and indice + 1 < len(tokens):
+            if texto.normalizar(tokens[indice + 1]) == "livre":
+                return "Mercado Livre"
+    return ""
+
+
 def _empresa_do_acesso(original: str, pessoa: Entidade, condominio) -> Entidade:
     """A empresa desta fala — a que a portaria reconhece, e nenhuma outra.
 
@@ -1211,15 +1237,25 @@ def _ler_chegada(lido, original, condominio, secundarias) -> Intencao:
         # Quem entrega não tem nome de pessoa: o nome é a transportadora, se
         # dita. Sem pessoa, a entrega continua sendo uma leitura de chegada.
         pessoa = Entidade()
-        if not empresa.existe and tipo.valor == TipoAcessoPortaria.CORREIOS.value:
-            # "Sedex" é Correios: a transportadora é o nome de quem chega.
+        if not empresa.existe:
+            if tipo.valor == TipoAcessoPortaria.CORREIOS.value:
+                # "Sedex" é Correios: a transportadora é o nome de quem chega.
+                nome = TRANSPORTADORA_CORREIOS
+            else:
+                # "chegou ifood pro 1102" nomeia a transportadora sem ligação.
+                # E "tem uma entrega pro 1102" não nomeia ninguém: a própria
+                # entrega vira o nome, em vez de a leitura ficar sem quem chegou.
+                nome = (
+                    _transportadora_da_fala(original)
+                    or NOME_DE_ENTREGA_SEM_TRANSPORTADORA
+                )
             empresa = Entidade(
                 campo="empresa",
-                valor=TRANSPORTADORA_CORREIOS,
-                rotulo=TRANSPORTADORA_CORREIOS,
+                valor=nome,
+                rotulo=nome,
                 confianca=Confianca.MEDIA,
                 estado=Estado.DECLARADA,
-                motivo="A fala indicou encomenda dos Correios.",
+                motivo="A fala indicou quem entrega.",
             )
     esperado, _ = _esperado_agora(
         pessoa=pessoa, empresa=empresa, unidade=unidade, condominio=condominio
