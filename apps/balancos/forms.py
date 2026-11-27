@@ -122,9 +122,10 @@ class ConferenciaDeBalancoForm(forms.Form):
         empty_label=None,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
-    mes = forms.ChoiceField(
+    mes = forms.TypedChoiceField(
         label="Mês",
         choices=NOMES_DOS_MESES,
+        coerce=int,
         widget=forms.Select(attrs={"class": "form-select"}),
     )
     ano = forms.IntegerField(
