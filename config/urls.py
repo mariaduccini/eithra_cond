@@ -1,8 +1,12 @@
 """Roteamento raiz do Eithra."""
+import re
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.contrib.auth.decorators import login_required
+from django.urls import include, path, re_path
+from django.views.static import serve
 
 from config import views
 
@@ -47,5 +51,16 @@ handler500 = views.server_error_view
 # próprio Django que os serve. Quem também serve é o acesso remoto
 # (config.settings.remoto): lá o armazenamento é local, mas a depuração está
 # desligada — sem esta rota, as logos e as fotos não apareceriam no celular.
-if settings.DEBUG or getattr(settings, "EITHRA_SERVIR_MEDIA", False):
+if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+elif getattr(settings, "EITHRA_SERVIR_MEDIA", False):
+    # static() não devolve rota nenhuma sem DEBUG. No acesso remoto a mídia é
+    # servida pelo próprio Django, mas só para quem entrou: fotos, contratos e
+    # balancetes não ficam abertos a quem tiver o endereço.
+    urlpatterns += [
+        re_path(
+            r"^%s(?P<path>.*)$" % re.escape(settings.MEDIA_URL.lstrip("/")),
+            login_required(serve),
+            {"document_root": settings.MEDIA_ROOT},
+        ),
+    ]
